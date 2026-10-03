@@ -8,6 +8,9 @@ wrappers = { cargo = { command = "mbx", env = { MBX_CARGO_SHIM_MODE = "1" } } }
 rust = { version = "1.94.1", components = "rustfmt,clippy" }
 mr-boxington = "latest"
 prek = "latest"
+# Conventional commits and the release bump (cog.toml, docs/releasing.md);
+# built from crates.io, the same way CI installs it.
+"cargo:cocogitto" = "7.0.0"
 
 [env]
 RUST_BACKTRACE = "1"
@@ -19,7 +22,7 @@ _.file = ".env"
 # ---------------------------------------------------------------------------
 
 [tasks.setup]
-description = "One-time developer setup: git hooks (prek) and a warm cargo cache"
+description = "One-time developer setup: git hooks (prek, the commit-msg check included) and a warm cargo cache"
 run = "prek install && cargo fetch"
 
 # ---------------------------------------------------------------------------
@@ -75,6 +78,26 @@ run = "prek run --all-files"
 [tasks.package]
 description = "What a publish would ship, without publishing"
 run = "cargo package --list"
+
+[tasks."publish:dry"]
+description = "Everything cargo publish checks, without publishing; the release workflow runs the same before the real one"
+run = "cargo publish --dry-run"
+
+# ---------------------------------------------------------------------------
+# Commits and releases (cog.toml, docs/releasing.md)
+# ---------------------------------------------------------------------------
+
+[tasks."commits:check"]
+description = "Every commit since the latest tag is a Conventional Commit (merge commits ignored), as CI checks a pull request"
+run = "cog check"
+
+[tasks."release:dry"]
+description = "The version the commits since the latest tag call for, and nothing else"
+run = "cog bump --auto --dry-run"
+
+[tasks.release]
+description = "Cut a release on an up-to-date main: version into Cargo.toml, Cargo.lock and the CHANGELOG, the gate, a bump commit and a tag; then open the pull request and push the tag by hand (docs/releasing.md)"
+run = "cog bump --auto"
 
 [tasks.clean]
 description = "Remove the Cargo build output and this checkout's mbx state; the shared cache stays"

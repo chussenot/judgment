@@ -1,0 +1,122 @@
+name: Release
+
+# Publishes the crate to crates.io from a pushed `v*` tag, which `cog bump`
+# creates (cog.toml; docs/releasing.md is the runbook, decision 0013 the why).
+# The gate runs first, through the CI workflow, on the tagged commit; the tag
+# must name the version in Cargo.toml; `cargo publish --dry-run` must pass;
+# then the publish, and a GitHub release whose notes are the CHANGELOG's
+# section for the version. Only GitHub-owned actions and the runner's own
+# tools (rustup, cargo, curl, jq, gh) are used.
+#
+# Credential, in this order:
+# - the CARGO_REGISTRY_TOKEN secret, when set: needed for the first release,
+#   because crates.io lets a trusted publisher be configured only on a crate
+#   that already exists;
+# - otherwise a short-lived token from crates.io trusted publishing, exchanged
+#   for this job's OIDC identity (repository chussenot/judgment, workflow
+#   release.yml, environment crates-io, as configured on the crate's settings
+#   page) and revoked when the job ends. Once that is configured, delete the
+#   secret.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: gate
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: publish to crates.io
+    needs: gate
+    runs-on: ubuntu-latest
+    # Protect the environment in the repository settings (required reviewers,
+    # a deployment branch rule for tags) to put a person in front of a publish.
+    environment: crates-io
+    permissions:
+      contents: write   # the GitHub release
+      id-token: write   # crates.io trusted publishing
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain from rust-toolchain.toml
+        run: |
+          rustup toolchain install
+          cargo --version
+
+      - name: The tag names the version in Cargo.toml
+        id: version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          manifest_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "judgment") | .version')
+          echo "tag v$tag_version, Cargo.toml $manifest_version"
+          if [ "$tag_version" != "$manifest_version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not name the manifest version $manifest_version; cut releases with cog bump (docs/releasing.md)"
+            exit 1
+          fi
+          echo "version=$tag_version" >> "$GITHUB_OUTPUT"
+
+      - name: The CHANGELOG has a section for the version
+        run: |
+          version='${{ steps.version.outputs.version }}'
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { inside = 1; next }
+            inside && /^## / { exit }
+            inside { print }
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '^- ' release-notes.md; then
+            echo "::error::CHANGELOG.md has no entries under '## [$version]'"
+            exit 1
+          fi
+          echo "release notes:"; cat release-notes.md
+
+      - run: cargo publish --dry-run --locked
+
+      - name: Credential for crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -eu
+          if [ -n "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "using the CARGO_REGISTRY_TOKEN secret"
+            echo "CARGO_REGISTRY_TOKEN=$CARGO_REGISTRY_TOKEN" >> "$GITHUB_ENV"
+            echo "TRUSTED_PUBLISHING_TOKEN=" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "no CARGO_REGISTRY_TOKEN secret; exchanging this job's OIDC identity with crates.io trusted publishing"
+          jwt=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=crates.io" | jq -r '.value')
+          token=$(curl -sSf -X PUT https://crates.io/api/v1/trusted_publishing/tokens \
+            -H 'Content-Type: application/json' -H 'Accept: application/json' \
+            -H 'User-Agent: judgment release workflow (github.com/chussenot/judgment)' \
+            -d "$(jq -cn --arg jwt "$jwt" '{jwt: $jwt}')" | jq -r '.token')
+          [ -n "$token" ] && [ "$token" != null ] || { echo "::error::crates.io returned no token; is the trusted publisher configured for this workflow and environment?"; exit 1; }
+          echo "::add-mask::$token"
+          echo "CARGO_REGISTRY_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "TRUSTED_PUBLISHING_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - run: cargo publish --locked
+
+      - name: Revoke the trusted-publishing token
+        if: always() && env.TRUSTED_PUBLISHING_TOKEN != ''
+        run: |
+          curl -sS -X DELETE https://crates.io/api/v1/trusted_publishing/tokens \
+            -H "Authorization: Bearer $TRUSTED_PUBLISHING_TOKEN" \
+            -H 'User-Agent: judgment release workflow (github.com/chussenot/judgment)' \
+            -o /dev/null -w 'revoke: HTTP %{http_code}\n' || true
+
+      - name: GitHub release with the CHANGELOG section as notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "judgment ${{ steps.version.outputs.version }}" \
+            --notes-file release-notes.md \
+            --verify-tag
