@@ -318,22 +318,21 @@ The rustdoc (`cargo doc --open`) is the reference for every type, error and defa
 
 ## Status
 
-Not yet on crates.io; the version is the one in `Cargo.toml`, and what
-changed in each release, breaking changes listed, is in
-[CHANGELOG.md](CHANGELOG.md). Take it by git, pinned to a revision, until
-the first release is published:
+On [crates.io](https://crates.io/crates/judgment) since 0.3.0, with the
+rustdoc on [docs.rs](https://docs.rs/judgment). What changed in each
+release, breaking changes listed, is in [CHANGELOG.md](CHANGELOG.md); 0.x
+means a minor release may break, so pin the minor:
 
 ```toml
 [dependencies]
-judgment = { git = "https://github.com/chussenot/judgment", rev = "<a commit>" }
+judgment = "0.3"
 ```
 
 Releases are cut with [cocogitto](https://docs.cocogitto.io) and published
 by CI: the commits are Conventional Commits, `cog bump --auto` derives the
 next version from them and tags it, and the pushed tag runs the gate once
 more and publishes the crate to crates.io
-([Releasing](docs/releasing.md)). Once the first release is on crates.io,
-the dependency is a plain version requirement.
+([Releasing](docs/releasing.md)).
 
 Live behaviour has been verified against the hosted API under one account
 and against Laya's server; the vendored OpenAPI document and the wiremock
