@@ -62,19 +62,24 @@ jobs:
           fi
           echo "version=$tag_version" >> "$GITHUB_OUTPUT"
 
+      # Written outside the checkout: `cargo publish` refuses a working tree
+      # with an uncommitted file, and --allow-dirty would hide a real one.
       - name: The CHANGELOG has a section for the version
         run: |
           version='${{ steps.version.outputs.version }}'
+          notes="$RUNNER_TEMP/release-notes.md"
           awk -v v="$version" '
             $0 ~ "^## \\[" v "\\]" { inside = 1; next }
             inside && /^## / { exit }
             inside { print }
-          ' CHANGELOG.md > release-notes.md
-          if ! grep -q '^- ' release-notes.md; then
+          ' CHANGELOG.md > "$notes"
+          if ! grep -q '^- ' "$notes"; then
             echo "::error::CHANGELOG.md has no entries under '## [$version]'"
             exit 1
           fi
-          echo "release notes:"; cat release-notes.md
+          echo "release notes:"; cat "$notes"
+          git status --porcelain
+          test -z "$(git status --porcelain)" || { echo "::error::the checkout is not clean; cargo publish would refuse it"; exit 1; }
 
       - run: cargo publish --dry-run --locked
 
@@ -118,5 +123,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --title "judgment ${{ steps.version.outputs.version }}" \
-            --notes-file release-notes.md \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
             --verify-tag
