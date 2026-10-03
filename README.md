@@ -316,14 +316,16 @@ The rustdoc (`cargo doc -p judgment --open`) is the reference for every type, er
 
 ## Status
 
-`0.2.0`, a workspace member of the signalman repository, not yet on crates.io.
-What changed in each release, breaking changes listed, is in
-[CHANGELOG.md](CHANGELOG.md).
-Take it by git until a second consumer settles the API:
+`0.2.0`, in its own repository since 2026-10-03, split out of
+[signalman](https://github.com/chussenot/signalman) with its history
+([decision 0012](https://github.com/chussenot/signalman/blob/main/docs/decisions/0012-the-judgment-crate-moves-to-its-own-repository.md)
+in signalman's records), not yet on crates.io. What changed in each release,
+breaking changes listed, is in [CHANGELOG.md](CHANGELOG.md). Take it by git,
+pinned to a revision, until the first release is cut:
 
 ```toml
 [dependencies]
-judgment = { git = "https://github.com/chussenot/signalman", package = "judgment" }
+judgment = { git = "https://github.com/chussenot/judgment", rev = "<a commit>" }
 ```
 
 Live behaviour has been verified only under signalman's own account; the

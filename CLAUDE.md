@@ -61,21 +61,6 @@ The README says why; `docs/` says how; the rustdoc is the reference.
 - Secrets live in `.env` (gitignored, loaded by mise). Never commit one.
   `cargo publish` is denied by the Bash guard until a release is decided.
 
-## In the signalman workspace
-
-Until the split (signalman's decision 0012; `docs/judgment-extraction.md`
-there is the runbook) this directory is also a member of the signalman
-workspace, whose root `CLAUDE.md` applies as well and whose gates run with
-`--workspace`. The files here that only make sense at a repository root
-(`.github/`, `mise.toml`, `.pre-commit-config.yaml`, `scripts/`, `.claude/`,
-`catalog-info.yaml`, `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`)
-are inert inside signalman, except that prek runs the nested hook
-configuration as a workspace of its own, and become the new repository's on
-the split. Keep them in step with signalman's until then: compare `[lints]`
-and the dependency versions with the root `Cargo.toml` when either changes,
-and `diff` the hooks and the two docs scripts against the root's `.claude/hooks/`
-and `scripts/`, which they copy byte for byte.
-
 ## Harness
 
 - Subagents in `.claude/agents/`: `contract-reviewer` (the wire against the

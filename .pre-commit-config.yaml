@@ -2,8 +2,6 @@
 # Install once with `mise run setup`. Run everything with `mise run precommit`.
 #
 # Fast, file-level checks run on every commit. The test suite runs on push.
-# Inside the signalman workspace the root's configuration is the one installed;
-# this one is the crate's own once it stands alone (decision 0012).
 
 minimum_pre_commit_version: "3.2.0"
 default_install_hook_types: [pre-commit, pre-push]

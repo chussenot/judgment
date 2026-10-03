@@ -1,7 +1,7 @@
-# Backstage catalog entry for the judgment crate in its own repository
-# (decision 0012 in signalman's records). Inert while the crate is a member
-# of the signalman workspace: that repository's root catalog-info.yaml holds
-# the `judgment` Component until the split, and drops it then.
+# Backstage catalog entry for the judgment crate. Register this file's URL in
+# the catalog (or via the GitHub discovery provider) and the library, its
+# TechDocs (docs/) and its dependency show up in the portal; signalman's own
+# catalog-info.yaml depends on this Component.
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:

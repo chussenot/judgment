@@ -1,12 +1,10 @@
 name: CI
 
-# The judgment crate's own gate, the same steps as `mise run check`. Only
-# GitHub-owned actions are used (actions/checkout, actions/cache); the
-# toolchain comes from rust-toolchain.toml via rustup, and prek is installed
-# with pipx, so the workflow runs under a repository policy that forbids
-# third-party actions. Inside the signalman workspace this file is inert
-# (GitHub reads workflows at the repository root only); it is the crate's CI
-# once the crate stands alone (decision 0012).
+# The crate's gate: the steps of `mise run check`, then what a publish would
+# ship. Only GitHub-owned actions are used (actions/checkout, actions/cache);
+# the toolchain comes from rust-toolchain.toml via rustup, and prek is
+# installed with pipx, so the workflow runs under a repository policy that
+# forbids third-party actions.
 
 on:
   push:

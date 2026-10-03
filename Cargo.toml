@@ -5,17 +5,15 @@ description = "Typed, calibrated judgments from TypeSafe System One models (Jev)
 readme = "README.md"
 keywords = ["typesafe", "system-one", "jev", "classification", "calibration"]
 categories = ["api-bindings", "web-programming::http-client"]
-# Published from its own repository once split out of signalman (decision
-# 0010 made it a crate, 0012 moves it out); `cargo publish` is denied by the
-# Bash guard until then.
+# Not published until the first release is decided: a published version
+# cannot be taken back, and the Unreleased section still holds API changes.
+# `cargo publish` is denied by the Bash guard until then; take the crate by
+# git (README, "Status").
 publish = false
-# Declared here rather than inherited from the signalman workspace, so the
-# crate builds alone from a checkout of this directory (decision 0012). Keep
-# in step with the workspace root while it is still a member.
 edition = "2024"
 rust-version = "1.91"
 license = "MIT"
-repository = "https://github.com/chussenot/signalman"
+repository = "https://github.com/chussenot/judgment"
 # What a package does not ship: the repository's own tooling. The docs, the
 # examples with their recordings and the vendored OpenAPI document stay in
 # (`cargo package --list` shows the result; CI runs it).
@@ -131,8 +129,8 @@ name = "intent_routing"
 required-features = ["http"]
 test = true
 
-# The same set as the signalman workspace root, declared here so the crate
-# is held to the same bar when it builds alone (decision 0012).
+# Pedantic clippy, no `unwrap` or `expect` outside tests, every public item
+# documented: the bar the crate was written to.
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"

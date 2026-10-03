@@ -32,7 +32,7 @@ A mock encodes what the client author believed about the wire; only a real serve
 
 ## What is not here
 
-The crate was extracted from [signalman](https://github.com/chussenot/signalman), an alert triager, and still lives in its workspace ([decision 0010](https://github.com/chussenot/signalman/blob/main/docs/decisions/0010-extract-the-judgment-core-into-a-crate.md)). Pages about how signalman uses the crate, its triage questions, its evaluation harness and its choice of model provider are signalman's, under the repository's [`docs/`](https://github.com/chussenot/signalman/tree/main/docs). A page belongs here when it would still be true, and still be needed, if signalman did not exist ([decision 0011](https://github.com/chussenot/signalman/blob/main/docs/decisions/0011-documentation-lives-with-its-concern.md)).
+The crate was extracted from [signalman](https://github.com/chussenot/signalman), an alert triager ([decision 0010](https://github.com/chussenot/signalman/blob/main/docs/decisions/0010-extract-the-judgment-core-into-a-crate.md)), and moved to this repository with its history on 2026-10-03 ([decision 0012](https://github.com/chussenot/signalman/blob/main/docs/decisions/0012-the-judgment-crate-moves-to-its-own-repository.md)); signalman depends on it by git. Pages about how signalman uses the crate, its triage questions, its evaluation harness and its choice of model provider are signalman's, under the repository's [`docs/`](https://github.com/chussenot/signalman/tree/main/docs). A page belongs here when it would still be true, and still be needed, if signalman did not exist ([decision 0011](https://github.com/chussenot/signalman/blob/main/docs/decisions/0011-documentation-lives-with-its-concern.md)).
 
 ## Conventions
 

@@ -64,6 +64,10 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Changed
 
+- The crate lives in its own repository, <https://github.com/chussenot/judgment>,
+  split out of signalman on 2026-10-03 with the history of `crates/judgment`
+  (signalman's decision 0012). A git dependency names this repository, with
+  no `package` key; signalman takes the crate the same way.
 - The manifest declares its own edition, Rust version, licence, dependency
   versions and lints instead of inheriting the signalman workspace's, and
   the crate directory carries the files a repository root needs (CI, mise
