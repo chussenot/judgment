@@ -1,6 +1,6 @@
 ---
 title: judgment documentation
-description: Map of the judgment crate's documentation, what each page answers, and where the crate's documentation ends and the signalman application's begins.
+description: Map of the judgment crate's documentation, what each page answers, and where the crate's documentation ends and an application's begins.
 status: current
 last_reviewed: 2026-10-03
 tags: [judgment, index]
@@ -20,6 +20,8 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Whether the crate works against a second implementation of the wire, what the benchmark measured, and what each `laya-serve` release changed on the wire | [Against Laya typed-decisions](verification/laya-typed-decisions.md) |
 | What the other Rust clients and the official SDKs do, and which of it the crate adopted | [System One client libraries](research/system-one-client-libraries.md) |
 | Why an answer is read through a typed handle rather than a string key | [Decision 0003](decisions/0003-typed-handles-between-questions-and-answers.md) |
+| How a version is cut from the commits and published to crates.io, and what to set up once | [Releasing](releasing.md) |
+| Why releases are cut with cocogitto from Conventional Commits and published by CI from a tag | [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) |
 | What changed in each release | [CHANGELOG](../CHANGELOG.md) |
 | Everything, as an agent or a model reads it | [llms.txt](llms.txt), the index; [llms-full.txt](llms-full.txt), every page in one file |
 
@@ -32,11 +34,11 @@ A mock encodes what the client author believed about the wire; only a real serve
 
 ## What is not here
 
-The crate was extracted from [signalman](https://github.com/chussenot/signalman), an alert triager ([decision 0010](https://github.com/chussenot/signalman/blob/main/docs/decisions/0010-extract-the-judgment-core-into-a-crate.md)), and moved to this repository with its history on 2026-10-03 ([decision 0012](https://github.com/chussenot/signalman/blob/main/docs/decisions/0012-the-judgment-crate-moves-to-its-own-repository.md)); signalman depends on it by git. Pages about how signalman uses the crate, its triage questions, its evaluation harness and its choice of model provider are signalman's, under the repository's [`docs/`](https://github.com/chussenot/signalman/tree/main/docs). A page belongs here when it would still be true, and still be needed, if signalman did not exist ([decision 0011](https://github.com/chussenot/signalman/blob/main/docs/decisions/0011-documentation-lives-with-its-concern.md)).
+The crate began as the client layer of an alert-triage application and moved to this repository with its history on 2026-10-03. How any one application uses the crate, its questions, its thresholds, its evaluation harness and its choice of model provider belong to that application's own documentation, and this set does not name the application it came from. A page belongs here when it would still be true, and still be needed, if no particular application existed.
 
 ## Conventions
 
-- Every page starts with YAML frontmatter: `title`, `description`, `status`, `last_reviewed`, `tags`, as in the signalman documentation.
-- `llms.txt` and `llms-full.txt` are generated from [`mkdocs.yml`](../mkdocs.yml) and the frontmatter by the workspace's `scripts/gen-llms-txt.sh`; never edit them. A new page goes in the nav.
-- Links inside this documentation are relative, so they work on GitHub, in a TechDocs build and in a packaged crate. Links to signalman's pages are absolute GitHub URLs, because they leave the crate.
+- Every page starts with YAML frontmatter: `title`, `description`, `status`, `last_reviewed`, `tags`.
+- `llms.txt` and `llms-full.txt` are generated from [`mkdocs.yml`](../mkdocs.yml) and the frontmatter by `scripts/gen-llms-txt.sh`; never edit them. A new page goes in the nav.
+- Links inside this documentation are relative, so they work on GitHub, in a TechDocs build and in a packaged crate. A link to another repository's page is an absolute URL, because it leaves the crate.
 - Paths in the crate's sources and docs are relative to the crate: `docs/design.md`, `tests/live.rs`.

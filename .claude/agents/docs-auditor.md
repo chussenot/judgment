@@ -36,8 +36,9 @@ opposite kind.
 **Placement.** A page belongs here when it would still be true, and still
 be needed, if no particular application existed. Report as a finding a page
 or source comment that explains an application's configuration, triage or
-deployment (signalman's belongs to signalman's own `docs/`, linked
-absolutely), the same content kept here and there, a relative link that
+deployment (that belongs to the application's own documentation, linked
+absolutely), any mention of the application the crate was extracted from,
+the same content kept here and there, a relative link that
 climbs out of the crate (`../../docs/...`), or a workspace path
 (`crates/judgment/...`) where a crate-relative one belongs.
 

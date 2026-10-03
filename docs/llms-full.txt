@@ -22,6 +22,8 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Whether the crate works against a second implementation of the wire, what the benchmark measured, and what each `laya-serve` release changed on the wire | [Against Laya typed-decisions](verification/laya-typed-decisions.md) |
 | What the other Rust clients and the official SDKs do, and which of it the crate adopted | [System One client libraries](research/system-one-client-libraries.md) |
 | Why an answer is read through a typed handle rather than a string key | [Decision 0003](decisions/0003-typed-handles-between-questions-and-answers.md) |
+| How a version is cut from the commits and published to crates.io, and what to set up once | [Releasing](releasing.md) |
+| Why releases are cut with cocogitto from Conventional Commits and published by CI from a tag | [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) |
 | What changed in each release | [CHANGELOG](../CHANGELOG.md) |
 | Everything, as an agent or a model reads it | [llms.txt](llms.txt), the index; [llms-full.txt](llms-full.txt), every page in one file |
 
@@ -34,13 +36,13 @@ A mock encodes what the client author believed about the wire; only a real serve
 
 ## What is not here
 
-The crate was extracted from [signalman](https://github.com/chussenot/signalman), an alert triager ([decision 0010](https://github.com/chussenot/signalman/blob/main/docs/decisions/0010-extract-the-judgment-core-into-a-crate.md)), and moved to this repository with its history on 2026-10-03 ([decision 0012](https://github.com/chussenot/signalman/blob/main/docs/decisions/0012-the-judgment-crate-moves-to-its-own-repository.md)); signalman depends on it by git. Pages about how signalman uses the crate, its triage questions, its evaluation harness and its choice of model provider are signalman's, under the repository's [`docs/`](https://github.com/chussenot/signalman/tree/main/docs). A page belongs here when it would still be true, and still be needed, if signalman did not exist ([decision 0011](https://github.com/chussenot/signalman/blob/main/docs/decisions/0011-documentation-lives-with-its-concern.md)).
+The crate began as the client layer of an alert-triage application and moved to this repository with its history on 2026-10-03. How any one application uses the crate, its questions, its thresholds, its evaluation harness and its choice of model provider belong to that application's own documentation, and this set does not name the application it came from. A page belongs here when it would still be true, and still be needed, if no particular application existed.
 
 ## Conventions
 
-- Every page starts with YAML frontmatter: `title`, `description`, `status`, `last_reviewed`, `tags`, as in the signalman documentation.
-- `llms.txt` and `llms-full.txt` are generated from [`mkdocs.yml`](../mkdocs.yml) and the frontmatter by the workspace's `scripts/gen-llms-txt.sh`; never edit them. A new page goes in the nav.
-- Links inside this documentation are relative, so they work on GitHub, in a TechDocs build and in a packaged crate. Links to signalman's pages are absolute GitHub URLs, because they leave the crate.
+- Every page starts with YAML frontmatter: `title`, `description`, `status`, `last_reviewed`, `tags`.
+- `llms.txt` and `llms-full.txt` are generated from [`mkdocs.yml`](../mkdocs.yml) and the frontmatter by `scripts/gen-llms-txt.sh`; never edit them. A new page goes in the nav.
+- Links inside this documentation are relative, so they work on GitHub, in a TechDocs build and in a packaged crate. A link to another repository's page is an absolute URL, because it leaves the crate.
 - Paths in the crate's sources and docs are relative to the crate: `docs/design.md`, `tests/live.rs`.
 
 
@@ -135,12 +137,78 @@ Quote it to TypeSafe support when a call fails or an answer looks wrong. It is t
 - No per-call options across the `SystemOne` trait. `Client::evaluate_with` takes a `CallOptions` for one call's timeout, retry policy, headers and extra body fields. A recording is filed under a hash of the state and the questions, and an extra field can change the answer, so options could cross the trait only by entering that hash. Until a backend needs them, keeping them off leaves every existing recording valid.
 
 
+<!-- source: docs/releasing.md -->
+
+
+# Releasing
+
+A release has to be the same every time: the version follows from what changed, the CHANGELOG says what the version contains, the gate has passed on exactly what is published, and the credential that publishes lives in CI rather than on a laptop. [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) says why the pieces below were chosen over release-plz, cargo-release and a checklist. This page says how to use them.
+
+## The pieces
+
+| Piece | Where | What it does |
+|---|---|---|
+| Conventional Commits | every commit; `cog verify` in the prek `commit-msg` hook, `cog check` in the `commits` job of CI | Gives cocogitto the facts it derives a version from, and refuses a commit message it cannot read |
+| `cog bump --auto` | `cog.toml`, run as `mise run release` | Computes the next version from the commits since the last tag, runs the pre-bump hooks, commits `chore(version): vX.Y.Z` and tags it |
+| `scripts/release-bump.sh` | the first pre-bump hook | Writes the version into `Cargo.toml` and `Cargo.lock`, turns the CHANGELOG's Unreleased section into the release's dated section, and refuses an empty one |
+| The gate | the remaining pre-bump hooks, then CI on the pull request and on the tag | Formatting, clippy, the no-`http` build, the tests, rustdoc, the documentation checks and what the package would ship |
+| `.github/workflows/release.yml` | on a pushed `v*` tag | Runs the CI gate on the tagged commit, checks the tag against `Cargo.toml`, runs `cargo publish --dry-run`, publishes, and creates a GitHub release with the CHANGELOG section as notes |
+
+The CHANGELOG stays hand-written, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) form: a pull request that changes what a consumer sees adds its entry under Unreleased, and the bump only dates that section. cocogitto's own changelog generation is off, because a list of commit subjects does not explain a change to a consumer.
+
+## What the commits decide
+
+cocogitto reads the commits since the latest tag. Below 1.0, as the crate is:
+
+| Commits since the last tag | Next version |
+|---|---|
+| Any `feat`, or any commit with `!` after its type or a `BREAKING CHANGE` footer | minor: `0.2.0` to `0.3.0` |
+| Only `fix` (and types that bump nothing) | patch: `0.2.0` to `0.2.1` |
+| Only `docs`, `chore`, `ci`, `test`, `refactor`, `style`, `build`, `perf` | no release; `cog bump` says so and does nothing |
+
+A breaking change in a 0.x crate is a minor bump, which is the rule the CHANGELOG states; from 1.0 on, cocogitto makes it a major. Merge commits are ignored. `mise run release:dry` prints the version the commits call for without touching anything.
+
+## Cutting a release
+
+1. Be on an up-to-date `main` with a clean tree. Check that the CHANGELOG's Unreleased section says what the release contains; a release with an empty section is refused.
+2. `mise run release:dry` to see the version. If it is not the one the changes warrant, the commits say something the changes do not; fix that first (an amended message on an unmerged branch, or a further commit), never the version by hand.
+3. `git switch -c release/vX.Y.Z` with that version, then `mise run release`. cocogitto runs the pre-bump hooks (the version into the three files, then the gate), commits `chore(version): vX.Y.Z` and tags `vX.Y.Z` on that commit. A failed hook leaves the tree edited and nothing committed; `git checkout .` restores it.
+4. Push the branch and open a pull request. CI runs the gate and the commit check on it like any other change.
+5. Merge it with a merge commit. Never squash or rebase this pull request: the tag points at the bump commit, and `main` has to carry that very commit for the tag to be a commit on `main`.
+6. `git push origin vX.Y.Z`. The release workflow runs: the gate once more, the version check, the dry run, the publish, the GitHub release. The crate is on crates.io when the `publish` job is green.
+
+Agents working in the repository cannot do steps 3 and 6 by accident: the Bash guard denies `cargo publish` (the dry run is allowed) and pushing a tag.
+
+## One-time setup
+
+- **The baseline tag.** cocogitto scans from the latest tag because the history before this repository was not written to the convention. Tag the commit that released 0.2.0 and push the tag; its tree has no release workflow, so nothing runs:
+
+  ```sh
+  git tag -a v0.2.0 9ccd761 -m "judgment 0.2.0"
+  git push origin v0.2.0
+  ```
+
+- **The first publish.** crates.io lets a trusted publisher be configured only on a crate that already exists, so the first release uses an API token: create one on crates.io with the `publish-new` and `publish-update` scopes, store it as the `CARGO_REGISTRY_TOKEN` secret of the `crates-io` environment in the repository settings (the environment appears after the workflow first runs, or create it first), and cut the release.
+- **Trusted publishing, after the first release.** On the crate's settings page on crates.io, add a trusted publisher: GitHub, owner `chussenot`, repository `judgment`, workflow `release.yml`, environment `crates-io`. Then delete the `CARGO_REGISTRY_TOKEN` secret: the workflow exchanges its OIDC identity for a token that lives for the job and is revoked at its end.
+- **The environment.** Put required reviewers on the `crates-io` environment to have a person approve each publish, and restrict it to tags matching `v*`.
+- **Merge method.** Disable squash merging and rebase merging in the repository settings, or take care on the release pull request (step 5 above).
+- **Locally.** `mise install` builds `cog` from crates.io; `mise run setup` installs the hooks, the `commit-msg` one included; `mise run commits:check` is what CI runs on a pull request.
+
+## When something goes wrong
+
+- **The commit check fails on a pull request.** Reword the commit on the branch and force-push the branch; the message, not the code, is what failed.
+- **`cog bump` refuses to run.** It wants a clean tree on `main` or a `release/*` branch and a non-empty Unreleased section; its message says which.
+- **The release workflow fails before `cargo publish`.** Nothing was published. Fix the cause on `main` through a pull request, delete the tag locally and remotely (`git push --delete origin vX.Y.Z`), and cut the release again; cocogitto will compute the same version. Never move a tag that was pushed once the publish step has run.
+- **`cargo publish` succeeded and a later step failed.** The version is on crates.io and cannot be re-published. Re-run the failed job for the GitHub release; do not retag.
+- **A published version is wrong.** `cargo yank --version X.Y.Z` by hand, from a machine with a token, hides it from new resolutions; a yank is not a deletion and is recorded in the CHANGELOG under the version. The fix is the next release.
+
+
 <!-- source: docs/verification/hosted-typesafe.md -->
 
 
 # Against the hosted TypeSafe API
 
-The [judgment crate](../../README.md) is tested against mocks of TypeSafe's wire and the vendored OpenAPI document. A mock and a schema both encode what someone believed about the wire; only the server can contradict that belief. The [Laya run](laya-typed-decisions.md) checked the crate against a second implementation of System One, but no TypeSafe key was available then, so the hosted API itself had answered only once, through signalman's triage of the three example alerts (`signalman-b11.1`, 2026-09-23, recorded under `examples/eval/runs/jev-1.13.0`). That run proved signalman's own questions round-trip; it did not exercise the crate's edges: structured Score levels, null option descriptions, an unknown extra field, the model list, a wrong key.
+The [judgment crate](../../README.md) is tested against mocks of TypeSafe's wire and the vendored OpenAPI document. A mock and a schema both encode what someone believed about the wire; only the server can contradict that belief. The [Laya run](laya-typed-decisions.md) checked the crate against a second implementation of System One, but no TypeSafe key was available then, so the hosted API itself had answered this client only once, through the triage questions of the application it was extracted from (2026-09-23). That run proved one application's questions round-trip; it did not exercise the crate's edges: structured Score levels, null option descriptions, an unknown extra field, the model list, a wrong key.
 
 This page records the run that did. All ten tests in `tests/live.rs`, the same file the Laya run used, passed against `https://api.typesafe.ai` with a real key on 2026-10-03; five more, written from the probes [below](#beyond-the-test-file), passed the same day, and `mise run live:typesafe` runs all fifteen.
 
@@ -149,7 +217,7 @@ This page records the run that did. All ten tests in `tests/live.rs`, the same f
 | | |
 |---|---|
 | Server | `https://api.typesafe.ai`, the crate's default base URL |
-| Key | `TYPESAFE_API_KEY`, signalman's own account, from the environment |
+| Key | `TYPESAFE_API_KEY`, from the environment |
 | Model requested | `jev-latest`, the crate's default; it resolved to `jev-1.13.0`, the version the 2026-09-23 run saw |
 | Crate | `judgment` at the commit this page was added in, built with its default `http` feature |
 | Tests | `tests/live.rs`, all ten, with `--test-threads=1`; the bearer test pointed at the same server with the same key |
@@ -164,16 +232,16 @@ What each test asserts and why it exists is tabled on the [Laya page](laya-typed
 - **No undocumented top-level fields.** `Response::extra` was empty: the hosted response is exactly the documented shape. Laya adds `routing`.
 - **A request id comes back.** The response carries one (`req_…`), on success and on the 401 and 400 below. Laya sends none.
 - **The model alias resolves and says to what.** `jev-latest` was answered by `jev-1.13.0`, named in `Response::model`. On Laya the model name routes silently and `model` is the same for every checkpoint.
-- **`GET /v1/models` is served.** It listed `jev-latest` and `jev-preview`. Laya answers 404. signalman's `models` command works against the hosted API.
+- **`GET /v1/models` is served.** It listed `jev-latest` and `jev-preview`. Laya answers 404, so a consumer that lists models has something to list on the hosted API and nothing on Laya.
 - **Structured Score levels are echoed verbatim.** The object level came back as a JSON object, the array level as a JSON array, the string as a string, and `Response::verify` passed. Laya did the same through 0.3.21; `laya-serve` 0.3.22 and later echo the JSON text they showed the model instead ([the Laya record](laya-typed-decisions.md#re-run-against-laya-serve-0324)), which is why `verify` now compares a structured level by what the echo parses to rather than by its text.
 - **A Choice option without a description is accepted**, as TypeSafe documents.
-- **An unknown extra field is refused, not answered.** A request with an unknown `CallOptions::extra` field got a 400, decoded as `Error::InvalidRequest`, with the message `Invalid request.` and an empty `issues` list; only the request id identifies the call. Laya answered the same request. The crate sends extra fields as given and leaves the choice to the server, so both outcomes pass, but a caller adding a field the API does not know gets no hint which field was wrong. Nothing in signalman sends an extra field.
+- **An unknown extra field is refused, not answered.** A request with an unknown `CallOptions::extra` field got a 400, decoded as `Error::InvalidRequest`, with the message `Invalid request.` and an empty `issues` list; only the request id identifies the call. Laya answered the same request. The crate sends extra fields as given and leaves the choice to the server, so both outcomes pass, but a caller adding a field the API does not know gets no hint which field was wrong.
 - **A wrong key is a 401, classified as `Error::Unauthorized` and not retried; the right key is answered.**
 - **The builder's limits hold without a request** (255 options, at least two levels, no null level); this test needs no server and is listed for completeness.
 
 ## Beyond the test file
 
-The ten tests send what the builder lets through. On 2026-10-03 the hosted API was also probed with what the builder refuses, and with repeats, to learn what the schema and the reference page do not say (`signalman-b11.7`; about fifty requests, sequential, far under the account's 80 requests and 100,000 input tokens per second). What held, and what the crate did with it:
+The ten tests send what the builder lets through. On 2026-10-03 the hosted API was also probed with what the builder refuses, and with repeats, to learn what the schema and the reference page do not say (about fifty requests, sequential, far under the account's 80 requests and 100,000 input tokens per second). What held, and what the crate did with it:
 
 | Probe | What the hosted API did | Consequence |
 |---|---|---|
@@ -193,7 +261,7 @@ The ten tests send what the builder lets through. On 2026-10-03 the hosted API w
 | `GET /v1/models` | Lists `jev-latest` and `jev-preview`, both resolving to `jev-1.13.0`; `release_date` is an RFC 3339 timestamp with microseconds, not the `YYYY-MM-DD` of the OpenAPI document; the versioned name is not listed but is accepted in a request | `fixtures/models.json` is now this list; `ModelInfo::release_date` stays a string. To pin a version, read `Response::model`, not the list |
 | The same request repeated: a clear-cut one three times, twice over, then three voice commands six times each | The chosen option and the nearest level held in every repeat. On the clear-cut request, probabilities 0.01 apart in one set and 0.05 in the next (confidence 0.89, 0.83, 0.90); on a saturated one (`What's my current balance?`, p 1.00) no movement over six; on two ambiguous commands the top probability moved by 0.19 (0.65 to 0.84) and 0.12, and the confidence by 0.28 (0.48 to 0.76) and 0.17 | **Not deterministic, and the spread grows with ambiguity.** A recording is one draw; a threshold near an observed value flips between runs, and the less clear the input, the wider the band it flips in; a test must not assert a live probability to the hundredth. A live test pins the stable part (the decision) and prints the spread |
 | Confidence against the documented formulas | Choice: `(p_max − 1/n)/(1 − 1/n)` within 0.01 of the wire in every case; Score: `score` equals `Σ i·p_i` exactly, confidence within 0.015 | `Choice::confidence_from_probabilities`, `Score::expected_value` and `Score::confidence_from_probabilities` compute them, so a caller can see at once whether a server (Laya) defines confidence otherwise |
-| Options reversed | `billing` 0.94 against 0.92–0.93 in the original order | Within the run-to-run spread on a case this clear; the known-issues page's order bias is real but needs an uncertain case to measure. A follow-up (`signalman-b11.8`) keeps signalman's candidate order stable |
+| Options reversed | `billing` 0.94 against 0.92–0.93 in the original order | Within the run-to-run spread on a case this clear; the known-issues page's order bias is real but needs an uncertain case to measure. A caller that compares runs keeps its option order stable |
 | Headers | `x-typesafe-request-id` on the 200 and on every 4xx; no rate-limit or `Retry-After` header seen (no 429 was provoked); served through Cloudflare | What the crate reads is what is sent |
 | Load and cost | p50 250 ms per request; 25 Nouls in one request in 344 ms for 820 input tokens; ten mixed questions in 229 ms. Output tokens scale with the answer (about 20 per Noul, 17 per Score, 24 plus 6 per option for a Choice; 2,826 for 255 options) and are free | Batching is nearly free in latency; a Choice over many options is a flat distribution (top probability 0.05 over 255), which is the documented reason for hierarchical selection |
 
@@ -201,9 +269,9 @@ The OpenAPI drift test ran the same day: the vendored document is the live one, 
 
 ## What this does and does not establish
 
-It establishes that the crate's wire matches the hosted API on every edge the live tests cover, with no change to the crate. Together with the 2026-09-23 triage run, it means both the crate's general surface and signalman's own questions have been answered by Jev at least once.
+It establishes that the crate's wire matches the hosted API on every edge the live tests cover, with no change to the crate. Together with the 2026-09-23 triage run, it means both the crate's general surface and one application's production questions have been answered by Jev at least once.
 
-It does not establish anything about thresholds or accuracy on alerts: that needs labelled history through the [evaluation harness](https://github.com/chussenot/signalman/blob/main/docs/evaluation.md) (`signalman-ufg.6`). And `jev-latest` is an alias. When it moves past `jev-1.13.0`, the answers these tests and the committed run saw may change without any code changing; pin `typesafe.model` once the thresholds are tuned ([Configuration](https://github.com/chussenot/signalman/blob/main/docs/configuration.md)), and repeat this run when the alias moves.
+It does not establish anything about thresholds or accuracy on alerts: that needs labelled history replayed through `judgment::eval`. And `jev-latest` is an alias. When it moves past `jev-1.13.0`, the answers these tests and the committed recordings saw may change without any code changing; pin the model once thresholds are tuned, and repeat this run when the alias moves.
 
 ## Repeating the run
 
@@ -211,7 +279,7 @@ It does not establish anything about thresholds or accuracy on alerts: that need
 mise run live:typesafe
 ```
 
-The task needs `TYPESAFE_API_KEY` (from `.env`, which mise loads) and fails before building anything when it is unset. It points both the live tests and the bearer test at `TYPESAFE_BASE_URL` (default `https://api.typesafe.ai`) with that key, and asks for `TYPESAFE_DEFAULT_MODEL` (default `jev-latest`), the same variables signalman itself reads. It is not part of `mise run check` and never runs in CI: the gate stays offline, and a key in CI would be a secret the repository does not need.
+The task needs `TYPESAFE_API_KEY` (from `.env`, which mise loads) and fails before building anything when it is unset. It points both the live tests and the bearer test at `TYPESAFE_BASE_URL` (default `https://api.typesafe.ai`) with that key, and asks for `TYPESAFE_DEFAULT_MODEL` (default `jev-latest`). It is not part of `mise run check` and never runs in CI: the gate stays offline, and a key in CI would be a secret the repository does not need.
 
 Without mise, the same run is:
 
@@ -228,7 +296,7 @@ JUDGMENT_LIVE_MODEL=jev-latest \
 
 # Against Laya typed-decisions
 
-The [judgment crate](../../README.md) was written against TypeSafe's documented wire and tested against mocks of it. A mock encodes what the client author believed about the wire; only a real server can contradict that belief. This page records the first such contradiction test: the crate against [Laya](https://github.com/chussenot/signalman/blob/main/docs/laya.md)'s `typed-decisions` checkpoint, served by Laya's own HTTP server, on the benchmark the checkpoint was fine-tuned for. The question was narrow: does the crate work, unchanged, against a second implementation of the System One wire, and if not, what has to change on which side.
+The [judgment crate](../../README.md) was written against TypeSafe's documented wire and tested against mocks of it. A mock encodes what the client author believed about the wire; only a real server can contradict that belief. This page records the first such contradiction test: the crate against [Laya](https://huggingface.co/convaiinnovations/laya)'s `typed-decisions` checkpoint, served by Laya's own HTTP server, on the benchmark the checkpoint was fine-tuned for. The question was narrow: does the crate work, unchanged, against a second implementation of the System One wire, and if not, what has to change on which side.
 
 The short answer: yes, after one fix in the crate that TypeSafe's own API would have needed too. Everything the crate sends is accepted, everything Laya returns decodes through the typed handles, errors are classified as documented (a 401 is `Unauthorized` and is not retried; no run has provoked a status that is retried), and the benchmark replays through the crate's evaluation module to numbers in line with the model card. Four differences between the two servers were found; none needs code, all are recorded below so the next person does not rediscover them. A second run on 2026-10-03, against `laya-serve` 0.3.24, found one more thing that needed code, in the same place as the first: the legend comparison ([below](#re-run-against-laya-serve-0324)).
 
@@ -303,15 +371,15 @@ cargo run -p judgment --example typed_decisions -- \
 
 TypeSafe documents that a Score level may be a string or an object, and that the answer's `legend` maps each level number "back to its description". The crate typed the legend as `BTreeMap<String, String>` and the builder accepted any JSON value as a level. Laya, given an object level, echoes the object; the crate then failed to decode the whole response, not just that question, because one legend value was not a string. Reading TypeSafe's wording again, Jev would echo the object too: the legend is the level, not a summary of it.
 
-The fix is in the crate. The legend now holds JSON values, and the typed `Score` view labels a level by its string or, for a structured level, by its compact JSON, so a log line or a note always has text without re-deriving it from the question. The builder also refuses a `null` level before sending: a level is "described in words" and a null has no meaning the API defines, but Laya accepts it and echoes `null` into the legend, which is one more way a response can fail to decode. Two unit tests cover the change without a server; the live test above covers it with one. Nothing in signalman changed: its Score levels are strings.
+The fix is in the crate. The legend now holds JSON values, and the typed `Score` view labels a level by its string or, for a structured level, by its compact JSON, so a log line or a note always has text without re-deriving it from the question. The builder also refuses a `null` level before sending: a level is "described in words" and a null has no meaning the API defines, but Laya accepts it and echoes `null` into the legend, which is one more way a response can fail to decode. Two unit tests cover the change without a server; the live test above covers it with one. A consumer whose Score levels are strings sees no change.
 
 ## What the two servers do differently
 
 None of these needs a code change; each is a fact to know when pointing the crate at Laya.
 
-- **The model name routes, and the response does not say where.** `laya-serve` maps `model` onto a checkpoint by name: `typed-decisions` or the full repository id picks the fine-tuned one, and any other value, including the crate's default `jev-latest`, lets Laya's router choose by language, which for English text means the base checkpoint, loaded on demand. With `LAYA_MODELS=typed-decisions` preloaded, a request that named no model still took 78 s the first time while the base checkpoint downloaded. The response's `model` field is `laya-rl-agent` for every checkpoint; which one answered is in a top-level `routing` object. The crate ignored it when this run was made; since judgment 0.2 it is kept, as it came, in `Response::extra`, the map of every top-level field the API does not document, so a caller can log it without a second decoder. Consequence: set `.model("typed-decisions")` on the builder, or `TYPESAFE_MODEL` in signalman, and do not rely on `Response::model` to tell checkpoints apart; read `Response::extra["routing"]` when the checkpoint matters.
-- **No `GET /v1/models`.** `laya-serve` has never served it: 0.3.20 has `/health` and `POST /v1/systemone`, 0.3.22 added `POST /v1/systemone/batch`, and the `GET /models` in Laya's README belongs to its example server, not to `laya-serve`. `list_models` returns `Error::Http { status: 404 }`. A consumer that lists models has nothing to list (what that means for signalman is in [Laya as a model provider](https://github.com/chussenot/signalman/blob/main/docs/laya.md)); the shim under `examples/laya/` still serves it.
-- **Latency is seconds, and the default timeout is ten.** A five-question case takes about two seconds on four CPU cores, warm. The crate's default per-attempt timeout mirrors the hosted API's hundreds of milliseconds; the example and the live tests set 120 s. In signalman, `typesafe.timeout_seconds` is the setting.
+- **The model name routes, and the response does not say where.** `laya-serve` maps `model` onto a checkpoint by name: `typed-decisions` or the full repository id picks the fine-tuned one, and any other value, including the crate's default `jev-latest`, lets Laya's router choose by language, which for English text means the base checkpoint, loaded on demand. With `LAYA_MODELS=typed-decisions` preloaded, a request that named no model still took 78 s the first time while the base checkpoint downloaded. The response's `model` field is `laya-rl-agent` for every checkpoint; which one answered is in a top-level `routing` object. The crate ignored it when this run was made; since judgment 0.2 it is kept, as it came, in `Response::extra`, the map of every top-level field the API does not document, so a caller can log it without a second decoder. Consequence: set `.model("typed-decisions")` on the builder, and do not rely on `Response::model` to tell checkpoints apart; read `Response::extra["routing"]` when the checkpoint matters.
+- **No `GET /v1/models`.** `laya-serve` has never served it: 0.3.20 has `/health` and `POST /v1/systemone`, 0.3.22 added `POST /v1/systemone/batch`, and the `GET /models` in Laya's README belongs to its example server, not to `laya-serve`. `list_models` returns `Error::Http { status: 404 }`. A consumer that lists models has nothing to list; the shim under `examples/laya/` still serves it.
+- **Latency is seconds, and the default timeout is ten.** A five-question case takes about two seconds on four CPU cores, warm. The crate's default per-attempt timeout mirrors the hosted API's hundreds of milliseconds; the example and the live tests set 120 s, and a consumer pointing at Laya sets its own.
 - **Confidence means something else.** TypeSafe computes `confidence` from the spread of the distribution; Laya reports one minus the normalised entropy under that name and adds `answer_confidence`, the probability of the reported answer, which its model card says to gate on. Both are in `[0, 1]`, so the typed `Confidence` accepts either, but a threshold tuned on Jev's confidence does not carry over. The answer-level extras, `answer_confidence` and the `action` object, are still ignored: `Response::extra` keeps top-level fields only, and fields inside an answer that the crate does not model are dropped, as the Python SDK drops them. A caller that wants to gate on `answer_confidence` recomputes it from the answer's own `probabilities`. The server also warned at start-up that the checkpoint's temperature for Choice questions with eleven or more options is outside the range it trusts and was clamped; confidence on such questions is uncalibrated by Laya's own account.
 
 Limits were probed as well. Laya 0.3.20 answered 200 options and 11 levels, past its README's stated budget; the crate's builder stops at TypeSafe's 255 and 10 regardless, so the stricter of the two bounds applies. Since 0.3.21 the server refuses more than 100 options on one question with a 413 ([the re-run](#re-run-against-laya-serve-0324)), so on options the server is now the stricter. A malformed body is a 400 with a FastAPI `detail`. The run reported it as `Error::Http` with the body; the crate now reports it as `Error::InvalidRequest { status: 400, .. }`, the same variant as TypeSafe's 422, with the message read from `detail` (or `error`, which the shim under `examples/laya/` sends), and still not retried.
@@ -343,7 +411,7 @@ The 40-case sample committed with the example was recorded from the same server 
 
 It establishes that the crate is not TypeSafe-specific in any way that matters: a second, independently written server was driven through the public API with one fix, and that fix corrected a reading of TypeSafe's own documentation. It establishes that the evaluation module and the recording backends work against real answers, not only the `Fake`. And it gives a number for the fine-tuned checkpoint on its own benchmark, through this crate, that the model card's number can be compared with.
 
-It does not establish anything about signalman's alerts. The checkpoint is fine-tuned for four workflows that are not alert triage, and the one out-of-domain probe in the live test, a customer's message about failing payouts, was routed to `technical` with 0.45 probability, which is the model card's warning made concrete. The path to self-hosting is still the one [Laya as a model provider](https://github.com/chussenot/signalman/blob/main/docs/laya.md) describes: labelled alert history through the [evaluation harness](https://github.com/chussenot/signalman/blob/main/docs/evaluation.md), both models, per-question numbers. What this page adds is that the crate side of that path is proven; the remaining work is data.
+It does not establish anything about a domain of your own. The checkpoint is fine-tuned for four workflows, and the one out-of-domain probe in the live test, a customer's message about failing payouts, was routed to `technical` with 0.45 probability, which is the model card's warning made concrete. The path to self-hosting on another domain is labelled history replayed through both models with `judgment::eval`, per-question numbers. What this page adds is that the crate side of that path is proven; the remaining work is data.
 
 ## Re-run against laya-serve 0.3.24
 
@@ -369,7 +437,7 @@ Unchanged, and still as the first run recorded: no `GET /v1/models`; `model` is 
 
 The crate's rule was that a structured level is echoed as itself or as its compact JSON, compared as text. The second form had never been seen, the first was what both servers did, and the hosted API still does it ([hosted record](hosted-typesafe.md#what-the-hosted-api-does)). `laya-serve` 0.3.22 echoes the text it rendered for the model: `{"what": "cosmetic", "examples": ["a typo in the invoice footer"]}` came back as the string `{"examples": ["a typo in the invoice footer"], "what": "cosmetic"}`, the keys in the order the crate sent them (serde's sorted order) and Python's `", "` and `": "` between them, which is neither the value nor the compact `{"examples":["a typo in the invoice footer"],"what":"cosmetic"}`. `verify` refused it as `legend level 0 is not the level the question sent`, and with it the whole response, which is exactly what it is for when a legend is not the levels sent; here the legend was the levels sent, written differently.
 
-The fix compares a structured level by what the echo parses to: the same JSON value, or a string that parses to that value, whatever its spacing or key order. A string level is still matched by text alone and never parsed, and a number written differently (`1.0` for `1`) is still a different value. `Score::levels` labels a structured level with its compact JSON whichever way it was echoed, so a label reads the same from both servers and carries none of a server's spacing; the one string level a label does not keep verbatim is one whose own text is a JSON object or array, which is re-spaced the same way. Unit tests pin the three forms and the refusals; the live test `a_structured_score_level_is_echoed` keeps printing the echo, so a fourth form shows up in a run before it fails a caller. Nothing in signalman changed: its levels are strings.
+The fix compares a structured level by what the echo parses to: the same JSON value, or a string that parses to that value, whatever its spacing or key order. A string level is still matched by text alone and never parsed, and a number written differently (`1.0` for `1`) is still a different value. `Score::levels` labels a structured level with its compact JSON whichever way it was echoed, so a label reads the same from both servers and carries none of a server's spacing; the one string level a label does not keep verbatim is one whose own text is a JSON object or array, which is re-spaced the same way. Unit tests pin the three forms and the refusals; the live test `a_structured_score_level_is_echoed` keeps printing the echo, so a fourth form shows up in a run before it fails a caller. A consumer whose levels are strings sees no change.
 
 ### What the run showed
 
@@ -424,7 +492,7 @@ The `judgment` crate was designed in one repository against one consumer. Betwee
 
 The headline: the crate's architecture is confirmed, not contradicted. Three independent authors arrived at the same shape as judgment, typed keys that fix an answer's type, a backend trait with a fake behind it, and record-and-replay keyed by request content. What the field has that judgment lacks is wire hardening and parity with the official SDK: a request id on responses and errors, tolerance for answer kinds that do not exist yet, a contract test against the published schema, and the retry details the SDK documents. None of that is a reorientation. It is a 0.2, and it shipped as judgment 0.2.0 on 2026-09-25: [What shipped in judgment 0.2.0](#what-shipped-in-judgment-020) says how each ranked item landed.
 
-Sources: the crates listed below, downloaded from crates.io; [the Python SDK reference](https://docs.typesafe.ai/sdk/python/api.md) and [usage guide](https://docs.typesafe.ai/sdk/python/usage.md), [the JavaScript SDK reference](https://docs.typesafe.ai/sdk/javascript/api.md), [the HTTP API page](https://docs.typesafe.ai/api.md); and `https://api.typesafe.ai/openapi.json`, version 0.2.0. [Open System One models](https://github.com/chussenot/signalman/blob/main/docs/research/open-system-one-models.md) covers the models; this page covers only the clients.
+Sources: the crates listed below, downloaded from crates.io; [the Python SDK reference](https://docs.typesafe.ai/sdk/python/api.md) and [usage guide](https://docs.typesafe.ai/sdk/python/usage.md), [the JavaScript SDK reference](https://docs.typesafe.ai/sdk/javascript/api.md), [the HTTP API page](https://docs.typesafe.ai/api.md); and `https://api.typesafe.ai/openapi.json`, version 0.2.0. This page covers only the clients, not the models.
 
 ## The field
 
@@ -481,15 +549,15 @@ Each item names where the idea was seen, why it matters to this project, and the
 1. **Carry the request id.** `x-typesafe-request-id` on `Response`, on `Error::Http`, `RateLimited`, `Overloaded`, `InvalidRequest` and `Unauthorized`, and as a field on the client span. Seen in the official SDK and six crates. Cost: one header read in the retry loop, one field on the completed-response type. Do it first.
 2. **Decode tolerantly, validate strictly.** An unknown answer `type` becomes `Answer::Unknown(Value)` with a warning rather than a failed response, the known variants stay strict (kunobi's custom `Deserialize` is the pattern); `usage` and its fields default to zero when absent; unknown top-level fields are kept in a map so an operator can log Laya's `routing` or OpenRouter's `provider`. Seen in the SDK, kunobi, typesafe-rs, fuzzy-jev. Cost: small in code, but not additive: `Answer` was an exhaustive public enum, and under [Cargo's SemVer rules](https://doc.rust-lang.org/cargo/reference/semver.html#enum-variant-new) a new variant on one is a major change, since a consumer's exhaustive `match` stops compiling. The same release should make the enum `#[non_exhaustive]` so the next kind is not.
 3. **Verify the response against the questions before returning it.** Every question id answered, every answer of the kind its question asked, every Choice key one of the options sent, every Score legend the levels sent. `typesafe-client` does this in the transport; judgment checks per handle, late, and only for the handles the caller reads. The same check makes `Fake` refuse a scripted answer that does not fit its question, which kunobi's fake does and which catches stale tests. Cost: one pass over the response, about sixty lines, and `Error::AnswerTypeMismatch` gains a sibling for an option outside the question.
-4. **Test against the OpenAPI document.** Vendor `openapi.json`, validate every request the builders produce and every response the `Fake` and the committed recordings hold against its schemas with a JSON Schema crate in dev-dependencies, and add an ignored live test that the vendored copy still matches the URL. This is exactly what signalman does for incident.io and what `typesafe-client` does for this wire. Cost: one dev-dependency, one test file, a copied JSON file.
+4. **Test against the OpenAPI document.** Vendor `openapi.json`, validate every request the builders produce and every response the `Fake` and the committed recordings hold against its schemas with a JSON Schema crate in dev-dependencies, and add an ignored live test that the vendored copy still matches the URL. This is what `typesafe-client` does for this wire. Cost: one dev-dependency, one test file, a copied JSON file.
 5. **Retry parity, stated.** Add `retry-after-ms` and HTTP-date `Retry-After` under the existing cap, make jitter one-sided, and add an optional total budget that skips a retry that cannot fit, off by default so no consumer's timing changes. Then the rustdoc can say which of the SDK's behaviours the crate matches and which it declines, rather than "mirrors" with footnotes. `typesafe-rs`'s `conservative()` preset, which does not retry 5xx because a retried POST is billed twice, is worth offering as a named policy for callers who prefer a failed triage to a doubled bill. Cost: medium, all in `http.rs`.
 6. **Per-call overrides and an extra body.** `model`, `timeout` and `retry` per request, and a flattened map of extra fields on `Request`, plus extra headers on the builder. The official SDK has all of them; jev-rs's `debug` block and zev's `temperature` are what a consumer would put there. Cost: small; `Request` grows three optional fields.
 7. **Fix the small things the schema shows.** `instructions` optional; 400 classified as `InvalidRequest` alongside 422 and 403 as its own variant, since jev-bridge returns 400 for a bad body; a dedicated `Error::InvalidApiKey` with the SDK's hygiene rules; parse the 422 `detail` list into field paths; correct the `/v1/models` note. Cost: trivial each.
-8. **Distribution helpers as pure functions.** `ranked()`, `margin()` between the top two, `top(n)` on a Choice; `probability_at_least(level)` on a Score; the probability of the reported answer as a method rather than a lookup. Seen in kunobi, typesafeai-sdk-community, typesafe-rust-sdk, jev. They are pure, they cost nothing, and signalman's policy and the benchmark example re-derive them by hand. jev-bridge's finding that order flips cluster where the top-two margin is at or below 0.24 is the kind of rule a policy wants `margin()` for. Cost: trivial. What stays out: a `decide(min_confidence)` that returns an option, a three-band verdict, a cost-matrix decision. Those are policy, and decisions 0002 and 0008 keep policy in the application.
-9. **Expose backend limits as data.** Maximum options, maximum levels and a context budget on the backend, so a caller can shortlist before the wire and the harness can report a refusal as a gap. Every small model in the [research note](https://github.com/chussenot/signalman/blob/main/docs/research/open-system-one-models.md) caps options at 16 to 26; jev-bridge at 16; zev serves `/v1/limits`. Cost: a `Limits` value with a default for TypeSafe's 255 and 10, a method on the trait with a default implementation.
+8. **Distribution helpers as pure functions.** `ranked()`, `margin()` between the top two, `top(n)` on a Choice; `probability_at_least(level)` on a Score; the probability of the reported answer as a method rather than a lookup. Seen in kunobi, typesafeai-sdk-community, typesafe-rust-sdk, jev. They are pure, they cost nothing, and the benchmark example and every consumer's policy re-derive them by hand. jev-bridge's finding that order flips cluster where the top-two margin is at or below 0.24 is the kind of rule a policy wants `margin()` for. Cost: trivial. What stays out: a `decide(min_confidence)` that returns an option, a three-band verdict, a cost-matrix decision. Those are policy, and decisions 0002 and 0008 keep policy in the application.
+9. **Expose backend limits as data.** Maximum options, maximum levels and a context budget on the backend, so a caller can shortlist before the wire and the harness can report a refusal as a gap. The small open models cap options at 16 to 26; jev-bridge at 16; zev serves `/v1/limits`. Cost: a `Limits` value with a default for TypeSafe's 255 and 10, a method on the trait with a default implementation.
 10. **A `Shadow` backend.** Send each request to two backends, return the first, record both. `system-one` has it; the Jev-versus-Laya comparison the roadmap wants is exactly this, and the evaluation harness would get paired requests for free. Cost: about eighty lines on top of `Recorder`.
 11. **Order-flip rate in `eval`.** Rotate or reverse the option order and count changed answers; jev-rs averages rotations, jev-bridge measures the flip rate and found a real position bias on the reference endpoint. A `Replay` cannot do this, only a live run can, so it belongs beside the live tests. Cost: medium.
-12. **Concurrency control.** A semaphore on the client (kunobi) or an AIMD pacer that halves on 429 (typesafe-jev, the community batch runner). signalman answers one alert per webhook today; the day it replays history in bulk or serves a burst, this is the first thing it needs. Cost: small for the semaphore, medium for the pacer. Wait for the need.
+12. **Concurrency control.** A semaphore on the client (kunobi) or an AIMD pacer that halves on 429 (typesafe-jev, the community batch runner). A consumer that answers one request at a time has no use for it; the day one replays history in bulk or serves a burst, this is the first thing it needs. Cost: small for the semaphore, medium for the pacer. Wait for the need.
 
 ## Rejected, and why
 
@@ -508,19 +576,19 @@ Items 1 to 4 are one release, small, and each removes a class of failure that a 
 
 ## What shipped in judgment 0.2.0
 
-Items 1 to 7 shipped together as judgment 0.2.0 (signalman 0.4.0 took it), in one epic, `signalman-7v9`, one bead per item. Items 8 to 12 still wait for their consumer. How each landed, and where it departs from the ranking above:
+Items 1 to 7 shipped together as judgment 0.2.0. Items 8 to 12 still wait for their consumer. How each landed, and where it departs from the ranking above:
 
 | Item | What shipped | Where it differs from the ranking |
 |---|---|---|
 | 1. Request id | `x-typesafe-request-id` on `Response::request_id`, on every error that came from an HTTP response (`Error::request_id()`, and a `[request_id …]` suffix on the message), and as the `request_id` field of the `typesafe.evaluate` and `typesafe.list_models` spans | Read in `client.rs`, not in the shared retry loop, which stays generic across the three upstreams and hands back the last response's headers in `http::Completed::headers`. It is the last attempt's id only, and optional everywhere, because the OpenAPI document lists no response headers; Laya sends none |
 | 2. Tolerant decode | `Answer::Unknown(Value)` with a `warn` event naming the key and kind (escaped and cut to 64 characters); `Response::extra` keeps every undocumented top-level field, so Laya's `routing` or OpenRouter's `provider` can be logged; a missing `usage`, or null counts, read as zero | The known answer kinds stay strict, and `Answer` is now `#[non_exhaustive]` |
-| 3. Verify | `Response::verify(&Questions)` checks every id, kind, Choice key and Score legend, and every backend in the crate runs it: `Client`, `Fake`, `Replay`, `Recorder`. A 2xx that does not fit is an error (`Error::is_unfit`), reported to the observer as `unfit` and never retried | A structured Score level may be echoed as itself or as text that parses to it: the hosted API echoes the value (2026-10-03), `laya-serve` 0.3.20 and 0.3.21 did too, and `laya-serve` 0.3.22 and later echo Python-spaced JSON text, so the comparison is on the parsed value ([the Laya record](../verification/laya-typed-decisions.md#re-run-against-laya-serve-0324)). signalman no longer reads an off-list Choice option as the no-match option: the triage fails, the alert keeps no tags and no note, and `eval` records the case as failed ([Triage](https://github.com/chussenot/signalman/blob/main/docs/triage.md)) |
-| 4. OpenAPI contract test | The vendored `api.typesafe.ai/openapi.json` (0.2.0) validates the requests the builders produce and the responses the `Fake` and the committed recordings hold (`tests/contract.rs`); an ignored drift test compares the copy with the URL (`tests/openapi_drift.rs`); signalman validates its own TypeSafe traffic against the same document | As ranked |
+| 3. Verify | `Response::verify(&Questions)` checks every id, kind, Choice key and Score legend, and every backend in the crate runs it: `Client`, `Fake`, `Replay`, `Recorder`. A 2xx that does not fit is an error (`Error::is_unfit`), reported to the observer as `unfit` and never retried | A structured Score level may be echoed as itself or as text that parses to it: the hosted API echoes the value (2026-10-03), `laya-serve` 0.3.20 and 0.3.21 did too, and `laya-serve` 0.3.22 and later echo Python-spaced JSON text, so the comparison is on the parsed value ([the Laya record](../verification/laya-typed-decisions.md#re-run-against-laya-serve-0324)). A consumer that read an off-list Choice option as its own no-match option now gets an error for that call instead, and decides what a failed call means for it |
+| 4. OpenAPI contract test | The vendored `api.typesafe.ai/openapi.json` (0.2.0) validates the requests the builders produce and the responses the `Fake` and the committed recordings hold (`tests/contract.rs`); an ignored drift test compares the copy with the URL (`tests/openapi_drift.rs`) | As ranked |
 | 5. Retry parity, stated | `retry-after-ms`, then `Retry-After` in seconds, then as an HTTP date, all under `retry_after_max`; one-sided jitter; an optional total `budget`; `RetryPolicy::conservative()` (408, 429 and failures before the request left the process); a parity table on `RetryPolicy` that lists what matches Python 0.7.1 and JS 0.6.0, what deliberately differs and what is not implemented | The budget is off by default, so no consumer's timing changed. `x-typesafe-retry-count` is reserved (a caller cannot set it) but not yet sent. A `Retry-After` of `inf` or 1e20 used to panic in the loop; it is now ignored. The client follows no redirect, like the Python SDK |
-| 6. Per-call overrides | `Client::evaluate_with(&Request, &CallOptions)` with a per-call timeout, retry policy, headers and extra body fields, plus `ClientBuilder::default_header` | Not as fields on `Request`: `Request` is unchanged, so struct literals and signalman's `--print-request` keep the documented body. The model stays on `Request`, which is already per call, because a second override would make the span's `model` field and the `Recorder`'s hash name a model the call did not use |
+| 6. Per-call overrides | `Client::evaluate_with(&Request, &CallOptions)` with a per-call timeout, retry policy, headers and extra body fields, plus `ClientBuilder::default_header` | Not as fields on `Request`: `Request` is unchanged, so struct literals, and a consumer that prints the request it is about to send, keep the documented body. The model stays on `Request`, which is already per call, because a second override would make the span's `model` field and the `Recorder`'s hash name a model the call did not use |
 | 7. Schema fixes | A 400 is `Error::InvalidRequest` like 422, with the body's issues parsed into `ValidationIssue`s; 403 is `Error::PermissionDenied`; `Error::InvalidApiKey` applies the Python SDK's key hygiene at `build()`; the `/v1/models` and question-limit notes are corrected | `instructions` may be null, but a null is still sent as `"instructions": null` rather than left out: the schema accepts it and Laya's server reads the key unconditionally. A Noul with neither instructions nor criteria is refused, since the id is never shown to the model |
 
-The evidence, as of the release: the workspace tests (wiremock for the client, no network in the default run); the ten ignored live tests in `tests/live.rs`, all passing against `laya-serve` ([judgment against Laya typed-decisions](../verification/laya-typed-decisions.md)); the committed Laya recordings, which still replay to an accuracy of 0.725 on 200 questions under the stricter decoder; and signalman's committed Jev recordings (`examples/eval/runs/jev-1.13.0`), which replay to a decision agreement of 1.00. None of the 0.2 behaviour had been checked against a live TypeSafe account at the release: the hosted API had answered this client once, under 0.1. It has since: the ten live tests passed against the hosted API on 2026-10-03 ([judgment against the hosted TypeSafe API](../verification/hosted-typesafe.md)). The full list of changes, the breaking ones included, is in the crate's [CHANGELOG](../../CHANGELOG.md).
+The evidence, as of the release: the workspace tests (wiremock for the client, no network in the default run); the ten ignored live tests in `tests/live.rs`, all passing against `laya-serve` ([judgment against Laya typed-decisions](../verification/laya-typed-decisions.md)); the committed Laya recordings, which still replay to an accuracy of 0.725 on 200 questions under the stricter decoder; and one consumer's committed Jev recordings of 2026-09-23, which replay to a decision agreement of 1.00. None of the 0.2 behaviour had been checked against a live TypeSafe account at the release: the hosted API had answered this client once, under 0.1. It has since: the ten live tests passed against the hosted API on 2026-10-03 ([judgment against the hosted TypeSafe API](../verification/hosted-typesafe.md)). The full list of changes, the breaking ones included, is in the crate's [CHANGELOG](../../CHANGELOG.md).
 
 
 <!-- source: docs/decisions/README.md -->
@@ -528,28 +596,26 @@ The evidence, as of the release: the workspace tests (wiremock for the client, n
 
 # Decisions
 
-A record captures one architecturally significant decision: the problem, the options weighed, the choice and what it costs, in [MADR](https://adr.github.io/madr/) form. The records here govern the crate's own design.
+A record captures one architecturally significant decision: the problem, the options weighed, the choice and what it costs, in [MADR](https://adr.github.io/madr/) form. The records here govern the crate's own design and the way it is released.
 
-Record numbers are shared with [signalman's records](https://github.com/chussenot/signalman/blob/main/docs/decisions/README.md): there is one sequence for the repository, and a record lives with the code it governs. A number is an identifier, never reused or renumbered, so `decision 0003` means the same record wherever it is cited.
+A number is an identifier, never reused or renumbered, so `decision 0003` means the same record wherever it is cited. The crate's first record was written before this repository existed and kept its number when it moved here; the numbers up to 0012 were taken by records about the application the crate was extracted from, which govern nothing in the crate and are not reproduced, so they stay unused. Records written in this repository start at 0013.
 
 | Id | Title | Status |
 |---|---|---|
 | [0003](0003-typed-handles-between-questions-and-answers.md) | Typed handles between questions and answers | accepted |
-
-Signalman's records that shaped the crate, read with these:
-
-- [0002 Calibrated judgments over generated text](https://github.com/chussenot/signalman/blob/main/docs/decisions/0002-calibrated-judgments-over-generated-text.md): why System One primitives at all.
-- [0010 Extract the judgment core into a reusable crate](https://github.com/chussenot/signalman/blob/main/docs/decisions/0010-extract-the-judgment-core-into-a-crate.md): what became the crate, what stayed in the application, and why the existing crates were not adopted.
-- [0011 Documentation lives with its concern](https://github.com/chussenot/signalman/blob/main/docs/decisions/0011-documentation-lives-with-its-concern.md): why these pages are here and not under signalman's `docs/`.
-- [0012 The judgment crate moves to its own repository](https://github.com/chussenot/signalman/blob/main/docs/decisions/0012-the-judgment-crate-moves-to-its-own-repository.md): why this directory carries a repository's files, and how it leaves the workspace with its history.
+| [0013](0013-releases-cut-with-cocogitto-and-published-from-ci.md) | Releases cut with cocogitto and published from CI | accepted |
 
 ## Status notes
 
 Records are not edited after acceptance; a fact that has moved since is noted here.
 
-- 0003 was written in signalman's `docs/decisions/` before the crate existed, and moved here with its number on 2026-10-03 (decision 0011). Its "More information" link was the one line changed: the page it pointed to was split, and the link now names both halves.
+- 0003 was written before the crate existed and moved here with its number on 2026-10-03. Its "More information" section is the one part edited since: the page it pointed to was split, and the half that belongs to an application was dropped when this documentation stopped naming applications.
 
-To add a record, follow [signalman's procedure](https://github.com/chussenot/signalman/blob/main/docs/decisions/README.md#writing-a-record) with the next number of the shared sequence, and put the record here when it governs the crate.
+## Writing a record
+
+One record per decision, as `NNNN-short-title.md` with the number after the highest in the table. The frontmatter is the one every page carries (`title`, `description`, `status`, `last_reviewed`, `tags`) plus `date`, `decision-makers`, `consulted` and `informed`; `status` is `proposed`, `accepted`, `deprecated` or `superseded by NNNN`. The body follows 0003: context and problem statement, decision drivers, the options considered, the outcome with its consequences and how it is confirmed in code or tests, the pros and cons of each option, and a "More information" section naming the pages and code that implement it. State what was rejected and why, and what the choice costs, not only what was chosen.
+
+Add the record to the table above, to the nav in `mkdocs.yml` and to the table in `docs/index.md`, then run `mise run docs:llms`. A record is not edited after acceptance: a fact that moved is a status note here, and a changed decision is a new record that supersedes the old one.
 
 
 <!-- source: docs/decisions/0003-typed-handles-between-questions-and-answers.md -->
@@ -609,4 +675,76 @@ Chosen option: "Typed handles". `Questions::noul`, `choice`, `score` and `dynami
 
 ## More information
 
-[How judgment works](../design.md#typed-handles); how signalman reads its triage answers through the handles: [TypeSafe client](https://github.com/chussenot/signalman/blob/main/docs/typesafe-client.md).
+[How judgment works](../design.md#typed-handles).
+
+
+<!-- source: docs/decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md -->
+
+
+# 0013 Releases cut with cocogitto and published from CI
+
+## Context and problem statement
+
+The crate's one release so far, 0.2.0, was cut by hand: the version edited in the manifest, the CHANGELOG dated, a commit named "release 0.2.0", no tag, and `publish = false` in the manifest so nothing could reach crates.io by accident. In its own repository the crate is meant to be published, and a release has to be the same every time: the version must follow from what changed, the CHANGELOG must say what the version contains, the gate must have passed on exactly what is published, and the publish must not depend on a token on someone's machine. How should a version be chosen, recorded and published?
+
+## Decision drivers
+
+- The version must follow the crate's own rule (0.x: a minor bump may break) from the changes, not from memory
+- The CHANGELOG is hand-written in Keep a Changelog form and explains changes to a consumer; a generated list of commit subjects would not
+- CI runs under a repository policy that allows only GitHub-owned actions
+- `main` takes changes only through pull requests, so a release cannot be a direct push
+- A published version cannot be taken back, so publishing must be a deliberate step with the gate in front of it
+- One tool for the convention, the version and the tag, with as little custom script as possible
+
+## Considered options
+
+1. cocogitto for the convention and the bump, the CHANGELOG hand-written, publication from a tag in CI
+2. release-plz or cargo-release: a tool that writes the CHANGELOG from the commits and opens the release pull request or publishes directly
+3. Releases by hand, as 0.2.0 was, with a written checklist
+
+## Decision outcome
+
+Chosen option: "cocogitto, hand-written CHANGELOG, publication from a tag in CI".
+
+- Commits are [Conventional Commits](https://www.conventionalcommits.org). `cog verify` runs on every commit message through the prek `commit-msg` hook, and CI checks a pull request's commits with `cog check`, merge commits ignored.
+- A release is `cog bump --auto` on an up-to-date `main`. cocogitto derives the next version from the commits since the last tag, under its pre-1.0 rule: a breaking change or a feature bumps the minor, a fix the patch. Its pre-bump hook, `scripts/release-bump.sh`, writes the version into `Cargo.toml` and `Cargo.lock` and turns the CHANGELOG's Unreleased section into the release's section with the date, refusing an empty one; the full gate runs; cocogitto commits and tags. cocogitto's own changelog generation is off (`disable_changelog`).
+- The bump commit reaches `main` through a pull request like any other change, merged with a merge commit so the tagged commit is the one on `main`; the tag is pushed after the merge.
+- The pushed tag runs `.github/workflows/release.yml`: the whole CI gate again, a check that the tag names the manifest's version, `cargo publish --dry-run`, then `cargo publish` and a GitHub release whose notes are the CHANGELOG's section for that version. The crates.io credential is a trusted-publishing token exchanged from the job's OIDC identity, or the `CARGO_REGISTRY_TOKEN` secret for the first release, before the crate exists on crates.io and a trusted publisher can be configured. The job runs in the `crates-io` environment so required reviewers can be put in front of it.
+- `publish = false` is lifted from the manifest. The Bash guard denies `cargo publish` and pushing a tag to agents working in the repository: both are the release owner's decision.
+
+### Consequences
+
+- Good, because the version is computed from the commits and the same computation runs for every release; "which bump is this" stops being a judgment call at release time
+- Good, because the CHANGELOG keeps explaining changes to a consumer, which no commit log does, and the bump only dates it
+- Good, because what is published is what passed the gate on the tagged commit, and the credential lives in CI, short-lived where trusted publishing is configured
+- Good, because the whole flow uses one third-party tool, installed from crates.io, and no third-party action
+- Bad, because the commit convention is one more thing every contributor and agent must follow; the hook and the CI check make a slip a failed check rather than a wrong version
+- Bad, because a release is two pushes (the pull request, then the tag) rather than one command; that is the cost of a protected `main`
+- Bad, because the history before this repository was not written to the convention, so cocogitto's scan starts at a baseline tag, `v0.2.0`, placed on the commit that released 0.2.0
+
+### Confirmation
+
+`cog check --from-latest-tag` passes on `main`; `cog bump --auto --dry-run` names the next version; the `commits` job in `ci.yml` fails a pull request with a non-conforming commit; `release.yml` publishes only after `ci.yml` passed on the tag, and the version check refuses a tag whose number is not the manifest's.
+
+## Pros and cons of the options
+
+### cocogitto, hand-written CHANGELOG, tag-driven publication
+
+- Good, because cocogitto does the convention, the version and the tag, and nothing else; what it does not do (the CHANGELOG stamp) is one short script
+- Good, because the release is reviewable: the bump commit is a pull request
+- Bad, because the baseline tag and the branch whitelist are configuration a reader must know about (`cog.toml` says why)
+
+### release-plz or cargo-release
+
+- Good, because release-plz opens the release pull request itself and publishes on merge, with no tag step
+- Bad, because both write the CHANGELOG from the commits, replacing a consumer-facing document with commit subjects, or need the hand-written one maintained beside theirs
+- Bad, because release-plz is run as a third-party action and needs a long-lived crates.io token in the repository; cargo-release publishes from the machine it runs on
+
+### Releases by hand with a checklist
+
+- Good, because nothing new to install or learn
+- Bad, because every step the checklist describes is one a tool can do the same way every time, and 0.2.0 shows the result: no tag, a non-conventional commit, a token that would have had to be local
+
+## More information
+
+[Releasing](../releasing.md) is the runbook; `cog.toml`, `scripts/release-bump.sh`, `.github/workflows/release.yml` and the `commits` job of `.github/workflows/ci.yml` implement the decision; [cocogitto's documentation](https://docs.cocogitto.io) describes the bump rules and hooks.

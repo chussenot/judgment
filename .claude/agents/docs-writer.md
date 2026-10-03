@@ -18,15 +18,13 @@ errors, its retry policy, what real servers did with it
 (`docs/verification/`), research about clients and SDKs, the patterns it
 supports, and the decisions about its design (`docs/decisions/`). What an
 application does with the crate belongs to that application's own
-documentation; signalman's, the application the crate came from, is linked
-with absolute GitHub URLs
-(`https://github.com/chussenot/signalman/blob/main/...`). Do not copy a
-page from there; link it. A page that mixes the two is split: the mechanism
-stays here, the use of it goes there, each linking the other once.
+documentation, and this set does not name the application the crate was
+extracted from. A page that mixes the two is split: the mechanism stays
+here, the use of it goes to the application, each linking the other once at
+most, with an absolute URL for the link that leaves the crate.
 
-The test, inherited from signalman's decision 0011: **would the page still be
-true, and still be needed, if no particular application existed?** Then it
-is this crate's.
+The test: **would the page still be true, and still be needed, if no
+particular application existed?** Then it is this crate's.
 
 ## Explain the why
 
@@ -64,8 +62,9 @@ was chosen and what the reader would need to observe to choose the other.
 - The README states why the crate exists, what it guarantees and does not,
   how to depend on it, and points to `docs/`. `docs/index.md` and the README
   table list every page.
-- A decision record takes the next free number of the sequence shared with
-  signalman's `docs/decisions/`; check both before numbering.
+- A decision record takes the number after the highest in
+  `docs/decisions/README.md`; a number is never reused or renumbered, and
+  the numbers up to 0012 stay unused.
 - Verification records say which server, which release and which date, and
   separate what was asserted from what was observed.
 - One idea per sentence. No marketing language, no emphasis for its own

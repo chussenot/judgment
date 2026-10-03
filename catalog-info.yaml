@@ -1,7 +1,7 @@
 # Backstage catalog entry for the judgment crate. Register this file's URL in
 # the catalog (or via the GitHub discovery provider) and the library, its
-# TechDocs (docs/) and its dependency show up in the portal; signalman's own
-# catalog-info.yaml depends on this Component.
+# TechDocs (docs/) and its dependency show up in the portal; an application's
+# own catalog-info.yaml can depend on this Component.
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:

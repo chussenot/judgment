@@ -7,8 +7,7 @@
 #   scripts/gen-llms-txt.sh --check            exit 1 if any committed file is stale
 #   scripts/gen-llms-txt.sh [--check] SITE...  only these sites
 #
-# A site is a directory holding a mkdocs.yml (decision 0011 in signalman's
-# records, where this script comes from); with no SITE argument every one
+# A site is a directory holding a mkdocs.yml; with no SITE argument every one
 # under the root is built, outside build output: here, the repository root.
 # Each writes llms.txt and llms-full.txt into its own docs_dir, and opens
 # them with the preamble in <docs_dir>/llms-intro.txt, where @RAW@ stands
@@ -36,8 +35,8 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
 # Where the root sits inside its git repository: "" at the repository root,
-# "<dir>/" when the root is nested in a larger repository (this crate was
-# crates/judgment/ in signalman until 2026-10-03). Outside a git checkout
+# "<dir>/" when the root is nested in a larger repository, as this crate
+# once was. Outside a git checkout
 # the root is taken to be the repository.
 git_prefix=$(git rev-parse --show-prefix 2>/dev/null || true)
 

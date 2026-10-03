@@ -8,7 +8,7 @@ tags: [judgment, typesafe, jev, compatibility, verification]
 
 # Against the hosted TypeSafe API
 
-The [judgment crate](../../README.md) is tested against mocks of TypeSafe's wire and the vendored OpenAPI document. A mock and a schema both encode what someone believed about the wire; only the server can contradict that belief. The [Laya run](laya-typed-decisions.md) checked the crate against a second implementation of System One, but no TypeSafe key was available then, so the hosted API itself had answered only once, through signalman's triage of the three example alerts (`signalman-b11.1`, 2026-09-23, recorded under `examples/eval/runs/jev-1.13.0`). That run proved signalman's own questions round-trip; it did not exercise the crate's edges: structured Score levels, null option descriptions, an unknown extra field, the model list, a wrong key.
+The [judgment crate](../../README.md) is tested against mocks of TypeSafe's wire and the vendored OpenAPI document. A mock and a schema both encode what someone believed about the wire; only the server can contradict that belief. The [Laya run](laya-typed-decisions.md) checked the crate against a second implementation of System One, but no TypeSafe key was available then, so the hosted API itself had answered this client only once, through the triage questions of the application it was extracted from (2026-09-23). That run proved one application's questions round-trip; it did not exercise the crate's edges: structured Score levels, null option descriptions, an unknown extra field, the model list, a wrong key.
 
 This page records the run that did. All ten tests in `tests/live.rs`, the same file the Laya run used, passed against `https://api.typesafe.ai` with a real key on 2026-10-03; five more, written from the probes [below](#beyond-the-test-file), passed the same day, and `mise run live:typesafe` runs all fifteen.
 
@@ -17,7 +17,7 @@ This page records the run that did. All ten tests in `tests/live.rs`, the same f
 | | |
 |---|---|
 | Server | `https://api.typesafe.ai`, the crate's default base URL |
-| Key | `TYPESAFE_API_KEY`, signalman's own account, from the environment |
+| Key | `TYPESAFE_API_KEY`, from the environment |
 | Model requested | `jev-latest`, the crate's default; it resolved to `jev-1.13.0`, the version the 2026-09-23 run saw |
 | Crate | `judgment` at the commit this page was added in, built with its default `http` feature |
 | Tests | `tests/live.rs`, all ten, with `--test-threads=1`; the bearer test pointed at the same server with the same key |
@@ -32,16 +32,16 @@ What each test asserts and why it exists is tabled on the [Laya page](laya-typed
 - **No undocumented top-level fields.** `Response::extra` was empty: the hosted response is exactly the documented shape. Laya adds `routing`.
 - **A request id comes back.** The response carries one (`req_…`), on success and on the 401 and 400 below. Laya sends none.
 - **The model alias resolves and says to what.** `jev-latest` was answered by `jev-1.13.0`, named in `Response::model`. On Laya the model name routes silently and `model` is the same for every checkpoint.
-- **`GET /v1/models` is served.** It listed `jev-latest` and `jev-preview`. Laya answers 404. signalman's `models` command works against the hosted API.
+- **`GET /v1/models` is served.** It listed `jev-latest` and `jev-preview`. Laya answers 404, so a consumer that lists models has something to list on the hosted API and nothing on Laya.
 - **Structured Score levels are echoed verbatim.** The object level came back as a JSON object, the array level as a JSON array, the string as a string, and `Response::verify` passed. Laya did the same through 0.3.21; `laya-serve` 0.3.22 and later echo the JSON text they showed the model instead ([the Laya record](laya-typed-decisions.md#re-run-against-laya-serve-0324)), which is why `verify` now compares a structured level by what the echo parses to rather than by its text.
 - **A Choice option without a description is accepted**, as TypeSafe documents.
-- **An unknown extra field is refused, not answered.** A request with an unknown `CallOptions::extra` field got a 400, decoded as `Error::InvalidRequest`, with the message `Invalid request.` and an empty `issues` list; only the request id identifies the call. Laya answered the same request. The crate sends extra fields as given and leaves the choice to the server, so both outcomes pass, but a caller adding a field the API does not know gets no hint which field was wrong. Nothing in signalman sends an extra field.
+- **An unknown extra field is refused, not answered.** A request with an unknown `CallOptions::extra` field got a 400, decoded as `Error::InvalidRequest`, with the message `Invalid request.` and an empty `issues` list; only the request id identifies the call. Laya answered the same request. The crate sends extra fields as given and leaves the choice to the server, so both outcomes pass, but a caller adding a field the API does not know gets no hint which field was wrong.
 - **A wrong key is a 401, classified as `Error::Unauthorized` and not retried; the right key is answered.**
 - **The builder's limits hold without a request** (255 options, at least two levels, no null level); this test needs no server and is listed for completeness.
 
 ## Beyond the test file
 
-The ten tests send what the builder lets through. On 2026-10-03 the hosted API was also probed with what the builder refuses, and with repeats, to learn what the schema and the reference page do not say (`signalman-b11.7`; about fifty requests, sequential, far under the account's 80 requests and 100,000 input tokens per second). What held, and what the crate did with it:
+The ten tests send what the builder lets through. On 2026-10-03 the hosted API was also probed with what the builder refuses, and with repeats, to learn what the schema and the reference page do not say (about fifty requests, sequential, far under the account's 80 requests and 100,000 input tokens per second). What held, and what the crate did with it:
 
 | Probe | What the hosted API did | Consequence |
 |---|---|---|
@@ -61,7 +61,7 @@ The ten tests send what the builder lets through. On 2026-10-03 the hosted API w
 | `GET /v1/models` | Lists `jev-latest` and `jev-preview`, both resolving to `jev-1.13.0`; `release_date` is an RFC 3339 timestamp with microseconds, not the `YYYY-MM-DD` of the OpenAPI document; the versioned name is not listed but is accepted in a request | `fixtures/models.json` is now this list; `ModelInfo::release_date` stays a string. To pin a version, read `Response::model`, not the list |
 | The same request repeated: a clear-cut one three times, twice over, then three voice commands six times each | The chosen option and the nearest level held in every repeat. On the clear-cut request, probabilities 0.01 apart in one set and 0.05 in the next (confidence 0.89, 0.83, 0.90); on a saturated one (`What's my current balance?`, p 1.00) no movement over six; on two ambiguous commands the top probability moved by 0.19 (0.65 to 0.84) and 0.12, and the confidence by 0.28 (0.48 to 0.76) and 0.17 | **Not deterministic, and the spread grows with ambiguity.** A recording is one draw; a threshold near an observed value flips between runs, and the less clear the input, the wider the band it flips in; a test must not assert a live probability to the hundredth. A live test pins the stable part (the decision) and prints the spread |
 | Confidence against the documented formulas | Choice: `(p_max − 1/n)/(1 − 1/n)` within 0.01 of the wire in every case; Score: `score` equals `Σ i·p_i` exactly, confidence within 0.015 | `Choice::confidence_from_probabilities`, `Score::expected_value` and `Score::confidence_from_probabilities` compute them, so a caller can see at once whether a server (Laya) defines confidence otherwise |
-| Options reversed | `billing` 0.94 against 0.92–0.93 in the original order | Within the run-to-run spread on a case this clear; the known-issues page's order bias is real but needs an uncertain case to measure. A follow-up (`signalman-b11.8`) keeps signalman's candidate order stable |
+| Options reversed | `billing` 0.94 against 0.92–0.93 in the original order | Within the run-to-run spread on a case this clear; the known-issues page's order bias is real but needs an uncertain case to measure. A caller that compares runs keeps its option order stable |
 | Headers | `x-typesafe-request-id` on the 200 and on every 4xx; no rate-limit or `Retry-After` header seen (no 429 was provoked); served through Cloudflare | What the crate reads is what is sent |
 | Load and cost | p50 250 ms per request; 25 Nouls in one request in 344 ms for 820 input tokens; ten mixed questions in 229 ms. Output tokens scale with the answer (about 20 per Noul, 17 per Score, 24 plus 6 per option for a Choice; 2,826 for 255 options) and are free | Batching is nearly free in latency; a Choice over many options is a flat distribution (top probability 0.05 over 255), which is the documented reason for hierarchical selection |
 
@@ -69,9 +69,9 @@ The OpenAPI drift test ran the same day: the vendored document is the live one, 
 
 ## What this does and does not establish
 
-It establishes that the crate's wire matches the hosted API on every edge the live tests cover, with no change to the crate. Together with the 2026-09-23 triage run, it means both the crate's general surface and signalman's own questions have been answered by Jev at least once.
+It establishes that the crate's wire matches the hosted API on every edge the live tests cover, with no change to the crate. Together with the 2026-09-23 triage run, it means both the crate's general surface and one application's production questions have been answered by Jev at least once.
 
-It does not establish anything about thresholds or accuracy on alerts: that needs labelled history through the [evaluation harness](https://github.com/chussenot/signalman/blob/main/docs/evaluation.md) (`signalman-ufg.6`). And `jev-latest` is an alias. When it moves past `jev-1.13.0`, the answers these tests and the committed run saw may change without any code changing; pin `typesafe.model` once the thresholds are tuned ([Configuration](https://github.com/chussenot/signalman/blob/main/docs/configuration.md)), and repeat this run when the alias moves.
+It does not establish anything about thresholds or accuracy on alerts: that needs labelled history replayed through `judgment::eval`. And `jev-latest` is an alias. When it moves past `jev-1.13.0`, the answers these tests and the committed recordings saw may change without any code changing; pin the model once thresholds are tuned, and repeat this run when the alias moves.
 
 ## Repeating the run
 
@@ -79,7 +79,7 @@ It does not establish anything about thresholds or accuracy on alerts: that need
 mise run live:typesafe
 ```
 
-The task needs `TYPESAFE_API_KEY` (from `.env`, which mise loads) and fails before building anything when it is unset. It points both the live tests and the bearer test at `TYPESAFE_BASE_URL` (default `https://api.typesafe.ai`) with that key, and asks for `TYPESAFE_DEFAULT_MODEL` (default `jev-latest`), the same variables signalman itself reads. It is not part of `mise run check` and never runs in CI: the gate stays offline, and a key in CI would be a secret the repository does not need.
+The task needs `TYPESAFE_API_KEY` (from `.env`, which mise loads) and fails before building anything when it is unset. It points both the live tests and the bearer test at `TYPESAFE_BASE_URL` (default `https://api.typesafe.ai`) with that key, and asks for `TYPESAFE_DEFAULT_MODEL` (default `jev-latest`). It is not part of `mise run check` and never runs in CI: the gate stays offline, and a key in CI would be a secret the repository does not need.
 
 Without mise, the same run is:
 

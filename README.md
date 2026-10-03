@@ -44,18 +44,19 @@ async fn run() -> judgment::Result<()> {
 
 ## Why this crate exists
 
-It was the client half of [signalman](https://github.com/chussenot/signalman),
-an alert triager, where it has been run against the hosted model and against
-an open-weights model through a shim, with the wire shape verified live (and
-a 401 seen not to be retried). The retry rules this release rewrote or added
+It began as the client layer of an application that triages alerts with a
+System One model, where it was run against the hosted model and against an
+open-weights model through a shim, with the wire shape verified live (and a
+401 seen not to be retried). The retry rules this release rewrote or added
 (the status set, the jitter, `retry-after-ms` and `Retry-After` parsing, the
 budget) are checked offline only, against wiremock in `tests/client.rs` and
 by the unit tests in `src/http.rs`, until a live 408, 429 or 529 is recorded.
 A second project wanting the same layer had to depend on the whole
-application. Decision record
-[0010](https://github.com/chussenot/signalman/blob/main/docs/decisions/0010-extract-the-judgment-core-into-a-crate.md)
-records why it became a crate, what stayed behind, and why the existing
-crates for the same API were not adopted.
+application, so the layer became a crate: the typed questions and answers,
+the client and the backends, with every rule about what to do with an answer
+left to the caller. What the other Rust clients for the same API do, and
+what this one took from them rather than adopting one, is in
+[System One client libraries](docs/research/system-one-client-libraries.md).
 
 ## What is in it
 
@@ -309,25 +310,31 @@ The crate's documentation lives with it, under [`docs/`](docs/index.md):
 | [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md) | What `jev-1.13.0` did with the live tests and with fifty probes past the builder's limits |
 | [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | The same tests against an open-weights server, the bug they caught, the benchmark numbers |
 | [System One client libraries](docs/research/system-one-client-libraries.md) | What the other Rust clients and the official SDKs do, and what the crate adopted |
-| [Decisions](docs/decisions/README.md) | Why the API is shaped as it is |
+| [Releasing](docs/releasing.md) | How a version is cut from the commits with cocogitto and published to crates.io by CI from a tag |
+| [Decisions](docs/decisions/README.md) | Why the API is shaped as it is, and why releases are cut the way they are |
 | [llms.txt](docs/llms.txt) | The index for agents and models; [llms-full.txt](docs/llms-full.txt) is every page in one file |
 
-The rustdoc (`cargo doc -p judgment --open`) is the reference for every type, error and default. How signalman, the application the crate came from, uses it is signalman's documentation: [TypeSafe client](https://github.com/chussenot/signalman/blob/main/docs/typesafe-client.md).
+The rustdoc (`cargo doc --open`) is the reference for every type, error and default.
 
 ## Status
 
-`0.2.0`, in its own repository since 2026-10-03, split out of
-[signalman](https://github.com/chussenot/signalman) with its history
-([decision 0012](https://github.com/chussenot/signalman/blob/main/docs/decisions/0012-the-judgment-crate-moves-to-its-own-repository.md)
-in signalman's records), not yet on crates.io. What changed in each release,
-breaking changes listed, is in [CHANGELOG.md](CHANGELOG.md). Take it by git,
-pinned to a revision, until the first release is cut:
+Not yet on crates.io; the version is the one in `Cargo.toml`, and what
+changed in each release, breaking changes listed, is in
+[CHANGELOG.md](CHANGELOG.md). Take it by git, pinned to a revision, until
+the first release is published:
 
 ```toml
 [dependencies]
 judgment = { git = "https://github.com/chussenot/judgment", rev = "<a commit>" }
 ```
 
-Live behaviour has been verified only under signalman's own account; the
-vendored OpenAPI document and the wiremock tests are the contract in this
-repository. Licensed MIT.
+Releases are cut with [cocogitto](https://docs.cocogitto.io) and published
+by CI: the commits are Conventional Commits, `cog bump --auto` derives the
+next version from them and tags it, and the pushed tag runs the gate once
+more and publishes the crate to crates.io
+([Releasing](docs/releasing.md)). Once the first release is on crates.io,
+the dependency is a plain version requirement.
+
+Live behaviour has been verified against the hosted API under one account
+and against Laya's server; the vendored OpenAPI document and the wiremock
+tests are the contract in this repository. Licensed MIT.

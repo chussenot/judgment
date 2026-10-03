@@ -4,8 +4,8 @@ Laya (https://huggingface.co/convaiinnovations/laya, Apache 2.0) answers the
 same typed questions as TypeSafe's System One API, in one forward pass, from
 open weights. This shim exposes one checkpoint on the two endpoints the
 judgment crate calls, ``POST /v1/systemone`` and ``GET /v1/models``, so the
-crate's live tests and examples, and any System One client pointed here
-(signalman among them), run unchanged. From the crate's root directory:
+crate's live tests and examples, and any System One client pointed here,
+run unchanged. From the crate's root directory:
 
     python -m venv .venv && .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
     .venv/bin/pip install laya
@@ -25,9 +25,7 @@ Laya raises on is a 400 with ``{"error": {"message", "type"}}``, which the
 crate reads as ``Error::InvalidRequest`` and does not retry. Structured
 Score levels come back in the legend as the JSON text ``laya`` 0.3.22 and
 later render them with, as from laya-serve. Not a product: no auth, no TLS,
-one process, no batching across requests. What signalman measured through
-it, and why Jev stays its default, is at
-https://github.com/chussenot/signalman/blob/main/docs/laya.md.
+one process, no batching across requests.
 """
 import json
 import os
