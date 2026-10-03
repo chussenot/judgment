@@ -14,10 +14,14 @@ passed here" look the same in the pull request's check list, and the
 distinction has to be written down once per pull request, with the
 evidence, not relitigated on every event.
 
-CI (`.github/workflows/ci.yml`) runs on every push and pull request: two
+CI (`.github/workflows/ci.yml`) runs on every push and pull request: three
 jobs, `fmt, clippy, test, doc, docs` (the steps of `mise run check`, plus
-`cargo package --list`) and `pre-commit hooks (prek)`. A pull request whose
-checks are green needs no comment from you.
+`cargo package --list`), `pre-commit hooks (prek)` and, on a pull request,
+`conventional commits (cog check)` over the commits it adds (a red one is a
+commit message to reword, not code to fix). A pushed `v*` tag runs
+`.github/workflows/release.yml` instead, which calls the same gate and then
+publishes (docs/releasing.md). A pull request whose checks are green needs
+no comment from you.
 
 ## Before opening
 

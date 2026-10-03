@@ -1,10 +1,11 @@
 # Git hooks, run by prek (https://prek.j178.dev); the file is pre-commit compatible.
 # Install once with `mise run setup`. Run everything with `mise run precommit`.
 #
-# Fast, file-level checks run on every commit. The test suite runs on push.
+# Fast, file-level checks run on every commit, and the commit message is
+# checked against Conventional Commits (cog.toml). The test suite runs on push.
 
 minimum_pre_commit_version: "3.2.0"
-default_install_hook_types: [pre-commit, pre-push]
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
 default_stages: [pre-commit]
 exclude: ^Cargo\.lock$
 
@@ -60,6 +61,12 @@ repos:
         language: fail
         files: ^\.env(\..*)?$
         exclude: ^\.env\.example$
+
+      - id: conventional-commit
+        name: conventional commit message (cog verify)
+        entry: cog verify --ignore-merge-commits --file
+        language: system
+        stages: [commit-msg]
 
       - id: cargo-test
         name: cargo test (pre-push)

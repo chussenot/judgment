@@ -1,16 +1,18 @@
 name: CI
 
 # The crate's gate: the steps of `mise run check`, then what a publish would
-# ship. Only GitHub-owned actions are used (actions/checkout, actions/cache);
-# the toolchain comes from rust-toolchain.toml via rustup, and prek is
-# installed with pipx, so the workflow runs under a repository policy that
-# forbids third-party actions.
+# ship, and the commit convention on a pull request. Only GitHub-owned actions
+# are used (actions/checkout, actions/cache); the toolchain comes from
+# rust-toolchain.toml via rustup, prek is installed with pipx and cocogitto
+# from crates.io, so the workflow runs under a repository policy that forbids
+# third-party actions. The release workflow calls this one on a tag
+# (workflow_call), so a publish never runs on a commit the gate did not pass.
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
+  workflow_call:
 
 env:
   CARGO_TERM_COLOR: always
@@ -66,8 +68,43 @@ jobs:
           pipx install prek
           prek --version
 
-      # The cargo hooks already run in the check job.
+      # The cargo hooks already run in the check job; the commit-msg hook
+      # runs in the commits job, over the pull request's commits.
       - name: Run hooks on all files
         run: prek run --all-files --hook-stage pre-commit
         env:
           SKIP: cargo-fmt,cargo-clippy
+
+  commits:
+    name: conventional commits (cog check)
+    # The commits a pull request adds; main takes changes only through pull
+    # requests, so this is every commit that reaches it.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+
+      # cocogitto is built from crates.io, pinned to the version mise.toml
+      # names, and cached by that version: no third-party action, no binary
+      # fetched from a release page.
+      - uses: actions/cache@v4
+        id: cog-cache
+        with:
+          path: ~/.cargo/bin/cog
+          key: cog-${{ runner.os }}-7.0.0
+
+      - name: Install cocogitto
+        if: steps.cog-cache.outputs.cache-hit != 'true'
+        run: cargo install cocogitto --locked --version 7.0.0
+
+      - name: Check the pull request's commits
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          cog --version
+          cog check --ignore-merge-commits "origin/$BASE..HEAD"

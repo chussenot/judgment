@@ -11,7 +11,7 @@ All notable changes to the `judgment` crate. The format follows
 - `contract::OPENAPI_DOCUMENT`, behind the new `openapi` feature (off by
   default): the vendored TypeSafe OpenAPI document as text, for an
   application that validates its own traffic against the contract the crate
-  is tested against. signalman reads it this way instead of by a path into
+  is tested against. A consumer reads it this way instead of by a path into
   the crate's tree.
 - One runnable example per TypeSafe pattern, written to the documentation
   page's own scenario and thresholds: `fan_out`, `confidence_routing`,
@@ -65,15 +65,18 @@ All notable changes to the `judgment` crate. The format follows
 ### Changed
 
 - The crate lives in its own repository, <https://github.com/chussenot/judgment>,
-  split out of signalman on 2026-10-03 with the history of `crates/judgment`
-  (signalman's decision 0012). A git dependency names this repository, with
-  no `package` key; signalman takes the crate the same way.
+  moved on 2026-10-03 with its history. A git dependency names this
+  repository, with no `package` key.
 - The manifest declares its own edition, Rust version, licence, dependency
-  versions and lints instead of inheriting the signalman workspace's, and
-  the crate directory carries the files a repository root needs (CI, mise
-  tasks, hooks, agents, catalog entry), in preparation for the move to its
-  own repository (signalman's decision 0012). Nothing changes for a
-  consumer.
+  versions and lints instead of inheriting a workspace's, and the repository
+  carries the files a repository root needs (CI, mise tasks, hooks, agents,
+  catalog entry). Nothing changes for a consumer.
+- Releases are cut with cocogitto and published by CI: the commits are
+  Conventional Commits, `cog bump --auto` derives the version from them,
+  stamps this file's Unreleased section and tags, and the pushed `v*` tag
+  runs the gate and `cargo publish` (`docs/releasing.md`, decision 0013).
+  `publish = false` is lifted from the manifest for it; the crate is not on
+  crates.io until the first tag is pushed.
 - `Response::verify` accepts a structured Score level echoed as any string
   that parses to the level sent, not only as its compact JSON. `laya-serve`
   0.3.22 and later echo the JSON text they showed the model, with Python's
@@ -100,8 +103,8 @@ All notable changes to the `judgment` crate. The format follows
 
 Hardens the wire and closes the gaps against the official TypeSafe SDKs that
 the [System One client survey](docs/research/system-one-client-libraries.md)
-identified. TypeSafe has answered this client live once, under signalman's own
-account; everything else is checked against wiremock, the published OpenAPI
+identified. TypeSafe had answered this client live once at this release;
+everything else is checked against wiremock, the published OpenAPI
 document (0.2.0) and the SDK references.
 
 ### Added

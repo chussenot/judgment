@@ -1,7 +1,6 @@
-# Documentation of the judgment crate (signalman's decision 0011 gave it a
-# set of its own, decision 0012 this repository). Builds as TechDocs for the
-# `judgment` Component in catalog-info.yaml (backstage.io/techdocs-ref:
-# dir:.), and is the nav scripts/gen-llms-txt.sh reads to write
+# Documentation of the judgment crate. Builds as TechDocs for the `judgment`
+# Component in catalog-info.yaml (backstage.io/techdocs-ref: dir:.), and is
+# the nav scripts/gen-llms-txt.sh reads to write
 # docs/llms.txt and docs/llms-full.txt. The pages carry YAML frontmatter;
 # mkdocs reads it as page meta.
 site_name: judgment
@@ -13,6 +12,7 @@ docs_dir: docs
 nav:
   - Overview: index.md
   - How judgment works: design.md
+  - Releasing: releasing.md
   - Verification:
       - Against the hosted TypeSafe API: verification/hosted-typesafe.md
       - Against Laya typed-decisions: verification/laya-typed-decisions.md
@@ -21,12 +21,13 @@ nav:
   - Decisions:
       - Index: decisions/README.md
       - 0003 Typed handles between questions and answers: decisions/0003-typed-handles-between-questions-and-answers.md
+      - 0013 Releases cut with cocogitto and published from CI: decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md
 
 plugins:
   - techdocs-core
 
 # Mermaid fences render in GitHub natively; in Backstage they need the TechDocs
-# Mermaid addon, as for signalman's documentation.
+# Mermaid addon.
 markdown_extensions:
   - pymdownx.superfences:
       custom_fences:

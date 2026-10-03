@@ -1,0 +1,43 @@
+# Cocogitto (https://docs.cocogitto.io): the commit convention and the release
+# bump. Decision 0013 says why; docs/releasing.md is the runbook.
+#
+# Commits are Conventional Commits. `cog verify` checks every commit message
+# through the prek commit-msg hook, and CI checks a pull request's commits with
+# `cog check`. `cog bump --auto` derives the next version from the commits since
+# the last tag (below 1.0: a feature or a breaking change bumps the minor, a fix
+# the patch), runs the hooks below, commits "chore(version): vX.Y.Z" and tags
+# it. The pushed tag publishes the crate (.github/workflows/release.yml).
+
+tag_prefix = "v"
+
+# A release is cut on main, or on a release branch that is merged into main
+# with a merge commit so the tagged commit is the one main carries.
+branch_whitelist = ["main", "release/*"]
+
+# The history before this repository was not written to the convention, so every
+# scan starts at the latest tag; v0.2.0 marks the commit that released 0.2.0.
+from_latest_tag = true
+ignore_merge_commits = true
+
+# CHANGELOG.md is hand-written in Keep a Changelog form: it explains a change to
+# a consumer, which a list of commit subjects does not. The pre-bump script
+# dates its Unreleased section instead of cocogitto generating a changelog.
+disable_changelog = true
+
+pre_bump_hooks = [
+    # Version into Cargo.toml and Cargo.lock, the Unreleased section into the
+    # release's section; refuses an empty Unreleased section.
+    "scripts/release-bump.sh {{version}} {{latest}}",
+    # The gate, on exactly what the bump commit will contain.
+    "cargo fmt --all --check",
+    "cargo clippy --all-targets --all-features -- -D warnings",
+    "cargo check --no-default-features --all-targets",
+    "cargo test --all-features",
+    "scripts/check-frontmatter.sh docs",
+    "scripts/gen-llms-txt.sh --check",
+    "cargo package --list --allow-dirty",
+]
+
+post_bump_hooks = [
+    "echo 'Bumped to {{version_tag}}. Open a pull request for this commit, merge it with a merge commit, then push the tag: git push origin {{version_tag}} (docs/releasing.md).'",
+]

@@ -53,13 +53,22 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   generated from `mkdocs.yml`, `docs/llms-intro.txt` and that frontmatter:
   never edit them; run `mise run docs:llms` after adding a page (add it to
   the nav too) or changing a title or description. Paths in sources and pages
-  are relative to the crate. Links to signalman's documentation are absolute
-  GitHub URLs (signalman's decision 0011).
-- Decision records share one number sequence with signalman's
-  `docs/decisions/`: a new record takes the next free number in either
-  repository, and a number is never reused.
+  are relative to the crate. A link to another repository's documentation is
+  an absolute URL on its default branch. Nothing about the application the
+  crate was extracted from is named anywhere in the repository.
+- Decision records are numbered in one sequence and a number is never reused
+  or renumbered: 0003 kept its number when it moved here, the numbers up to
+  0012 are left unused, and a new record takes the number after the highest
+  in `docs/decisions/README.md`.
+- Commits are Conventional Commits (`cog verify` runs on every commit
+  message through prek; CI checks a pull request's commits). A release is
+  `cog bump --auto` on `main` and never a hand-edited version: `cog.toml`
+  and `scripts/release-bump.sh` say what a bump touches, and
+  `docs/releasing.md` is the runbook. `.github/workflows/release.yml`
+  publishes to crates.io from a pushed `v*` tag, so the Bash guard denies
+  `cargo publish` (the dry run is allowed) and pushing a tag; both are the
+  release owner's decision.
 - Secrets live in `.env` (gitignored, loaded by mise). Never commit one.
-  `cargo publish` is denied by the Bash guard until a release is decided.
 
 ## Harness
 

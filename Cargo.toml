@@ -5,11 +5,9 @@ description = "Typed, calibrated judgments from TypeSafe System One models (Jev)
 readme = "README.md"
 keywords = ["typesafe", "system-one", "jev", "classification", "calibration"]
 categories = ["api-bindings", "web-programming::http-client"]
-# Not published until the first release is decided: a published version
-# cannot be taken back, and the Unreleased section still holds API changes.
-# `cargo publish` is denied by the Bash guard until then; take the crate by
-# git (README, "Status").
-publish = false
+# Published to crates.io by CI from a pushed `v*` tag, and only from there
+# (.github/workflows/release.yml, docs/releasing.md); the version is written
+# by `cog bump`, never by hand (cog.toml, decision 0013).
 edition = "2024"
 rust-version = "1.91"
 license = "MIT"
@@ -23,6 +21,7 @@ exclude = [
     "CLAUDE.md",
     "catalog-info.yaml",
     "mise.toml",
+    "cog.toml",
     ".pre-commit-config.yaml",
     "scripts/",
     ".env.example",

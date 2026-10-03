@@ -12,8 +12,9 @@ This index is generated from the crate's documentation nav (`mkdocs.yml`) and ea
 
 ## Pages
 
-- [judgment documentation](https://raw.githubusercontent.com/chussenot/judgment/main/docs/index.md): Map of the judgment crate's documentation, what each page answers, and where the crate's documentation ends and the signalman application's begins.
+- [judgment documentation](https://raw.githubusercontent.com/chussenot/judgment/main/docs/index.md): Map of the judgment crate's documentation, what each page answers, and where the crate's documentation ends and an application's begins.
 - [How judgment works](https://raw.githubusercontent.com/chussenot/judgment/main/docs/design.md): The two mechanisms the rustdoc cannot draw, typed handles from question to answer and the retry loop, with the response check, the error grouping, the request id and what the crate deliberately does not do.
+- [Releasing](https://raw.githubusercontent.com/chussenot/judgment/main/docs/releasing.md): How a version of the judgment crate is cut from its Conventional Commits with cocogitto, how the pushed tag publishes it to crates.io from CI, what to set up once, and what to do when a release goes wrong.
 
 ## Verification
 
@@ -26,5 +27,6 @@ This index is generated from the crate's documentation nav (`mkdocs.yml`) and ea
 
 ## Decisions
 
-- [Decisions](https://raw.githubusercontent.com/chussenot/judgment/main/docs/decisions/README.md): The architecture decision records that govern the judgment crate's design, how their numbers relate to signalman's records, and the records of signalman's that shaped the crate.
+- [Decisions](https://raw.githubusercontent.com/chussenot/judgment/main/docs/decisions/README.md): The architecture decision records that govern the judgment crate's design, how they are numbered, how a record is written, and what has moved since each was accepted.
 - [0003 Typed handles between questions and answers](https://raw.githubusercontent.com/chussenot/judgment/main/docs/decisions/0003-typed-handles-between-questions-and-answers.md): Adding a question returns a handle that fixes the answer type, so the compiler ties each wire answer to the code that consumes it.
+- [0013 Releases cut with cocogitto and published from CI](https://raw.githubusercontent.com/chussenot/judgment/main/docs/decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md): The version is derived from Conventional Commits by cocogitto, the CHANGELOG stays hand-written, and a pushed tag runs the gate and publishes the crate to crates.io, so no release depends on one person's laptop or memory.

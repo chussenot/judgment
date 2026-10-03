@@ -43,7 +43,13 @@ if at 'git[[:space:]]+(add|commit)[^;&|]*(^|[[:space:]])\.env(\.[A-Za-z0-9_-]+)?
    && ! at 'git[[:space:]]+(add|commit)[^;&|]*\.env\.example([[:space:]]|$)'; then
   deny ".env holds secrets and is gitignored; edit .env.example for documented variables."
 fi
-if at 'cargo[[:space:]]+publish([[:space:]]|$)'; then
-  deny "Publishing is a release step taken by hand (publish = false until the first release is decided)."
+# A publish, other than a dry run: CI publishes from a pushed tag.
+if at 'cargo[[:space:]]+publish([[:space:]]|$)' && ! at 'cargo[[:space:]]+publish[^;&|]*--dry-run'; then
+  deny "Publishing is CI's job from a pushed v* tag (docs/releasing.md); cargo publish --dry-run is allowed."
+fi
+# Pushing a tag starts the release workflow, which publishes; the release
+# owner pushes it (docs/releasing.md).
+if at 'git[[:space:]]+push[^;&|]*([[:space:]]--tags|[[:space:]]refs/tags/|[[:space:]]v[0-9][^[:space:]]*([[:space:]]|$))'; then
+  deny "Pushing a tag publishes a release; that push is the release owner's (docs/releasing.md)."
 fi
 exit 0

@@ -8,9 +8,9 @@
 //! `tests/openapi_drift.rs` refreshes, written canonically (sorted keys, a
 //! final newline). It sits behind the `openapi` feature because it is about
 //! 25 KB of static data that a client has no use for at run time. An
-//! application that checks its own requests and mocks against the contract,
-//! as signalman does in its `tests/typesafe_contract.rs`, turns the feature on
-//! in its dev-dependencies and parses the text with `serde_json`; that is the
+//! application that checks its own requests and mocks against the contract
+//! turns the feature on in its dev-dependencies and parses the text with
+//! `serde_json`; that is the
 //! one copy of the document, so the application's checks and the crate's
 //! cannot drift apart.
 //!
