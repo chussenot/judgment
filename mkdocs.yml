@@ -12,8 +12,12 @@ docs_dir: docs
 nav:
   - Overview: index.md
   - How judgment works: design.md
+  - What is in the crate: tour.md
+  - Patterns: patterns.md
+  - Testing without the model: testing.md
   - Releasing: releasing.md
   - Verification:
+      - How the crate is checked: verification/method.md
       - Against the hosted TypeSafe API: verification/hosted-typesafe.md
       - Against Laya typed-decisions: verification/laya-typed-decisions.md
   - Research:
