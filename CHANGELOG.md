@@ -8,6 +8,60 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `jud: 1.1` (decision 0016, issues #8, #9, #10), a minor version of the
+  format that only adds: every `jud: 1` document reads as before, keeps its
+  fingerprint and is still written as `jud: 1`. A document that uses a 1.1
+  feature must say `jud: 1.1`; a writer declares it only when it has to.
+  - Requests that depend on the state: a question's `when` (asked only
+    when a state path is present), `part_when` (an instruction part sent
+    only when one is), and a Choice's `options_from: request` (options
+    supplied per request, before the static ones, which may then number
+    fewer than two). `Rubric::lower(state, supplied)` builds the request
+    through the builder's checks; `jud::present` is the state-path test.
+  - A case's `options`, so a case is a complete request; `Case::request`
+    lowers it, and binding refuses a label on a question its state does
+    not ask.
+  - Gates with `bands` (named confidence bars, highest first, generalising
+    `confidence`), `level_at_least` on a Score and `strict` (`>` for `≥`);
+    `Verdict::Option` and `Verdict::Level` carry the band, and a Score's
+    verdict whether it reached the level.
+  - Top-level `x-` keys on every kind, ignored and part of no fingerprint,
+    kept by `Rubric::to_yaml` and `Cases::to_yaml`: a home for shared YAML
+    anchors and tool data.
+  - The JSON Schemas state the 1.1 shapes, `examples/jud/routing.jud` and
+    `routing-cases.jud` use every feature, and `tests/jud.rs` pins that
+    the schemas and the reader refuse the same 1.1 documents.
+- `eval::tuning::level_sweep` and `best_level`: a Score's "this level or
+  higher" decision swept over the levels, reading the nearest level as a
+  `level_at_least` gate does.
+- `impl IntoIterator for Questions`, by value, in wire order.
+
+### Changed
+
+- **Breaking:** `jud::Rubric::questions` is an
+  `IndexMap<String, jud::RubricQuestion>` (the question with its
+  declarations) instead of a `Questions`. Build the request with
+  `Rubric::lower` (or `Case::request` for a case) and pass that to a
+  backend and to `Rubric::apply`, which now takes the request it reads:
+  `apply(&asked, &response)`.
+- **Breaking:** `jud::Verdict::Option` gains `band` and `Verdict::Level`
+  gains `band` and `reached`; a pattern naming every field needs `..`.
+  `jud::Rubric` and `jud::Cases` gain `extensions`, `jud::Case` gains
+  `options`, and `jud::Gate` gains `bands`, `level_at_least` and `strict`,
+  so a struct literal needs `..Default::default()` (or the new fields).
+- `jud::VERSION` is the major version, 1; `jud::MINOR` is the highest minor
+  read and written, 1.
+
+### Fixed
+
+- A `.jud` recording with a field the format does not define was read and
+  the field ignored; it is refused, as the reading rules always said, with
+  only top-level `x-` keys (1.1) ignored.
+
+## [0.4.0] - 2026-10-04
+
+### Added
+
 - The `.jud` format (`docs/jud.md`, decision 0014), behind the new `jud`
   feature (off by default): one YAML format, JSON accepted, for a `rubric`
   (the questions in wire shape and wire order, with a `policy` of gates per

@@ -56,14 +56,15 @@ async fn run_cases(
 ) -> Result<Graded, Box<dyn Error>> {
     let mut graded: Graded = rubric
         .questions
-        .ids()
-        .map(|id| (id.to_owned(), Vec::new()))
+        .keys()
+        .map(|id| (id.clone(), Vec::new()))
         .collect();
     for (index, case) in cases.cases.iter().enumerate() {
-        let response = replay
-            .answer(&case.state, "jev-latest", &rubric.questions)
-            .await?;
-        let verdicts = rubric.apply(&response)?;
+        // The request this case asks: its state through the rubric (a
+        // rubric with `when` or `options_from` asks less, or more, per case).
+        let asked = case.request(rubric)?;
+        let response = replay.answer(&case.state, "jev-latest", &asked).await?;
+        let verdicts = rubric.apply(&asked, &response)?;
         let shown: Vec<String> = verdicts
             .iter()
             .map(|(id, verdict)| format!("{id}={}", show(verdict)))
@@ -80,7 +81,9 @@ fn show(verdict: &Verdict) -> String {
     match verdict {
         Verdict::Yes { probability } => format!("yes({:.2})", probability.value()),
         Verdict::No { probability } => format!("no({:.2})", probability.value()),
-        Verdict::Option { key, confidence } => format!("{key}({:.2})", confidence.value()),
+        Verdict::Option {
+            key, confidence, ..
+        } => format!("{key}({:.2})", confidence.value()),
         Verdict::Level {
             label, confidence, ..
         } => format!("{label}({:.2})", confidence.value()),
@@ -186,10 +189,11 @@ async fn run_conversations(
     let mut judgments = Vec::new();
     for (index, case) in cases.cases.iter().enumerate() {
         for turn in case.per_turn() {
+            let asked = turn.case.request(rubric)?;
             let response = replay
-                .answer(&turn.case.state, "jev-latest", &rubric.questions)
+                .answer(&turn.case.state, "jev-latest", &asked)
                 .await?;
-            let verdicts = rubric.apply(&response)?;
+            let verdicts = rubric.apply(&asked, &response)?;
             println!(
                 "  {:<10} turn {}  wants_human={}",
                 case.name(index),

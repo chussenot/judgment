@@ -465,9 +465,27 @@ impl Questions {
     }
 }
 
+/// The questions with their ids, in wire order, by value.
+impl IntoIterator for Questions {
+    type Item = (String, Question);
+    type IntoIter = indexmap::map::IntoIter<String, Question>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.map.into_iter()
+    }
+}
+
 /// The checks every question gets before it is added, whichever way it
 /// came (module docs, `# Limits are checked here`).
-fn validate(id: &str, question: &Question) -> Result<()> {
+pub(crate) fn validate(id: &str, question: &Question) -> Result<()> {
+    validate_with(id, question, 2)
+}
+
+/// [`validate`] with a Choice allowed `min_options` options: the static
+/// part of a Choice whose other options are supplied per request
+/// (`crate::jud`) may have fewer than the 2 a request needs, which the
+/// request itself is checked for when it is built.
+pub(crate) fn validate_with(id: &str, question: &Question, min_options: usize) -> Result<()> {
     let refuse = |reason: String| {
         Err(Error::InvalidQuestion {
             id: id.to_owned(),
@@ -493,7 +511,7 @@ fn validate(id: &str, question: &Question) -> Result<()> {
             }
         }
         Question::Choice { criteria, .. } => {
-            if criteria.len() < 2 {
+            if criteria.len() < min_options {
                 return refuse("a Choice needs at least 2 options".to_owned());
             }
             if criteria.len() > MAX_CHOICE_OPTIONS {

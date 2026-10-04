@@ -30,6 +30,7 @@ nav:
       - 0003 Typed handles between questions and answers: decisions/0003-typed-handles-between-questions-and-answers.md
       - 0013 Releases cut with cocogitto and published from CI: decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md
       - 0014 A file format for rubrics, cases and recordings: decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md
+      - 0016 The .jud format takes minor versions: decisions/0016-jud-takes-minor-versions.md
 
 plugins:
   - techdocs-core

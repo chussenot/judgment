@@ -51,8 +51,11 @@ The README says why; `docs/` says how; the rustdoc is the reference.
 - The `.jud` format (`docs/jud.md`, `src/jud/`, feature `jud`) is a
   specification other tools implement: a change to what a document may hold
   or how it is read moves `docs/jud.md`, `schemas/jud/`, `tests/jud.rs` and
-  the documents under `examples/jud/` together, and `jud: 1` is bumped for
-  any field added, because a reader refuses a field it does not know. The
+  the documents under `examples/jud/` together. A purely additive change
+  takes the next minor version (`jud: 1.1`, decision 0016), a change of
+  meaning the next major; a document must declare the version of the
+  features it uses, and a writer declares the lowest that reads it, so a
+  `jud: 1` rubric keeps its fingerprint and is still written as `jud: 1`. The
   questions in a rubric are the wire's shape, never a translation of it, and
   fingerprints are RFC 8785 canonical JSON (`src/eval/canonical.rs`), checked
   against the known vector on the page. `Questions` and a Choice's options
@@ -68,8 +71,9 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   crate was extracted from is named anywhere in the repository.
 - Decision records are numbered in one sequence and a number is never reused
   or renumbered: 0003 kept its number when it moved here, the numbers up to
-  0012 are left unused, and a new record takes the number after the highest
-  in `docs/decisions/README.md`.
+  0012 and 0015 are taken outside this repository and left unused, and a
+  new record takes the number after the highest in use in either place
+  (`docs/decisions/README.md` says which are skipped).
 - Commits are Conventional Commits (`cog verify` runs on every commit
   message through prek; CI checks a pull request's commits). A release is
   `cog bump --auto` on `main` and never a hand-edited version: `cog.toml`

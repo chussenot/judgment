@@ -1,0 +1,53 @@
+# Cases for the alert-routing rubric (jud 1.1). The owner candidates are
+# not in the state, so each case supplies them under `options`; the open
+# incidents are, and are supplied too, as their keys and descriptions.
+jud: 1.1
+kind: cases
+id: alert-routing-cases
+rubric: alert-routing
+x-provenance:
+  labelled_by: on-call lead
+  labelled_at: 2026-10-04
+
+cases:
+  - id: checkout-oom
+    state:
+      alert:
+        title: KubePodCrashLooping checkout-api
+        component: {name: checkout-api, owner: Payments}
+        recent_changes: [deploy checkout-api v2.4.0, 12 minutes ago]
+    options:
+      owner:
+        payments: Checkout and payments services
+        platform: Kubernetes, CI/CD, cloud accounts
+    expect:
+      owner: payments
+      impact: 2
+      caused_by_change: true
+
+  - id: disk-noise
+    state:
+      alert:
+        title: DiskUsageHigh on a CI runner, 81%
+    options:
+      owner:
+        payments: Checkout and payments services
+        platform: Kubernetes, CI/CD, cloud accounts
+    expect:
+      owner: platform
+      impact: "None: internal or informational"
+
+  - id: same-outage
+    state:
+      alert:
+        title: Checkout 5xx above 10%
+        open_incidents: [{id: INC-4821, summary: Checkout 5xx spike}]
+    options:
+      owner:
+        payments: Checkout and payments services
+        platform: Kubernetes, CI/CD, cloud accounts
+      duplicate_of:
+        INC-4821: Checkout 5xx spike
+    expect:
+      duplicate_of: INC-4821
+      impact: 3

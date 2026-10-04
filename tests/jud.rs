@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use judgment::eval::Recording;
-use judgment::jud::{self, Cases, Document, Rubric, recording_to_yaml};
+use judgment::jud::{self, Cases, Document, Rubric, Supplied, recording_to_yaml};
 use judgment::{Fake, Replay, SystemOne};
 use serde_json::{Value, json};
 
@@ -112,8 +112,8 @@ fn every_example_document_validates_against_its_schema_and_parses() {
         );
         *kinds.entry(kind).or_default() += 1;
     }
-    assert_eq!(kinds["rubric"], 2);
-    assert_eq!(kinds["cases"], 2);
+    assert_eq!(kinds["rubric"], 3);
+    assert_eq!(kinds["cases"], 3);
     assert!(kinds["recording"] >= 10, "{kinds:?}");
 }
 
@@ -130,6 +130,24 @@ fn the_example_cases_bind_to_their_rubric_and_the_tuning_names_them() {
         .unwrap()
         .bind(&handoff)
         .unwrap();
+    // The 1.1 pair: every case lowers to a request and its labels fit it.
+    let routing = Rubric::parse(&read(EXAMPLES, "routing.jud")).unwrap();
+    let routing_cases = Cases::parse(&read(EXAMPLES, "routing-cases.jud")).unwrap();
+    routing_cases.bind(&routing).unwrap();
+    let asked: Vec<Vec<String>> = routing_cases
+        .cases
+        .iter()
+        .map(|c| {
+            c.request(&routing)
+                .unwrap()
+                .ids()
+                .map(str::to_owned)
+                .collect()
+        })
+        .collect();
+    assert_eq!(asked[0], ["owner", "impact", "caused_by_change"]);
+    assert_eq!(asked[1], ["owner", "impact"]);
+    assert_eq!(asked[2], ["owner", "impact", "duplicate_of"]);
     // The recordings name the rubric they answer.
     for path in example_files("jud") {
         if let Document::Recording(recording) =
@@ -165,14 +183,15 @@ fn what_the_crate_writes_validates() {
     );
     let fake = Fake::new().noul("wants_human", 0.3).unwrap();
     let handoff = Rubric::parse(&read(EXAMPLES, "handoff.jud")).unwrap();
+    let asked = handoff.lower(&json!(["hi"]), &Supplied::new()).unwrap();
     let response = tokio::runtime::Runtime::new()
         .unwrap()
-        .block_on(fake.answer(&json!(["hi"]), "m", &handoff.questions))
+        .block_on(fake.answer(&json!(["hi"]), "m", &asked))
         .unwrap();
     let mut recording = Recording::new("one", response, 7);
     recording.fingerprint = Some(judgment::eval::canonical::request_fingerprint(
         &json!(["hi"]),
-        &handoff.questions,
+        &asked,
     ));
     recording.recorded_at = Some(judgment::eval::now_rfc3339());
     let yaml = recording_to_yaml(&recording).unwrap();
@@ -216,6 +235,35 @@ fn the_schemas_and_the_parser_refuse_the_same_documents() {
             &*RECORDING,
             "jud: 1\nkind: recording\ncase: c\nelapsed_ms: 1\n",
         ),
+        // A version that does not exist.
+        (
+            &*RUBRIC,
+            "jud: 1.2\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+        ),
+        // A top-level key that is neither a field nor an `x-` key.
+        (
+            &*RUBRIC,
+            "jud: 1.1\nkind: rubric\nid: r\ncomment: hi\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*CASES,
+            "jud: 1.1\nkind: cases\nnotes: hi\ncases:\n  - state: s\n",
+        ),
+        // An unknown source of options.
+        (
+            &*RUBRIC,
+            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  c: {type: choice, instructions: pick, criteria: {a: A}, options_from: catalog}\n",
+        ),
+        // A band with a field bands do not have.
+        (
+            &*RUBRIC,
+            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  c: {type: choice, instructions: pick, criteria: {a: A, b: B}}\npolicy:\n  c: {bands: [{at_least: 0.5, verdict: go, colour: red}]}\n",
+        ),
+        // A state path with an empty segment.
+        (
+            &*RUBRIC,
+            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?, when: \"alert..x\"}\n",
+        ),
     ];
     for (validator, text) in refused {
         assert!(
@@ -235,7 +283,7 @@ fn yes_is_a_string_not_a_boolean() {
         "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\n  c: {type: choice, instructions: pick, criteria: {yes: null, no: null, maybe: null}}\n",
     )
     .unwrap();
-    let keys: Vec<&str> = match rubric.questions.get("c").unwrap() {
+    let keys: Vec<&str> = match &rubric.questions.get("c").unwrap().question {
         judgment::Question::Choice { criteria, .. } => {
             criteria.keys().map(String::as_str).collect()
         }
@@ -259,22 +307,24 @@ async fn a_replay_answers_from_jud_recordings_by_fingerprint() {
     let replay = Replay::open(&Path::new(EXAMPLES).join("recordings")).unwrap();
     assert_eq!(
         replay.len(),
-        example_files("jud").len() - 4,
+        example_files("jud").len() - 6,
         "one recording per file"
     );
     let rubric = Rubric::parse(&read(EXAMPLES, "triage.jud")).unwrap();
     let cases = Cases::parse(&read(EXAMPLES, "triage-cases.jud")).unwrap();
     for case in &cases.cases {
-        let response = replay
-            .answer(&case.state, "any", &rubric.questions)
-            .await
-            .unwrap();
+        let asked = case.request(&rubric).unwrap();
+        let response = replay.answer(&case.state, "any", &asked).await.unwrap();
         assert_eq!(response.model, "jev-1.13.0");
-        rubric.apply(&response).unwrap();
+        rubric.apply(&asked, &response).unwrap();
     }
     // Another state has no recording.
     let err = replay
-        .answer(&json!({"message": "unseen"}), "any", &rubric.questions)
+        .answer(
+            &json!({"message": "unseen"}),
+            "any",
+            &rubric.lower(&json!({}), &Supplied::new()).unwrap(),
+        )
         .await
         .unwrap_err();
     assert!(matches!(err, judgment::Error::NoRecording(_)), "{err}");

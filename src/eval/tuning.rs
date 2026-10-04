@@ -9,9 +9,12 @@
 //! choice visible: a sweep over thresholds for a yes/no question (what each
 //! threshold buys in precision, recall and F1) and a gate table for a Choice
 //! or a Score (what share of the answers each confidence bar lets through,
-//! and how often those are right). [`best_threshold`] and [`lowest_bar`]
-//! pick from the tables by a stated rule; the rule is the policy, and it is
-//! printed with the result rather than hidden in it.
+//! and how often those are right), and a sweep over levels for a Score read
+//! as "this level or higher" (a `level_at_least` gate). [`best_threshold`],
+//! [`lowest_bar`] and [`best_level`] pick from the tables by a stated rule;
+//! the rule is the policy, and it is printed with the result rather than
+//! hidden in it. A rubric's bands are bars of one gate table: each band's
+//! `at_least` is read off the same rows.
 //!
 //! Everything here is pure arithmetic over [`Judgment`]s and leaves the
 //! choice of whether to apply a bar to the application; the `jud` module's
@@ -157,6 +160,121 @@ pub fn best_threshold(rows: &[ThresholdRow]) -> Option<f64> {
         .map(|(_, threshold)| threshold)
 }
 
+/// One row of a level sweep over a Score: the decision "the nearest level
+/// is `level` or higher", against the label "the expected level is `level`
+/// or higher".
+#[derive(Debug, Clone, PartialEq)]
+pub struct LevelRow {
+    /// The level the decision starts at.
+    pub level: usize,
+    /// Labelled judgments the row was computed over.
+    pub n: usize,
+    /// At or above the level, and labelled at or above it.
+    pub true_positives: usize,
+    /// At or above the level, labelled below it.
+    pub false_positives: usize,
+    /// Below the level, labelled at or above it.
+    pub false_negatives: usize,
+    /// Below the level and labelled below it.
+    pub true_negatives: usize,
+    /// `(tp + tn) / n`.
+    pub accuracy: f64,
+    /// `tp / (tp + fp)`; `None` when nothing reached the level.
+    pub precision: Option<f64>,
+    /// `tp / (tp + fn)`; `None` when nothing was labelled at or above it.
+    pub recall: Option<f64>,
+    /// Harmonic mean of precision and recall; `None` when either is.
+    pub f1: Option<f64>,
+}
+
+/// Sweep "this level or higher" over the judgments of one Score with
+/// `levels` levels, for every level from 1 (level 0 is reached by every
+/// answer).
+///
+/// The level an answer reached is its nearest level, the probability-
+/// weighted position `Σ i · p_i` rounded, which is what a rubric gate's
+/// `level_at_least` compares ([`crate::jud::Rubric::apply`]), not the most
+/// probable level a [`Judgment`] reports as `predicted`: the two differ on
+/// a spread distribution, and the table must say what the gate will do. A
+/// judgment takes part when it is labelled with a level index and carries
+/// level probabilities; the others are skipped.
+pub fn level_sweep<'a>(
+    judgments: impl IntoIterator<Item = &'a Judgment>,
+    levels: usize,
+) -> Vec<LevelRow> {
+    let pairs: Vec<(usize, usize)> = judgments
+        .into_iter()
+        .filter_map(|j| {
+            let expected: usize = j.expected.as_deref()?.parse().ok()?;
+            let mut position = 0.0;
+            let mut any = false;
+            for (level, p) in &j.probabilities {
+                position += level.parse::<usize>().ok()? as f64 * p;
+                any = true;
+            }
+            // Rounded and clamped to the scale, as `Score::nearest_level`.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let nearest = (position.round().max(0.0) as usize).min(levels.saturating_sub(1));
+            any.then_some((nearest, expected))
+        })
+        .collect();
+    (1..levels)
+        .map(|level| {
+            let (mut tp, mut fp, mut fn_, mut tn) = (0usize, 0usize, 0usize, 0usize);
+            for (nearest, expected) in &pairs {
+                match (*nearest >= level, *expected >= level) {
+                    (true, true) => tp += 1,
+                    (true, false) => fp += 1,
+                    (false, true) => fn_ += 1,
+                    (false, false) => tn += 1,
+                }
+            }
+            let n = pairs.len();
+            let ratio = |num: usize, den: usize| (den > 0).then(|| num as f64 / den as f64);
+            let precision = ratio(tp, tp + fp);
+            let recall = ratio(tp, tp + fn_);
+            let f1 = match (precision, recall) {
+                (Some(p), Some(r)) if p + r > 0.0 => Some(2.0 * p * r / (p + r)),
+                (Some(_), Some(_)) => Some(0.0),
+                _ => None,
+            };
+            LevelRow {
+                level,
+                n,
+                true_positives: tp,
+                false_positives: fp,
+                false_negatives: fn_,
+                true_negatives: tn,
+                accuracy: if n == 0 {
+                    0.0
+                } else {
+                    (tp + tn) as f64 / n as f64
+                },
+                precision,
+                recall,
+                f1,
+            }
+        })
+        .collect()
+}
+
+/// The level with the best F1; among equals, the lowest, for the reason
+/// [`best_threshold`] takes the lowest threshold. `None` when no row has
+/// an F1.
+pub fn best_level(rows: &[LevelRow]) -> Option<usize> {
+    rows.iter()
+        .filter_map(|row| row.f1.map(|f1| (f1, row.level)))
+        .fold(None, |best: Option<(f64, usize)>, (f1, level)| match best {
+            Some((best_f1, best_level))
+                if f1 < best_f1 || (f1 <= best_f1 && level > best_level) =>
+            {
+                Some((best_f1, best_level))
+            }
+            _ => Some((f1, level)),
+        })
+        .map(|(_, level)| level)
+}
+
 /// The gate table over the judgments of one Choice or Score: for each bar,
 /// how many labelled judgments have a confidence at or above it and how
 /// many of those are right.
@@ -294,5 +412,50 @@ mod tests {
             "too few covered at every bar that reaches 0.9"
         );
         assert_eq!(lowest_bar(&rows, 0.5, 1), Some(0.0));
+    }
+
+    fn score(probabilities: [f64; 4], expected: usize) -> Judgment {
+        Judgment::new(
+            String::new(),
+            Some(expected.to_string()),
+            0.9,
+            probabilities
+                .iter()
+                .enumerate()
+                .map(|(i, p)| (i.to_string(), *p))
+                .collect(),
+            true,
+        )
+    }
+
+    #[test]
+    fn a_level_sweep_reads_the_nearest_level_as_the_gate_does() {
+        let judgments = [
+            // Most probable level 3, but the weighted position 1.8 rounds to
+            // 2: the gate reads 2.
+            score([0.3, 0.0, 0.1, 0.6], 2),
+            score([0.0, 0.0, 0.0, 1.0], 3),
+            score([0.0, 1.0, 0.0, 0.0], 1),
+            score([1.0, 0.0, 0.0, 0.0], 0),
+        ];
+        let rows = level_sweep(&judgments, 4);
+        assert_eq!(rows.iter().map(|r| r.level).collect::<Vec<_>>(), [1, 2, 3]);
+        let at_2 = &rows[1];
+        assert_eq!(
+            (
+                at_2.true_positives,
+                at_2.false_positives,
+                at_2.false_negatives,
+                at_2.true_negatives
+            ),
+            (2, 0, 0, 2)
+        );
+        assert_eq!(at_2.f1, Some(1.0));
+        // Levels 1 and 2 both separate perfectly; the lower wins the tie.
+        assert_eq!(best_level(&rows), Some(1));
+        // An unlabelled judgment, or one without level probabilities, is skipped.
+        let skipped = [Judgment::noul(0.9, Some(true), true)];
+        assert!(level_sweep(&skipped, 4).iter().all(|r| r.n == 0));
+        assert_eq!(best_level(&level_sweep(&skipped, 4)), None);
     }
 }
