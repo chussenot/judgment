@@ -19,6 +19,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | What the hosted TypeSafe API does with what the crate sends, and with what it refuses to send | [Against the hosted TypeSafe API](verification/hosted-typesafe.md) |
 | Whether the crate works against a second implementation of the wire, what the benchmark measured, and what each `laya-serve` release changed on the wire | [Against Laya typed-decisions](verification/laya-typed-decisions.md) |
 | What the other Rust clients and the official SDKs do, and which of it the crate adopted | [System One client libraries](research/system-one-client-libraries.md) |
+| Which servers and models speak the wire, how close the open ones are to Jev on the Decision Index, and what each one's limits mean for a consumer | [Compatible servers and models](research/compatible-servers-and-models.md) |
 | Why an answer is read through a typed handle rather than a string key | [Decision 0003](decisions/0003-typed-handles-between-questions-and-answers.md) |
 | How a version is cut from the commits and published to crates.io, and what to set up once | [Releasing](releasing.md) |
 | Why releases are cut with cocogitto from Conventional Commits and published by CI from a tag | [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) |

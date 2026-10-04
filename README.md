@@ -227,7 +227,11 @@ comparison the second one loosened, is in
 [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md).
 `examples/laya/serve_laya.py` is a System One-compatible shim over the
 `laya` package for when `laya-serve` is not wanted; it is the one Laya
-server that also answers `GET /v1/models`.
+server that also answers `GET /v1/models`. `mise run live:ollama` points the
+same live tests at Ollama's `/v1/systemone` (0.35 and later) with
+`tev1:0.8b`, a decision model small enough for a CPU; which servers speak
+the wire, and how they differ, is in
+[Compatible servers and models](docs/research/compatible-servers-and-models.md).
 
 ### Checking against the published contract
 
@@ -310,6 +314,7 @@ The crate's documentation lives with it, under [`docs/`](docs/index.md):
 | [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md) | What `jev-1.13.0` did with the live tests and with fifty probes past the builder's limits |
 | [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | The same tests against an open-weights server, the bug they caught, the benchmark numbers |
 | [System One client libraries](docs/research/system-one-client-libraries.md) | What the other Rust clients and the official SDKs do, and what the crate adopted |
+| [Compatible servers and models](docs/research/compatible-servers-and-models.md) | Which servers speak the wire, hosted and local, how close the open models are to Jev, and what each one's limits mean for a caller |
 | [Releasing](docs/releasing.md) | How a version is cut from the commits with cocogitto and published to crates.io by CI from a tag |
 | [Decisions](docs/decisions/README.md) | Why the API is shaped as it is, and why releases are cut the way they are |
 | [llms.txt](docs/llms.txt) | The index for agents and models; [llms-full.txt](docs/llms-full.txt) is every page in one file |

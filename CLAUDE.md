@@ -40,7 +40,8 @@ The README says why; `docs/` says how; the rustdoc is the reference.
 - Tests never call a real API: wiremock for the client, `Fake` and recordings
   for everything else. The exceptions are `tests/live.rs`, all `#[ignore]`,
   run by hand against `JUDGMENT_LIVE_BASE_URL` (`mise run live:typesafe` with
-  `TYPESAFE_API_KEY` in `.env`, `mise run live:laya` against a local server;
+  `TYPESAFE_API_KEY` in `.env`, `mise run live:laya` and `mise run
+  live:ollama` against a local server;
   `docs/verification/` records what real servers did), and
   `tests/openapi_drift.rs`, ignored, network only, no key.
 - A change to what the crate sends or accepts on the wire is a contract
