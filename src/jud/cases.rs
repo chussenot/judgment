@@ -5,10 +5,13 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use super::rubric::level_index;
-use super::{Error, Result, Rubric, VERSION, check_version, from_text, to_yaml};
+use super::{
+    Error, Result, Rubric, Supplied, check_version, extensions, from_text, require_minor, to_yaml,
+    version_value,
+};
 use crate::answer::Response;
 use crate::eval::{Judgment, canonical};
-use crate::question::Question;
+use crate::question::{Question, Questions};
 
 /// Labelled cases: states with, for each, what the right answer to some of
 /// a rubric's questions is. The gates of a rubric are tuned on them, and a
@@ -26,6 +29,9 @@ pub struct Cases {
     pub description: Option<String>,
     /// The cases, in document order.
     pub cases: Vec<Case>,
+    /// The document's top-level `x-` keys (1.1), kept as read and part of
+    /// no fingerprint.
+    pub extensions: IndexMap<String, Value>,
 }
 
 /// One labelled state.
@@ -43,6 +49,12 @@ pub struct Case {
     /// labelled for; a question left out is asked and not graded.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub expect: IndexMap<String, Expect>,
+    /// Options supplied for this case's request (1.1), by question id: what
+    /// a Choice with `options_from: request` is asked over, before its
+    /// static options ([`Rubric::lower`]). A case is then a complete
+    /// request: its state, these options and the rubric.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub options: Supplied,
     /// Free labels for slicing a report (`edge`, `multilingual`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
@@ -113,9 +125,16 @@ impl Case {
             id: None,
             state,
             expect: IndexMap::new(),
+            options: IndexMap::new(),
             tags: Vec::new(),
             note: None,
         }
+    }
+
+    /// The request this case asks under `rubric`: [`Rubric::lower`] over its
+    /// state and its options.
+    pub fn request(&self, rubric: &Rubric) -> Result<Questions> {
+        rubric.lower(&self.state, &self.options)
     }
 
     /// The case's id, or `#index` for a case without one.
@@ -156,6 +175,7 @@ impl Case {
                         id: self.id.clone(),
                         state: Value::Array(all[..=index].to_vec()),
                         expect,
+                        options: self.options.clone(),
                         tags: self.tags.clone(),
                         note: self.note.clone(),
                     },
@@ -166,7 +186,6 @@ impl Case {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct RawCases {
     #[serde(default)]
     jud: Option<Value>,
@@ -178,11 +197,13 @@ struct RawCases {
     #[serde(default)]
     description: Option<String>,
     cases: Vec<Case>,
+    #[serde(flatten)]
+    rest: IndexMap<String, Value>,
 }
 
 #[derive(Serialize)]
 struct CasesDoc<'a> {
-    jud: u64,
+    jud: Value,
     kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     id: Option<&'a str>,
@@ -191,6 +212,8 @@ struct CasesDoc<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<&'a str>,
     cases: &'a [Case],
+    #[serde(flatten)]
+    extensions: &'a IndexMap<String, Value>,
 }
 
 impl Cases {
@@ -199,10 +222,11 @@ impl Cases {
     /// [`Cases::bind`] does that.
     pub fn parse(text: &str) -> Result<Self> {
         let raw: RawCases = from_text(text)?;
-        check_version(raw.jud.as_ref())?;
+        let declared = check_version(raw.jud.as_ref())?;
         if raw.kind != "cases" {
             return Err(Error::Kind { found: raw.kind });
         }
+        let extensions = extensions(raw.rest, "cases")?;
         if raw.cases.is_empty() {
             return Err(Error::Invalid {
                 field: "cases".to_owned(),
@@ -214,7 +238,9 @@ impl Cases {
             rubric: raw.rubric,
             description: raw.description,
             cases: raw.cases,
+            extensions,
         };
+        require_minor(declared, cases.feature())?;
         for (index, case) in cases.cases.iter().enumerate() {
             if case.id.as_deref() == Some("") {
                 return Err(Error::Case {
@@ -235,15 +261,27 @@ impl Cases {
         Ok(cases)
     }
 
-    /// The cases as a `.jud` document, YAML.
+    /// The first `jud: 1.1` feature the document uses, as a field path.
+    fn feature(&self) -> Option<String> {
+        self.extensions.keys().next().cloned().or_else(|| {
+            self.cases
+                .iter()
+                .position(|c| !c.options.is_empty())
+                .map(|i| format!("cases.{i}.options"))
+        })
+    }
+
+    /// The cases as a `.jud` document, YAML, declaring `jud: 1.1` only when
+    /// it uses a 1.1 feature.
     pub fn to_yaml(&self) -> Result<String> {
         to_yaml(&CasesDoc {
-            jud: VERSION,
+            jud: version_value(u64::from(self.feature().is_some())),
             kind: "cases",
             id: self.id.as_deref(),
             rubric: self.rubric.as_deref(),
             description: self.description.as_deref(),
             cases: &self.cases,
+            extensions: &self.extensions,
         })
     }
 
@@ -254,13 +292,16 @@ impl Cases {
         canonical::fingerprint(&serde_json::to_value(&self.cases).unwrap_or(Value::Null))
     }
 
-    /// Check every label against `rubric`: each expectation names one of
-    /// its questions and fits that question's primitive ([`Expect`]), a
-    /// Choice label is an offered option, a Score label is a level, and a
-    /// `from_turn` label is on a conversation and within its turns. When
-    /// the document names its rubric, that name must be the rubric's id or
-    /// fingerprint. The first failure is returned as [`Error::Case`] or
-    /// [`Error::Invalid`].
+    /// Check every case against `rubric`: its request lowers ([`Case::request`]:
+    /// options are supplied only to questions that take them, and every
+    /// Choice ends up with 2 to 255 options), and every label names a
+    /// question that request asks (a question whose `when` does not hold
+    /// for the case's state is not asked, so cannot be labelled) and fits
+    /// it ([`Expect`]): a Choice label is an option offered, static or
+    /// supplied; a Score label is a level; a `from_turn` label is on a
+    /// conversation and within its turns. When the document names its
+    /// rubric, that name must be the rubric's id or fingerprint. The first
+    /// failure is returned as [`Error::Case`] or [`Error::Invalid`].
     pub fn bind(&self, rubric: &Rubric) -> Result<()> {
         if let Some(named) = &self.rubric
             && *named != rubric.id
@@ -276,18 +317,29 @@ impl Cases {
             });
         }
         for (index, case) in self.cases.iter().enumerate() {
+            let asked = request(rubric, case, index)?;
             for (id, expect) in &case.expect {
-                expected_label(rubric, case, index, id, expect)?;
+                expected_label(rubric, &asked, case, index, id, expect)?;
             }
         }
         Ok(())
     }
 }
 
+/// A case's request, its failure named by the case.
+fn request(rubric: &Rubric, case: &Case, index: usize) -> Result<Questions> {
+    case.request(rubric).map_err(|e| Error::Case {
+        case: case.name(index),
+        reason: format!("its request does not lower: {e}"),
+    })
+}
+
 /// The label a case's expectation grades as, in [`Judgment::of_answer`]'s
-/// vocabulary: `yes` or `no`, an option key, or a level index as a string.
+/// vocabulary: `yes` or `no`, an option key, or a level index as a string,
+/// checked against the request the case asks.
 fn expected_label(
     rubric: &Rubric,
+    asked: &Questions,
     case: &Case,
     index: usize,
     id: &str,
@@ -299,8 +351,14 @@ fn expected_label(
             reason: format!("`expect.{id}`: {reason}"),
         })
     };
-    let Some(question) = rubric.questions.get(id) else {
-        return refuse("the rubric has no such question".to_owned());
+    let Some(question) = asked.get(id) else {
+        let reason = match rubric.questions.get(id).and_then(|q| q.when.as_deref()) {
+            Some(when) => format!(
+                "the question is not asked for this state (`when: {when}` does not hold), so it cannot be labelled"
+            ),
+            None => "the rubric has no such question".to_owned(),
+        };
+        return refuse(reason);
     };
     match (question, expect) {
         (Question::Noul { .. }, Expect::Bool(yes)) => Ok(yes_no(*yes)),
@@ -361,9 +419,9 @@ fn yes_no(yes: bool) -> String {
 /// Grade a response to `case` against its labels: one [`Judgment`] per
 /// labelled question, in the case's order, each keyed by question id.
 ///
-/// The response is verified against the rubric first ([`Error::Response`]);
-/// a label that does not fit its question is [`Error::Case`], as
-/// [`Cases::bind`] would have reported. `index` names the case in errors
+/// The response is verified against the case's request first
+/// ([`Case::request`], [`Error::Response`]); a label that does not fit its
+/// question is [`Error::Case`], as [`Cases::bind`] would have reported. `index` names the case in errors
 /// when it has no id. A `from_turn` label grades the whole conversation;
 /// grade each [`Turn`] of [`Case::per_turn`] to grade turn by turn.
 pub fn grade(
@@ -372,15 +430,14 @@ pub fn grade(
     index: usize,
     response: &Response,
 ) -> Result<Vec<(String, Judgment)>> {
-    response
-        .verify(&rubric.questions)
-        .map_err(|source| Error::Response {
-            source: Box::new(source),
-        })?;
+    let asked = request(rubric, case, index)?;
+    response.verify(&asked).map_err(|source| Error::Response {
+        source: Box::new(source),
+    })?;
     case.expect
         .iter()
         .map(|(id, expect)| {
-            let expected = expected_label(rubric, case, index, id, expect)?;
+            let expected = expected_label(rubric, &asked, case, index, id, expect)?;
             let answer = response.answers.get(id).ok_or_else(|| Error::Response {
                 source: Box::new(crate::Error::MissingAnswer {
                     id: id.clone(),
@@ -596,7 +653,7 @@ cases:
             .unwrap();
         let refund = &cases.cases[0];
         let response = fake
-            .answer(&refund.state, "m", &rubric.questions)
+            .answer(&refund.state, "m", &refund.request(&rubric).unwrap())
             .await
             .unwrap();
         let graded = grade(&rubric, refund, 0, &response).unwrap();
@@ -613,7 +670,7 @@ cases:
 
         let chat = &cases.cases[2];
         let response = fake
-            .answer(&chat.state, "m", &rubric.questions)
+            .answer(&chat.state, "m", &chat.request(&rubric).unwrap())
             .await
             .unwrap();
         let graded: IndexMap<_, _> = grade(&rubric, chat, 2, &response)
@@ -623,5 +680,88 @@ cases:
         // Turn 2 exists, so over the whole conversation the handoff is yes.
         assert_eq!(graded["handoff"].expected.as_deref(), Some("yes"));
         assert_eq!(graded["handoff"].correct, Some(false));
+    }
+
+    const ROUTING: &str = r"
+jud: 1.1
+kind: rubric
+id: routing
+questions:
+  owner:
+    type: choice
+    instructions: Which team owns `alert`?
+    criteria: {none_of_these: Not clearly any team}
+    options_from: request
+  caused_by_change:
+    type: noul
+    instructions: Did a change in `alert.recent_changes` cause it?
+    when: alert.recent_changes
+";
+
+    #[test]
+    fn a_case_supplies_the_options_its_request_needs() {
+        let rubric = Rubric::parse(ROUTING).unwrap();
+        let text = "jud: 1.1\nkind: cases\nx-source: {export: 2026-10-04}\ncases:\n  - id: oom\n    state: {alert: {title: OOMKilled, recent_changes: [deploy v2]}}\n    options:\n      owner: {platform: Kubernetes, payments: Checkout}\n    expect: {owner: platform, caused_by_change: true}\n";
+        let cases = Cases::parse(text).unwrap();
+        cases.bind(&rubric).unwrap();
+        assert_eq!(cases.extensions["x-source"]["export"], "2026-10-04");
+        let asked = cases.cases[0].request(&rubric).unwrap();
+        let ids: Vec<&str> = asked.ids().collect();
+        assert_eq!(ids, ["owner", "caused_by_change"]);
+        // The document round-trips, as 1.1, and its fingerprint does not
+        // depend on the `x-` key.
+        let yaml = cases.to_yaml().unwrap();
+        assert!(yaml.starts_with("jud: 1.1\n"), "{yaml}");
+        assert_eq!(Cases::parse(&yaml).unwrap(), cases);
+        let mut bare = cases.clone();
+        bare.extensions.clear();
+        assert_eq!(bare.fingerprint(), cases.fingerprint());
+        // Options make a document 1.1.
+        let err = Cases::parse(&text.replacen("jud: 1.1", "jud: 1", 1).replacen(
+            "x-source: {export: 2026-10-04}\n",
+            "",
+            1,
+        ))
+        .unwrap_err();
+        assert!(
+            matches!(&err, Error::Invalid { field, .. } if field == "cases.0.options"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_label_must_name_a_question_the_case_asks() {
+        let rubric = Rubric::parse(ROUTING).unwrap();
+        let bind = |case: &str| {
+            Cases::parse(&format!("jud: 1.1\nkind: cases\ncases:\n  - id: c\n{case}"))
+                .unwrap()
+                .bind(&rubric)
+        };
+        // No change listed: `caused_by_change` is not asked, so not labelled.
+        let err = bind("    state: {alert: {title: x}}\n    options: {owner: {platform: P}}\n    expect: {caused_by_change: false}\n").unwrap_err();
+        assert!(
+            matches!(&err, Error::Case { reason, .. } if reason.contains("not asked for this state")),
+            "{err}"
+        );
+        // A label among the supplied options is offered; another is not.
+        bind("    state: {alert: {title: x}}\n    options: {owner: {platform: P}}\n    expect: {owner: platform}\n").unwrap();
+        let err = bind("    state: {alert: {title: x}}\n    options: {owner: {platform: P}}\n    expect: {owner: payments}\n").unwrap_err();
+        assert!(
+            matches!(&err, Error::Case { reason, .. } if reason.contains("not one of the offered options")),
+            "{err}"
+        );
+        // A case whose request cannot be built says so.
+        let err = bind("    state: {alert: {title: x}}\n    expect: {owner: none_of_these}\n")
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::Case { reason, .. } if reason.contains("does not lower")),
+            "{err}"
+        );
+        let err = bind("    state: {alert: {title: x}}\n    options: {caused_by_change: {a: A}}\n")
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::Case { reason, .. } if reason.contains("options.caused_by_change")),
+            "{err}"
+        );
     }
 }

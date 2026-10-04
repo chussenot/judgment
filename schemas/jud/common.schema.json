@@ -2,33 +2,63 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/chussenot/judgment/schemas/jud/common.schema.json",
   "title": ".jud common definitions",
-  "description": "Definitions shared by the three document kinds of the .jud format, version 1 (docs/jud.md).",
+  "description": "Definitions shared by the three document kinds of the .jud format, versions 1 and 1.1 (docs/jud.md).",
   "$defs": {
     "envelope": {
       "type": "object",
       "properties": {
-        "jud": { "const": 1, "description": "The format version." },
-        "kind": { "type": "string", "enum": ["rubric", "cases", "recording"] }
+        "jud": {
+          "enum": [
+            1,
+            1.1
+          ],
+          "description": "The format version: 1, or 1.1 for a document that uses a 1.1 feature."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "rubric",
+            "cases",
+            "recording"
+          ]
+        }
       },
-      "required": ["jud", "kind"]
+      "required": [
+        "jud",
+        "kind"
+      ]
     },
     "fingerprint": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$",
       "description": "SHA-256 of canonical JSON (RFC 8785), lowercase hex."
     },
-    "unit": { "type": "number", "minimum": 0, "maximum": 1 },
+    "unit": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
     "rfc3339": {
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$"
     },
     "instructions": {
       "description": "What to decide: a string, an object or an array, or null when the criteria carry the question. On the wire it is sent as null, never left out.",
-      "type": ["string", "object", "array", "null"]
+      "type": [
+        "string",
+        "object",
+        "array",
+        "null"
+      ]
     },
     "description": {
       "description": "A rubric description: a string, an object, or null for none.",
-      "type": ["string", "object", "array", "null"]
+      "type": [
+        "string",
+        "object",
+        "array",
+        "null"
+      ]
     },
     "question": {
       "description": "One question, exactly as the wire sends it.",
@@ -36,52 +66,152 @@
         {
           "type": "object",
           "properties": {
-            "type": { "const": "noul" },
-            "instructions": { "$ref": "#/$defs/instructions" },
+            "type": {
+              "const": "noul"
+            },
+            "instructions": {
+              "$ref": "#/$defs/instructions"
+            },
             "criteria": {
               "type": "object",
               "properties": {
-                "true": { "$ref": "#/$defs/description" },
-                "false": { "$ref": "#/$defs/description" }
+                "true": {
+                  "$ref": "#/$defs/description"
+                },
+                "false": {
+                  "$ref": "#/$defs/description"
+                }
               },
               "additionalProperties": false
+            },
+            "when": {
+              "$ref": "#/$defs/statePath",
+              "description": "1.1: ask the question only when this state path is present."
+            },
+            "part_when": {
+              "type": "object",
+              "description": "1.1: instruction part name to the state path that must be present for the part to be sent.",
+              "additionalProperties": {
+                "$ref": "#/$defs/statePath"
+              }
             }
           },
-          "required": ["type"],
+          "required": [
+            "type"
+          ],
           "additionalProperties": false
         },
         {
           "type": "object",
           "properties": {
-            "type": { "const": "choice" },
-            "instructions": { "$ref": "#/$defs/instructions" },
+            "type": {
+              "const": "choice"
+            },
+            "instructions": {
+              "$ref": "#/$defs/instructions"
+            },
             "criteria": {
               "type": "object",
-              "minProperties": 2,
               "maxProperties": 255,
-              "propertyNames": { "minLength": 1 },
-              "additionalProperties": { "$ref": "#/$defs/description" }
+              "propertyNames": {
+                "minLength": 1
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/description"
+              }
+            },
+            "when": {
+              "$ref": "#/$defs/statePath",
+              "description": "1.1: ask the question only when this state path is present."
+            },
+            "part_when": {
+              "type": "object",
+              "description": "1.1: instruction part name to the state path that must be present for the part to be sent.",
+              "additionalProperties": {
+                "$ref": "#/$defs/statePath"
+              }
+            },
+            "options_from": {
+              "const": "request",
+              "description": "1.1: the options are supplied per request, before the static ones in criteria."
             }
           },
-          "required": ["type", "criteria"],
-          "additionalProperties": false
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "if": {
+            "required": [
+              "options_from"
+            ]
+          },
+          "then": {
+            "properties": {
+              "criteria": {
+                "minProperties": 0
+              }
+            }
+          },
+          "else": {
+            "required": [
+              "criteria"
+            ],
+            "properties": {
+              "criteria": {
+                "minProperties": 2
+              }
+            }
+          }
         },
         {
           "type": "object",
           "properties": {
-            "type": { "const": "score" },
-            "instructions": { "$ref": "#/$defs/instructions" },
+            "type": {
+              "const": "score"
+            },
+            "instructions": {
+              "$ref": "#/$defs/instructions"
+            },
             "criteria": {
               "type": "array",
               "minItems": 2,
               "maxItems": 10,
-              "items": { "type": ["string", "object", "array"] }
+              "items": {
+                "type": [
+                  "string",
+                  "object",
+                  "array"
+                ]
+              }
+            },
+            "when": {
+              "$ref": "#/$defs/statePath",
+              "description": "1.1: ask the question only when this state path is present."
+            },
+            "part_when": {
+              "type": "object",
+              "description": "1.1: instruction part name to the state path that must be present for the part to be sent.",
+              "additionalProperties": {
+                "$ref": "#/$defs/statePath"
+              }
             }
           },
-          "required": ["type", "criteria"],
+          "required": [
+            "type",
+            "criteria"
+          ],
           "additionalProperties": false
         }
       ]
+    },
+    "statePath": {
+      "type": "string",
+      "pattern": "^[^.\\s](?:[^.]*[^.\\s])?(?:\\.[^.\\s](?:[^.]*[^.\\s])?)*$",
+      "description": "A state path (1.1): dot-separated object keys, a number indexing an array. Present when it leads to a value that is not null, \"\", [] or {}."
+    },
+    "extensionKeys": {
+      "description": "Top-level keys a reader ignores (1.1): any key starting with x-.",
+      "pattern": "^x-"
     }
   }
 }

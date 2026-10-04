@@ -4,46 +4,116 @@
   "title": ".jud cases",
   "description": "Labelled states a rubric is graded on (docs/jud.md).",
   "type": "object",
-  "allOf": [{ "$ref": "common.schema.json#/$defs/envelope" }],
+  "allOf": [
+    {
+      "$ref": "common.schema.json#/$defs/envelope"
+    }
+  ],
   "properties": {
     "jud": true,
-    "kind": { "const": "cases" },
-    "id": { "type": "string", "minLength": 1 },
-    "rubric": { "type": "string", "description": "The rubric the labels are for, by id or by fingerprint." },
-    "description": { "type": "string" },
+    "kind": {
+      "const": "cases"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rubric": {
+      "type": "string",
+      "description": "The rubric the labels are for, by id or by fingerprint."
+    },
+    "description": {
+      "type": "string"
+    },
     "cases": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "state": { "description": "Any JSON; an array is a conversation, one element per turn." },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "state": {
+            "description": "Any JSON; an array is a conversation, one element per turn."
+          },
           "expect": {
             "type": "object",
             "description": "By question id: true or false for a Noul (or {from_turn} over a conversation), an option key for a Choice, a level index or a level's text for a Score.",
             "additionalProperties": {
               "oneOf": [
-                { "type": "boolean" },
-                { "type": "integer", "minimum": 0 },
-                { "type": "string" },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "string"
+                },
                 {
                   "type": "object",
-                  "properties": { "from_turn": { "type": ["integer", "null"], "minimum": 0 } },
-                  "required": ["from_turn"],
+                  "properties": {
+                    "from_turn": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "from_turn"
+                  ],
                   "additionalProperties": false
                 }
               ]
             }
           },
-          "tags": { "type": "array", "items": { "type": "string" } },
-          "note": { "type": "string" }
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": "string"
+          },
+          "options": {
+            "type": "object",
+            "description": "1.1: options supplied for this case's request, by question id, then option key to description.",
+            "additionalProperties": {
+              "type": "object",
+              "propertyNames": {
+                "minLength": 1
+              },
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "object",
+                  "array",
+                  "null"
+                ]
+              }
+            }
+          }
         },
-        "required": ["state"],
+        "required": [
+          "state"
+        ],
         "additionalProperties": false
       }
     }
   },
-  "required": ["jud", "kind", "cases"],
-  "additionalProperties": false
+  "required": [
+    "jud",
+    "kind",
+    "cases"
+  ],
+  "additionalProperties": false,
+  "patternProperties": {
+    "^x-": true
+  }
 }

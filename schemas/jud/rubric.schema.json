@@ -2,20 +2,40 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/chussenot/judgment/schemas/jud/rubric.schema.json",
   "title": ".jud rubric",
-  "description": "A rubric: questions in wire shape and wire order, and the policy that reads their answers (docs/jud.md).",
+  "description": "A rubric: questions in wire shape and wire order, the 1.1 declarations that make the request depend on the state, and the policy that reads the answers (docs/jud.md).",
   "type": "object",
-  "allOf": [{ "$ref": "common.schema.json#/$defs/envelope" }],
+  "allOf": [
+    {
+      "$ref": "common.schema.json#/$defs/envelope"
+    }
+  ],
   "properties": {
     "jud": true,
-    "kind": { "const": "rubric" },
-    "id": { "type": "string", "minLength": 1 },
-    "version": { "type": ["string", "integer"] },
-    "description": { "type": "string" },
+    "kind": {
+      "const": "rubric"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": [
+        "string",
+        "integer"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
     "questions": {
       "type": "object",
       "minProperties": 1,
-      "propertyNames": { "minLength": 1 },
-      "additionalProperties": { "$ref": "common.schema.json#/$defs/question" }
+      "propertyNames": {
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "$ref": "common.schema.json#/$defs/question"
+      }
     },
     "policy": {
       "type": "object",
@@ -23,24 +43,88 @@
       "additionalProperties": {
         "type": "object",
         "properties": {
-          "threshold": { "$ref": "common.schema.json#/$defs/unit" },
-          "confidence": { "$ref": "common.schema.json#/$defs/unit" },
-          "fallback": { "type": "string" },
-          "note": { "type": "string" }
+          "threshold": {
+            "$ref": "common.schema.json#/$defs/unit"
+          },
+          "confidence": {
+            "$ref": "common.schema.json#/$defs/unit"
+          },
+          "fallback": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "bands": {
+            "type": "array",
+            "minItems": 1,
+            "description": "1.1: confidence bands, highest bar first; not with confidence.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "at_least": {
+                  "$ref": "common.schema.json#/$defs/unit"
+                },
+                "verdict": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "at_least",
+                "verdict"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "level_at_least": {
+            "description": "1.1: a Score's level threshold, by index or text.",
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              }
+            ]
+          },
+          "strict": {
+            "type": "boolean",
+            "description": "1.1: compare with > instead of >= at every bar."
+          }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "One question's gate. Which fields fit which primitive is checked against the question: threshold for a Noul; confidence, bands and fallback for a Choice or a Score; level_at_least for a Score; strict for every bar. bands, level_at_least and strict are 1.1."
       }
     },
     "tuning": {
       "type": "object",
       "properties": {
-        "cases": { "type": "string" },
-        "model": { "type": "string" },
-        "server": { "type": "string" },
-        "tuned_at": { "$ref": "common.schema.json#/$defs/rfc3339" }
+        "cases": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        },
+        "tuned_at": {
+          "$ref": "common.schema.json#/$defs/rfc3339"
+        }
       }
     }
   },
-  "required": ["jud", "kind", "id", "questions"],
-  "additionalProperties": false
+  "required": [
+    "jud",
+    "kind",
+    "id",
+    "questions"
+  ],
+  "additionalProperties": false,
+  "patternProperties": {
+    "^x-": true
+  }
 }
