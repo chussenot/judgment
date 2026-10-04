@@ -91,5 +91,23 @@
   "additionalProperties": false,
   "patternProperties": {
     "^x-": true
-  }
+  },
+  "if": {
+    "properties": {
+      "jud": {
+        "const": 1
+      }
+    },
+    "required": [
+      "jud"
+    ]
+  },
+  "then": {
+    "propertyNames": {
+      "not": {
+        "pattern": "^x-"
+      }
+    }
+  },
+  "$comment": "Under jud: 1 top-level x- keys (1.1) are refused."
 }

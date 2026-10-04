@@ -18,9 +18,11 @@
 //! `1` or `1.1`) and `kind`:
 //!
 //! - **`rubric`**: the questions exactly as the wire sends them, in the order
-//!   the model should see them, plus `policy`: the gates (a Noul's
-//!   `threshold`, a Choice's or a Score's `confidence` bar and `fallback`
-//!   option) and the `tuning` they came from. The policy is never sent; it
+//!   the model should see them, with what makes the request depend on the
+//!   state (1.1: `when`, `part_when`, `options_from`), plus `policy`: the
+//!   gates (a Noul's `threshold`, a Choice's or a Score's `confidence` or
+//!   `bands` and `fallback`, a Score's `level_at_least`, `strict`) and the
+//!   `tuning` they came from. The policy is never sent; it
 //!   is what the application does with an answer, kept beside the question
 //!   it applies to ([`Rubric`], [`Policy`]).
 //! - **`cases`**: labelled states to grade a rubric on, one expectation per
@@ -53,8 +55,8 @@
 //! builds its questions in code has no use for a YAML parser.
 
 use indexmap::IndexMap;
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use crate::eval::Recording;
@@ -256,11 +258,29 @@ pub(crate) fn check_version(found: Option<&Value>) -> Result<u64> {
     // them, so comparing the parsed values is exact.
     match value.as_f64() {
         Some(1.0) => Ok(0),
-        Some(1.1) => Ok(1),
+        Some(1.1) if MINOR >= 1 => Ok(1),
         _ => Err(Error::Version {
             found: value.to_string(),
         }),
     }
+}
+
+/// For an optional field whose presence matters: present is `Some`
+/// whatever the value, absent is `None` (with `#[serde(default)]`), and
+/// `null` is refused. Read through a JSON value first, because a YAML
+/// reader may otherwise take `null` for an empty map.
+pub(crate) fn some<'de, D: Deserializer<'de>, T: DeserializeOwned>(
+    deserializer: D,
+) -> std::result::Result<Option<T>, D::Error> {
+    let value = Value::deserialize(deserializer)?;
+    if value.is_null() {
+        return Err(serde::de::Error::custom(
+            "null is not a value of this field; leave the field out instead",
+        ));
+    }
+    T::deserialize(value)
+        .map(Some)
+        .map_err(serde::de::Error::custom)
 }
 
 /// The `jud` value a writer puts on a document that needs `minor`.
@@ -303,7 +323,8 @@ pub(crate) fn require_minor(declared: u64, feature: Option<String>) -> Result<()
 
 /// Whether `path` is present in `state`: what a rubric's `when` and
 /// `part_when` test (1.1). A path is dot-separated object keys, with a
-/// number indexing an array (`alert.related_alerts`, `turns.0.text`). It is
+/// canonical decimal indexing an array (`customer.open_tickets`,
+/// `turns.0.text`; `01` and `+0` index nothing). It is
 /// present when it leads to a value that is not `null`, not an empty
 /// string, not an empty array and not an empty object; `false` and `0` are
 /// present. There is no other test: deterministic logic beyond presence
@@ -313,7 +334,7 @@ pub fn present(state: &Value, path: &str) -> bool {
     for segment in path.split('.') {
         let next = match value {
             Value::Object(map) => map.get(segment),
-            Value::Array(items) => segment.parse::<usize>().ok().and_then(|i| items.get(i)),
+            Value::Array(items) => array_index(segment).and_then(|i| items.get(i)),
             _ => None,
         };
         match next {
@@ -330,6 +351,20 @@ pub fn present(state: &Value, path: &str) -> bool {
     }
 }
 
+/// An array index in a state path: a canonical decimal, `0` or a non-zero
+/// digit followed by digits, so `01` and `+0` index nothing, as in a JSON
+/// Pointer and in every implementation that follows the specification.
+fn array_index(segment: &str) -> Option<usize> {
+    let canonical = segment == "0"
+        || (segment.starts_with(|c: char| ('1'..='9').contains(&c))
+            && segment.bytes().all(|b| b.is_ascii_digit()));
+    if canonical {
+        segment.parse().ok()
+    } else {
+        None
+    }
+}
+
 /// A state path is non-empty dot-separated segments, none empty and none
 /// with surrounding space.
 pub(crate) fn check_path(field: &str, path: &str) -> Result<()> {
@@ -337,7 +372,7 @@ pub(crate) fn check_path(field: &str, path: &str) -> Result<()> {
         return Err(Error::Invalid {
             field: field.to_owned(),
             reason: format!(
-                "`{path}` is not a state path: dot-separated keys, as `alert.component`"
+                "`{path}` is not a state path: dot-separated keys, as `customer.account`"
             ),
         });
     }
@@ -391,33 +426,37 @@ mod tests {
     #[test]
     fn presence_is_the_one_test_on_the_state() {
         let state = serde_json::json!({
-            "alert": {
-                "component": {"name": "api"},
-                "related": [],
-                "title": "",
-                "flag": false,
-                "count": 0,
+            "customer": {
+                "account": {"plan": "pro"},
+                "open_tickets": [],
+                "name": "",
+                "vip": false,
+                "orders": 0,
                 "none": null,
-                "turns": [{"text": "hi"}]
+                "history": [{"text": "hi"}, {"text": "again"}]
             }
         });
         for (path, expected) in [
-            ("alert.component", true),
-            ("alert.component.name", true),
-            ("alert.related", false),
-            ("alert.title", false),
-            ("alert.flag", true),
-            ("alert.count", true),
-            ("alert.none", false),
-            ("alert.missing", false),
-            ("alert.turns.0.text", true),
-            ("alert.turns.1", false),
-            ("alert.component.name.deeper", false),
+            ("customer.account", true),
+            ("customer.account.plan", true),
+            ("customer.open_tickets", false),
+            ("customer.name", false),
+            ("customer.vip", true),
+            ("customer.orders", true),
+            ("customer.none", false),
+            ("customer.missing", false),
+            ("customer.history.0.text", true),
+            ("customer.history.1", true),
+            ("customer.history.2", false),
+            // Only a canonical decimal indexes an array.
+            ("customer.history.01", false),
+            ("customer.history.+1", false),
+            ("customer.account.plan.deeper", false),
         ] {
             assert_eq!(present(&state, path), expected, "{path}");
         }
-        assert!(check_path("f", "alert.component").is_ok());
-        for bad in ["", "alert.", ".alert", "alert..x", "alert. x"] {
+        assert!(check_path("f", "customer.account").is_ok());
+        for bad in ["", "customer.", ".customer", "customer..x", "customer. x"] {
             assert!(check_path("f", bad).is_err(), "{bad:?}");
         }
     }

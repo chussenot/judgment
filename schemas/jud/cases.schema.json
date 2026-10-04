@@ -115,5 +115,34 @@
   "additionalProperties": false,
   "patternProperties": {
     "^x-": true
-  }
+  },
+  "if": {
+    "properties": {
+      "jud": {
+        "const": 1
+      }
+    },
+    "required": [
+      "jud"
+    ]
+  },
+  "then": {
+    "propertyNames": {
+      "not": {
+        "pattern": "^x-"
+      }
+    },
+    "properties": {
+      "cases": {
+        "items": {
+          "not": {
+            "required": [
+              "options"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$comment": "Under jud: 1 the 1.1 features (x- keys, a case's options) are refused."
 }

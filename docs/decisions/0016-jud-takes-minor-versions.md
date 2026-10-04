@@ -17,7 +17,7 @@ tags: [decisions, jud, format, versioning, rubric, policy]
 [Decision 0014](0014-a-file-format-for-rubrics-cases-and-recordings.md) shipped `jud: 1` with a strict reader: a field the format does not define is refused, so "a later version that adds a field takes the next number". The first application to move its questions into a rubric found three gaps (issues [#8](https://github.com/chussenot/judgment/issues/8), [#9](https://github.com/chussenot/judgment/issues/9), [#10](https://github.com/chussenot/judgment/issues/10)):
 
 - Its request varies with the state. Two Choices are asked over options known only at request time, an instruction part is sent only when the state carries what it describes, and two questions are asked only when a list in the state is not empty. A `jud: 1` rubric cannot say so, so the application kept those rules in code and its rubric listed example options that are never sent.
-- Its policy has two bars on one question (route automatically, ask to confirm, send to a person) and a threshold on a Score's level (page from `major` up). A `jud: 1` gate has one bar and no level threshold, so every threshold stayed in the application's own configuration, and the format's `tuning` provenance went unused.
+- Its policy has two bars on one question (route automatically, ask to confirm, send to a person) and a threshold on a Score's level (escalate from the third level up). A `jud: 1` gate has one bar and no level threshold, so every threshold stayed in the application's own configuration, and the format's `tuning` provenance went unused.
 - A shared instruction part written once as a YAML anchor had to live inside the first question that uses it, and a question could not be moved above that one.
 
 How should the format grow, and what should the first addition hold?
@@ -41,6 +41,7 @@ How should the format grow, and what should the first addition hold?
 
 Chosen option: 1. The envelope's `jud` is `1` or `1.1`. A minor version only adds; a `1.1` reader reads every `jud: 1` document as a `1` reader does, a document that uses a 1.1 feature must say `jud: 1.1` (a reader refuses it otherwise, naming the feature), and a writer declares `1.1` only when it has to. Version 1.1 adds:
 
+- A 1.1 field counts by its presence, whatever its value, and `null` is not a value of one, so a `jud: 1` document cannot carry a 1.1 key even emptied.
 - On a question: `when`, a state path that must be present for the question to be asked; `part_when`, instruction part names to state paths; and on a Choice `options_from: request`, options supplied per request before the static ones, with fewer than two static options allowed. `Rubric::lower(state, supplied)` builds the request through the builder's checks. A state path is dot-separated keys, and "present" is the one test: not `null`, not an empty string, array or object. No negation, no comparison, no expression.
 - On a case: `options`, the options supplied for its request, so a case is a complete request; binding refuses a label on a question the case's state does not ask.
 - On a gate: `bands`, ordered confidence bars with named verdicts, generalising `confidence`; `level_at_least` on a Score, by level text or index; `strict`, `>` for `≥` at every bar. The verdicts carry the band and whether the level was reached.

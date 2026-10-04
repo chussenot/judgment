@@ -145,9 +145,9 @@ fn the_example_cases_bind_to_their_rubric_and_the_tuning_names_them() {
                 .collect()
         })
         .collect();
-    assert_eq!(asked[0], ["owner", "impact", "caused_by_change"]);
-    assert_eq!(asked[1], ["owner", "impact"]);
-    assert_eq!(asked[2], ["owner", "impact", "duplicate_of"]);
+    assert_eq!(asked[0], ["desk", "tone", "refund_request"]);
+    assert_eq!(asked[1], ["desk", "tone"]);
+    assert_eq!(asked[2], ["desk", "tone", "duplicate_of"]);
     // The recordings name the rubric they answer.
     for path in example_files("jud") {
         if let Document::Recording(recording) =
@@ -202,9 +202,9 @@ fn what_the_crate_writes_validates() {
     assert_eq!(jud::parse_recording(&as_json).unwrap(), recording);
 }
 
-#[test]
-fn the_schemas_and_the_parser_refuse_the_same_documents() {
-    let refused = [
+/// Documents the schemas and the reader must both refuse.
+fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
+    vec![
         // A misspelt gate field.
         (
             &*RUBRIC,
@@ -252,7 +252,54 @@ fn the_schemas_and_the_parser_refuse_the_same_documents() {
         // An unknown source of options.
         (
             &*RUBRIC,
-            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  c: {type: choice, instructions: pick, criteria: {a: A}, options_from: catalog}\n",
+            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  c: {type: choice, instructions: pick, criteria: {a: A}, options_from: database}\n",
+        ),
+        // A 1.1 feature under `jud: 1`, present even with an empty value.
+        (
+            &*RUBRIC,
+            "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: {question: ok?}, when: a.b}\n",
+        ),
+        (
+            &*RUBRIC,
+            "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: {question: ok?}, part_when: {}}\n",
+        ),
+        (
+            &*RUBRIC,
+            "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\npolicy:\n  n: {threshold: 0.5, strict: false}\n",
+        ),
+        (
+            &*RUBRIC,
+            "jud: 1\nkind: rubric\nid: r\nx-a: 1\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*CASES,
+            "jud: 1\nkind: cases\ncases:\n  - state: s\n    options: {c: {a: A}}\n",
+        ),
+        (
+            &*RECORDING,
+            "jud: 1\nkind: recording\nx-tool: 1\ncase: c\nresponse: {model: m, answers: {q: {type: noul, noul: 0.5}}}\nelapsed_ms: 1\n",
+        ),
+        // Null where a 1.1 field takes a value; an empty band list; a blank
+        // band name; a supplied option that is a number.
+        (
+            &*RUBRIC,
+            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?, when: null}\n",
+        ),
+        (
+            &*RUBRIC,
+            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  c: {type: choice, instructions: pick, criteria: {a: A, b: B}}\npolicy:\n  c: {bands: []}\n",
+        ),
+        (
+            &*RUBRIC,
+            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  c: {type: choice, instructions: pick, criteria: {a: A, b: B}}\npolicy:\n  c: {bands: [{at_least: 0.5, verdict: \" \"}]}\n",
+        ),
+        (
+            &*CASES,
+            "jud: 1.1\nkind: cases\ncases:\n  - state: s\n    options: {c: {a: 1}}\n",
+        ),
+        (
+            &*CASES,
+            "jud: 1.1\nkind: cases\ncases:\n  - state: s\n    options: null\n",
         ),
         // A band with a field bands do not have.
         (
@@ -262,9 +309,14 @@ fn the_schemas_and_the_parser_refuse_the_same_documents() {
         // A state path with an empty segment.
         (
             &*RUBRIC,
-            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?, when: \"alert..x\"}\n",
+            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?, when: \"message..x\"}\n",
         ),
-    ];
+    ]
+}
+
+#[test]
+fn the_schemas_and_the_parser_refuse_the_same_documents() {
+    let refused = refused_documents();
     for (validator, text) in refused {
         assert!(
             !validator.is_valid(&value_of(text)),

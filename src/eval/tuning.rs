@@ -192,10 +192,13 @@ pub struct LevelRow {
 /// answer).
 ///
 /// The level an answer reached is its nearest level, the probability-
-/// weighted position `Σ i · p_i` rounded, which is what a rubric gate's
-/// `level_at_least` compares ([`crate::jud::Rubric::apply`]), not the most
+/// weighted position `Σ i · p_i` rounded, the reading a rubric gate's
+/// `level_at_least` makes ([`crate::jud::Rubric::apply`]), not the most
 /// probable level a [`Judgment`] reports as `predicted`: the two differ on
-/// a spread distribution, and the table must say what the gate will do. A
+/// a spread distribution. It is recomputed from the judgment's
+/// probabilities, so at a .5 boundary it can round apart from the wire's
+/// rounded `score` the gate reads, and it counts every labelled answer,
+/// including those a gate's confidence bar would defer. A
 /// judgment takes part when it is labelled with a level index and carries
 /// level probabilities; the others are skipped.
 pub fn level_sweep<'a>(

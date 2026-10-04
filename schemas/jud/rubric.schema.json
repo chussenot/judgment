@@ -67,7 +67,7 @@
                 },
                 "verdict": {
                   "type": "string",
-                  "minLength": 1
+                  "pattern": "\\S"
                 }
               },
               "required": [
@@ -126,5 +126,71 @@
   "additionalProperties": false,
   "patternProperties": {
     "^x-": true
-  }
+  },
+  "if": {
+    "properties": {
+      "jud": {
+        "const": 1
+      }
+    },
+    "required": [
+      "jud"
+    ]
+  },
+  "then": {
+    "propertyNames": {
+      "not": {
+        "pattern": "^x-"
+      }
+    },
+    "properties": {
+      "questions": {
+        "additionalProperties": {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "when"
+                ]
+              },
+              {
+                "required": [
+                  "part_when"
+                ]
+              },
+              {
+                "required": [
+                  "options_from"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "policy": {
+        "additionalProperties": {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "bands"
+                ]
+              },
+              {
+                "required": [
+                  "level_at_least"
+                ]
+              },
+              {
+                "required": [
+                  "strict"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "$comment": "Under jud: 1 the 1.1 features (x- keys, when, part_when, options_from, bands, level_at_least, strict) are refused: a document that uses one declares jud: 1.1."
 }
