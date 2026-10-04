@@ -2,7 +2,7 @@
 title: Decisions
 description: The architecture decision records that govern the judgment crate's design, how they are numbered, how a record is written, and what has moved since each was accepted.
 status: current
-last_reviewed: 2026-10-03
+last_reviewed: 2026-10-04
 tags: [judgment, decisions, adr, madr]
 ---
 
@@ -16,6 +16,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 |---|---|---|
 | [0003](0003-typed-handles-between-questions-and-answers.md) | Typed handles between questions and answers | accepted |
 | [0013](0013-releases-cut-with-cocogitto-and-published-from-ci.md) | Releases cut with cocogitto and published from CI | accepted |
+| [0014](0014-a-file-format-for-rubrics-cases-and-recordings.md) | A file format for rubrics, cases and recordings | accepted |
 
 ## Status notes
 

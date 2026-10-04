@@ -6,6 +6,59 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The `.jud` format (`docs/jud.md`, decision 0014), behind the new `jud`
+  feature (off by default): one YAML format, JSON accepted, for a `rubric`
+  (the questions in wire shape and wire order, with a `policy` of gates per
+  question and the `tuning` they came from), the labelled `cases` a rubric
+  is graded on (a conversation as an array state, `{from_turn: n}` for the
+  turn a Noul becomes true) and a `recording` of one response. Each has a
+  content fingerprint, `sha256:` over RFC 8785 canonical JSON, so a tuned
+  threshold names the exact cases and model it rests on and another tool
+  computes the same identity. `judgment::jud` reads and writes all three
+  (`Rubric`, `Cases`, `Case::per_turn`, `grade`, `Rubric::apply` into
+  `Verdict`s), lowering a rubric through the `Questions` builder so a rubric
+  that parses is a request that sends; JSON Schemas under `schemas/jud/`;
+  `tests/jud.rs` pins that the reader and the schemas refuse the same
+  documents; `examples/jud/` and `examples/jud_calibration.rs` run the loop
+  from cases to a tuned policy.
+- `eval::canonical`: RFC 8785 canonical JSON (`to_string`), the `sha256:`
+  fingerprint over it (`fingerprint`) and the request fingerprint over
+  `{questions, state}` (`request_fingerprint`), model excluded.
+- `eval::tuning`: `threshold_sweep` and `best_threshold` over a Noul's
+  judgments, `gate_table` and `lowest_bar` over a Choice's or a Score's, so
+  a threshold is read off a table rather than guessed.
+- `Recording` carries `fingerprint`, `rubric`, `server` and `recorded_at`
+  (all optional, omitted when absent, so older files read unchanged);
+  `Recording::new` builds one with only the required fields; `Recorder`
+  fills the fingerprint and the time; `eval::now_rfc3339` and
+  `eval::rfc3339_from_unix` give the time without a date dependency.
+- `Replay::add` for a recording held in memory, and `Replay` finds a
+  recording by its `request_hash` or its `fingerprint`; with the `jud`
+  feature it reads `*.jud` recordings beside the `*.json` ones.
+- `Questions::add` for a question already in wire shape, with the builder's
+  checks and no handle, and `Questions::handle` for a typed handle to a
+  question by id, `None` when the id or the primitive does not match.
+- `Error::InvalidRecording`: a `.jud` file in a recordings directory that is
+  not a recording, with its path and the format's reason.
+
+### Changed
+
+- **Breaking:** `Questions` and a Choice's `criteria` keep the order the
+  questions and options were added in, which is the order the model sees
+  them and the order answers come back in; they were sent alphabetically.
+  `Question::Choice::criteria` is an `indexmap::IndexMap<String, Value>`
+  rather than a `BTreeMap`, so code that names the type changes; a request
+  that relied on alphabetical order on the wire now sends the author's
+  order. Recordings are unaffected: the request hash sorts keys.
+- **Breaking:** `eval::Recording` has four new fields, so a struct literal
+  that named every field no longer compiles; write
+  `Recording { case, response, elapsed_ms, ..Recording::new(…) }` or use
+  `Recording::new` directly. Files written by earlier releases read
+  unchanged.
+- `Questions` implements `PartialEq`.
+
 ## [0.3.0] - 2026-10-03
 
 ### Added

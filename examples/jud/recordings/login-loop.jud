@@ -1,0 +1,39 @@
+# Recorded answer for case `login-loop`; found by fingerprint.
+jud: 1
+kind: recording
+case: login-loop
+response:
+  model: jev-1.13.0
+  answers:
+    actionable:
+      type: noul
+      noul: 0.93
+    desk:
+      type: choice
+      choice: technical
+      probabilities:
+        account: 0.05
+        billing: 0.01
+        none_of_these: 0.02
+        technical: 0.92
+      confidence: 0.89
+    tone:
+      type: score
+      score: 0.8
+      legend:
+        "0": calm
+        "1": annoyed
+        "2": angry
+      probabilities:
+        "0": 0.3
+        "1": 0.6
+        "2": 0.1
+      confidence: 0.46
+  usage:
+    input_tokens: 0
+    output_tokens: 0
+elapsed_ms: 140
+fingerprint: sha256:f9f0b57f88ec2d20f4219dfd14bc71b9a505f5194223d157e1fa49297d17d017
+rubric: inbox-triage
+server: https://api.typesafe.ai
+recorded_at: "2026-10-04T11:58:00Z"

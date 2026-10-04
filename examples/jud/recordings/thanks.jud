@@ -1,0 +1,39 @@
+# Recorded answer for case `thanks`; found by fingerprint.
+jud: 1
+kind: recording
+case: thanks
+response:
+  model: jev-1.13.0
+  answers:
+    actionable:
+      type: noul
+      noul: 0.08
+    desk:
+      type: choice
+      choice: none_of_these
+      probabilities:
+        account: 0.03
+        billing: 0.04
+        none_of_these: 0.83
+        technical: 0.1
+      confidence: 0.77
+    tone:
+      type: score
+      score: 0.06
+      legend:
+        "0": calm
+        "1": annoyed
+        "2": angry
+      probabilities:
+        "0": 0.95
+        "1": 0.04
+        "2": 0.01
+      confidence: 0.93
+  usage:
+    input_tokens: 0
+    output_tokens: 0
+elapsed_ms: 140
+fingerprint: sha256:35c1016b04082960cbb39acb652f4282c2c2b70e2c68ca37ebc07c416526e99d
+rubric: inbox-triage
+server: https://api.typesafe.ai
+recorded_at: "2026-10-04T11:58:00Z"

@@ -84,15 +84,15 @@
 //! both directions, so a refreshed OpenAPI document that adds or moves a
 //! bound fails there.
 
-use std::collections::BTreeMap;
-use std::collections::btree_map::Entry;
+use indexmap::IndexMap;
+use indexmap::map::Entry;
 use std::hash::Hash;
 use std::marker::PhantomData;
 
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::answer::{Choice, Noul, Score};
+use crate::answer::{Choice, FromAnswer, Noul, Score};
 use crate::error::{Error, Result};
 
 /// Maximum options a Choice may define: the HTTP API reference page's limit
@@ -127,8 +127,9 @@ pub enum Question {
         /// What to decide; `null` when the option descriptions say it all.
         /// Sent as `null`, never omitted.
         instructions: Value,
-        /// Option key to rubric description (`null` allowed).
-        criteria: BTreeMap<String, Value>,
+        /// Option key to rubric description (`null` allowed), in the order
+        /// the options were given: the order the model sees them in.
+        criteria: IndexMap<String, Value>,
     },
     /// A position along ordered levels.
     Score {
@@ -280,10 +281,10 @@ impl<A> Handle<A> {
 }
 
 /// The `questions` map of one request, built through typed constructors.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Questions {
-    map: BTreeMap<String, Question>,
+    map: IndexMap<String, Question>,
 }
 
 impl Questions {
@@ -307,8 +308,8 @@ impl Questions {
         self.map.get(id)
     }
 
-    /// The question ids, in wire order (sorted): what a backend must answer
-    /// and what a test asserts was asked.
+    /// The question ids, in wire order (the order they were added): what a
+    /// backend must answer and what a test asserts was asked.
     pub fn ids(&self) -> impl Iterator<Item = &str> {
         self.map.keys().map(String::as_str)
     }
@@ -335,24 +336,10 @@ impl Questions {
         instructions: impl Into<Value>,
         criteria: Option<NoulCriteria>,
     ) -> Result<Handle<Noul>> {
-        let id = id.into();
-        let instructions = instructions.into();
-        // Criteria that describe neither outcome (`{}`, or both sides null)
-        // tell the model no more than no criteria at all.
-        let criteria_say_nothing = criteria.as_ref().is_none_or(|c| {
-            c.yes.as_ref().is_none_or(Value::is_null) && c.no.as_ref().is_none_or(Value::is_null)
-        });
-        if instructions.is_null() && criteria_say_nothing {
-            return Err(Error::InvalidQuestion {
-                id,
-                reason: "a Noul needs instructions or criteria: the id is never shown to the model"
-                    .to_owned(),
-            });
-        }
-        self.insert(
-            id,
+        self.push(
+            id.into(),
             Question::Noul {
-                instructions,
+                instructions: instructions.into(),
                 criteria,
             },
         )
@@ -364,8 +351,7 @@ impl Questions {
         id: impl Into<String>,
         instructions: impl Into<Value>,
     ) -> Result<Handle<Choice<O>>> {
-        let id = id.into();
-        let criteria: BTreeMap<String, Value> = O::ALL
+        let criteria: IndexMap<String, Value> = O::ALL
             .iter()
             .map(|o| {
                 (
@@ -374,9 +360,8 @@ impl Questions {
                 )
             })
             .collect();
-        validate_choice(&id, &criteria)?;
-        self.insert(
-            id,
+        self.push(
+            id.into(),
             Question::Choice {
                 instructions: instructions.into(),
                 criteria,
@@ -398,14 +383,12 @@ impl Questions {
         instructions: impl Into<Value>,
         options: impl IntoIterator<Item = (String, Option<String>)>,
     ) -> Result<Handle<Choice<String>>> {
-        let id = id.into();
-        let criteria: BTreeMap<String, Value> = options
+        let criteria: IndexMap<String, Value> = options
             .into_iter()
             .map(|(k, d)| (k, d.map_or(Value::Null, Value::from)))
             .collect();
-        validate_choice(&id, &criteria)?;
-        self.insert(
-            id,
+        self.push(
+            id.into(),
             Question::Choice {
                 instructions: instructions.into(),
                 criteria,
@@ -423,34 +406,41 @@ impl Questions {
         instructions: impl Into<Value>,
         levels: impl IntoIterator<Item = impl Into<Value>>,
     ) -> Result<Handle<Score>> {
-        let id = id.into();
-        let criteria: Vec<Value> = levels.into_iter().map(Into::into).collect();
-        // A level is "described in words", a string or an object; the API
-        // has no meaning for a null level and a lenient backend would echo
-        // the null into the legend. Refuse it here, where the question id is
-        // known, rather than let it fail a round trip.
-        if let Some(index) = criteria.iter().position(Value::is_null) {
-            return Err(Error::InvalidQuestion {
-                id,
-                reason: format!("Score level {index} is null; every level needs a description"),
-            });
-        }
-        if criteria.len() < 2 || criteria.len() > MAX_SCORE_LEVELS {
-            return Err(Error::InvalidQuestion {
-                id,
-                reason: format!(
-                    "a Score needs between 2 and {MAX_SCORE_LEVELS} levels, got {}",
-                    criteria.len()
-                ),
-            });
-        }
-        self.insert(
-            id,
+        self.push(
+            id.into(),
             Question::Score {
                 instructions: instructions.into(),
-                criteria,
+                criteria: levels.into_iter().map(Into::into).collect(),
             },
         )
+    }
+
+    /// Add a question already in wire shape: one read from a file, or
+    /// copied from another request. It gets exactly the checks the typed
+    /// builders run (module docs, `# Limits are checked here`), and no
+    /// handle: read its answer through [`Questions::handle`], or from
+    /// [`crate::Response::answers`] by id.
+    pub fn add(&mut self, id: impl Into<String>, question: Question) -> Result<()> {
+        self.push::<()>(id.into(), question).map(drop)
+    }
+
+    /// A typed handle to a question added by id, for reading its answer
+    /// with [`crate::Response::get`]: `None` when no question has that id
+    /// or it is not of `A`'s primitive (a `Handle<Noul>` to a Choice would
+    /// fail at every read). A handle from a builder never needs this; a
+    /// question added with [`Questions::add`] or read from a rubric does.
+    pub fn handle<A: FromAnswer>(&self, id: &str) -> Option<Handle<A>> {
+        let question = self.map.get(id)?;
+        (question.kind() == A::KIND).then(|| Handle {
+            id: id.to_owned(),
+            _answer: PhantomData,
+        })
+    }
+
+    /// Validate, then insert: every way in goes through here.
+    fn push<A>(&mut self, id: String, question: Question) -> Result<Handle<A>> {
+        validate(&id, &question)?;
+        self.insert(id, question)
     }
 
     fn insert<A>(&mut self, id: String, question: Question) -> Result<Handle<A>> {
@@ -475,27 +465,67 @@ impl Questions {
     }
 }
 
-fn validate_choice(id: &str, criteria: &BTreeMap<String, Value>) -> Result<()> {
-    if criteria.len() < 2 {
-        return Err(Error::InvalidQuestion {
+/// The checks every question gets before it is added, whichever way it
+/// came (module docs, `# Limits are checked here`).
+fn validate(id: &str, question: &Question) -> Result<()> {
+    let refuse = |reason: String| {
+        Err(Error::InvalidQuestion {
             id: id.to_owned(),
-            reason: "a Choice needs at least 2 options".to_owned(),
-        });
-    }
-    if criteria.len() > MAX_CHOICE_OPTIONS {
-        return Err(Error::InvalidQuestion {
-            id: id.to_owned(),
-            reason: format!("a Choice allows at most {MAX_CHOICE_OPTIONS} options"),
-        });
-    }
-    // The hosted API accepts an empty key and gives it probability like any
-    // other, so it can come back as the `choice`: an answer no caller can
-    // name or act on.
-    if criteria.contains_key("") {
-        return Err(Error::InvalidQuestion {
-            id: id.to_owned(),
-            reason: "a Choice option key cannot be empty".to_owned(),
-        });
+            reason,
+        })
+    };
+    match question {
+        Question::Noul {
+            instructions,
+            criteria,
+        } => {
+            // Criteria that describe neither outcome (`{}`, or both sides
+            // null) tell the model no more than no criteria at all.
+            let criteria_say_nothing = criteria.as_ref().is_none_or(|c| {
+                c.yes.as_ref().is_none_or(Value::is_null)
+                    && c.no.as_ref().is_none_or(Value::is_null)
+            });
+            if instructions.is_null() && criteria_say_nothing {
+                return refuse(
+                    "a Noul needs instructions or criteria: the id is never shown to the model"
+                        .to_owned(),
+                );
+            }
+        }
+        Question::Choice { criteria, .. } => {
+            if criteria.len() < 2 {
+                return refuse("a Choice needs at least 2 options".to_owned());
+            }
+            if criteria.len() > MAX_CHOICE_OPTIONS {
+                return refuse(format!(
+                    "a Choice allows at most {MAX_CHOICE_OPTIONS} options"
+                ));
+            }
+            // The hosted API accepts an empty key and gives it probability
+            // like any other, so it can come back as the `choice`: an answer
+            // no caller can name or act on.
+            if criteria.contains_key("") {
+                return refuse("a Choice option key cannot be empty".to_owned());
+            }
+        }
+        Question::Score { criteria, .. } => {
+            // A level is "described in words", a string or an object; the
+            // API has no meaning for a null level and a lenient backend
+            // would echo the null into the legend. Refuse it here, where
+            // the question id is known, rather than let it fail a round
+            // trip.
+            if let Some(index) = criteria.iter().position(Value::is_null) {
+                return refuse(format!(
+                    "Score level {index} is null; every level needs a description"
+                ));
+            }
+            if criteria.len() < 2 || criteria.len() > MAX_SCORE_LEVELS {
+                return refuse(format!(
+                    "a Score needs between 2 and {MAX_SCORE_LEVELS} levels, got {}",
+                    criteria.len()
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -713,8 +743,12 @@ mod tests {
             // The kind is the `type` the question is sent with.
             assert_eq!(json[id]["type"], question.kind(), "{id}");
         }
+        // Questions keep the order they were added in: it is the order the
+        // model sees them, and the order the answers come back in.
         let kinds: Vec<&str> = q.iter().map(|(_, question)| question.kind()).collect();
-        assert_eq!(kinds, ["choice", "noul", "score"]);
+        assert_eq!(kinds, ["noul", "choice", "score"]);
+        let ids: Vec<&str> = q.ids().collect();
+        assert_eq!(ids, ["n", "c", "s"]);
     }
 
     #[test]

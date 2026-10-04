@@ -1,0 +1,18 @@
+# Recorded answer for case `escalates-turn-0`; found by fingerprint.
+jud: 1
+kind: recording
+case: escalates-turn-0
+response:
+  model: jev-1.13.0
+  answers:
+    wants_human:
+      type: noul
+      noul: 0.12
+  usage:
+    input_tokens: 0
+    output_tokens: 0
+elapsed_ms: 140
+fingerprint: sha256:4a1be77fe4832cae032301937360f6411f42ca6696cc83ce8642c7395260dabf
+rubric: handoff
+server: https://api.typesafe.ai
+recorded_at: "2026-10-04T11:58:00Z"

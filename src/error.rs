@@ -47,7 +47,8 @@
 //!   [`crate::Confidence::new`], so from a [`crate::Fake`] or the caller's
 //!   own code. An out-of-range value in a response is [`Error::Decode`] of
 //!   that response and carries its request id.
-//! * Recordings: [`Error::Io`] and [`Error::NoRecording`]. Fix the path, or
+//! * Recordings: [`Error::Io`], [`Error::NoRecording`] and
+//!   [`Error::InvalidRecording`]. Fix the path, or
 //!   record the request before replaying it.
 //!
 //! Reading and writing recording files by case id, in [`crate::eval`], has
@@ -331,6 +332,17 @@ pub enum Error {
     /// [`crate::Recorder`] over the same directory, then replay.
     #[error("no recording for request {0}; record it first")]
     NoRecording(String),
+    /// A file in a recordings directory that is not a recording: a `.jud`
+    /// document of another kind, or one that does not parse (`reason` is
+    /// the format's own message, with the line). A `.json` file that does
+    /// not parse is [`Error::Decode`]. Fix or move the file.
+    #[error("not a recording, {path}: {reason}")]
+    InvalidRecording {
+        /// The file.
+        path: String,
+        /// What is wrong with it.
+        reason: String,
+    },
     /// A question id was added twice to one request. Rename one; ids are the
     /// keys answers come back under, so they must be unique.
     #[error("duplicate question id {0:?}")]
@@ -526,6 +538,7 @@ impl Error {
             | Self::InvalidApiKey { .. }
             | Self::Io { .. }
             | Self::NoRecording(_)
+            | Self::InvalidRecording { .. }
             | Self::DuplicateQuestionId(_)
             | Self::InvalidQuestion { .. }
             | Self::ReservedHeader(_)

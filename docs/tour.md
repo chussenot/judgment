@@ -24,7 +24,7 @@ The builder checks the HTTP API reference page's limits before anything is sent:
 
 ## `backend`: one trait, four implementations
 
-`SystemOne` is the one-method trait every source of answers implements, so the code consuming judgments never knows which. `Client` is one. `Fake` answers from a table and remembers what it was asked. `Recorder` writes another backend's responses to a directory. `Replay` answers from that directory offline, keyed by a content hash of the request. Every one of them verifies its response before returning it, so a response that reaches the caller answers what was asked whichever backend is behind the trait. The client does not retry a response that does not fit, because the call was billed; it still reports the usage and counts the attempt as failed, `unfit`, beside `decode` for a 2xx body that does not decode. [Testing without the model](testing.md) shows the fake and the recordings in use.
+`SystemOne` is the one-method trait every source of answers implements, so the code consuming judgments never knows which. `Client` is one. `Fake` answers from a table and remembers what it was asked. `Recorder` writes another backend's responses to a directory, each with the request's content hash, its fingerprint and the time. `Replay` answers from that directory offline, by either key, and with the `jud` feature reads `.jud` recordings made by any tool beside the crate's own `.json` ones. Every one of them verifies its response before returning it, so a response that reaches the caller answers what was asked whichever backend is behind the trait. The client does not retry a response that does not fit, because the call was billed; it still reports the usage and counts the attempt as failed, `unfit`, beside `decode` for a 2xx body that does not decode. [Testing without the model](testing.md) shows the fake and the recordings in use.
 
 ## `client` and `http`: the wire, with the SDKs' retries
 
@@ -40,7 +40,11 @@ One enum, `#[non_exhaustive]`, grouped by remedy: configuration, request, transi
 
 ## `eval`: what makes a probability trustworthy
 
-Recordings for replay, one `Judgment` per answer and label, and per-question accuracy with a 95% Wilson interval, Brier score, calibration error and confidence when right or wrong. `fingerprint` is the canonical hash that keys a recording, over any JSON value, so a harness can name the questions a run was recorded under and refuse to grade old answers under new questions. The module makes calibrated probabilities a measurement rather than an assumption; the thresholds that act on them stay in the application.
+Recordings for replay, one `Judgment` per answer and label, and per-question accuracy with a 95% Wilson interval, Brier score, calibration error and confidence when right or wrong. `canonical` is RFC 8785 canonical JSON and the `sha256:` fingerprint over it, the identity of a rubric's questions, a set of cases or a request that any implementation computes the same way; the older `fingerprint` is the crate's own 16-hex-digit hash, still what `Recorder` keys by. `tuning` is the threshold sweep over a Noul's judgments and the gate table over a Choice's or a Score's, with the best F1 and the lowest bar at a target accuracy read off them. The module makes calibrated probabilities a measurement rather than an assumption; the thresholds that act on them stay in the application, or in a rubric's policy.
+
+## `jud`: the format (feature `jud`)
+
+Behind the `jud` feature, off by default: the reader and writer for [the .jud format](jud.md). `Rubric` is questions in wire shape with a `policy` of gates and the `tuning` they came from, lowered through the `Questions` builder so a rubric that parses is a request that sends, and `apply` reads a response through the gates into one `Verdict` per question. `Cases` are labelled states, bound to a rubric so a label that names an option nobody offered fails before any call, with `per_turn` for a conversation and `grade` for one response against one case. `parse_recording` and `recording_to_yaml` are the third kind. Every document has a content fingerprint, and `schemas/jud/` states each shape as a JSON Schema.
 
 ## `observer` and `contract`
 
@@ -48,4 +52,4 @@ Recordings for replay, one `Judgment` per answer and label, and per-question acc
 
 ## Without the `http` feature
 
-The crate is the questions, the answers, the fake and replay backends, the metrics and the contract, for a project that brings its own transport. CI builds and checks every test target in that configuration.
+The crate is the questions, the answers, the fake and replay backends, the metrics, the format and the contract, for a project that brings its own transport. CI builds and checks every test target in that configuration.

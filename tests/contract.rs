@@ -1013,8 +1013,9 @@ async fn every_fake_response_is_a_system_one_response() {
 }
 
 /// Every `examples/*/recordings` directory: the benchmark sample's Laya
-/// answers and the four pattern examples' Jev answers. Five, so an example
-/// committed without its recordings fails here.
+/// answers, the four pattern examples' Jev answers and the `.jud` example's
+/// scripted recordings. Six, so an example committed without its
+/// recordings fails here.
 fn recording_dirs() -> Vec<std::path::PathBuf> {
     let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
     let mut dirs: Vec<_> = std::fs::read_dir(&examples)
@@ -1023,7 +1024,7 @@ fn recording_dirs() -> Vec<std::path::PathBuf> {
         .filter(|dir| dir.is_dir())
         .collect();
     dirs.sort();
-    assert_eq!(dirs.len(), 5, "{dirs:?}");
+    assert_eq!(dirs.len(), 6, "{dirs:?}");
     dirs
 }
 
@@ -1034,14 +1035,18 @@ fn every_committed_recording_is_a_system_one_response() {
         let mut count = 0;
         for entry in std::fs::read_dir(&dir).unwrap() {
             let path = entry.unwrap().path();
-            if path.extension().is_none_or(|e| e != "json") {
-                continue;
-            }
             let what = path.file_name().unwrap().to_string_lossy().into_owned();
             let text = std::fs::read_to_string(&path).unwrap();
-            let raw: Value = serde_json::from_str(&text).unwrap();
+            // A `.json` recording is this crate's own; a `.jud` one is the
+            // format's (`docs/jud.md`), YAML, the recording's fields under
+            // the `jud`/`kind` envelope, read here without the feature.
+            let raw: Value = match path.extension().and_then(|e| e.to_str()) {
+                Some("json") => serde_json::from_str(&text).unwrap(),
+                Some("jud") => serde_saphyr::from_str(&text).unwrap(),
+                _ => continue,
+            };
             assert_conforms(&schema, &raw["response"], &format!("{what} as committed"));
-            let recording: Recording = serde_json::from_str(&text).unwrap();
+            let recording: Recording = serde_json::from_value(raw.clone()).unwrap();
             assert!(
                 recording.response.extra.is_empty(),
                 "{what}: {:?}",

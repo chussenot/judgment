@@ -1,0 +1,39 @@
+# Recorded answer for case `refund-angry`; found by fingerprint.
+jud: 1
+kind: recording
+case: refund-angry
+response:
+  model: jev-1.13.0
+  answers:
+    actionable:
+      type: noul
+      noul: 0.97
+    desk:
+      type: choice
+      choice: billing
+      probabilities:
+        account: 0.05
+        billing: 0.9
+        none_of_these: 0.03
+        technical: 0.02
+      confidence: 0.87
+    tone:
+      type: score
+      score: 1.86
+      legend:
+        "0": calm
+        "1": annoyed
+        "2": angry
+      probabilities:
+        "0": 0.02
+        "1": 0.1
+        "2": 0.88
+      confidence: 0.84
+  usage:
+    input_tokens: 0
+    output_tokens: 0
+elapsed_ms: 140
+fingerprint: sha256:011eb8843d363ee42be8393c010ca4d8b19d1d55be6fb9efc2fc7283db184715
+rubric: inbox-triage
+server: https://api.typesafe.ai
+recorded_at: "2026-10-04T11:58:00Z"

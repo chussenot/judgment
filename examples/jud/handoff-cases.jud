@@ -1,0 +1,32 @@
+# Conversation cases: `from_turn` says at which turn (zero-based) the Noul
+# becomes true, and null that it never does. `Case::per_turn` cuts the
+# conversation after each turn and resolves the label for that turn.
+jud: 1
+kind: cases
+id: handoff-cases
+rubric: handoff
+
+cases:
+  - id: escalates
+    state:
+      - role: user
+        text: Hi, my export has been stuck at 99% for an hour.
+      - role: assistant
+        text: Sorry about that. Could you tell me the export id?
+      - role: user
+        text: It's exp_4411. Honestly, can I just talk to a person? I need this file for a meeting.
+    expect:
+      wants_human: {from_turn: 2}
+    tags: [conversation]
+
+  - id: patient
+    state:
+      - role: user
+        text: How do I change the email on my account?
+      - role: assistant
+        text: Settings, then Profile, then Edit next to the address. You will get a confirmation link.
+      - role: user
+        text: Found it, thanks.
+    expect:
+      wants_human: {from_turn: null}
+    tags: [conversation]

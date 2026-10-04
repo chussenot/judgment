@@ -1,0 +1,39 @@
+# Recorded answer for case `invoice-vat`; found by fingerprint.
+jud: 1
+kind: recording
+case: invoice-vat
+response:
+  model: jev-1.13.0
+  answers:
+    actionable:
+      type: noul
+      noul: 0.91
+    desk:
+      type: choice
+      choice: billing
+      probabilities:
+        account: 0.07
+        billing: 0.86
+        none_of_these: 0.03
+        technical: 0.04
+      confidence: 0.81
+    tone:
+      type: score
+      score: 0.1
+      legend:
+        "0": calm
+        "1": annoyed
+        "2": angry
+      probabilities:
+        "0": 0.92
+        "1": 0.06
+        "2": 0.02
+      confidence: 0.89
+  usage:
+    input_tokens: 0
+    output_tokens: 0
+elapsed_ms: 140
+fingerprint: sha256:6848d397e07455cecebc92b2a95671b26a4ccb272eb2a64e01b7160f0d0567f3
+rubric: inbox-triage
+server: https://api.typesafe.ai
+recorded_at: "2026-10-04T11:58:00Z"

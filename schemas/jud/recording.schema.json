@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/chussenot/judgment/schemas/jud/recording.schema.json",
+  "title": ".jud recording",
+  "description": "One model response to one request, with the request's fingerprint, the server and the time (docs/jud.md). The response is the wire's own shape; a server's extra top-level fields are kept.",
+  "type": "object",
+  "allOf": [{ "$ref": "common.schema.json#/$defs/envelope" }],
+  "properties": {
+    "jud": true,
+    "kind": { "const": "recording" },
+    "case": { "type": "string", "description": "The case it answers, or the request hash." },
+    "response": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "string" },
+        "answers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": { "type": { "type": "string" } },
+            "required": ["type"]
+          }
+        },
+        "usage": {
+          "type": "object",
+          "properties": {
+            "input_tokens": { "type": "integer", "minimum": 0 },
+            "output_tokens": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "request_id": { "type": "string" }
+      },
+      "required": ["model", "answers"]
+    },
+    "elapsed_ms": { "type": "integer", "minimum": 0 },
+    "request_hash": { "type": "string", "description": "This crate's own 16-hex-digit request hash, when a Recorder made the file." },
+    "fingerprint": { "$ref": "common.schema.json#/$defs/fingerprint" },
+    "rubric": { "type": "string" },
+    "server": { "type": "string" },
+    "recorded_at": { "$ref": "common.schema.json#/$defs/rfc3339" }
+  },
+  "required": ["jud", "kind", "case", "response", "elapsed_ms"],
+  "additionalProperties": false
+}
