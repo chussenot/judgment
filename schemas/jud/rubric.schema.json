@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/chussenot/judgment/schemas/jud/rubric.schema.json",
+  "title": ".jud rubric",
+  "description": "A rubric: questions in wire shape and wire order, and the policy that reads their answers (docs/jud.md).",
+  "type": "object",
+  "allOf": [{ "$ref": "common.schema.json#/$defs/envelope" }],
+  "properties": {
+    "jud": true,
+    "kind": { "const": "rubric" },
+    "id": { "type": "string", "minLength": 1 },
+    "version": { "type": ["string", "integer"] },
+    "description": { "type": "string" },
+    "questions": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "minLength": 1 },
+      "additionalProperties": { "$ref": "common.schema.json#/$defs/question" }
+    },
+    "policy": {
+      "type": "object",
+      "description": "Gates by question id. Which fields fit which primitive is checked against the question: threshold for a Noul, confidence and fallback for a Choice or a Score.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "threshold": { "$ref": "common.schema.json#/$defs/unit" },
+          "confidence": { "$ref": "common.schema.json#/$defs/unit" },
+          "fallback": { "type": "string" },
+          "note": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "tuning": {
+      "type": "object",
+      "properties": {
+        "cases": { "type": "string" },
+        "model": { "type": "string" },
+        "server": { "type": "string" },
+        "tuned_at": { "$ref": "common.schema.json#/$defs/rfc3339" }
+      }
+    }
+  },
+  "required": ["jud", "kind", "id", "questions"],
+  "additionalProperties": false
+}

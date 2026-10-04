@@ -337,10 +337,8 @@ async fn a_replay_refuses_a_recording_that_does_not_fit() {
     write_recording(
         &dir,
         &Recording {
-            case: hash.clone(),
-            response: off_list(),
-            elapsed_ms: 1,
-            request_hash: Some(hash),
+            request_hash: Some(hash.clone()),
+            ..Recording::new(hash, off_list(), 1)
         },
     )
     .unwrap();

@@ -48,6 +48,15 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   change: `tests/contract.rs`, the CHANGELOG and the README's guarantees move
   together, and the recordings under `examples/*/recordings/` must still
   replay (`cargo test` runs them).
+- The `.jud` format (`docs/jud.md`, `src/jud/`, feature `jud`) is a
+  specification other tools implement: a change to what a document may hold
+  or how it is read moves `docs/jud.md`, `schemas/jud/`, `tests/jud.rs` and
+  the documents under `examples/jud/` together, and `jud: 1` is bumped for
+  any field added, because a reader refuses a field it does not know. The
+  questions in a rubric are the wire's shape, never a translation of it, and
+  fingerprints are RFC 8785 canonical JSON (`src/eval/canonical.rs`), checked
+  against the known vector on the page. `Questions` and a Choice's options
+  keep insertion order: it is the order the model sees.
 - Documentation: every page under `docs/` carries frontmatter (`title`,
   `description`, `status`, `last_reviewed`, `tags`); the README does not
   (crates.io renders it). `docs/llms.txt` and `docs/llms-full.txt` are

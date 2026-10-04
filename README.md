@@ -55,6 +55,12 @@ do with an answer left to the caller.
   an answer its question could not produce, a `Recorder` and a `Replay` keyed
   by the request's content, and `eval` to grade recordings against labels with
   accuracy, Brier score and calibration error.
+- **The parts the wire has no place for have a file.** The questions with the
+  thresholds that read their answers, the labelled cases the thresholds were
+  tuned on and the recorded answers are three kinds of one YAML format,
+  [`.jud`](docs/jud.md), that name each other by content fingerprint, so a
+  threshold says which cases and which model it rests on, and another tool
+  can read all three (feature `jud`, off by default).
 
 ```rust
 use judgment::{Client, Questions, options};
@@ -147,7 +153,7 @@ file and line for every cell and the columns judgment loses, is in
 
 | Crate | Fake that refuses an unfit answer | Record and replay | Contract test against the OpenAPI document | Evaluation metrics | Verified against real servers | Transitive deps / clean build |
 |---|---|---|---|---|---|---|
-| **judgment** | ✓ | ✓ content hash | ✓ | ✓ with intervals | ✓ hosted API, Laya | 100 / 49 s |
+| **judgment** | ✓ | ✓ content hash, `.jud` | ✓ | ✓ with intervals, sweeps | ✓ hosted API, Laya | 100 / 49 s |
 | kunobi-decision | ✓ | ✗ | ✗ | ✗ | ✗ | 97 / 44 s |
 | typesafe-sdk | ✗ | ✗ | ✗ | ✗ | ✗ | 104 / 25 s |
 | typesafeai-sdk | ✗ | ✗ | ✗ | ✗ | ✗ | 91 / 23 s |
@@ -175,6 +181,7 @@ default.
 | [What is in the crate](docs/tour.md) | What each module is for and what it promises |
 | [Patterns](docs/patterns.md) | TypeSafe's four patterns on the crate's types, one runnable example each, and what the recordings teach about thresholds |
 | [Testing without the model](docs/testing.md) | The fake, the recordings and the metrics |
+| [The .jud format](docs/jud.md) | The specification of the rubric, cases and recording documents, their fingerprints and reading rules, and the loop from labelled cases to a tuned policy |
 | [How the crate is checked](docs/verification/method.md) | The live tests, the benchmark replay and the contract test, and how to run them against the hosted API, Laya or Ollama |
 | [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md), [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | What real servers did with the live tests, and what the crate changed for it |
 | [Compatible servers and models](docs/research/compatible-servers-and-models.md) | Which servers speak the wire and how the open models compare with Jev |

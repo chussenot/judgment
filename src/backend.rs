@@ -443,6 +443,12 @@ impl<B: SystemOne> SystemOne for Recorder<B> {
                 response: response.clone(),
                 elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                 request_hash: Some(hash),
+                fingerprint: Some(crate::eval::canonical::request_fingerprint(
+                    state, questions,
+                )),
+                rubric: None,
+                server: None,
+                recorded_at: Some(crate::eval::now_rfc3339()),
             };
             crate::eval::write_recording(&self.dir, &recording).map_err(|e| Error::Io {
                 context: format!("recording under {}", self.dir.display()),
@@ -465,19 +471,28 @@ impl<B: SystemOne> SystemOne for Recorder<B> {
 /// that found it ([`Response::verify`]), as the client verifies a live one,
 /// so a recording that no longer fits (edited by hand, or made by an older
 /// release that did not check) fails naming the question rather than
-/// replaying an answer the client would refuse. The request hash covers the
-/// questions, so a recording found by hash was made for these questions.
+/// replaying an answer the client would refuse. The request hash and the
+/// fingerprint both cover the questions, so a recording found by either was
+/// made for these questions.
+///
+/// With the `jud` feature, `*.jud` files of kind `recording` are read
+/// beside the `*.json` ones ([`crate::jud`]), and a recording that carries
+/// only a [`Recording::fingerprint`] (one made by another tool) is found by
+/// it.
 #[derive(Debug, Default)]
 pub struct Replay {
-    by_hash: BTreeMap<String, Response>,
+    responses: Vec<Response>,
+    by_hash: BTreeMap<String, usize>,
+    by_fingerprint: BTreeMap<String, usize>,
 }
 
 impl Replay {
-    /// Load every `*.json` recording under `dir` that carries a request
-    /// hash. Recordings without one (a harness's, keyed by case) are
+    /// Load every `*.json` recording under `dir` (and every `*.jud`
+    /// recording, with the `jud` feature) that carries a request hash or a
+    /// fingerprint. Recordings with neither (a harness's, keyed by case) are
     /// skipped; a file that is not a recording is an error.
     pub fn open(dir: &Path) -> Result<Self> {
-        let mut by_hash = BTreeMap::new();
+        let mut replay = Self::default();
         let entries = std::fs::read_dir(dir).map_err(|source| Error::Io {
             context: dir.display().to_string(),
             source,
@@ -489,32 +504,70 @@ impl Replay {
                     source,
                 })?
                 .path();
-            if path.extension().is_none_or(|e| e != "json") {
-                continue;
-            }
-            let text = std::fs::read_to_string(&path).map_err(|source| Error::Io {
-                context: path.display().to_string(),
-                source,
-            })?;
-            let recording: Recording = serde_json::from_str(&text)?;
-            if let Some(hash) = recording.request_hash {
-                by_hash.insert(hash, recording.response);
-            }
+            let extension = path.extension().and_then(|e| e.to_str());
+            let recording = match extension {
+                Some("json") => {
+                    let text = read(&path)?;
+                    serde_json::from_str::<Recording>(&text)?
+                }
+                #[cfg(feature = "jud")]
+                Some(crate::jud::EXTENSION) => {
+                    let text = read(&path)?;
+                    crate::jud::parse_recording(&text).map_err(|source| {
+                        Error::InvalidRecording {
+                            path: path.display().to_string(),
+                            reason: source.to_string(),
+                        }
+                    })?
+                }
+                _ => continue,
+            };
+            replay.add(recording);
         }
-        Ok(Self { by_hash })
+        Ok(replay)
     }
 
-    /// Number of distinct requests this replay can answer.
+    /// Add one recording, under its request hash, its fingerprint, or both.
+    /// A recording with neither is skipped. A later recording of the same
+    /// request replaces an earlier one.
+    pub fn add(&mut self, recording: Recording) {
+        let Recording {
+            response,
+            request_hash,
+            fingerprint,
+            ..
+        } = recording;
+        if request_hash.is_none() && fingerprint.is_none() {
+            return;
+        }
+        let index = self.responses.len();
+        self.responses.push(response);
+        if let Some(fingerprint) = fingerprint {
+            self.by_fingerprint.insert(fingerprint, index);
+        }
+        if let Some(hash) = request_hash {
+            self.by_hash.insert(hash, index);
+        }
+    }
+
+    /// Number of recordings this replay can answer from.
     pub fn len(&self) -> usize {
-        self.by_hash.len()
+        self.responses.len()
     }
 
-    /// True when the directory held no hashed recording: it was never
-    /// recorded, or it was recorded by a harness keyed by case id, which
-    /// [`Replay::open`] skips.
+    /// True when the directory held no hashed or fingerprinted recording:
+    /// it was never recorded, or it was recorded by a harness keyed by case
+    /// id, which [`Replay::open`] skips.
     pub fn is_empty(&self) -> bool {
-        self.by_hash.is_empty()
+        self.by_hash.is_empty() && self.by_fingerprint.is_empty()
     }
+}
+
+fn read(path: &Path) -> Result<String> {
+    std::fs::read_to_string(path).map_err(|source| Error::Io {
+        context: path.display().to_string(),
+        source,
+    })
 }
 
 impl SystemOne for Replay {
@@ -526,11 +579,16 @@ impl SystemOne for Replay {
     ) -> BoxFuture<'a, Result<Response>> {
         Box::pin(async move {
             let hash = request_hash(state, questions);
-            let response = self
-                .by_hash
-                .get(&hash)
-                .cloned()
-                .ok_or(Error::NoRecording(hash))?;
+            let index = if let Some(index) = self.by_hash.get(&hash) {
+                *index
+            } else {
+                let fingerprint = crate::eval::canonical::request_fingerprint(state, questions);
+                *self
+                    .by_fingerprint
+                    .get(&fingerprint)
+                    .ok_or(Error::NoRecording(hash))?
+            };
+            let response = self.responses[index].clone();
             response.verify(questions)?;
             Ok(response)
         })

@@ -169,6 +169,11 @@
 //! * `contract` (feature `openapi`, off by default) is the vendored TypeSafe
 //!   OpenAPI document as text, for an application that validates its own
 //!   traffic against the contract this crate is tested against.
+//! * `jud` (feature `jud`, off by default) reads and writes the `.jud`
+//!   format: a rubric (questions in wire shape with the policy that reads
+//!   their answers), the labelled cases it is graded on and the recordings
+//!   of what a model answered, each with a content fingerprint any
+//!   implementation computes the same way (`docs/jud.md`).
 //!
 //! Without the `http` feature the crate is the question builder, the typed
 //! answers, the backends other than the client, and the recordings and
@@ -184,6 +189,8 @@ pub mod error;
 pub mod eval;
 #[cfg(feature = "http")]
 pub mod http;
+#[cfg(feature = "jud")]
+pub mod jud;
 pub mod observer;
 pub mod question;
 

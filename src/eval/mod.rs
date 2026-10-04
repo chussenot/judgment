@@ -18,7 +18,9 @@
 //! format, keyed by a case id for a harness or by a request hash for a
 //! [`crate::backend::Replay`].
 
+pub mod canonical;
 pub mod metrics;
+pub mod tuning;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -47,6 +49,77 @@ pub struct Recording {
     /// are keyed by case.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_hash: Option<String>,
+    /// The request's [canonical fingerprint](canonical::request_fingerprint),
+    /// `sha256:…`: the name any tool gives the same state and questions,
+    /// model excluded. The [`crate::backend::Recorder`] sets it; a harness
+    /// may.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
+    /// The rubric the request's questions came from, by id or fingerprint,
+    /// when a harness knows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rubric: Option<String>,
+    /// The server that answered, as a base URL, when known: two servers
+    /// speaking the same wire answer differently, and a recording that
+    /// does not say which is half a measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server: Option<String>,
+    /// When the call was made, RFC 3339 in UTC. The
+    /// [`crate::backend::Recorder`] sets it; a `jev-latest` alias moves, and
+    /// the date says which version it could have been.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recorded_at: Option<String>,
+}
+
+impl Recording {
+    /// A recording of `response` for `case`, with no fingerprint, rubric,
+    /// server or time: a harness that keys recordings by case id fills what
+    /// it knows.
+    pub fn new(case: impl Into<String>, response: Response, elapsed_ms: u64) -> Self {
+        Self {
+            case: case.into(),
+            response,
+            elapsed_ms,
+            request_hash: None,
+            fingerprint: None,
+            rubric: None,
+            server: None,
+            recorded_at: None,
+        }
+    }
+}
+
+/// The current time as RFC 3339 in UTC, to the second (`2026-10-04T12:00:00Z`),
+/// what [`Recording::recorded_at`] holds. Computed from the system clock
+/// without a date dependency.
+pub fn now_rfc3339() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    rfc3339_from_unix(secs)
+}
+
+/// RFC 3339 for a UNIX timestamp in seconds, UTC. The civil-date
+/// arithmetic is the proleptic Gregorian algorithm (days to year, month,
+/// day via the 400-year cycle), exact for every date the clock can give.
+pub fn rfc3339_from_unix(secs: u64) -> String {
+    let days = secs / 86_400;
+    let rem = secs % 86_400;
+    let (hour, minute, second) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    // Howard Hinnant's civil_from_days, shifted so the era starts on
+    // 0000-03-01.
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}T{hour:02}:{minute:02}:{second:02}Z")
 }
 
 /// Reading or writing recordings.
@@ -525,12 +598,7 @@ mod tests {
             // And so is a field the server added beyond the documented shape.
             extra: BTreeMap::from([("routing".to_owned(), json!({ "model": "typed-decisions" }))]),
         };
-        let keyed = Recording {
-            case: "case-1".into(),
-            response: response.clone(),
-            elapsed_ms: 5,
-            request_hash: None,
-        };
+        let keyed = Recording::new("case-1", response.clone(), 5);
         write_recording(&dir, &keyed).unwrap();
         // The harness's format has no hash field at all.
         let text = std::fs::read_to_string(recording_path(&dir, "case-1")).unwrap();

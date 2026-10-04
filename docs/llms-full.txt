@@ -20,6 +20,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | What each module is for and what it promises, before opening the rustdoc | [What is in the crate](tour.md) |
 | Which crate types carry speculative fan-out, confidence-gated routing, composite scoring and intent routing, and what the recordings teach about thresholds | [Patterns](patterns.md) and the examples under `examples/` |
 | How to test a decision with no key and no network, and grade recordings against labels | [Testing without the model](testing.md) |
+| How to keep the questions, the thresholds, the labelled cases and the recorded answers in files that name each other by content, and tune a threshold from them | [The .jud format](jud.md) and `examples/jud/` |
 | What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
 | What the hosted TypeSafe API does with what the crate sends, and with what it refuses to send | [Against the hosted TypeSafe API](verification/hosted-typesafe.md) |
 | Whether the crate works against a second implementation of the wire, what the benchmark measured, and what each `laya-serve` release changed on the wire | [Against Laya typed-decisions](verification/laya-typed-decisions.md) |
@@ -29,6 +30,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Why an answer is read through a typed handle rather than a string key | [Decision 0003](decisions/0003-typed-handles-between-questions-and-answers.md) |
 | How a version is cut from the commits and published to crates.io, and what to set up once | [Releasing](releasing.md) |
 | Why releases are cut with cocogitto from Conventional Commits and published by CI from a tag | [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) |
+| Why the rubric, the cases and the recordings got one YAML format with content fingerprints | [Decision 0014](decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) |
 | What changed in each release | [CHANGELOG](../CHANGELOG.md) |
 | Everything, as an agent or a model reads it | [llms.txt](llms.txt), the index; [llms-full.txt](llms-full.txt), every page in one file |
 
@@ -163,7 +165,7 @@ The builder checks the HTTP API reference page's limits before anything is sent:
 
 ## `backend`: one trait, four implementations
 
-`SystemOne` is the one-method trait every source of answers implements, so the code consuming judgments never knows which. `Client` is one. `Fake` answers from a table and remembers what it was asked. `Recorder` writes another backend's responses to a directory. `Replay` answers from that directory offline, keyed by a content hash of the request. Every one of them verifies its response before returning it, so a response that reaches the caller answers what was asked whichever backend is behind the trait. The client does not retry a response that does not fit, because the call was billed; it still reports the usage and counts the attempt as failed, `unfit`, beside `decode` for a 2xx body that does not decode. [Testing without the model](testing.md) shows the fake and the recordings in use.
+`SystemOne` is the one-method trait every source of answers implements, so the code consuming judgments never knows which. `Client` is one. `Fake` answers from a table and remembers what it was asked. `Recorder` writes another backend's responses to a directory, each with the request's content hash, its fingerprint and the time. `Replay` answers from that directory offline, by either key, and with the `jud` feature reads `.jud` recordings made by any tool beside the crate's own `.json` ones. Every one of them verifies its response before returning it, so a response that reaches the caller answers what was asked whichever backend is behind the trait. The client does not retry a response that does not fit, because the call was billed; it still reports the usage and counts the attempt as failed, `unfit`, beside `decode` for a 2xx body that does not decode. [Testing without the model](testing.md) shows the fake and the recordings in use.
 
 ## `client` and `http`: the wire, with the SDKs' retries
 
@@ -179,7 +181,11 @@ One enum, `#[non_exhaustive]`, grouped by remedy: configuration, request, transi
 
 ## `eval`: what makes a probability trustworthy
 
-Recordings for replay, one `Judgment` per answer and label, and per-question accuracy with a 95% Wilson interval, Brier score, calibration error and confidence when right or wrong. `fingerprint` is the canonical hash that keys a recording, over any JSON value, so a harness can name the questions a run was recorded under and refuse to grade old answers under new questions. The module makes calibrated probabilities a measurement rather than an assumption; the thresholds that act on them stay in the application.
+Recordings for replay, one `Judgment` per answer and label, and per-question accuracy with a 95% Wilson interval, Brier score, calibration error and confidence when right or wrong. `canonical` is RFC 8785 canonical JSON and the `sha256:` fingerprint over it, the identity of a rubric's questions, a set of cases or a request that any implementation computes the same way; the older `fingerprint` is the crate's own 16-hex-digit hash, still what `Recorder` keys by. `tuning` is the threshold sweep over a Noul's judgments and the gate table over a Choice's or a Score's, with the best F1 and the lowest bar at a target accuracy read off them. The module makes calibrated probabilities a measurement rather than an assumption; the thresholds that act on them stay in the application, or in a rubric's policy.
+
+## `jud`: the format (feature `jud`)
+
+Behind the `jud` feature, off by default: the reader and writer for [the .jud format](jud.md). `Rubric` is questions in wire shape with a `policy` of gates and the `tuning` they came from, lowered through the `Questions` builder so a rubric that parses is a request that sends, and `apply` reads a response through the gates into one `Verdict` per question. `Cases` are labelled states, bound to a rubric so a label that names an option nobody offered fails before any call, with `per_turn` for a conversation and `grade` for one response against one case. `parse_recording` and `recording_to_yaml` are the third kind. Every document has a content fingerprint, and `schemas/jud/` states each shape as a JSON Schema.
 
 ## `observer` and `contract`
 
@@ -187,7 +193,7 @@ Recordings for replay, one `Judgment` per answer and label, and per-question acc
 
 ## Without the `http` feature
 
-The crate is the questions, the answers, the fake and replay backends, the metrics and the contract, for a project that brings its own transport. CI builds and checks every test target in that configuration.
+The crate is the questions, the answers, the fake and replay backends, the metrics, the format and the contract, for a project that brings its own transport. CI builds and checks every test target in that configuration.
 
 
 <!-- source: docs/patterns.md -->
@@ -252,7 +258,7 @@ let again = replay.answer(&state, "jev-latest", &questions).await?;
 assert_eq!(live, again);
 ```
 
-A recording is keyed by a 64-bit hash of the canonical, key-sorted JSON of the state, the model and the questions, so a question changed without re-recording misses the recording and fails the test rather than grading old answers under new questions; `eval::fingerprint` exposes the same hash. The hash is the same whichever client serialised the request, so two clients that order the questions differently share a recording. Replay verifies each recording against the questions as the client would, so a recording made under one set of options cannot answer a question that offers another.
+A recording is keyed by a 64-bit hash of the canonical, key-sorted JSON of the state and the questions, so a question changed without re-recording misses the recording and fails the test rather than grading old answers under new questions; `eval::fingerprint` exposes the same hash. The hash is the same whichever client serialised the request, so two clients that order the questions differently share a recording. Each recording also carries the request's `sha256:` fingerprint ([the .jud format](jud.md), RFC 8785 canonical JSON), the key another tool computes the same way, and the time it was made; with the `jud` feature, `Replay` reads `.jud` recordings by that fingerprint beside its own `.json` ones. Replay verifies each recording against the questions as the client would, so a recording made under one set of options cannot answer a question that offers another.
 
 The committed examples work this way: each pattern example under `examples/` replays the recordings beside it by default, runs live with `--live`, re-records with `--record`, and carries a test over its recordings that `cargo test` runs ([Patterns](patterns.md)).
 
@@ -260,11 +266,286 @@ The committed examples work this way: each pattern example under `examples/` rep
 
 `eval` turns recordings and labels into numbers: one `Judgment` per answer and label, then per question the accuracy with a 95% Wilson interval, the Brier score, the calibration error and the mean confidence when right and when wrong. The interval is there because an accuracy on three labelled cases and one on three hundred read the same without it. The Brier score is the multi-class sum, which the rustdoc states because other tools use a different form and the numbers are not comparable.
 
-What the module deliberately leaves to the application: the thresholds. A probability becomes an action in code the application owns and tunes; the crate measures whether the probabilities deserve the trust the thresholds place in them. A change of model is a change of policy that needs a replay before it ships, which is the reason the recordings, the hash and the metrics are one module.
+What the module deliberately leaves to the application: the thresholds. A probability becomes an action in code the application owns and tunes; the crate measures whether the probabilities deserve the trust the thresholds place in them, and `eval::tuning` sweeps a threshold or a confidence bar over the judgments so the number is read off a table rather than guessed. A change of model is a change of policy that needs a replay before it ships, which is the reason the recordings, the hash and the metrics are one module. [The .jud format](jud.md) is where the questions, the thresholds, the labelled cases and the recordings live as files that name each other by content, and `examples/jud_calibration.rs` runs the loop from cases to a tuned policy.
 
 ## What this does not replace
 
 A mock encodes what the client author believed about the wire. Only a real server can contradict that belief, which is what the ignored live tests and the verification records are for ([How the crate is checked](verification/method.md)).
+
+
+<!-- source: docs/jud.md -->
+
+
+# The `.jud` format
+
+A System One request is simple: a `state`, a `model` and a map of typed questions. What is hard to keep is everything around it. The questions live in code; the threshold a probability is acted on at lives in a configuration file or a constant; the labelled examples that threshold was tuned on live in a notebook; the answers the model gave last month live nowhere. When the model version moves, nobody can say which of the four changed, or whether the threshold still holds. `.jud` gives each of them a file with a stated shape, an identity and a fingerprint, so a policy can say which rubric and which cases it was tuned on, a recording can say which request and which server it answers, and two tools can exchange all three without agreeing on anything but the files.
+
+A `.jud` file is one YAML 1.2 document. JSON is valid YAML, so a JSON file with the same fields is the same document. Three kinds of document share one envelope, and nothing in the format depends on this crate: the questions are the wire's own shape, the fingerprints are a published canonicalisation, and the [JSON Schemas](../schemas/jud/) under `schemas/jud/` state each kind formally. This page is the specification; `judgment::jud` (feature `jud`, off by default) is one implementation of it, and [`examples/jud/`](../examples/jud/) holds a complete set of documents with a runnable round trip.
+
+## Design
+
+Five choices shape the format; the [decision record](decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) weighs the alternatives.
+
+- **The wire shape is the shape.** A rubric's questions are written exactly as `POST /v1/systemone` sends them: `type`, `instructions`, `criteria`. No translation layer, nothing to learn beyond the API's own documentation, and lowering a rubric into a request loses nothing.
+- **Policy beside the question, never in it.** The threshold a Noul is acted on at, the confidence bar a Choice must clear and the fallback below it are the application's reading of an answer, not part of the question. They sit in `policy`, keyed by question id, with the `tuning` they came from, and are never sent to a model.
+- **Identity by content.** A rubric's questions, a set of cases and a request each have a fingerprint: the SHA-256 of their canonical JSON ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)). Any implementation computes the same fingerprint for the same content, so a `tuning.cases` of `sha256:…` means one exact set of labels whichever tool wrote it, and an edited set is visibly another one.
+- **Strict reading.** A field the format does not define, a gate on a question of the wrong primitive, a label naming an option the rubric does not offer, a `from_turn` on a state that is not a conversation: each is refused with its path, never ignored or defaulted. The off-list rule the crate applies to answers applies to labels too.
+- **YAML, under the 1.2 core schema.** People write and review rubrics, and comments and multi-line strings matter for that. Only `true` and `false` are booleans, so an option called `yes` is the string `yes`; a duplicate key is an error.
+
+What the format is not: a prompt or template language (a question is data, not a program), a report format (metrics are derived from cases and recordings, and any tool prints them its own way), or a container for soft labels (a case expects one answer; a distribution over answers is left for a later version, see [Extending the format](#extending-the-format)).
+
+## The envelope
+
+Every document starts with two fields.
+
+| Field | Value | Meaning |
+|---|---|---|
+| `jud` | `1` | The format version. A reader that does not read this version refuses the document. |
+| `kind` | `rubric`, `cases` or `recording` | Which shape follows. Any other value is refused. |
+
+The file extension is `.jud`. A reader decides what a document is by its `kind`, never by its file name, so `triage.jud`, `triage-cases.jud` and `recordings/refund.jud` are conventions, not rules.
+
+## `rubric`
+
+The questions a request sends, in wire shape and wire order, and the policy an application reads the answers by.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `id` | yes | A name for the rubric, stable across edits, non-empty. What a cases document's `rubric` and a recording's `rubric` may name. |
+| `version` | no | An edition of the rubric, free-form; a number is read as its text. The questions' fingerprint is the exact identity. |
+| `description` | no | What the rubric decides, for the person reading it. |
+| `questions` | yes | A map of question id to question, at least one, in the order the model sees them. |
+| `policy` | no | A map of question id to gate. |
+| `tuning` | no | Where the gates came from. |
+
+### Questions
+
+A question is exactly what the API receives, so the API's documentation is the reference for what each field means. The reader applies the checks a request builder applies before sending, and refuses a question that would be refused: a Choice needs 2 to 255 options with non-empty keys, a Score needs 2 to 10 levels none of which is null, a Noul needs instructions or criteria that describe at least one outcome, and no id is empty.
+
+```yaml
+questions:
+  actionable:                 # the id: the key the answer comes back under; the model never sees it
+    type: noul
+    instructions: Does `message` ask for something to be done?
+    criteria:                 # optional: what yes and no mean
+      true: a request, a report of a fault
+      false: thanks, small talk, an automated receipt
+  desk:
+    type: choice
+    instructions: Which desk should take `message`?
+    criteria:                 # option key to description (null allowed), in the order the model sees them
+      billing: Invoices, payments, refunds
+      technical: Errors, outages, anything about using the product
+      none_of_these: Not clearly any desk
+  tone:
+    type: score
+    instructions: How upset is the writer of `message`?
+    criteria: [calm, annoyed, angry]   # levels, lowest first; a level may be an object
+```
+
+`instructions` may be a string, an object, an array or `null`; absent and `null` are the same, and both are sent to the API as `null`. A Noul's criteria keys are `true` and `false`, which YAML reads as booleans and the wire carries as strings; a reader accepts them bare or quoted and refuses any other key. The order of `questions` and of a Choice's `criteria` is significant: it is the order the model sees, and a reader preserves it.
+
+### Policy
+
+A gate says where one question's answer becomes an action. Every field is optional, and each applies to one primitive; a gate that does not fit its question, or names a question the rubric does not have, is refused.
+
+| Field | Applies to | Meaning | Absent |
+|---|---|---|---|
+| `threshold` | Noul | Yes at this probability of yes and above. | 0.5 |
+| `confidence` | Choice, Score | Acted on at this confidence and above; deferred below it. | 0, nothing deferred |
+| `fallback` | Choice, Score | What a deferred answer falls back to: an offered option key, or a level by its text or its index as a string. | none |
+| `note` | any | Why the bar is where it is. | |
+
+Reading a response through the policy gives one verdict per question: for a Noul, yes or no with the probability; for a Choice, the chosen option with its confidence, or deferred with the fallback, the option the model would have chosen and the bar; for a Score, the level nearest to the weighted score (as the crate's `Score::nearest_level` reads it) with its index, text and the confidence, or deferred likewise. A verdict is derived, not stored: it is what an application does, and a `.jud` file never records what a model should have been made to do.
+
+```yaml
+policy:
+  actionable:
+    threshold: 0.55
+    note: best F1 on the labelled cases; 0.5 lets the automated receipt through
+  desk:
+    confidence: 0.45
+    fallback: none_of_these
+  tone:
+    confidence: 0.3
+```
+
+### Tuning
+
+Where the gates came from. Every field is optional, and a rubric written by hand has none, which is itself information.
+
+| Field | Meaning |
+|---|---|
+| `cases` | The cases document, by id or by fingerprint (`sha256:…`). A fingerprint says exactly which labels. |
+| `model` | The versioned model that answered them (`jev-1.13.0`): a gate is tuned per version. |
+| `server` | The server that answered, as a base URL. Two servers speaking the same wire answer differently. |
+| `tuned_at` | When, RFC 3339. |
+| anything else | Kept as given: the accuracy and coverage at the chosen bar, the sweep itself, a link to the run. `tuning` is the one place in a rubric that accepts fields the format does not name. |
+
+### Fingerprint
+
+A rubric's fingerprint is the [fingerprint](#fingerprints) of its `questions` map alone: the exact identity of what the model is asked, unchanged by the id, the version, the description or the policy. A recording's `rubric` or a cases document's `rubric` may name a rubric by its id, when the id is enough, or by this fingerprint, when it is not.
+
+## `cases`
+
+Labelled states a rubric is graded on and its gates are tuned on.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `id` | no | A name for the set; the fingerprint is its exact identity. |
+| `rubric` | no | The rubric the labels are for, by id or by fingerprint. A reader binding the cases to a rubric checks the name against both. |
+| `description` | no | Where the cases came from. |
+| `cases` | yes | At least one case, in document order. |
+
+A case:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `id` | no | A name, non-empty and unique in the document; a case without one is named by its position, `#3`. |
+| `state` | yes | Any JSON: the state the questions are asked about. An array is a conversation, one element per turn. |
+| `expect` | no | The right answer, by question id, for the questions this case is labelled for. A question left out is asked and not graded. |
+| `tags` | no | Free labels for slicing a report. |
+| `note` | no | Why the label is what it is. |
+
+What `expect` holds depends on the question's primitive, and a label that does not fit is refused when the cases are bound to their rubric:
+
+| Primitive | Label | Grades as |
+|---|---|---|
+| Noul | `true` or `false` | `yes` or `no` |
+| Noul, over a conversation | `{from_turn: n}`: true from turn `n` (zero-based) on; `{from_turn: null}`: never | `yes` when the conversation has a turn `n`, else `no`; per turn, see below |
+| Choice | an offered option key | the key |
+| Score | a level's index (a number) or a level's text | the index, as a string |
+
+The "grades as" column is the vocabulary the API's own answers are graded in: a Noul answer is `yes` at 0.5 and above, a Choice answer is its option key, a Score answer's distribution is keyed by level index. A label in that vocabulary needs no translation at grading time, and a report's confusion matrix reads in the rubric's own terms.
+
+```yaml
+cases:
+  - id: refund-angry
+    state:
+      message: I was charged twice last month and nobody has refunded me. Fix it today or I cancel.
+    expect: {actionable: true, desk: billing, tone: angry}
+    tags: [billing]
+  - id: receipt
+    state:
+      message: Your payment of 12.00 EUR was received. This is an automated message.
+    expect: {actionable: false, desk: none_of_these}      # tone left unlabelled: asked, not graded
+    note: the hard one; about billing, but asks nothing
+```
+
+### Conversations
+
+A state that is an array is a conversation, and a question asked about it can change its answer from one turn to the next. `{from_turn: n}` labels a Noul with the turn at which it becomes true. Grading the whole conversation resolves the label once: `yes` if the conversation has a turn `n`. Grading turn by turn (`Case::per_turn` in the crate) cuts the state after each turn, resolves a `from_turn` label to `true` or `false` for that turn, and keeps every other label at the last turn only, since those label the whole conversation. Each turn is its own request, with its own fingerprint and its own recording.
+
+```yaml
+  - id: escalates
+    state:
+      - {role: user, text: Hi, my export has been stuck at 99% for an hour.}
+      - {role: assistant, text: Sorry about that. Could you tell me the export id?}
+      - {role: user, text: "It's exp_4411. Honestly, can I just talk to a person?"}
+    expect:
+      wants_human: {from_turn: 2}
+```
+
+`from_turn` is refused on a question that is not a Noul, on a state that is not an array, and with a turn past the last one (`null` says never). `{}` and `{from_turn: 0, until: 1}` are not labels.
+
+### Fingerprint
+
+A cases document's fingerprint is the [fingerprint](#fingerprints) of its `cases` array, as JSON: the labels and the states, with their ids, tags and notes, in order. The document's own id and description are not part of it. It is what a rubric's `tuning.cases` names.
+
+## `recording`
+
+One model response to one request, kept so a run can be replayed, graded again or compared with a later model's without another call.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `case` | yes | The case it answers, or the request hash when a recorder keyed it by content. |
+| `response` | yes | The response as received: `model`, `answers` and `usage` in the wire's shape, plus `request_id` and any top-level field the server added. |
+| `elapsed_ms` | yes | Wall-clock time of the call. |
+| `fingerprint` | no | The [request fingerprint](#fingerprints): the identity of the state and the questions, model excluded. The key a replay finds the recording by. |
+| `request_hash` | no | This crate's own 16-hex-digit content hash, written by its `Recorder`; another implementation leaves it out. |
+| `rubric` | no | The rubric the questions came from, by id or by fingerprint. |
+| `server` | no | The server that answered, as a base URL. |
+| `recorded_at` | no | When, RFC 3339 in UTC. A `jev-latest` alias moves; the date says which version it could have been. |
+
+```yaml
+jud: 1
+kind: recording
+case: receipt
+response:
+  model: jev-1.13.0
+  answers:
+    actionable: {type: noul, noul: 0.52}
+    desk:
+      type: choice
+      choice: billing
+      probabilities: {account: 0.02, billing: 0.55, none_of_these: 0.4, technical: 0.03}
+      confidence: 0.4
+  usage: {input_tokens: 410, output_tokens: 38}
+  request_id: req_01a1…
+elapsed_ms: 140
+fingerprint: sha256:8afe973c8409a45fc93b67678fa8954351ea4a5291b1ba58a9e6754c289890cd
+rubric: inbox-triage
+server: https://api.typesafe.ai
+recorded_at: "2026-10-04T11:58:00Z"
+```
+
+A recording is verified against the questions of the request that finds it before it is replayed, as a live response would be, so a recording that no longer fits the rubric fails naming the question rather than replaying an answer the rubric would refuse.
+
+## Fingerprints
+
+A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 of the canonical JSON of a value. Canonical JSON is [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JSON Canonicalization Scheme): object members sorted by key, comparing keys as sequences of UTF-16 code units; no whitespace; strings escaped minimally (`"`, `\`, and control characters, as JSON requires, with the two-character escapes where they exist); numbers formatted as ECMAScript's `Number.prototype.toString` formats them (`1` not `1.0`, `0.1`, `1e+21`, `1e-7`). Any implementation that follows the RFC produces the same bytes, so the same content has one fingerprint everywhere.
+
+| Fingerprint of | Over |
+|---|---|
+| a rubric | its `questions` map |
+| a cases document | its `cases` array |
+| a request | `{"questions": <the questions map>, "state": <the state>}` |
+
+The request fingerprint leaves the model out on purpose. The model is the thing a comparison varies: the same request answered by `jev-1.13.0` and by a local model has the same fingerprint, and each recording says in `response.model`, `server` and `recorded_at` who answered it. A replay that must tell two models apart keeps their recordings in two directories.
+
+A known vector, for an implementation to check itself against: the fingerprint of `{"b": "x", "a": 1}` is `sha256:ecf9e98ec0641e23113ff3ce8bdc78d0ddd249886517fd4a7f68cc83d4e65667`, the SHA-256 of the fifteen bytes `{"a":1,"b":"x"}`.
+
+This crate's `Recorder` also writes its older `request_hash`, a 16-hex-digit hash of its own canonical form, and its `Replay` finds a recording by either; `request_hash` is not part of the format and another implementation neither writes nor needs it.
+
+## Reading rules
+
+An implementation reads a document under these rules, and the crate's [`tests/jud.rs`](../tests/jud.rs) pins that its reader and the schemas agree on each.
+
+- YAML 1.2 core schema: `true` and `false` are the booleans; `yes`, `no`, `on`, `off` and `y` are strings; a leading-zero number is decimal. A duplicate key is an error. JSON is accepted as YAML.
+- `jud` must be present and equal to 1; `kind` must be present and one of the three. Both are checked before anything else, so a document of another version or kind is refused by name.
+- A field the kind does not define is refused, with its path. The exceptions are `tuning` in a rubric and `response` in a recording, which keep what they are given, and `state`, which is any JSON.
+- Order is significant and preserved for `questions`, a Choice's `criteria`, a Score's `criteria`, `cases` and `expect`.
+- A rubric's questions pass the request builder's checks, and each gate fits its question's primitive and names an offered option or an existing level. A cases document's labels fit their questions when the cases are bound to a rubric; a document can be read without its rubric, and is then only checked for shape.
+- A `threshold` or `confidence` is a number from 0 to 1 inclusive. A level index is a non-negative integer below the number of levels.
+- A reader that writes a document back writes the same fields, so a document survives a read and a write with its fingerprints unchanged.
+
+## The loop
+
+The format exists for one loop, which the example [`examples/jud_calibration.rs`](../examples/jud_calibration.rs) runs end to end over the documents in `examples/jud/`:
+
+1. **Read and bind.** Parse the rubric and the cases; bind the cases to the rubric, so a label that does not fit fails before any call.
+2. **Answer.** Send each case's state with the rubric's questions, to a server or to a replay of earlier recordings, and record what came back with its fingerprint.
+3. **Grade.** Grade each response against the case's labels, in the answer's own vocabulary, into judgments; summarise per question into accuracy with its interval, Brier score and calibration error.
+4. **Tune.** Sweep the Noul's threshold and read off the one with the best F1; table the Choice's confidence bar against accuracy and coverage and read off the lowest bar that keeps the accuracy wanted.
+5. **Write back.** Put the gates into the rubric's `policy`, with the cases' fingerprint, the model, the server and the time in `tuning`, and write the rubric out. The next person to open it sees what the numbers rest on.
+
+```sh
+cargo run -p judgment --features jud --example jud_calibration
+```
+
+## Schemas and conformance
+
+`schemas/jud/rubric.schema.json`, `cases.schema.json` and `recording.schema.json` (JSON Schema 2020-12, sharing `common.schema.json`) state the shape of each kind, and the crate's `tests/jud.rs` validates every document under `examples/jud/`, and every document the crate writes, against them. A schema cannot state the cross-checks (a gate against its question's primitive, a label against the options offered, `from_turn` against the state's shape); those are the reading rules above, and the same test pins that a document the schema refuses, the reader refuses too.
+
+An implementation conforms when it reads all three kinds under the reading rules, refuses what they refuse with the field named, computes the fingerprints of this page (checked against the known vector), and writes documents that validate against the schemas and read back unchanged.
+
+## In the crate
+
+`judgment::jud`, behind the `jud` feature, is this crate's implementation: `parse` for any kind, `Rubric` with `parse`, `to_yaml`, `fingerprint`, `gate` and `apply` (verdicts through the policy), `Cases` with `parse`, `to_yaml`, `fingerprint` and `bind`, `Case::per_turn` for conversations, `grade` for one case against one response, and `parse_recording` and `recording_to_yaml` for the third kind. A rubric's `questions` is a `Questions`, so it goes straight to any `SystemOne` backend, and `Questions::handle` gives a typed handle to a question read from a file. `Replay` reads `.jud` recordings beside its `.json` ones and finds either by fingerprint. The fingerprints are `eval::canonical`, the sweeps and gate tables `eval::tuning`, and `eval::Recording` carries the recording kind's fields.
+
+## Extending the format
+
+`jud: 1` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later version is refused whole rather than half-read; a later version that adds a field takes the next number, and a reader says which numbers it reads. Two additions are foreseen and deliberately not in 1: a soft label (a distribution over options or levels, for grading calibration against a panel's disagreement rather than one annotator's pick), and a verdict kind (what an application decided, for auditing a policy's record). Both wait for a second implementation to need them.
 
 
 <!-- source: docs/releasing.md -->
@@ -1012,6 +1293,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 |---|---|---|
 | [0003](0003-typed-handles-between-questions-and-answers.md) | Typed handles between questions and answers | accepted |
 | [0013](0013-releases-cut-with-cocogitto-and-published-from-ci.md) | Releases cut with cocogitto and published from CI | accepted |
+| [0014](0014-a-file-format-for-rubrics-cases-and-recordings.md) | A file format for rubrics, cases and recordings | accepted |
 
 ## Status notes
 
@@ -1156,3 +1438,81 @@ Chosen option: "cocogitto, hand-written CHANGELOG, publication from a tag in CI"
 ## More information
 
 [Releasing](../releasing.md) is the runbook; `cog.toml`, `scripts/release-bump.sh`, `.github/workflows/release.yml` and the `commits` job of `.github/workflows/ci.yml` implement the decision; [cocogitto's documentation](https://docs.cocogitto.io) describes the bump rules and hooks.
+
+
+<!-- source: docs/decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md -->
+
+
+# 0014 A file format for rubrics, cases and recordings
+
+## Context and problem statement
+
+The crate builds a request in code and verifies the response against it; what happens around the request it has left to the application. In practice the application keeps four things in four places: the questions in Rust, the thresholds in a configuration file or a constant, the labelled examples the thresholds were tuned on in a notebook or a test fixture, and the model's past answers in a recordings directory keyed by a hash only this crate computes. When the model version moves, or a question is reworded, or a label is corrected, nothing ties the four together: the threshold does not say which cases or which model it rests on, the cases do not say which questions they label, and a second tool (a labelling UI, a CI gate, another language's client) cannot read any of it. A comparison with the other Rust clients ([Compared with the other Rust clients](../research/client-comparison.md)) and with a REPL built on the same wire showed the same need met in incompatible ways: one keeps a policy bar beside each question in its own file format, another keeps recordings as cassettes keyed by its own hash, none can read the others'. How should the questions, the policy, the cases and the recordings be kept so that they stay consistent with each other and readable by more than one tool?
+
+## Decision drivers
+
+- A rubric is read and reviewed by people, so the format must be writable by hand, with comments and multi-line text
+- The questions must reach the wire unchanged, so the format must not invent a second vocabulary for them
+- A threshold must say what it rests on: which labels, which model, which server, when
+- An identity must survive a copy between tools and repositories, so it must be computed from content by a published rule, not assigned
+- Strict reading: a misspelt field, an off-list label or a gate on the wrong primitive must fail, not pass silently, the same rule the crate applies to answers
+- The crate stays generic: nothing in the format may belong to one application
+- The crate's existing recordings and `Replay` must keep working
+
+## Considered options
+
+1. One YAML format with three kinds (`rubric`, `cases`, `recording`), wire-shaped questions, a policy map beside them, RFC 8785 fingerprints and a strict reader, with JSON Schemas as the formal statement
+2. Adopt the REPL's existing file format and extend it
+3. Keep everything in code and configuration; add a `Questions` serialiser and document a convention
+4. JSON only, with the same shapes
+
+## Decision outcome
+
+Chosen option: 1. The format is `.jud`, specified in [The .jud format](../jud.md): an envelope of `jud: 1` and `kind`; a rubric whose `questions` are the wire's own objects in the order the model sees them, a `policy` of gates per question id (a Noul's `threshold`, a Choice's or a Score's `confidence` and `fallback`) and a `tuning` block naming the cases by fingerprint, the model, the server and the time; a cases document of labelled states, with a conversation as an array state and `{from_turn: n}` for the turn a Noul becomes true; and a recording of one response with the request's fingerprint. Fingerprints are `sha256:` over RFC 8785 canonical JSON, computed over the questions alone for a rubric, the cases array for a cases document, and `{questions, state}` for a request, model excluded. The reader uses the YAML 1.2 core schema (only `true` and `false` are booleans), refuses unknown fields and every cross-check failure by path, and lowers a rubric through the request builder so a rubric that reads is a request that sends. Three JSON Schemas under `schemas/jud/` state the shapes; the format version is in the envelope and a later version takes the next number.
+
+### Consequences
+
+- Good: the four artefacts name each other by content, so a tuned threshold carries its evidence and an edited case set is visibly a different one
+- Good: a rubric is the request, so there is no mapping to maintain and nothing to learn beyond the API's documentation
+- Good: another implementation needs only the page, the schemas and the RFC; the known vector lets it check its fingerprints
+- Good: the crate's recordings gain `fingerprint`, `rubric`, `server` and `recorded_at`, and `Replay` reads `.jud` recordings by fingerprint beside its own `.json` ones, so a recording made by another tool replays here
+- Bad: a dependency on a YAML parser, behind the `jud` feature so a client that builds questions in code does not pay for it
+- Bad: strict reading means a new optional field is a new format version, not a quiet addition; accepted so a document is never half-read
+- Bad: `Recording` gained fields, so a struct literal in a consumer no longer compiles without `..Recording::new(…)`; a breaking change under the crate's 0.x rule, listed in the CHANGELOG
+
+### Confirmation
+
+`src/jud/` implements the reader, the writer, the gates and the grading; `tests/jud.rs` validates every example document and every document the crate writes against the schemas, pins that the reader and the schemas refuse the same documents, and that `yes` is a string; `src/eval/canonical.rs` carries the RFC 8785 tests and the known vector; `examples/jud_calibration.rs` runs the whole loop over `examples/jud/` and its test asserts the committed gates are the ones the loop derives. `tests/contract.rs` checks the committed `.jud` recordings against the OpenAPI response schema as it checks the `.json` ones.
+
+## Pros and cons of the options
+
+### 1. One YAML format with three kinds
+
+- Good: YAML carries comments, which a reviewed rubric needs, and JSON is valid YAML, so a tool that writes JSON needs nothing more
+- Good: three kinds with one envelope keep each file small and single-purpose, and a reader dispatches on `kind`
+- Good: fingerprints by a published canonicalisation make identity portable
+- Bad: YAML's own history (1.1 booleans, octal) has to be excluded explicitly; the reading rules do so
+- Bad: a parser dependency
+
+### 2. Adopt the REPL's format
+
+- Good: an existing user base and files
+- Bad: its question shape is its own, not the wire's, so every field needs a mapping and the API's documentation does not describe the file
+- Bad: no content identity; a policy bar says nothing about what it was tuned on
+- Bad: no cases or recordings kind, so two of the four artefacts still have no home
+
+### 3. Code and configuration, with a convention
+
+- Good: no new dependency, nothing to specify
+- Bad: a convention is not readable by a second tool, and nothing ties a threshold to its cases or a case set to its questions
+- Bad: the questions still cannot be reviewed without reading Rust
+
+### 4. JSON only
+
+- Good: no YAML parser, no schema subtleties
+- Bad: no comments and no multi-line strings, and a rubric is written and reviewed by people; the deciding driver
+- Bad: nothing gained that YAML's JSON compatibility does not already give
+
+## More information
+
+[The .jud format](../jud.md) is the specification; the schemas are under `schemas/jud/`; the example documents and the round-trip example are under `examples/jud/` and `examples/jud_calibration.rs`. The weakness the comparison exposed on the way, questions and options sent in alphabetical order, was fixed in the same change: `Questions` and a Choice's `criteria` now keep insertion order, which is what the format's order rule relies on.

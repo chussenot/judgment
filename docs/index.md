@@ -2,7 +2,7 @@
 title: judgment documentation
 description: Map of the judgment crate's documentation, what each page answers, and where the crate's documentation ends and an application's begins.
 status: current
-last_reviewed: 2026-10-03
+last_reviewed: 2026-10-04
 tags: [judgment, index]
 ---
 
@@ -18,6 +18,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | What each module is for and what it promises, before opening the rustdoc | [What is in the crate](tour.md) |
 | Which crate types carry speculative fan-out, confidence-gated routing, composite scoring and intent routing, and what the recordings teach about thresholds | [Patterns](patterns.md) and the examples under `examples/` |
 | How to test a decision with no key and no network, and grade recordings against labels | [Testing without the model](testing.md) |
+| How to keep the questions, the thresholds, the labelled cases and the recorded answers in files that name each other by content, and tune a threshold from them | [The .jud format](jud.md) and `examples/jud/` |
 | What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
 | What the hosted TypeSafe API does with what the crate sends, and with what it refuses to send | [Against the hosted TypeSafe API](verification/hosted-typesafe.md) |
 | Whether the crate works against a second implementation of the wire, what the benchmark measured, and what each `laya-serve` release changed on the wire | [Against Laya typed-decisions](verification/laya-typed-decisions.md) |
@@ -27,6 +28,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Why an answer is read through a typed handle rather than a string key | [Decision 0003](decisions/0003-typed-handles-between-questions-and-answers.md) |
 | How a version is cut from the commits and published to crates.io, and what to set up once | [Releasing](releasing.md) |
 | Why releases are cut with cocogitto from Conventional Commits and published by CI from a tag | [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) |
+| Why the rubric, the cases and the recordings got one YAML format with content fingerprints | [Decision 0014](decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) |
 | What changed in each release | [CHANGELOG](../CHANGELOG.md) |
 | Everything, as an agent or a model reads it | [llms.txt](llms.txt), the index; [llms-full.txt](llms-full.txt), every page in one file |
 

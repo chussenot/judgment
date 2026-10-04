@@ -1,0 +1,21 @@
+# A rubric asked about a conversation: the state is the array of turns so
+# far, and the answer can change from one turn to the next.
+jud: 1
+kind: rubric
+id: handoff
+description: Whether the user of a chat wants a person to take over.
+
+questions:
+  wants_human:
+    type: noul
+    instructions: >-
+      Reading the conversation so far, does the user want a person to take
+      over from the assistant?
+    criteria:
+      true: asks for a human, an agent or a manager, or rejects the assistant's help
+      false: is still working with the assistant, however unhappy
+
+policy:
+  wants_human:
+    threshold: 0.6
+    note: a false hand-off costs an agent's time; a missed one costs the user's
