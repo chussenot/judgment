@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-04
+
 ### Fixed
 
 - A `jud: 1` document could carry a 1.1 field whose value was empty or
