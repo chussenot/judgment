@@ -119,6 +119,16 @@ JUDGMENT_LIVE_MODEL="${TYPESAFE_DEFAULT_MODEL:-jev-latest}" \
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 
+[tasks."live:ollama"]
+description = "The ignored live tests against Ollama's /v1/systemone on OLLAMA_URL (default http://127.0.0.1:11434; Ollama 0.35 or later, `ollama pull tev1:0.8b` first); OLLAMA_MODEL picks another decision model (nimble, tev1)"
+run = '''
+set -eu
+base="${OLLAMA_URL:-http://127.0.0.1:11434}"
+curl -sSf -m 5 -o /dev/null "$base/api/version" || { echo "no Ollama at $base; start it with 'ollama serve' and pull a decision model ('ollama pull tev1:0.8b')" >&2; exit 1; }
+JUDGMENT_LIVE_BASE_URL="$base" JUDGMENT_LIVE_MODEL="${OLLAMA_MODEL:-tev1:0.8b}" \
+  cargo test --test live -- --ignored --nocapture --test-threads=1
+'''
+
 [tasks."live:laya"]
 description = "The ignored live tests against a System One-compatible server on LAYA_URL (default http://127.0.0.1:8000, laya-serve); docs/verification/laya-typed-decisions.md says how to start one"
 run = '''
