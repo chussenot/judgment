@@ -23,6 +23,7 @@ nav:
   - Research:
       - System One client libraries: research/system-one-client-libraries.md
       - Compatible servers and models: research/compatible-servers-and-models.md
+      - Compared with the other Rust clients: research/client-comparison.md
   - Decisions:
       - Index: decisions/README.md
       - 0003 Typed handles between questions and answers: decisions/0003-typed-handles-between-questions-and-answers.md

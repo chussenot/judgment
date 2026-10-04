@@ -23,6 +23,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Whether the crate works against a second implementation of the wire, what the benchmark measured, and what each `laya-serve` release changed on the wire | [Against Laya typed-decisions](verification/laya-typed-decisions.md) |
 | What the other Rust clients and the official SDKs do, and which of it the crate adopted | [System One client libraries](research/system-one-client-libraries.md) |
 | Which servers and models speak the wire, how close the open ones are to Jev on the Decision Index, and what each one's limits mean for a consumer | [Compatible servers and models](research/compatible-servers-and-models.md) |
+| How judgment compares, feature by feature and with evidence, with the most-downloaded Rust crates for the same wire, and what it should take from them | [Compared with the other Rust clients](research/client-comparison.md) |
 | Why an answer is read through a typed handle rather than a string key | [Decision 0003](decisions/0003-typed-handles-between-questions-and-answers.md) |
 | How a version is cut from the commits and published to crates.io, and what to set up once | [Releasing](releasing.md) |
 | Why releases are cut with cocogitto from Conventional Commits and published by CI from a tag | [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) |
