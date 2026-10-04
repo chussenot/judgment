@@ -2,11 +2,13 @@
 title: System One client libraries
 description: A survey of the twenty-five community Rust clients for the TypeSafe System One wire, the official Python and JavaScript SDKs and the live OpenAPI document, what each did that judgment 0.1 did not, the ranked changes worth making to the crate, the ones rejected and why, and what judgment 0.2.0 shipped of them.
 status: current
-last_reviewed: 2026-10-03
+last_reviewed: 2026-10-04
 tags: [research, judgment, typesafe, rust, sdk]
 ---
 
 # System One client libraries
+
+This is the survey of 2026-09-25 that shaped judgment 0.2; its versions, download counts and line counts are of that date. The field as of 2026-10-04, read again against the released crate and measured, is in [Compared with the other Rust clients](client-comparison.md).
 
 The `judgment` crate was designed in one repository against one consumer. Between 2026-09-16 and 2026-09-25 about twenty-five other Rust crates for the same wire appeared on crates.io, TypeSafe's Python SDK reached 0.7.1, and a live OpenAPI document turned out to exist. Before spending more on the crate it is worth knowing what the field converged on, where judgment is ahead, and where it is behind. This page is that survey: every crate's source was read, not its README, and every claim about the official API was checked against the SDK reference or the OpenAPI document on 2026-09-25.
 

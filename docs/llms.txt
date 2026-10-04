@@ -29,6 +29,7 @@ This index is generated from the crate's documentation nav (`mkdocs.yml`) and ea
 
 - [System One client libraries](https://raw.githubusercontent.com/chussenot/judgment/main/docs/research/system-one-client-libraries.md): A survey of the twenty-five community Rust clients for the TypeSafe System One wire, the official Python and JavaScript SDKs and the live OpenAPI document, what each did that judgment 0.1 did not, the ranked changes worth making to the crate, the ones rejected and why, and what judgment 0.2.0 shipped of them.
 - [Compatible servers and models](https://raw.githubusercontent.com/chussenot/judgment/main/docs/research/compatible-servers-and-models.md): The servers and models that speak the System One wire as of 2026-10-04, hosted and local, what the Jev Decision Index 0.2.1 says about how close the open ones are to Jev, what each one's limits and confidence semantics mean for a consumer of this crate, and which the crate has been run against or should be next.
+- [Compared with the other Rust clients](https://raw.githubusercontent.com/chussenot/judgment/main/docs/research/client-comparison.md): A feature-by-feature comparison of judgment with the nine most-downloaded Rust crates for the System One wire, each read from its published source on 2026-10-04 and measured for dependency footprint and build time, in five grids (the wire, reading answers, resilience, testing and evaluation, observability and footprint), with what judgment should take from the others next.
 
 ## Decisions
 

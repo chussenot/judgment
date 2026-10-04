@@ -142,8 +142,8 @@
 //!   one request put a cheap classifier in front of expensive handlers, a
 //!   [`Confidence`] read off each gating what is automated.
 //!
-//! The README's "Patterns" section says how each example is run, tested and
-//! re-recorded, and what the pages say about thresholds and determinism.
+//! `docs/patterns.md` says how each example is run, tested and re-recorded,
+//! and what the recordings teach about thresholds and determinism.
 //!
 //! ## Modules
 //!

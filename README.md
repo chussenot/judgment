@@ -1,18 +1,60 @@
 # judgment
 
 Typed, calibrated judgments from [TypeSafe](https://docs.typesafe.ai) System One
-models (Jev) and any backend that speaks the same wire.
+models (Jev) and from any server that speaks the same wire, as a Rust crate.
+
+```toml
+[dependencies]
+judgment = "0.3"
+```
+
+## Why
 
 A generative model asked to classify something answers in prose, or in JSON it
-was told to produce; a `confidence` field in that JSON is generated text, not a
-measured probability. A System One model does not generate text. It evaluates a
+was told to produce. A `confidence` field in that JSON is generated text, not a
+measured probability, and a parse failure becomes a failure of the decision it
+was meant to inform. A System One model does not generate text. It evaluates a
 `state` (any JSON) against typed questions and returns calibrated answers: a
 probability of yes, one option out of a defined set with the full distribution
-and a confidence, or a position on ordered levels. Code owns the workflow; the
-model supplies the judgment. This crate keeps that boundary typed end to end:
-a question returns a handle that fixes its answer's type, probabilities are
-validated newtypes, limits are checked before sending, and reading an answer
-through its handle yields a Rust enum or a number, never a misread one.
+and a confidence, or a position on ordered levels. Calibrated means the
+probabilities can be measured against outcomes and held to account. That lets
+code own the workflow: the model supplies a number, and the threshold that
+turns the number into an action is written, tested and tuned in code.
+
+The wire is simple. What is hard is trusting a decision made on a probability
+that came over it: the answer must belong to the question that was asked, the
+probability must be a probability, a transient failure must not fail the
+decision, and the decision must be testable without a key. This crate exists
+to make those four things properties of the types rather than habits of the
+caller. It began as the client layer of an application that routes alerts on
+such judgments, where a second project wanting the same layer had to depend on
+the whole application; the layer became a crate, with every rule about what to
+do with an answer left to the caller.
+
+## What it guarantees
+
+- **An answer can only be read as what was asked.** Adding a question returns
+  a `Handle` that fixes its answer's type; reading through it yields a Rust
+  enum, a probability or a score, never a misread one. Before anything is read,
+  every backend holds the whole response against the questions it was sent: an
+  answer for every question, of its primitive, a Choice naming only options it
+  was offered, a Score whose legend is the levels sent. An option nobody
+  offered is an error, never a guess.
+- **A probability is a probability.** `Probability` and `Confidence` refuse a
+  value outside `[0, 1]` when they are decoded, and cannot be confused with
+  each other at a threshold.
+- **A request that would be refused never costs a call.** The limits of the
+  HTTP API reference (255 options, 2 to 10 levels, non-empty and unique ids)
+  are checked before sending.
+- **Transient failures are retried the way the official SDKs retry them**, and
+  nothing that was billed is retried: two attempts more on 408, 429, 5xx and
+  transport failures, the server's wait honoured, a response that does not fit
+  reported but never re-sent. The request id TypeSafe's support asks for is on
+  every response, every error and every span.
+- **A decision is testable with no key and no network.** A `Fake` that refuses
+  an answer its question could not produce, a `Recorder` and a `Replay` keyed
+  by the request's content, and `eval` to grade recordings against labels with
+  accuracy, Brier score and calibration error.
 
 ```rust
 use judgment::{Client, Questions, options};
@@ -42,303 +84,110 @@ async fn run() -> judgment::Result<()> {
 }
 ```
 
-## Why this crate exists
+Point it at another server with `TYPESAFE_BASE_URL`, or build without the
+`http` feature to keep the questions, the answers, the fake and replay backends
+and the metrics for a project with its own transport.
 
-It began as the client layer of an application that triages alerts with a
-System One model, where it was run against the hosted model and against an
-open-weights model through a shim, with the wire shape verified live (and a
-401 seen not to be retried). The retry rules this release rewrote or added
-(the status set, the jitter, `retry-after-ms` and `Retry-After` parsing, the
-budget) are checked offline only, against wiremock in `tests/client.rs` and
-by the unit tests in `src/http.rs`, until a live 408, 429 or 529 is recorded.
-A second project wanting the same layer had to depend on the whole
-application, so the layer became a crate: the typed questions and answers,
-the client and the backends, with every rule about what to do with an answer
-left to the caller. What the other Rust clients for the same API do, and
-what this one took from them rather than adopting one, is in
-[System One client libraries](docs/research/system-one-client-libraries.md).
+## Compared with the other Rust clients
 
-## What is in it
+About thirty Rust crates speak this wire, most of them a few weeks old. The
+grids below set judgment against the nine most downloaded on crates.io on
+2026-10-04 and `typesafe-client`, the one closest in design, each read from
+its published source and measured on one machine. The full comparison, with a
+file and line for every cell and the columns judgment loses, is in
+[Compared with the other Rust clients](docs/research/client-comparison.md).
+✓ present, ◐ partial, ✗ absent.
 
-- `question`: the builder, one typed `Handle` per question, the `options!`
-  macro for enum-backed choices, `dynamic_choice` for option sets known only
-  at runtime, and the HTTP API reference page's limits (255 options, 2 to 10
-  levels, stricter than the OpenAPI document) checked before anything is
-  sent.
-- `answer`: `Probability` and `Confidence` newtypes that refuse values outside
-  `[0, 1]`, the wire `Answer`, and `Response::get(&handle)` returning `Noul`,
-  `Choice<T>` or `Score`. Decoding is tolerant and reading is strict: an
-  answer of a kind this release does not know decodes as `Answer::Unknown`
-  (the client logs it at `warn`), a missing `usage` reads as zero, and
-  undocumented top-level fields (Laya's `routing`, say) are kept in
-  `Response::extra`; a known answer that breaks its shape is still an error.
-  Decoding does not fail on an unknown answer: the response is refused, as
-  `AnswerTypeMismatch` naming its kind, only when the answer sits under a
-  question that was asked, and under an unasked id it is kept.
-  `Response::verify(&questions)` holds a response against the questions it
-  was sent for: an answer under every id, of the question's primitive, a
-  Choice naming only options it offered, a Score whose legend is the levels
-  sent and whose value is on their scale. The SDKs check the shape of an
-  answer and stop there; an answer that names an option nobody offered is an
-  error here, never read as a guess.
-- `client` (feature `http`, default): `Client` with the official SDKs'
-  defaults and `RetryPolicy`: two retries of 408, 429, 5xx and transport
-  failures, exponential backoff whose jitter only shortens a wait, and the
-  server's wait (`retry-after-ms`, or `Retry-After` in seconds or as an HTTP
-  date) honoured up to a cap. An overall retry budget is available and off by
-  default, and `RetryPolicy::conservative()` retries only what cannot have
-  been billed twice. The rustdoc of `RetryPolicy` lists where it matches the
-  SDKs and where it deliberately differs. `Client::evaluate_with` takes a
-  `CallOptions` for one call's timeout, retry policy, headers and extra body
-  fields, and `ClientBuilder::default_header` sets a header on every call.
-  What the client sets itself (the key, the content type, the user agent, the
-  retry count both SDKs own, and the `state`, `model` and `questions` fields)
-  is refused with an error before anything is sent, where the SDKs silently
-  keep or overwrite it. Options stay off the `SystemOne` trait, so a
-  recording's key is unchanged.
-- `http` (feature `http`): the retry loop behind `Client`, shareable by other
-  `reqwest` clients.
-- `error`: one enum grouped by remedy: configuration, request, transient
-  (after the retries stopped), transport, decode, and reading an answer. A 400
-  or a 422 is `InvalidRequest` with the server's message and the fields it names
-  as `ValidationIssue`s with dotted paths (`questions.urgency.score.criteria`);
-  a 403 is `PermissionDenied`, apart from a 401, because a new key does not
-  fix it; a malformed API key (whitespace inside, a control or non-ASCII
-  character) is `InvalidApiKey` when the client is built, before any request,
-  and no message quotes the key. Every error that came from an HTTP response,
-  and every `Response`, carries TypeSafe's request id (`x-typesafe-request-id`)
-  when the API sent one, the id its support asks for; the `typesafe.*` spans
-  record it too.
-- `backend`: `SystemOne`, the one-method trait every source of answers
-  implements, so the code consuming judgments never knows which. `Client` is
-  one; `Fake` answers from a table and remembers what it was asked; `Recorder`
-  writes another backend's responses to a directory; `Replay` answers from
-  that directory offline, keyed by a content hash of the request. Every one
-  of them verifies its response before returning it, so a response that
-  reaches the caller answers what was asked, whichever backend is behind the
-  trait. The client does not retry a response that does not fit (it was
-  billed), still reports its usage, and counts it as a failed attempt,
-  `unfit`, beside `decode` for a 2xx body that does not decode.
-- `eval`: what makes calibrated probabilities trustworthy rather than assumed:
-  recordings for replay, one `Judgment` per answer and label, per-question
-  accuracy, Brier score, calibration error and confidence when right or wrong.
-- `observer`: the seam an application uses to count tokens and failed attempts
-  in its own metrics. The crate emits `tracing` spans and nothing else.
+**The wire and the questions**
 
-Without the `http` feature the crate is the questions, the answers, the fake
-and replay backends and the metrics, for a project with its own transport.
+| Crate | Structured Score levels | Enum and runtime option sets | Limits checked before sending | Per-call overrides | Builds without the HTTP client |
+|---|---|---|---|---|---|
+| **judgment 0.3.0** | ✓ | ✓ | ✓ | ✓ | ✓ |
+| kunobi-decision 0.3.0 | ✓ | ✓ | ◐ duplicate id replaces | ✓ | ✗ |
+| typesafe-sdk 0.2.0 | ◐ | ◐ strings | ✗ | ✓ | ✗ |
+| typesafeai-sdk 0.4.1 | ✓ | ◐ random order | ◐ no caps | ✓ | ✗ |
+| typesafe-sdk-* 0.6.2 | ✓ | ◐ strings | ◐ | ✓ | ◐ |
+| jev-client 0.2.0 | ✓ | ◐ strings | ◐ opt-in | ✗ | ✗ |
+| jev 0.1.2 | ✗ | ◐ alphabetical | ✗ | ✗ | ✗ |
+| typesafe-ai-sdk 0.5.0 | ✓ | ✓ | ◐ no caps | ✓ | ✗ |
+| typesafeai-sdk-community 0.5.0 | ✓ | ◐ alphabetical | ◐ no caps | ✓ | ✗ |
+| typesafe-client 0.1.0 | ✓ | ✓ | ✓ | ◐ | ✓ |
 
-## Testing without the model
+**Reading answers safely**
 
-A `Fake` answers from a table, refuses a question it has no answer for, and
-remembers every call, so a test checks the decision and what was asked. It
-verifies its response like the client, so a scripted option the question
-does not offer, or an answer of the wrong primitive, fails the call (and is
-not remembered) instead of passing a test the real client would fail. A
-scripted Score is only its probabilities: its legend is the levels of the
-question it answers, echoed as a server echoes them.
+| Crate | Typed handle | Validated probability types | Response verified against the questions | Unknown answer kind kept | Request id on errors |
+|---|---|---|---|---|---|
+| **judgment** | ✓ | ✓ | ✓ every backend, legend included | ✓ | ✓ |
+| kunobi-decision | ✓ | ✗ | ✗ | ✓ | ✓ |
+| typesafe-sdk | ✗ | ✗ | ✗ | ◐ dropped | ✓ |
+| typesafeai-sdk | ✗ | ✗ | ✗ | ◐ payload lost | ✓ |
+| typesafe-sdk-* | ✗ | ✗ | ✗ | ✗ fails | ✓ |
+| jev-client | ✗ | ✗ | ✗ | ✓ | ✓ |
+| jev | ✗ | ✗ | ✗ | ◐ | ✗ |
+| typesafe-ai-sdk | ◐ derive | ✗ | ✗ | ◐ | ✓ |
+| typesafeai-sdk-community | ◐ derive | ✗ | ✗ | ◐ | ✓ |
+| typesafe-client | ✓ | ✗ | ◐ legend not compared | ✗ fails | ✓ |
 
-```rust
-let backend = Fake::new()
-    .choice("department", [("billing", 0.9), ("technical", 0.1)], 0.8)?
-    .noul("is_urgent", 0.2)?;
-let response = backend.answer(&state, "any-model", &questions).await?;
-assert_eq!(backend.calls()[0].question_ids, ["department", "is_urgent"]);
-```
+**Resilience**
 
-A `Recorder` writes what a real backend answered; a `Replay` over the same
-directory answers the same requests later, with no key and no network:
+| Crate | SDK retry defaults | Server's wait, capped | Conservative preset | Body cap | Redirects not followed | Key never in `Debug` | Concurrency control |
+|---|---|---|---|---|---|---|---|
+| **judgment** | ✓ | ✓ 30 s | ✓ | ✓ 8 MiB | ✓ | ✓ | ✗ |
+| kunobi-decision | ✓ | ✓ 60 s | ✗ | ✗ | ✓ | ✓ | ✓ |
+| typesafe-sdk | ✓ | ◐ uncapped | ✗ | ✗ | ✗ | ✗ | ✗ |
+| typesafeai-sdk | ◐ | ◐ no date | ✗ | ✓ 1 MiB | ✓ | ✓ | ✗ |
+| typesafe-sdk-* | ✓ | ✓ 60 s | ✗ | ✗ | ✗ | ✓ | ✗ |
+| jev-client | ✓ | ✓ 60 s | ✗ | ✓ 32 MiB | ✓ | ✓ | ✓ |
+| jev | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| typesafe-ai-sdk | ✓ | ◐ uncapped | ✗ | ✗ | ✗ | ✓ | ✗ |
+| typesafeai-sdk-community | ✓ | ◐ uncapped | ✗ | ✗ | ✗ | ◐ | ✓ |
+| typesafe-client | ✓ | ✓ 60 s | ✗ | ✗ | ✗ | ✓ | ✗ |
 
-```rust
-let recorder = Recorder::new(Client::from_env()?, "recordings");
-let live = recorder.answer(&state, "jev-latest", &questions).await?;
-let replay = Replay::open(Path::new("recordings"))?;
-let again = replay.answer(&state, "jev-latest", &questions).await?;
-assert_eq!(live, again);
-```
+**Testing, evaluation and footprint**
 
-## Patterns
+| Crate | Fake that refuses an unfit answer | Record and replay | Contract test against the OpenAPI document | Evaluation metrics | Verified against real servers | Transitive deps / clean build |
+|---|---|---|---|---|---|---|
+| **judgment** | ✓ | ✓ content hash | ✓ | ✓ with intervals | ✓ hosted API, Laya | 100 / 49 s |
+| kunobi-decision | ✓ | ✗ | ✗ | ✗ | ✗ | 97 / 44 s |
+| typesafe-sdk | ✗ | ✗ | ✗ | ✗ | ✗ | 104 / 25 s |
+| typesafeai-sdk | ✗ | ✗ | ✗ | ✗ | ✗ | 91 / 23 s |
+| typesafe-sdk-* | ◐ mock, unchecked | ✗ | ✗ | ✗ | ✗ | 110 / needs rustc 1.98 |
+| jev-client | ◐ trait only | ✗ | ◐ own schema | ✗ | ✗ | 107 / 27 s |
+| jev | ✗ | ✗ | ✗ | ✗ | ◐ one document | 91 / 40 s |
+| typesafe-ai-sdk | ✗ | ✓ SHA-256 cassettes | ✗ | ✗ | ✗ | 113 / 43 s |
+| typesafeai-sdk-community | ◐ mock, unchecked | ◐ in order | ✗ | ✓ no intervals | ◐ | 110 / 47 s |
+| typesafe-client | ✓ | ✗ | ✓ | ✗ | ◐ hosted API | 99 / 45 s |
 
-TypeSafe documents four [patterns](https://docs.typesafe.ai/patterns): the
-shapes a System One call takes inside a larger program. Each has a runnable
-example here, written to the documentation page's own scenario and
-thresholds, in a domain of its own.
-
-| Pattern | The shape | What carries it in this crate | Run |
-|---|---|---|---|
-| [Speculative fan-out](https://docs.typesafe.ai/patterns/fan-out) | Every question the decision tree might need goes in one request; the branch that is taken reads its answers and the others go unread. Questions are answered in parallel, so the extra ones cost input tokens, not latency | One `Questions` with a typed `Handle` per question; each branch reads only its handles | `cargo run -p judgment --example fan_out` |
-| [Confidence-gated routing](https://docs.typesafe.ai/patterns/confidence-routing) | The answer says what, the confidence says whether to act: a floor sends uncertainty to a person, and each action sets its own bar by what a wrong one would cost | `Choice::confidence`, a `Confidence` that cannot be thresholded as a `Probability`; `confidence_from_probabilities` for the formula behind it | `cargo run -p judgment --example confidence_routing` |
-| [Composite scoring](https://docs.typesafe.ai/patterns/composite-scoring) | Several atomic Scores, normalised and combined with weights the code owns; a new weighting needs no new inference | `Score::value` per dimension; `Recorder` and `Replay`, so the weights change over recorded answers | `cargo run -p judgment --example composite_scoring -- --weights 0.5,0.1,0.3,0.1` |
-| [Intent routing](https://docs.typesafe.ai/patterns/intent-routing) | A cheap classifier in front of expensive handlers, so code, a specialist model or a person each get only what needs them; a second question gates the escalation | A `Choice` and a `Score` in one request, a `Confidence` read off each | `cargo run -p judgment --example intent_routing` |
-
-Each example replays the recordings committed beside it
-(`examples/<name>/recordings/`, `jev-1.13.0`'s answers of 2026-10-03) by
-default, so it runs with no key and no network and prints every answer next
-to the decision it led to. `-- --live` sends the same requests to the hosted
-API (`TYPESAFE_API_KEY`; `TYPESAFE_BASE_URL` for another server,
-`TYPESAFE_MODEL` for another model), and `-- --record` does that and
-rewrites the recordings. Each example ends in a test over its recordings
-that `cargo test` runs: the request hash covers the questions, so a question
-changed without re-recording fails the gate rather than the next reader.
-
-Three things the pages say that the examples make concrete. Thresholds are
-starting points to tune on your own data, not constants. The hosted model's
-probabilities are not deterministic, and the spread grows with ambiguity:
-identical requests moved by up to 0.05 on a clear-cut input and by 0.19 in
-probability (0.28 in confidence) on an ambiguous one, the decision holding
-every time
-([judgment against the hosted TypeSafe API](docs/verification/hosted-typesafe.md)).
-A recording is one draw, and a threshold needs its margin most where the
-input is least clear. A Noul
-carries no confidence, so it is thresholded on its probability, where a
-Choice or a Score has both. And a Score's confidence falls fast when
-probability splits between neighbouring levels (a 60/40 split on three
-levels is 0.40), so the intent example's second gate, a 0.5 floor on the
-complexity's confidence, sends mild complaints to a person on `jev-1.13.0`;
-that floor, or the number of levels, is the first thing to tune.
-
-The same primitives take other shapes, each with a
-[cookbook](https://docs.typesafe.ai/cookbooks): select a value or a span
-from candidates found in code rather than generate it; rerank retrieved
-passages with one question per pair; verify a claim against its evidence
-and escalate what fails; turn scores into features for a classical model.
-None has an example here yet. They are the same `Questions`, handles and
-backends arranged differently.
-
-## Checking a real server
-
-The unit and integration tests never leave the process, so they cannot tell
-whether a server speaks the wire the way the mocks assume. Two things can:
-
-- `tests/live.rs` holds `#[ignore]` tests that run the three primitives, a
-  structured level (and print how the server echoes it), the model list, an unknown model name, an unknown extra
-  body field, a bearer check and a record-then-replay against whatever
-  `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them; run them by hand with `-- --ignored`.
-- `examples/typed_decisions.rs` replays the
-  [typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions)
-  benchmark (400 cases, 2,000 typed decisions) through the crate and scores it
-  with `judgment::eval`, live or from recordings. `examples/typed-decisions/`
-  holds a 40-case sample and the script that exports the full split.
-
-Both were run against Laya's `typed-decisions` checkpoint through
-`laya-serve` 0.3.20, and the live tests again through 0.3.24; what they
-found, including the decoding bug the first run caught and the legend
-comparison the second one loosened, is in
-[Against Laya typed-decisions](docs/verification/laya-typed-decisions.md).
-`examples/laya/serve_laya.py` is a System One-compatible shim over the
-`laya` package for when `laya-serve` is not wanted; it is the one Laya
-server that also answers `GET /v1/models`. `mise run live:ollama` points the
-same live tests at Ollama's `/v1/systemone` (0.35 and later) with
-`tev1:0.8b`, a decision model small enough for a CPU; which servers speak
-the wire, and how they differ, is in
-[Compatible servers and models](docs/research/compatible-servers-and-models.md).
-
-### Checking against the published contract
-
-TypeSafe publishes an OpenAPI document for the System One API at
-<https://api.typesafe.ai/openapi.json>. A copy is vendored at
-`tests/fixtures/typesafe-openapi.json` (OpenAPI 3.1.0, API version 0.2.0;
-an application that validates its own traffic against the same document
-reads it as `judgment::contract::OPENAPI_DOCUMENT` with the `openapi`
-feature), and `tests/contract.rs` validates against it, as JSON Schema
-2020-12, offline and in every `cargo test`:
-
-- every request shape the builders produce (each primitive, string, object,
-  array and null instructions, one-sided and structured Noul criteria,
-  undescribed options, 255 options, 2 and 10 levels of every level shape),
-  sent through each client entry point, with the method, path, content type
-  and bearer scheme the document names, and also against a closed copy of
-  the request components, so a renamed or misspelt field fails even where
-  the published schema, which closes no object, would take it as an extra
-  key;
-- every response a `Fake` builds, and all 40 committed recordings under
-  `examples/typed-decisions/recordings`, as committed and after a decode and
-  re-serialise;
-- the document's own examples, which decode through `Response` and read
-  through typed handles, and its model list and validation error, through
-  `list_models` and `Error::InvalidRequest`.
-
-Where the crate and the schema disagree the test pins the difference, each
-at its own path, so a refreshed document that closes one fails loudly:
-
-- The crate sends what the schema refuses: a null or numeric state, numeric
-  instructions, a boolean Noul criterion, a numeric Score level, an empty
-  question set. The builders take any JSON value there and the client any
-  `Serialize` state, so such a request reaches the server, which is expected
-  to refuse it with a 422.
-- The builder refuses what the schema allows: 1 or 256 options, 1 or 11
-  levels, an empty question id, an empty option key. It follows the HTTP
-  API reference page, which is stricter than the schema. The hosted API
-  was probed past those limits on 2026-10-03: it refuses 256 options and
-  11 levels with a 400, refuses an empty question id with a 400, and
-  answers one option or one level with probability 1 and accepts an empty
-  option key, so the upper bounds are the server's and the lower ones
-  this crate's alone (the rustdoc of `question` says why).
-- The crate decodes differently: it refuses a probability or confidence
-  outside `[0, 1]` and a negative token count, which the schema types as
-  bare numbers, because a value no threshold can use is better an error;
-  and it accepts a response without `usage`, with `usage` or a token count
-  null, with no answers, or with a legend entry that is null or a scalar,
-  which the schema refuses, because decoding is tolerant and
-  `Response::verify` is what holds a response to its questions. A `Fake`
-  asked nothing answers `answers: {}`, which the schema refuses.
-
-An answer of a kind the document does not name decodes as `Answer::Unknown`
-and is refused by the schema. That case is not run through the validator:
-`the_schema_has_the_kinds_and_paths_the_crate_has` compares the document's
-discriminator mappings with the crate's kinds, so a document that adds a kind
-fails there.
-
-The copy is refreshed only through `tests/openapi_drift.rs`, an ignored test
-that needs the network and no key. It compares the copy with the live
-document and names what differs; with `JUDGMENT_OPENAPI_WRITE` set it
-rewrites the copy canonically instead:
-
-```sh
-cargo test -p judgment --test openapi_drift -- --ignored          # stale?
-JUDGMENT_OPENAPI_WRITE=1 cargo test -p judgment --test openapi_drift -- --ignored
-cargo test -p judgment --test contract                            # review the refresh
-```
-
-This checks the published schema, not a live account: a server can accept
-or refuse what its schema does not say, which is what `tests/live.rs` is
-for.
+Where judgment is behind, and what it will take from the others next: a
+pacer that pauses every in-flight call on one 429, provider presets as data,
+`ranked()` and `margin()` helpers, and arithmetic checks in verification. The
+comparison page lists them with the crate each idea comes from.
 
 ## Documentation
 
-The crate's documentation lives with it, under [`docs/`](docs/index.md):
+The crate's documentation lives under [`docs/`](docs/index.md); the rustdoc on
+[docs.rs](https://docs.rs/judgment) is the reference for every type, error and
+default.
 
 | Page | What it answers |
 |---|---|
-| [How judgment works](docs/design.md) | How a handle ties a question to its answer, how a response is checked before it is read, how the retry loop decides, what the crate leaves out |
-| [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md) | What `jev-1.13.0` did with the live tests and with fifty probes past the builder's limits |
-| [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | The same tests against an open-weights server, the bug they caught, the benchmark numbers |
-| [System One client libraries](docs/research/system-one-client-libraries.md) | What the other Rust clients and the official SDKs do, and what the crate adopted |
-| [Compatible servers and models](docs/research/compatible-servers-and-models.md) | Which servers speak the wire, hosted and local, how close the open models are to Jev, and what each one's limits mean for a caller |
-| [Releasing](docs/releasing.md) | How a version is cut from the commits with cocogitto and published to crates.io by CI from a tag |
+| [How judgment works](docs/design.md) | How a handle ties a question to its answer, how a response is checked before it is read, how the retry loop decides |
+| [What is in the crate](docs/tour.md) | What each module is for and what it promises |
+| [Patterns](docs/patterns.md) | TypeSafe's four patterns on the crate's types, one runnable example each, and what the recordings teach about thresholds |
+| [Testing without the model](docs/testing.md) | The fake, the recordings and the metrics |
+| [How the crate is checked](docs/verification/method.md) | The live tests, the benchmark replay and the contract test, and how to run them against the hosted API, Laya or Ollama |
+| [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md), [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | What real servers did with the live tests, and what the crate changed for it |
+| [Compatible servers and models](docs/research/compatible-servers-and-models.md) | Which servers speak the wire and how the open models compare with Jev |
+| [Compared with the other Rust clients](docs/research/client-comparison.md) | The grids above in full, with evidence |
 | [Decisions](docs/decisions/README.md) | Why the API is shaped as it is, and why releases are cut the way they are |
+| [Releasing](docs/releasing.md) | How a version is cut and published |
 | [llms.txt](docs/llms.txt) | The index for agents and models; [llms-full.txt](docs/llms-full.txt) is every page in one file |
-
-The rustdoc (`cargo doc --open`) is the reference for every type, error and default.
 
 ## Status
 
-On [crates.io](https://crates.io/crates/judgment) since 0.3.0, with the
-rustdoc on [docs.rs](https://docs.rs/judgment). What changed in each
-release, breaking changes listed, is in [CHANGELOG.md](CHANGELOG.md); 0.x
-means a minor release may break, so pin the minor:
-
-```toml
-[dependencies]
-judgment = "0.3"
-```
-
-Releases are cut with [cocogitto](https://docs.cocogitto.io) and published
-by CI: the commits are Conventional Commits, `cog bump --auto` derives the
-next version from them and tags it, and the pushed tag runs the gate once
-more and publishes the crate to crates.io
-([Releasing](docs/releasing.md)).
-
-Live behaviour has been verified against the hosted API under one account
-and against Laya's server; the vendored OpenAPI document and the wiremock
-tests are the contract in this repository. Licensed MIT.
+On [crates.io](https://crates.io/crates/judgment) since 0.3.0; 0.x means a
+minor release may break, so pin the minor. What changed in each release,
+breaking changes listed, is in [CHANGELOG.md](CHANGELOG.md). Live behaviour has
+been verified against the hosted API and against Laya's server; the vendored
+OpenAPI document and the wiremock tests are the contract in this repository.
+Licensed MIT.
