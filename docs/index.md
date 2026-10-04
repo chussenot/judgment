@@ -15,7 +15,10 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | You want to know | Read |
 |---|---|
 | How a question's handle ties it to its answer, how a response is checked, how the retry loop decides | [How judgment works](design.md) |
-| Which crate types carry speculative fan-out, confidence-gated routing, composite scoring and intent routing | [README, Patterns](../README.md#patterns) and the examples under `examples/` |
+| What each module is for and what it promises, before opening the rustdoc | [What is in the crate](tour.md) |
+| Which crate types carry speculative fan-out, confidence-gated routing, composite scoring and intent routing, and what the recordings teach about thresholds | [Patterns](patterns.md) and the examples under `examples/` |
+| How to test a decision with no key and no network, and grade recordings against labels | [Testing without the model](testing.md) |
+| What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
 | What the hosted TypeSafe API does with what the crate sends, and with what it refuses to send | [Against the hosted TypeSafe API](verification/hosted-typesafe.md) |
 | Whether the crate works against a second implementation of the wire, what the benchmark measured, and what each `laya-serve` release changed on the wire | [Against Laya typed-decisions](verification/laya-typed-decisions.md) |
 | What the other Rust clients and the official SDKs do, and which of it the crate adopted | [System One client libraries](research/system-one-client-libraries.md) |
@@ -28,7 +31,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 
 ## Verification
 
-A mock encodes what the client author believed about the wire; only a real server can contradict that belief. Two records say what real servers did:
+A mock encodes what the client author believed about the wire; only a real server can contradict that belief. [How the crate is checked](verification/method.md) describes the three checks; two records say what real servers did:
 
 - [Against the hosted TypeSafe API](verification/hosted-typesafe.md): the live tests (`tests/live.rs`) and about fifty probes past the builder's limits, against `jev-1.13.0`.
 - [Against Laya typed-decisions](verification/laya-typed-decisions.md): the same tests against an open-weights server, `laya-serve` 0.3.20 and then 0.3.24, and the 400-case benchmark replayed through the crate.
