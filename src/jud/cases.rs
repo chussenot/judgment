@@ -6,8 +6,8 @@ use serde_json::Value;
 
 use super::rubric::level_index;
 use super::{
-    Error, Result, Rubric, Supplied, check_version, extensions, from_text, require_minor, to_yaml,
-    version_value,
+    Error, Result, Rubric, Supplied, check_version, extensions, from_text, require_minor, some,
+    to_yaml, version_value,
 };
 use crate::answer::Response;
 use crate::eval::{Judgment, canonical};
@@ -196,9 +196,27 @@ struct RawCases {
     rubric: Option<String>,
     #[serde(default)]
     description: Option<String>,
-    cases: Vec<Case>,
+    cases: Vec<RawCase>,
     #[serde(flatten)]
     rest: IndexMap<String, Value>,
+}
+
+/// A case as read: `options` present is a 1.1 feature whatever its value,
+/// and `null` is refused.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCase {
+    #[serde(default)]
+    id: Option<String>,
+    state: Value,
+    #[serde(default)]
+    expect: IndexMap<String, Expect>,
+    #[serde(default, deserialize_with = "some")]
+    options: Option<Supplied>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    note: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -233,20 +251,52 @@ impl Cases {
                 reason: "a cases document needs at least one case".to_owned(),
             });
         }
+        let feature = extensions.keys().next().cloned().or_else(|| {
+            raw.cases
+                .iter()
+                .position(|c| c.options.is_some())
+                .map(|i| format!("cases.{i}.options"))
+        });
+        require_minor(declared, feature)?;
         let cases = Self {
             id: raw.id,
             rubric: raw.rubric,
             description: raw.description,
-            cases: raw.cases,
+            cases: raw
+                .cases
+                .into_iter()
+                .map(|c| Case {
+                    id: c.id,
+                    state: c.state,
+                    expect: c.expect,
+                    options: c.options.unwrap_or_default(),
+                    tags: c.tags,
+                    note: c.note,
+                })
+                .collect(),
             extensions,
         };
-        require_minor(declared, cases.feature())?;
         for (index, case) in cases.cases.iter().enumerate() {
             if case.id.as_deref() == Some("") {
                 return Err(Error::Case {
                     case: case.name(index),
                     reason: "an id cannot be empty; leave it out instead".to_owned(),
                 });
+            }
+            // A supplied option is what a Choice's criteria hold: a
+            // non-empty key, and a description that is text, an object, an
+            // array or null, as the schema says.
+            for (question, options) in &case.options {
+                if let Some((key, _)) = options.iter().find(|(key, description)| {
+                    key.is_empty() || matches!(description, Value::Bool(_) | Value::Number(_))
+                }) {
+                    return Err(Error::Case {
+                        case: case.name(index),
+                        reason: format!(
+                            "`options.{question}`: an option needs a non-empty key and a description that is text, an object, an array or null (`{key}`)"
+                        ),
+                    });
+                }
             }
             if let Some(dup) = cases.cases[..index]
                 .iter()
@@ -685,29 +735,29 @@ cases:
     const ROUTING: &str = r"
 jud: 1.1
 kind: rubric
-id: routing
+id: support-routing
 questions:
-  owner:
+  desk:
     type: choice
-    instructions: Which team owns `alert`?
-    criteria: {none_of_these: Not clearly any team}
+    instructions: Which desk should take `message`?
+    criteria: {none_of_these: Not clearly any desk}
     options_from: request
-  caused_by_change:
+  refund_request:
     type: noul
-    instructions: Did a change in `alert.recent_changes` cause it?
-    when: alert.recent_changes
+    instructions: Does `message` ask for a refund for one of `customer.recent_orders`?
+    when: customer.recent_orders
 ";
 
     #[test]
     fn a_case_supplies_the_options_its_request_needs() {
         let rubric = Rubric::parse(ROUTING).unwrap();
-        let text = "jud: 1.1\nkind: cases\nx-source: {export: 2026-10-04}\ncases:\n  - id: oom\n    state: {alert: {title: OOMKilled, recent_changes: [deploy v2]}}\n    options:\n      owner: {platform: Kubernetes, payments: Checkout}\n    expect: {owner: platform, caused_by_change: true}\n";
+        let text = "jud: 1.1\nkind: cases\nx-source: {export: 2026-10-04}\ncases:\n  - id: refund\n    state: {message: {text: refund please}, customer: {recent_orders: [1042]}}\n    options:\n      desk: {billing: Invoices, technical: Errors}\n    expect: {desk: billing, refund_request: true}\n";
         let cases = Cases::parse(text).unwrap();
         cases.bind(&rubric).unwrap();
         assert_eq!(cases.extensions["x-source"]["export"], "2026-10-04");
         let asked = cases.cases[0].request(&rubric).unwrap();
         let ids: Vec<&str> = asked.ids().collect();
-        assert_eq!(ids, ["owner", "caused_by_change"]);
+        assert_eq!(ids, ["desk", "refund_request"]);
         // The document round-trips, as 1.1, and its fingerprint does not
         // depend on the `x-` key.
         let yaml = cases.to_yaml().unwrap();
@@ -737,31 +787,61 @@ questions:
                 .unwrap()
                 .bind(&rubric)
         };
-        // No change listed: `caused_by_change` is not asked, so not labelled.
-        let err = bind("    state: {alert: {title: x}}\n    options: {owner: {platform: P}}\n    expect: {caused_by_change: false}\n").unwrap_err();
+        // No recent order: `refund_request` is not asked, so not labelled.
+        let err = bind("    state: {message: {text: x}}\n    options: {desk: {billing: B}}\n    expect: {refund_request: false}\n").unwrap_err();
         assert!(
             matches!(&err, Error::Case { reason, .. } if reason.contains("not asked for this state")),
             "{err}"
         );
         // A label among the supplied options is offered; another is not.
-        bind("    state: {alert: {title: x}}\n    options: {owner: {platform: P}}\n    expect: {owner: platform}\n").unwrap();
-        let err = bind("    state: {alert: {title: x}}\n    options: {owner: {platform: P}}\n    expect: {owner: payments}\n").unwrap_err();
+        bind("    state: {message: {text: x}}\n    options: {desk: {billing: B}}\n    expect: {desk: billing}\n").unwrap();
+        let err = bind("    state: {message: {text: x}}\n    options: {desk: {billing: B}}\n    expect: {desk: technical}\n").unwrap_err();
         assert!(
             matches!(&err, Error::Case { reason, .. } if reason.contains("not one of the offered options")),
             "{err}"
         );
         // A case whose request cannot be built says so.
-        let err = bind("    state: {alert: {title: x}}\n    expect: {owner: none_of_these}\n")
+        let err = bind("    state: {message: {text: x}}\n    expect: {desk: none_of_these}\n")
             .unwrap_err();
         assert!(
             matches!(&err, Error::Case { reason, .. } if reason.contains("does not lower")),
             "{err}"
         );
-        let err = bind("    state: {alert: {title: x}}\n    options: {caused_by_change: {a: A}}\n")
+        let err = bind("    state: {message: {text: x}}\n    options: {refund_request: {a: A}}\n")
             .unwrap_err();
         assert!(
-            matches!(&err, Error::Case { reason, .. } if reason.contains("options.caused_by_change")),
+            matches!(&err, Error::Case { reason, .. } if reason.contains("options.refund_request")),
             "{err}"
         );
+    }
+
+    #[test]
+    fn case_options_count_by_presence_and_have_the_shape_of_criteria() {
+        let case = |options: &str| {
+            format!("jud: 1\nkind: cases\ncases:\n  - id: c\n    state: s\n{options}")
+        };
+        let err = Cases::parse(&case("    options: {}\n")).unwrap_err();
+        assert!(
+            matches!(&err, Error::Invalid { field, .. } if field == "cases.0.options"),
+            "{err}"
+        );
+        let err = Cases::parse(&case("    options: null\n")).unwrap_err();
+        assert!(matches!(err, Error::Syntax(_)), "{err}");
+        let v11 = |options: &str| case(options).replacen("jud: 1", "jud: 1.1", 1);
+        for bad in [
+            "    options: {desk: {billing: 3}}\n",
+            "    options: {desk: {\"\": B}}\n",
+            "    options: {desk: {billing: true}}\n",
+        ] {
+            let err = Cases::parse(&v11(bad)).unwrap_err();
+            assert!(
+                matches!(&err, Error::Case { reason, .. } if reason.contains("options.desk")),
+                "{bad}: {err}"
+            );
+        }
+        Cases::parse(&v11(
+            "    options: {desk: {billing: Invoices, technical: null, other: {what: x}}}\n",
+        ))
+        .unwrap();
     }
 }

@@ -6,6 +6,44 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A `jud: 1` document could carry a 1.1 field whose value was empty or
+  null (`strict: false`, `part_when: {}`, `bands: []`, a case's
+  `options: {}` or `options: null`) and be read; a 1.1 field now counts by
+  its presence, whatever its value, and `null` is refused as the value of
+  one in either version. `bands: []` is refused.
+- The JSON Schemas accepted 1.1 features under `jud: 1`, where the reader
+  refuses them; they now refuse them too, and a blank band verdict, so the
+  schemas and the reader refuse the same documents (`tests/jud.rs`).
+- A state path indexed an array with `01` or `+0`; only a canonical decimal
+  indexes one now, as in a JSON Pointer and as the specification says.
+- A Choice or Score gate with `strict: true` and no bar deferred an answer
+  of confidence 0; with no bar nothing is deferred, strict or not.
+- `part_when` could leave a Noul's instructions as `{}`, asking the model
+  nothing; instructions emptied by `part_when` are `null`, so a Noul with
+  no criteria is refused.
+- `Rubric::apply` read a question the rubric does not have, or one of
+  another primitive, at default gates; it refuses a request this rubric
+  did not lower.
+- `Rubric::to_yaml` wrote, and `Rubric::lower` lowered, a rubric built in
+  code that a reader would refuse (a malformed `when`, `options_from` on a
+  Noul); both now check it as a parsed rubric is checked.
+- A supplied option with an empty key or a number or boolean description
+  was read; it is refused when the cases are parsed, as the schema says.
+
+### Changed
+
+- The 1.1 examples (`examples/jud/routing.jud`, `routing-cases.jud`), the
+  specification's examples and the test fixtures use a support inbox
+  instead of an operational domain, as the crate's own rule on staying
+  generic requires.
+- `docs/jud.md` states what the review found unstated: instruction parts
+  are a JSON object whose key order carries no meaning, an `x-` value is
+  JSON-representable, and a fingerprint does not witness the order of a
+  Choice's options. `eval::tuning::level_sweep` says where it can read a
+  level differently from a gate.
+
 ## [0.5.0] - 2026-10-04
 
 ### Added
