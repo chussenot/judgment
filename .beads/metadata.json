@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "judgment",
+  "project_id": "b6722031-6a04-4233-ad77-34d96c6eec7e"
+}

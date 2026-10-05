@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# --- BEGIN PREK (managed by scripts/setup-hooks.sh) ---
+# Run the hooks of this stage from .pre-commit-config.yaml through prek before beads.
+if command -v prek >/dev/null 2>&1; then
+  _prek_here="$(cd "$(dirname "$0")" && pwd)"
+  prek hook-impl --hook-dir "$_prek_here" --script-version 4 --hook-type=commit-msg -- "$@" || exit $?
+else
+  echo "prek not found; skipping pre-commit hooks (mise install)" >&2
+fi
+# --- END PREK ---

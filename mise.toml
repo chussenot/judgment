@@ -11,6 +11,11 @@ prek = "latest"
 # Conventional commits and the release bump (cog.toml, docs/releasing.md);
 # built from crates.io, the same way CI installs it.
 "cargo:cocogitto" = "7.0.0"
+# bd (beads), the issue tracker (AGENTS.md, `bd prime`), from the GitHub release
+# binary and pinned: the npm package downloads a binary in a postinstall step,
+# which fails behind some proxies, and a tool that runs in every git hook
+# should not move under `latest`.
+"github:gastownhall/beads" = "1.3.1"
 
 [env]
 RUST_BACKTRACE = "1"
@@ -22,8 +27,8 @@ _.file = ".env"
 # ---------------------------------------------------------------------------
 
 [tasks.setup]
-description = "One-time developer setup: git hooks (prek, the commit-msg check included) and a warm cargo cache"
-run = "prek install && cargo fetch"
+description = "One-time developer setup: git hooks (prek, the commit-msg check included, then beads) and a warm cargo cache"
+run = "scripts/setup-hooks.sh && cargo fetch"
 
 # ---------------------------------------------------------------------------
 # Quality gates (what CI runs)
@@ -147,3 +152,15 @@ set -eu
 JUDGMENT_LIVE_BASE_URL="${LAYA_URL:-http://127.0.0.1:8000}" JUDGMENT_LIVE_MODEL="${LAYA_MODEL:-typed-decisions}" \
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
+
+# ---------------------------------------------------------------------------
+# Planning (beads)
+# ---------------------------------------------------------------------------
+
+[tasks."bd:ready"]
+description = "Issues ready to work on (bd ready)"
+run = "bd ready"
+
+[tasks."bd:export"]
+description = "Write every issue to .beads/issues.jsonl, the passive export reviewers read in a pull request"
+run = "bd export --all -o .beads/issues.jsonl"
