@@ -1,8 +1,8 @@
 ---
 title: Testing without the model
-description: How an application tests its decisions with no key and no network, with the Fake backend that refuses an answer the question does not fit, the Recorder and Replay pair keyed by a content hash, and the eval module that grades recordings against labels.
+description: How an application tests its decisions with no key and no network, with the Fake backend that refuses an answer the question does not fit, the Recorder and Replay pair keyed by a content hash, and the eval module that grades recordings against labels; and the bounded Kani proofs of the crate's index and retry arithmetic.
 status: current
-last_reviewed: 2026-10-04
+last_reviewed: 2026-10-05
 tags: [judgment, testing, fake, replay, evaluation]
 ---
 
@@ -45,6 +45,22 @@ The committed examples work this way: each pattern example under `examples/` rep
 `eval` turns recordings and labels into numbers: one `Judgment` per answer and label, then per question the accuracy with a 95% Wilson interval, the Brier score, the calibration error and the mean confidence when right and when wrong. The interval is there because an accuracy on three labelled cases and one on three hundred read the same without it. The Brier score is the multi-class sum, which the rustdoc states because other tools use a different form and the numbers are not comparable.
 
 What the module deliberately leaves to the application: the thresholds. A probability becomes an action in code the application owns and tunes; the crate measures whether the probabilities deserve the trust the thresholds place in them, and `eval::tuning` sweeps a threshold or a confidence bar over the judgments so the number is read off a table rather than guessed. A change of model is a change of policy that needs a replay before it ships, which is the reason the recordings, the hash and the metrics are one module. [The .jud format](jud.md) is where the questions, the thresholds, the labelled cases and the recordings live as files that name each other by content, and `examples/jud_calibration.rs` runs the loop from cases to a tuned policy.
+
+## Bounded proofs
+
+Tests check the cases someone thought of. Five pieces of arithmetic are proved for every input, or for every input within a stated bound, with [Kani](https://model-checking.github.io/kani/), a bounded model checker. They are the places where a float becomes an index or a length becomes a cut, and a wrong value is a panic or a decision read off the wrong level. Each harness is a `#[cfg(kani)]` module beside the code it proves, so it compiles away in a normal build.
+
+| Function | Proved | Bounds and why |
+|---|---|---|
+| `RetryPolicy::delay_with` (`src/http.rs`) | No panic; a server wait within `retry_after_max` is returned as is; otherwise the delay is at most `backoff_max` and at most the nominal backoff, and exactly the nominal backoff without jitter (zero, negative or NaN) | Policy durations are whole milliseconds up to one hour, or `Duration::MAX`; `retry` is 0 to 10; the server's wait and the random draw are unbounded. Unbounded durations make the solver show two 64-bit divisions equal, and did not finish in 40 minutes. `Duration::try_from_secs_f64` is stubbed with any result, an over-approximation; its own freedom from panics is the standard library's contract |
+| `truncate_to` (`src/http.rs`, behind `truncate`) | No panic; the kept part is a prefix of the input, within the cap, on a character boundary, and less than one character short of the cap; an input within the cap is unchanged | Inputs of up to 6 bytes and caps of up to 6: every UTF-8 sequence length, 1 to 4 bytes, and every cut position within one, occur within 6 bytes |
+| `nearest_index` (`src/answer.rs`, behind `Score::nearest_level` and the level sweep) | Always below the level count (0 with no levels), for any value including NaN and infinities; within half a level of a value on the scale | None: every `f64` and every `usize` |
+| `bin_index` (`src/eval/metrics.rs`, behind `expected_calibration_error`) | Always below the bin count, for any confidence including NaN, infinities and values outside `[0, 1]`; the first bin at or below 0 | None for those. The last bin from 1 up holds for up to 2^53 bins: past that, `bins as f64` can round down, and Kani found 1.0 landing short of the last of 18,446,744,073,709,550,330 bins. The report uses 10 |
+| `nearest_rank` (`src/eval/metrics.rs`, behind `percentile`) | Always below the value count, for any `q` including NaN; the smallest value at `q <= 0` | None for those. The largest value at `q >= 1` holds for up to 2^53 values, for the same rounding; Kani found it failing at 570,641,984,562,135,135 |
+
+Each harness carries `kani::cover!` statements, and Kani reports all of them satisfied, so no proof holds because its assumptions excluded every input. The index helpers were split out of `percentile` and `expected_calibration_error` for the proof: run on the whole functions, Kani spent its time in the standard library's sort and allocation, not in the arithmetic.
+
+`mise run kani` runs all five (`cargo install --locked kani-verifier && cargo kani setup` once; the first run compiles the crate under Kani and takes a few minutes). It is not part of `mise run check` or CI yet: the two proofs in the HTTP module take about two minutes each.
 
 ## What this does not replace
 

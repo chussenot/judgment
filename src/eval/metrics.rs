@@ -35,11 +35,7 @@ pub fn expected_calibration_error(pairs: &[(f64, bool)], bins: usize) -> f64 {
     let mut count = vec![0usize; bins];
     for (conf, correct) in pairs {
         let c = conf.clamp(0.0, 1.0);
-        // 1.0 falls in the last bin, not one past it.
-        let mut b = (c * bins as f64).floor() as usize;
-        if b >= bins {
-            b = bins - 1;
-        }
+        let b = bin_index(c, bins);
         sum_conf[b] += c;
         sum_correct[b] += if *correct { 1.0 } else { 0.0 };
         count[b] += 1;
@@ -52,6 +48,21 @@ pub fn expected_calibration_error(pairs: &[(f64, bool)], bins: usize) -> f64 {
             (k / n) * ((sum_conf[b] / k) - (sum_correct[b] / k)).abs()
         })
         .sum()
+}
+
+/// The bin of `bins` equal-width bins over `[0, 1]` that confidence `c`
+/// falls in: `floor(c × bins)`, with 1.0 in the last bin rather than one past
+/// it, a value below 0 or NaN in the first and, for up to 2^53 bins, a value
+/// of 1 or more in the last. Always an index below `bins` when `bins` is at
+/// least 1. Past 2^53, `bins as f64` can round down, so 1.0 may land short of
+/// the last bin (the bounded proof found `bins` near 2^64); the report uses 10.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
+fn bin_index(c: f64, bins: usize) -> usize {
+    ((c * bins as f64).floor() as usize).min(bins.saturating_sub(1))
 }
 
 /// Wilson score interval for a proportion `correct / n` at the given `z`
@@ -93,8 +104,22 @@ pub fn percentile(values: &[f64], q: f64) -> Option<f64> {
     }
     let mut v = values.to_vec();
     v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let rank = ((q.clamp(0.0, 1.0) * v.len() as f64).ceil() as usize).clamp(1, v.len());
-    Some(v[rank - 1])
+    Some(v[nearest_rank(q, v.len())])
+}
+
+/// The index, in `len` sorted values, of the nearest-rank percentile `q`:
+/// rank `ceil(q × len)` clamped to `1..=len`, minus one. `q` is clamped to
+/// `[0, 1]` and a NaN `q` reads as 0. Always an index below `len` when `len`
+/// is at least 1; `q >= 1` is the largest value for up to 2^53 values, past
+/// which `len as f64` can round down (the bounded proof found such a `len`).
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss
+)]
+fn nearest_rank(q: f64, len: usize) -> usize {
+    let rank = ((q.clamp(0.0, 1.0) * len as f64).ceil() as usize).clamp(1, len.max(1));
+    rank - 1
 }
 
 #[cfg(test)]
@@ -149,5 +174,63 @@ mod tests {
         assert!((h - 1.0).abs() < 1e-12, "{h}");
         let (l, h) = wilson_interval(50, 100, 1.96).unwrap();
         assert!(l < 0.5 && 0.5 < h && h - l < 0.21, "{l} {h}");
+    }
+}
+
+/// Bounded proofs of the bin and rank indexing, run with `cargo kani`
+/// (docs/testing.md, "Bounded proofs").
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// `bin_index` is a bin, for any confidence (NaN, infinities and values
+    /// outside `[0, 1]` included) and any bin count from 1: below `bins`,
+    /// 0 for a confidence at or below 0 or NaN, and the last bin from 1 up
+    /// for up to 2^53 bins.
+    #[kani::proof]
+    fn bin_index_is_a_bin() {
+        let c: f64 = kani::any();
+        let bins: usize = kani::any();
+        kani::assume(bins >= 1);
+
+        let b = bin_index(c, bins);
+
+        // Safety, for every bin count.
+        assert!(b < bins);
+        if c.is_nan() || c <= 0.0 {
+            assert_eq!(b, 0);
+        }
+        // The last bin from 1 up holds while every bin count is exact as an
+        // `f64` (2^53); past it Kani finds a counterexample near 2^64.
+        if c >= 1.0 && bins <= 1 << 53 {
+            assert_eq!(b, bins - 1);
+        }
+        kani::cover!(bins == 10 && c == 1.0);
+        kani::cover!(bins == 10 && b == 4);
+    }
+
+    /// `nearest_rank` is an index into `len` sorted values, for any `q`
+    /// (NaN and infinities included) and any `len` from 1: below `len`, the
+    /// smallest at `q <= 0` or NaN, and the largest at `q >= 1` for up to
+    /// 2^53 values.
+    #[kani::proof]
+    fn nearest_rank_is_an_index_into_the_values() {
+        let q: f64 = kani::any();
+        let len: usize = kani::any();
+        kani::assume(len >= 1);
+
+        let index = nearest_rank(q, len);
+
+        // Safety, for every length.
+        assert!(index < len);
+        if q.is_nan() || q <= 0.0 {
+            assert_eq!(index, 0);
+        }
+        // The largest value at `q >= 1` holds while every length is exact as
+        // an `f64` (2^53); past it Kani finds a counterexample near 5.7e17.
+        if q >= 1.0 && len <= 1 << 53 {
+            assert_eq!(index, len - 1);
+        }
+        kani::cover!(len == 20 && q == 0.95 && index == 18);
     }
 }

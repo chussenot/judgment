@@ -946,12 +946,19 @@ pub struct Score {
     pub confidence: Confidence,
 }
 
+/// The index of the level nearest to `value` on a scale of `len` levels:
+/// `value` rounded half away from zero and clamped to `0..len`, so 0 when
+/// there are no levels, and 0 for a NaN value. [`Score::nearest_level`] and
+/// the level sweep in [`crate::eval::tuning`] read a position this way.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub(crate) fn nearest_index(value: f64, len: usize) -> usize {
+    (value.round().max(0.0) as usize).min(len.saturating_sub(1))
+}
+
 impl Score {
     /// Index of the level nearest to the weighted value.
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn nearest_level(&self) -> usize {
-        let max = self.levels.len().saturating_sub(1);
-        (self.value.round().max(0.0) as usize).min(max)
+        nearest_index(self.value, self.levels.len())
     }
 
     /// Description of the nearest level.
@@ -2173,5 +2180,38 @@ mod tests {
         // A response with no id gives errors with none.
         r.request_id = None;
         assert_eq!(r.verify(&q).unwrap_err().request_id(), None);
+    }
+}
+
+/// Bounded proof of the level index a Score resolves to, run with
+/// `cargo kani` (docs/testing.md, "Bounded proofs").
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// `nearest_index` is always an index into a scale of `len` levels (0
+    /// when there are none), for any value including NaN and infinities and
+    /// any `len`; for a value on the scale it is within half a level.
+    #[kani::proof]
+    fn nearest_index_is_a_level_of_the_scale() {
+        let value: f64 = kani::any();
+        let len: usize = kani::any();
+
+        let level = nearest_index(value, len);
+
+        if len == 0 {
+            assert_eq!(level, 0);
+        } else {
+            assert!(level < len);
+            #[allow(clippy::cast_precision_loss)]
+            let top = (len - 1) as f64;
+            if (0.0..=top).contains(&value) {
+                #[allow(clippy::cast_precision_loss)]
+                let distance = (level as f64 - value).abs();
+                assert!(distance <= 0.5);
+            }
+        }
+        kani::cover!(len == 4 && value > 3.0 && level == 3);
+        kani::cover!(value.is_nan() && level == 0);
     }
 }
