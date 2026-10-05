@@ -39,6 +39,9 @@ at() { printf '%s\n' "$stripped" | grep -Eq "(^|[;&|(\`][[:space:]]*|\\\$\\([[:s
 if at 'git[[:space:]]+push[^;&|]*(\+main|HEAD:main|[[:space:]]main([[:space:]]|$))'; then
   deny "Direct or forced pushes to main are not allowed; open a pull request from a feature branch."
 fi
+if at 'bd[[:space:]]+edit([[:space:]]|$)'; then
+  deny "The beads editor command opens an interactive editor and would hang; use bd update --title/--description/--notes."
+fi
 if at 'git[[:space:]]+(add|commit)[^;&|]*(^|[[:space:]])\.env(\.[A-Za-z0-9_-]+)?([[:space:]]|$)' \
    && ! at 'git[[:space:]]+(add|commit)[^;&|]*\.env\.example([[:space:]]|$)'; then
   deny ".env holds secrets and is gitignored; edit .env.example for documented variables."

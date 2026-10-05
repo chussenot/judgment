@@ -19,6 +19,12 @@ exclude = [
     ".github/",
     ".claude/",
     "CLAUDE.md",
+    # The issue tracker and the agent integrations `bd init` installs.
+    ".beads/",
+    ".agents/",
+    ".codex/",
+    ".cursor/",
+    "AGENTS.md",
     "catalog-info.yaml",
     "mise.toml",
     "cog.toml",
