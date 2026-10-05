@@ -49,6 +49,9 @@ jobs:
       # brings its own transport; its tests are checked too.
       - run: cargo check --no-default-features --all-targets
       - run: cargo test --all-features
+      # The README's opening example, run without the `http` feature: no
+      # client is compiled in, so it cannot need a key or the network.
+      - run: cargo run --example quickstart --no-default-features
       - run: cargo doc --no-deps --document-private-items --all-features
         env:
           RUSTDOCFLAGS: -D warnings
