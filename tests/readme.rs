@@ -27,3 +27,20 @@ fn the_readme_opens_with_the_quickstart_example() {
         "the quickstart is the README's first code block"
     );
 }
+
+/// The install snippet names the crate's major.minor, which
+/// `scripts/release-bump.sh` rewrites on a release; this catches a hand bump
+/// or a snippet edit that left the two apart.
+#[test]
+fn the_install_snippet_names_the_current_minor_version() {
+    let readme = include_str!("../README.md");
+    let expected = format!(
+        "judgment = \"{}.{}\"",
+        env!("CARGO_PKG_VERSION_MAJOR"),
+        env!("CARGO_PKG_VERSION_MINOR")
+    );
+    assert!(
+        readme.lines().any(|line| line == expected),
+        "README.md's install snippet must read `{expected}`, the version Cargo.toml declares"
+    );
+}

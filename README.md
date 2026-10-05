@@ -1,5 +1,7 @@
 # judgment
 
+[![crates.io](https://img.shields.io/crates/v/judgment.svg)](https://crates.io/crates/judgment)
+
 judgment turns TypeSafe System One answers into verified, testable Rust types.
 
 ```rust

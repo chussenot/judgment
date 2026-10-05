@@ -25,8 +25,9 @@ ignore_merge_commits = true
 disable_changelog = true
 
 pre_bump_hooks = [
-    # Version into Cargo.toml and Cargo.lock, the Unreleased section into the
-    # release's section; refuses an empty Unreleased section.
+    # Version into Cargo.toml and Cargo.lock, major.minor into the README's
+    # install snippet, the Unreleased section into the release's section;
+    # refuses an empty Unreleased section.
     "scripts/release-bump.sh {{version}} {{latest}}",
     # The gate, on exactly what the bump commit will contain.
     "cargo fmt --all --check",

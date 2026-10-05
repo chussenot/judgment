@@ -6,6 +6,7 @@
 #
 # - Cargo.toml: the [package] version.
 # - Cargo.lock: the crate's own entry, through cargo, never by hand.
+# - README.md: the `judgment = "MAJOR.MINOR"` line of the install snippet.
 # - CHANGELOG.md: the "## [Unreleased]" section becomes "## [NEW] - today" and
 #   a fresh, empty Unreleased section is opened above it. An Unreleased section
 #   with nothing in it fails the bump: a release must say what it contains, and
@@ -39,6 +40,12 @@ mv Cargo.toml.tmp Cargo.toml
 # --- Cargo.lock: let cargo rewrite the crate's own entry.
 cargo update --workspace --quiet
 
+# --- README.md: the install snippet's requirement, major.minor only (a caret
+# requirement, so a patch release changes nothing a reader must copy).
+grep -q '^judgment = "[0-9]*\.[0-9]*"$' README.md || die 'README.md has no judgment = "X.Y" install line'
+awk -v v="${version%.*}" '/^judgment = "/ { sub(/"[^"]*"/, "\"" v "\"") } { print }' README.md > README.md.tmp
+mv README.md.tmp README.md
+
 # --- CHANGELOG.md
 grep -q '^## \[Unreleased\]' CHANGELOG.md || die "CHANGELOG.md has no '## [Unreleased]' section"
 if grep -q "^## \[$version\]" CHANGELOG.md; then
@@ -67,4 +74,4 @@ awk -v v="$version" -v d="$today" '
 ' CHANGELOG.md > CHANGELOG.md.tmp
 mv CHANGELOG.md.tmp CHANGELOG.md
 
-echo "release-bump: $current -> $version in Cargo.toml, Cargo.lock and CHANGELOG.md ($today)"
+echo "release-bump: $current -> $version in Cargo.toml, Cargo.lock, README.md and CHANGELOG.md ($today)"
