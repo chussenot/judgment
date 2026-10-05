@@ -216,8 +216,7 @@ pub fn level_sweep<'a>(
                 any = true;
             }
             // Rounded and clamped to the scale, as `Score::nearest_level`.
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            let nearest = (position.round().max(0.0) as usize).min(levels.saturating_sub(1));
+            let nearest = crate::answer::nearest_index(position, levels);
             any.then_some((nearest, expected))
         })
         .collect();

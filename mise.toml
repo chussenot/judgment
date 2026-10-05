@@ -50,6 +50,17 @@ run = "cargo test --all-features"
 description = "The crate and its tests build without the http feature (the no-transport configuration)"
 run = "cargo check --no-default-features --all-targets"
 
+[tasks.kani]
+description = "The bounded Kani proofs (docs/testing.md, \"Bounded proofs\"); needs `cargo install --locked kani-verifier && cargo kani setup` once"
+run = '''
+set -eu
+cargo kani --no-default-features --harness nearest_index_is_a_level_of_the_scale
+cargo kani --no-default-features --harness bin_index_is_a_bin
+cargo kani --no-default-features --harness nearest_rank_is_an_index_into_the_values
+cargo kani --harness truncate_cuts_on_a_char_boundary_within_the_cap
+cargo kani -Z stubbing --harness delay_never_panics_and_stays_within_the_policy
+'''
+
 [tasks.doc]
 description = "Build API docs; broken links are errors"
 env = { RUSTDOCFLAGS = "-D warnings" }

@@ -160,6 +160,9 @@ test = true
 [lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
+# `cfg(kani)` gates the bounded proofs (`#[kani::proof]` harnesses beside the
+# code they prove, run with `cargo kani`; docs/testing.md).
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

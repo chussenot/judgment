@@ -627,10 +627,17 @@ fn header_str<'a>(headers: &'a HeaderMap, name: &HeaderName) -> Option<&'a str> 
 pub use crate::error::retry_after_suffix;
 
 /// Truncate a response body for inclusion in an error message.
-pub fn truncate(mut s: String) -> String {
-    const MAX: usize = 2_000;
-    if s.len() > MAX {
-        let cut = s.floor_char_boundary(MAX);
+pub fn truncate(s: String) -> String {
+    truncate_to(s, 2_000)
+}
+
+/// `s` cut to at most `max` bytes on a character boundary, with `…`
+/// appended when anything was cut; `s` unchanged otherwise. The cap is a
+/// parameter so the bounded proof can reach the cutting path with a short
+/// string.
+fn truncate_to(mut s: String, max: usize) -> String {
+    if s.len() > max {
+        let cut = s.floor_char_boundary(max);
         s.truncate(cut);
         s.push('…');
     }
@@ -902,5 +909,139 @@ mod tests {
         let mut h = HeaderMap::new();
         h.insert(RETRY_AFTER, HeaderValue::from_bytes(b"\xff").unwrap());
         assert_eq!(parse_retry_after(&h), None);
+    }
+}
+
+/// Bounded proofs of the retry arithmetic and the body truncation, run with
+/// `cargo kani` (docs/testing.md, "Bounded proofs").
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// A `Duration` from any whole seconds and any valid nanoseconds:
+    /// `Duration::new` panics only when a nanosecond carry overflows the
+    /// seconds, which a nanosecond part below one second never causes.
+    fn any_duration() -> Duration {
+        let nanos: u32 = kani::any();
+        kani::assume(nanos < 1_000_000_000);
+        Duration::new(kani::any(), nanos)
+    }
+
+    /// A policy duration, bounded: any whole number of milliseconds up to
+    /// one hour, or `Duration::MAX`, so the saturating path stays covered.
+    /// Unbounded (`any_duration`), the solver must show two symbolic 64-bit
+    /// divisions equal (the nanosecond carry in `Duration::saturating_mul`,
+    /// computed in `delay_with` and again below) and did not finish in 40
+    /// minutes.
+    fn policy_duration() -> Duration {
+        if kani::any() {
+            return Duration::MAX;
+        }
+        let ms: u64 = kani::any();
+        kani::assume(ms <= 3_600_000);
+        Duration::from_millis(ms)
+    }
+
+    /// Any `Duration`, or the error, whatever the seconds asked for: stands
+    /// in for `Duration::try_from_secs_f64`, whose bit-level float decoding
+    /// keeps the solver from finishing (40 minutes without a verdict
+    /// unstubbed). The stub over-approximates the real function, so what
+    /// holds for every cut it returns holds for the real one; that the real
+    /// one never panics is `std`'s contract (it returns a `Result`).
+    fn any_try_from_secs_f64(_secs: f64) -> Result<Duration, std::time::TryFromFloatSecsError> {
+        if kani::any() {
+            Ok(any_duration())
+        } else {
+            // The same error type, from a call that always fails.
+            Duration::try_from_secs_f32(-1.0)
+        }
+    }
+
+    /// `delay_with` never panics, for any policy, retry number, server wait
+    /// and random draw: a server wait within `retry_after_max` is returned
+    /// as is; otherwise the delay is at most `backoff_max`, at most the
+    /// nominal backoff, and exactly the nominal backoff when there is no
+    /// jitter (zero, negative or NaN). Run with `-Z stubbing`.
+    #[kani::proof]
+    #[kani::stub(std::time::Duration::try_from_secs_f64, any_try_from_secs_f64)]
+    fn delay_never_panics_and_stays_within_the_policy() {
+        let policy = RetryPolicy {
+            max_retries: kani::any(),
+            backoff_initial: policy_duration(),
+            backoff_max: policy_duration(),
+            backoff_jitter: kani::any(),
+            // Not read by `delay_with`; empty keeps the state small.
+            http_statuses: BTreeSet::new(),
+            retry_after_max: policy_duration(),
+            transport: TransportRetry::Any,
+            budget: None,
+            max_body_bytes: kani::any(),
+        };
+        // Retry 0 (read as 1 by `saturating_sub`) to 10: the default policy
+        // retries twice, and a client that retries more than ten times
+        // waits out `backoff_max` long before.
+        let retry: u32 = kani::any();
+        kani::assume(retry <= 10);
+        // A server's wait is any duration, unbounded: it is only compared.
+        let retry_after = if kani::any() {
+            Some(any_duration())
+        } else {
+            None
+        };
+        let unit: f64 = kani::any();
+
+        let delay = policy.delay_with(retry, retry_after, unit);
+
+        match retry_after {
+            Some(ra) if ra <= policy.retry_after_max => assert_eq!(delay, ra),
+            _ => {
+                let nominal = policy
+                    .backoff_initial
+                    .saturating_mul(2u32.saturating_pow(retry.saturating_sub(1)))
+                    .min(policy.backoff_max);
+                assert!(delay <= policy.backoff_max);
+                assert!(delay <= nominal);
+                if !(policy.backoff_jitter > 0.0) {
+                    assert_eq!(delay, nominal);
+                }
+            }
+        }
+        kani::cover!(
+            retry_after.is_none() && policy.backoff_jitter > 0.0 && delay < policy.backoff_max
+        );
+        kani::cover!(retry_after.is_some_and(|ra| ra > policy.retry_after_max));
+    }
+
+    /// `truncate_to` never panics, whatever the cap falls on: the kept part
+    /// is a prefix of the input, at most `max` bytes, on a character
+    /// boundary, and the longest such prefix (less than one character, so
+    /// under 4 bytes, short of `max`); an input within the cap is
+    /// returned unchanged.
+    #[kani::proof]
+    #[kani::unwind(8)]
+    fn truncate_cuts_on_a_char_boundary_within_the_cap() {
+        const N: usize = 6;
+        let bytes: [u8; N] = kani::any();
+        let len: usize = kani::any();
+        kani::assume(len <= N);
+        let Ok(text) = core::str::from_utf8(&bytes[..len]) else {
+            return;
+        };
+        let max: usize = kani::any();
+        kani::assume(max <= N);
+
+        let out = truncate_to(text.to_owned(), max);
+
+        if text.len() <= max {
+            assert!(out == text);
+        } else {
+            assert!(out.ends_with('…'));
+            let kept = &out[..out.len() - '…'.len_utf8()];
+            assert!(kept.len() <= max);
+            assert!(text.starts_with(kept));
+            assert!(text.is_char_boundary(kept.len()));
+            assert!(max - kept.len() < 4);
+        }
+        kani::cover!(text.len() > max && !text.is_char_boundary(max));
     }
 }
