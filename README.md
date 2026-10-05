@@ -1,11 +1,58 @@
 # judgment
 
-Typed, calibrated judgments from [TypeSafe](https://docs.typesafe.ai) System One
-models (Jev) and from any server that speaks the same wire, as a Rust crate.
+judgment turns TypeSafe System One answers into verified, testable Rust types.
+
+```rust
+use judgment::{Fake, Questions, SystemOne, options};
+
+options! {
+    enum Department {
+        Billing = "billing" => "Payments, invoicing, refunds",
+        Technical = "technical" => "Bugs, outages, integrations",
+    }
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> judgment::Result<()> {
+    let mut questions = Questions::new();
+    let dept =
+        questions.choice::<Department>("department", "Which team should handle `message`?")?;
+    let urgent = questions.noul("is_urgent", "Does `message` convey urgency?", None)?;
+
+    // Scripted answers, checked against the questions like a server's would be.
+    // `Client::from_env()?` asks the real model instead.
+    let backend = Fake::new()
+        .choice("department", [("billing", 0.92), ("technical", 0.08)], 0.85)?
+        .noul("is_urgent", 0.81)?;
+
+    let state = serde_json::json!({ "message": "My payouts have been failing for 3 days." });
+    let response = backend.answer(&state, "jev-latest", &questions).await?;
+
+    let dept = response.get(&dept)?; // Choice<Department>
+    let urgent = response.get(&urgent)?; // Noul
+    let page_billing =
+        dept.chosen == Department::Billing && dept.confidence.at_least(0.7) && urgent.is_yes(0.6);
+    assert!(page_billing);
+    println!("page billing on-call: {page_billing}");
+    Ok(())
+}
+```
+
+That example runs as is, with no key and no network: `cargo run --example
+quickstart` ([`examples/quickstart.rs`](examples/quickstart.rs)). The `Fake`
+backend checks its scripted answers against the questions the way a server's
+response is checked, so the decision is tested on answers the real model could
+have given. To ask the real model, build a `Client` (`Client::from_env()?`
+reads `TYPESAFE_API_KEY`) and pass it where the fake is: both implement
+`SystemOne`. The crate works with [TypeSafe](https://docs.typesafe.ai) System
+One models (Jev) and with any server that speaks the same wire.
 
 ```toml
 [dependencies]
-judgment = "0.3"
+judgment = "0.5"
+# What the example above uses besides the crate.
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt"] }
 ```
 
 ## Why
@@ -62,112 +109,32 @@ do with an answer left to the caller.
   threshold says which cases and which model it rests on, and another tool
   can read all three (feature `jud`, off by default).
 
-```rust
-use judgment::{Client, Questions, options};
-
-options! {
-    enum Department {
-        Billing = "billing" => "Payments, invoicing, refunds",
-        Technical = "technical" => "Bugs, outages, integrations",
-    }
-}
-
-async fn run() -> judgment::Result<()> {
-    let mut questions = Questions::new();
-    let dept = questions.choice::<Department>("department", "Which team should handle `message`?")?;
-    let urgent = questions.noul("is_urgent", "Does `message` convey urgency?", None)?;
-
-    let client = Client::from_env()?;
-    let state = serde_json::json!({ "message": "My payouts have been failing for 3 days." });
-    let response = client.system_one(&state, &questions).await?;
-
-    let dept = response.get(&dept)?;     // Choice<Department>
-    let urgent = response.get(&urgent)?; // Noul
-    if dept.chosen == Department::Billing && dept.confidence.at_least(0.7) && urgent.is_yes(0.6) {
-        // page billing on-call
-    }
-    Ok(())
-}
-```
-
-Point it at another server with `TYPESAFE_BASE_URL`, or build without the
+Point the client at another server with `TYPESAFE_BASE_URL`, or build without the
 `http` feature to keep the questions, the answers, the fake and replay backends
 and the metrics for a project with its own transport.
 
 ## Compared with the other Rust clients
 
-About thirty Rust crates speak this wire, most of them a few weeks old. The
-grids below set judgment against the nine most downloaded on crates.io on
-2026-10-04 and `typesafe-client`, the one closest in design, each read from
-its published source and measured on one machine. The full comparison, with a
-file and line for every cell and the columns judgment loses, is in
-[Compared with the other Rust clients](docs/research/client-comparison.md).
-✓ present, ◐ partial, ✗ absent.
+About thirty Rust crates speak this wire. The table sets judgment against the
+nine most downloaded on crates.io on 2026-10-04 and `typesafe-client`, on the
+four properties where they differ most, each read from the published source of
+the version named. ✓ present, ◐ partial, ✗ absent.
+[Compared with the other Rust clients](docs/research/client-comparison.md) has
+the full grids (wire limits, retries, footprint and more), a file and line for
+every cell, and what other crates have that judgment does not.
 
-**The wire and the questions**
-
-| Crate | Structured Score levels | Enum and runtime option sets | Limits checked before sending | Per-call overrides | Builds without the HTTP client |
-|---|---|---|---|---|---|
-| **judgment 0.3.0** | ✓ | ✓ | ✓ | ✓ | ✓ |
-| kunobi-decision 0.3.0 | ✓ | ✓ | ◐ duplicate id replaces | ✓ | ✗ |
-| typesafe-sdk 0.2.0 | ◐ | ◐ strings | ✗ | ✓ | ✗ |
-| typesafeai-sdk 0.4.1 | ✓ | ◐ random order | ◐ no caps | ✓ | ✗ |
-| typesafe-sdk-* 0.6.2 | ✓ | ◐ strings | ◐ | ✓ | ◐ |
-| jev-client 0.2.0 | ✓ | ◐ strings | ◐ opt-in | ✗ | ✗ |
-| jev 0.1.2 | ✗ | ◐ alphabetical | ✗ | ✗ | ✗ |
-| typesafe-ai-sdk 0.5.0 | ✓ | ✓ | ◐ no caps | ✓ | ✗ |
-| typesafeai-sdk-community 0.5.0 | ✓ | ◐ alphabetical | ◐ no caps | ✓ | ✗ |
-| typesafe-client 0.1.0 | ✓ | ✓ | ✓ | ◐ | ✓ |
-
-**Reading answers safely**
-
-| Crate | Typed handle | Validated probability types | Response verified against the questions | Unknown answer kind kept | Request id on errors |
-|---|---|---|---|---|---|
-| **judgment** | ✓ | ✓ | ✓ every backend, legend included | ✓ | ✓ |
-| kunobi-decision | ✓ | ✗ | ✗ | ✓ | ✓ |
-| typesafe-sdk | ✗ | ✗ | ✗ | ◐ dropped | ✓ |
-| typesafeai-sdk | ✗ | ✗ | ✗ | ◐ payload lost | ✓ |
-| typesafe-sdk-* | ✗ | ✗ | ✗ | ✗ fails | ✓ |
-| jev-client | ✗ | ✗ | ✗ | ✓ | ✓ |
-| jev | ✗ | ✗ | ✗ | ◐ | ✗ |
-| typesafe-ai-sdk | ◐ derive | ✗ | ✗ | ◐ | ✓ |
-| typesafeai-sdk-community | ◐ derive | ✗ | ✗ | ◐ | ✓ |
-| typesafe-client | ✓ | ✗ | ◐ legend not compared | ✗ fails | ✓ |
-
-**Resilience**
-
-| Crate | SDK retry defaults | Server's wait, capped | Conservative preset | Body cap | Redirects not followed | Key never in `Debug` | Concurrency control |
-|---|---|---|---|---|---|---|---|
-| **judgment** | ✓ | ✓ 30 s | ✓ | ✓ 8 MiB | ✓ | ✓ | ✗ |
-| kunobi-decision | ✓ | ✓ 60 s | ✗ | ✗ | ✓ | ✓ | ✓ |
-| typesafe-sdk | ✓ | ◐ uncapped | ✗ | ✗ | ✗ | ✗ | ✗ |
-| typesafeai-sdk | ◐ | ◐ no date | ✗ | ✓ 1 MiB | ✓ | ✓ | ✗ |
-| typesafe-sdk-* | ✓ | ✓ 60 s | ✗ | ✗ | ✗ | ✓ | ✗ |
-| jev-client | ✓ | ✓ 60 s | ✗ | ✓ 32 MiB | ✓ | ✓ | ✓ |
-| jev | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| typesafe-ai-sdk | ✓ | ◐ uncapped | ✗ | ✗ | ✗ | ✓ | ✗ |
-| typesafeai-sdk-community | ✓ | ◐ uncapped | ✗ | ✗ | ✗ | ◐ | ✓ |
-| typesafe-client | ✓ | ✓ 60 s | ✗ | ✗ | ✗ | ✓ | ✗ |
-
-**Testing, evaluation and footprint**
-
-| Crate | Fake that refuses an unfit answer | Record and replay | Contract test against the OpenAPI document | Evaluation metrics | Verified against real servers | Transitive deps / clean build |
-|---|---|---|---|---|---|---|
-| **judgment** | ✓ | ✓ content hash, `.jud` | ✓ | ✓ with intervals, sweeps | ✓ hosted API, Laya | 100 / 49 s |
-| kunobi-decision | ✓ | ✗ | ✗ | ✗ | ✗ | 97 / 44 s |
-| typesafe-sdk | ✗ | ✗ | ✗ | ✗ | ✗ | 104 / 25 s |
-| typesafeai-sdk | ✗ | ✗ | ✗ | ✗ | ✗ | 91 / 23 s |
-| typesafe-sdk-* | ◐ mock, unchecked | ✗ | ✗ | ✗ | ✗ | 110 / needs rustc 1.98 |
-| jev-client | ◐ trait only | ✗ | ◐ own schema | ✗ | ✗ | 107 / 27 s |
-| jev | ✗ | ✗ | ✗ | ✗ | ◐ one document | 91 / 40 s |
-| typesafe-ai-sdk | ✗ | ✓ SHA-256 cassettes | ✗ | ✗ | ✗ | 113 / 43 s |
-| typesafeai-sdk-community | ◐ mock, unchecked | ◐ in order | ✗ | ✓ no intervals | ◐ | 110 / 47 s |
-| typesafe-client | ✓ | ✗ | ✓ | ✗ | ◐ hosted API | 99 / 45 s |
-
-Where judgment is behind, and what it will take from the others next: a
-pacer that pauses every in-flight call on one 429, provider presets as data,
-`ranked()` and `margin()` helpers, and arithmetic checks in verification. The
-comparison page lists them with the crate each idea comes from.
+| Crate | Typed handle per question | Response verified against the questions | Validated probability types | Testing without a key |
+|---|---|---|---|---|
+| judgment 0.3.0 | ✓ | ✓ every backend, legend included | ✓ | ✓ fake that refuses unfit answers, record and replay |
+| kunobi-decision 0.3.0 | ✓ | ✗ | ✗ | ◐ fake, no replay |
+| typesafe-sdk 0.2.0 | ✗ | ✗ | ✗ | ✗ |
+| typesafeai-sdk 0.4.1 | ✗ | ✗ | ✗ | ✗ |
+| typesafe-sdk-* 0.6.2 | ✗ | ✗ | ✗ | ◐ mock, answers unchecked |
+| jev-client 0.2.0 | ✗ | ✗ | ✗ | ◐ trait only |
+| jev 0.1.2 | ✗ | ✗ | ✗ | ✗ |
+| typesafe-ai-sdk 0.5.0 | ◐ derive | ✗ | ✗ | ◐ replay (SHA-256 cassettes), no fake |
+| typesafeai-sdk-community 0.5.0 | ◐ derive | ✗ | ✗ | ◐ mock, answers unchecked; replay in order |
+| typesafe-client 0.1.0 | ✓ | ◐ legend not compared | ✗ | ◐ fake that refuses unfit answers, no replay |
 
 ## Documentation
 
@@ -185,7 +152,7 @@ default.
 | [How the crate is checked](docs/verification/method.md) | The live tests, the benchmark replay and the contract test, and how to run them against the hosted API, Laya or Ollama |
 | [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md), [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | What real servers did with the live tests, and what the crate changed for it |
 | [Compatible servers and models](docs/research/compatible-servers-and-models.md) | Which servers speak the wire and how the open models compare with Jev |
-| [Compared with the other Rust clients](docs/research/client-comparison.md) | The grids above in full, with evidence |
+| [Compared with the other Rust clients](docs/research/client-comparison.md) | The full comparison grids, with a file and line for every cell |
 | [Decisions](docs/decisions/README.md) | Why the API is shaped as it is, and why releases are cut the way they are |
 | [Releasing](docs/releasing.md) | How a version is cut and published |
 | [llms.txt](docs/llms.txt) | The index for agents and models; [llms-full.txt](docs/llms-full.txt) is every page in one file |
@@ -198,3 +165,5 @@ breaking changes listed, is in [CHANGELOG.md](CHANGELOG.md). Live behaviour has
 been verified against the hosted API and against Laya's server; the vendored
 OpenAPI document and the wiremock tests are the contract in this repository.
 Licensed MIT.
+
+Not affiliated with TypeSafe AI.
