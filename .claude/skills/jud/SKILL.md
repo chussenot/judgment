@@ -119,6 +119,25 @@ round trip.
   asked and not graded. Label the obvious cases and the ones that were argued
   about; a `note` on a hard case says why the label is what it is.
 
+## Turning questions written in code into a rubric
+
+The builder calls map one to one, because a question in a rubric is the
+wire's own shape: `questions.choice::<T>(id, instructions)` with an
+`options!` enum is a Choice whose `criteria` are the enum's keys and
+descriptions in declaration order; `questions.noul(id, instructions, None)`
+is a Noul with no `criteria` (leave the key out; `None` and absent are the
+same on the wire); `questions.score(id, instructions, levels)` is a Score
+with those levels. What the code does with an answer is the policy:
+`confidence.at_least(0.7)` is `confidence: 0.7`, `is_yes(0.6)` is
+`threshold: 0.6`, a strict `>` is `strict: true`; a comparison of the chosen
+option (`chosen == Billing`) stays in the caller and gets no gate. Add
+nothing the code does not send (a `none_of_these` option changes the
+request), and say so in the reply. To prove parity, `scripts/jud.sh lower`
+prints the request the rubric sends; compare it with what the code sends
+(a `Fake` or a `Recorder` shows that), and the request fingerprint `jud
+check` prints for a recording is the one a `Replay` keys by. No probe crate
+is needed.
+
 ## Reviewing an existing document
 
 Run `scripts/jud.sh check` first; then read for what the checker cannot see:

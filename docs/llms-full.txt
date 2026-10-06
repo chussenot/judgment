@@ -1129,14 +1129,16 @@ The guide spends most of its words on what the checker cannot see, because that 
 
 ## How it was tested
 
-The skill was run against four tasks of the kind a user would actually give, each once with the skill and once without it, by independent agents in the same checkout, and the outputs were graded by a script that runs `jud check` on them and checks every assertion in `evals/evals.json` against the parsed documents:
+The skill was run against six tasks of the kind a user would actually give, each once with the skill and once without it, by independent agents in the same checkout, and the outputs were graded by a script that runs `jud check` on them and checks every assertion in `evals/evals.json` against the parsed documents. The baseline agents could read the specification, the examples and the `jud` command; what they lacked was the guide.
 
 1. A rubric and six labelled cases for triaging GitHub issues, from a one-paragraph brief.
 2. A rubric over a conversation and four labelled transcripts, with `from_turn` labels.
 3. A routing rubric whose options come with each request, with `when`, `part_when`, bands and a static fallback, and cases that supply the options.
 4. Two broken documents from "last quarter" (a merge key, ids with spaces, `yes` and `no` as Noul criteria and label, a one-option Choice, gates on the wrong primitive, a level past the scale, a path-shaped case id) to be repaired into valid 1.2 documents with a report of what was wrong.
+5. The two questions of `examples/quickstart.rs` turned into a rubric whose request is byte for byte the code's (checked by fingerprint), with a labelled case and a hand-written recording that `jud check` verifies with a matching fingerprint.
+6. A brief with traps: an id with spaces, a threshold asked for in the instructions, a twelve-level scale, a one-option Choice and a request to invent a `tuning` block, to be met with a valid document and an explanation of each deviation.
 
-The results, and what they changed in the guide, are in the pull request that added the skill. The eval set stays in the skill so a later change to the format or the guide can be run against the same tasks.
+Every document written with the skill passed every assertion (49 of 49); without it, 48 of 49, the miss being a document declared `jud: 1` where 1.2 was wanted. The difference the skill makes is mostly in cost and method: in the first round, 14% fewer tokens and 24% less wall-clock on average, ten tool calls per task against fifteen, and no agent with the skill built a throwaway crate to validate its documents, which two baselines did. The second round changed the guide in two places: Score levels are written as plain strings, because an object level's text is its JSON and a `level_at_least` or a label would have to repeat it; and a section on turning questions written in code into a rubric, so parity is proved with `jud lower` rather than a probe crate. The eval set stays in the skill so a later change to the format or the guide can be run against the same tasks.
 
 ## Installing it elsewhere
 

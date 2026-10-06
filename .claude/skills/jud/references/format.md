@@ -96,6 +96,12 @@ options with non-empty keys; a Score needs 2 to 10 levels, none null; a Noul
 needs instructions or criteria that describe at least one outcome; no id is
 empty.
 
+Write Score levels as plain strings. A level may be an object, but its
+"text" is then its JSON (`{"angry":"..."}`), which is what `level_at_least`
+and a case's label would have to repeat. Put a level's definition in the
+instructions (a `scale` part, or the instructions text) and keep the level
+itself a word.
+
 ### Declarations (1.1; never sent to the model)
 
 | Field | On | Meaning |
