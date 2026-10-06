@@ -6,8 +6,9 @@
 .env.*
 !.env.example
 
-# A Python environment for the Laya shim or laya-serve (docs/verification)
+# A Python environment for the System One shim (tools/systemone) or laya-serve
 .venv/
+__pycache__/
 
 # mise
 .mise.local.toml

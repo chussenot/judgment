@@ -136,12 +136,31 @@ JUDGMENT_LIVE_MODEL="${TYPESAFE_DEFAULT_MODEL:-jev-latest}" \
 '''
 
 [tasks."live:ollama"]
-description = "The ignored live tests against Ollama's /v1/systemone on OLLAMA_URL (default http://127.0.0.1:11434; Ollama 0.35 or later, `ollama pull tev1:0.8b` first); OLLAMA_MODEL picks another decision model (nimble, tev1)"
+description = "The ignored live tests against Ollama's /v1/systemone on OLLAMA_URL (default http://127.0.0.1:11434; Ollama 0.35 or later, `ollama pull tev1:0.8b` first); OLLAMA_MODEL picks another decision model (nimble, tev1, and clef or clef-flash on 0.35.1)"
 run = '''
 set -eu
 base="${OLLAMA_URL:-http://127.0.0.1:11434}"
 curl -sSf -m 5 -o /dev/null "$base/api/version" || { echo "no Ollama at $base; start it with 'ollama serve' and pull a decision model ('ollama pull tev1:0.8b')" >&2; exit 1; }
 JUDGMENT_LIVE_BASE_URL="$base" JUDGMENT_LIVE_MODEL="${OLLAMA_MODEL:-tev1:0.8b}" \
+  cargo test --test live -- --ignored --nocapture --test-threads=1
+'''
+
+[tasks."live:clef"]
+description = "The ignored live tests against Cloudflare's Clef on Workers AI through tools/systemone/serve.py (CLEF_MODEL=clef-flash for the 9B); needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in .env and spends a few model calls"
+run = '''
+set -eu
+: "${CLOUDFLARE_ACCOUNT_ID:?set CLOUDFLARE_ACCOUNT_ID (in .env) to run the live tests against Workers AI}"
+: "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN (in .env) to run the live tests against Workers AI}"
+python3 tools/systemone/serve.py cloudflare --port 8099 & shim=$!
+python3 tools/systemone/serve.py cloudflare --port 8098 --api-key secret & auth=$!
+trap 'kill $shim $auth 2>/dev/null' EXIT
+for _ in $(seq 1 50); do
+  curl -sf -o /dev/null http://127.0.0.1:8099/v1/models \
+    && curl -sf -o /dev/null -H 'Authorization: Bearer secret' http://127.0.0.1:8098/v1/models && break
+  sleep 0.2
+done
+JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8099 JUDGMENT_LIVE_MODEL="${CLEF_MODEL:-clef}" \
+JUDGMENT_LIVE_AUTH_BASE_URL=http://127.0.0.1:8098 JUDGMENT_LIVE_AUTH_API_KEY=secret \
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 

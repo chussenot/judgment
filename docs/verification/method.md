@@ -1,6 +1,6 @@
 ---
 title: How the crate is checked
-description: The three checks that stand between the crate's mocks and a real server, the ignored live tests, the benchmark replay and the contract test against the vendored OpenAPI document, what each one can and cannot establish, and how to run them against the hosted API, Laya or Ollama.
+description: The three checks that stand between the crate's mocks and a real server, the ignored live tests, the benchmark replay and the contract test against the vendored OpenAPI document, what each one can and cannot establish, and how to run them against the hosted API, Laya, Ollama or Clef on Workers AI.
 status: current
 last_reviewed: 2026-10-06
 tags: [judgment, verification, contract, openapi, live-tests]
@@ -12,19 +12,20 @@ The unit and integration tests never leave the process: wiremock for the client,
 
 ## Does a real server speak the wire this way?
 
-`tests/live.rs` holds fifteen `#[ignore]` tests that run the three primitives, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Three tasks run them:
+`tests/live.rs` holds fifteen `#[ignore]` tests that run the three primitives, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Four tasks run them:
 
 | Task | Against | Needs |
 |---|---|---|
 | `mise run live:typesafe` | the hosted API, `jev-latest` by default | `TYPESAFE_API_KEY` in `.env`; spends a handful of model calls |
 | `mise run live:laya` | `laya-serve` on `LAYA_URL` (default `http://127.0.0.1:8000`) | a running server; [the Laya record](laya-typed-decisions.md) says how to start one |
-| `mise run live:ollama` | Ollama's `/v1/systemone` on `OLLAMA_URL` (default `http://127.0.0.1:11434`) with `tev1:0.8b` | Ollama 0.35 or later and `ollama pull tev1:0.8b`; the model runs on a CPU |
+| `mise run live:ollama` | Ollama's `/v1/systemone` on `OLLAMA_URL` (default `http://127.0.0.1:11434`) with `tev1:0.8b`, or `OLLAMA_MODEL=clef` or `clef-flash` for Cloudflare's models | Ollama 0.35 or later and `ollama pull tev1:0.8b`; that model runs on a CPU, Clef wants a GPU (0.35.1 for `ollama pull clef`) |
+| `mise run live:clef` | Cloudflare's Clef on Workers AI through `tools/systemone/serve.py`, `clef` by default and `CLEF_MODEL=clef-flash` for the 9B | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`; spends a handful of model calls |
 
 A run that passes, or that finds a departure, becomes a page under `docs/verification/` naming the server, its release and the date. None of these runs in CI: the gate stays offline, and a key in CI would be a secret the repository does not need.
 
 ## Does it hold at scale?
 
-`examples/typed_decisions.rs` replays the [typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) benchmark (400 cases, 2,000 typed decisions) through the crate and scores it with `judgment::eval`, live or from recordings. `examples/typed-decisions/` holds a 40-case sample and `tools/typed-decisions/export.py` exports the full split. The example is a compatibility test at scale before it is an evaluation: every combination of primitive and criteria shape the benchmark uses goes through the builder, the client and the decoder. It was run against Laya's `typed-decisions` checkpoint, and the decoding bug it caught is in [the Laya record](laya-typed-decisions.md#the-bug-the-run-caught). `tools/laya/serve_laya.py` is a System One-compatible shim over the `laya` package for when `laya-serve` is not wanted; it is the one Laya server that also answers `GET /v1/models`.
+`examples/typed_decisions.rs` replays the [typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) benchmark (400 cases, 2,000 typed decisions) through the crate and scores it with `judgment::eval`, live or from recordings. `examples/typed-decisions/` holds a 40-case sample and `tools/typed-decisions/export.py` exports the full split. The example is a compatibility test at scale before it is an evaluation: every combination of primitive and criteria shape the benchmark uses goes through the builder, the client and the decoder. It was run against Laya's `typed-decisions` checkpoint, and the decoding bug it caught is in [the Laya record](laya-typed-decisions.md#the-bug-the-run-caught). `tools/systemone/serve.py` serves the wire over open-weight models that do not serve it at the standard path themselves: Laya in this process, for when `laya-serve` is not wanted and as the one Laya server that answers `GET /v1/models`, and Cloudflare's Clef on Workers AI, which takes the body at one URL per model inside Cloudflare's envelope.
 
 ## Does the crate match the published contract?
 

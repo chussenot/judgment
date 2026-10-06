@@ -149,7 +149,7 @@ default.
 | [Patterns](docs/patterns.md) | TypeSafe's four patterns on the crate's types, one runnable example each, and what the recordings teach about thresholds |
 | [Testing without the model](docs/testing.md) | The fake, the recordings and the metrics |
 | [The .jud format](docs/jud.md) | The specification of the rubric, cases and recording documents, their fingerprints and reading rules, and the loop from labelled cases to a tuned policy |
-| [How the crate is checked](docs/verification/method.md) | The live tests, the benchmark replay and the contract test, and how to run them against the hosted API, Laya or Ollama |
+| [How the crate is checked](docs/verification/method.md) | The live tests, the benchmark replay and the contract test, and how to run them against the hosted API, Laya, Ollama or Clef on Workers AI |
 | [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md), [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | What real servers did with the live tests, and what the crate changed for it |
 | [Compatible servers and models](docs/research/compatible-servers-and-models.md) | Which servers speak the wire and how the open models compare with Jev |
 | [Compared with the other Rust clients](docs/research/client-comparison.md) | The full comparison grids, with a file and line for every cell |

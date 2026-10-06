@@ -6,11 +6,23 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `tools/systemone/serve.py`, the shim that was `examples/laya/serve_laya.py`,
+  serves the wire over a choice of open-weight decision models: Laya in
+  this process, the request's `model` choosing among several checkpoints,
+  and Cloudflare's Clef and Clef-flash on Workers AI, which take the System
+  One body at one exact URL per model inside Cloudflare's envelope and so
+  cannot be reached with a `base_url` alone. `mise run live:clef` runs the
+  live tests through it (`CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`
+  in `.env`); `OLLAMA_MODEL=clef mise run live:ollama` runs them against
+  the same weights on Ollama 0.35.1.
+
 ### Changed
 
 - The Laya shim and the benchmark export moved out of `examples/`, which
   now holds only the Rust examples and the recordings and documents they
-  read: `tools/laya/serve_laya.py` and `tools/typed-decisions/export.py`.
+  read: `tools/systemone/serve.py` and `tools/typed-decisions/export.py`.
   `tools/` is excluded from the package, as `scripts/` is.
 
 ## [0.5.1] - 2026-10-04
