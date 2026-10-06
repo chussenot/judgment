@@ -19,6 +19,13 @@ two things the checker cannot see: the questions are narrow and atomic, with
 criteria that mean the same thing to every reader and to the model; and the
 policy is honest about where its numbers come from.
 
+This skill is part of the `jud` plugin, which also carries three commands:
+`/jud:rubric <brief>` writes a rubric, `/jud:cases <rubric> [brief]` writes
+the cases it is tuned on, `/jud:check [files]` runs the reader and explains
+every refusal. Each follows this guide; `${CLAUDE_PLUGIN_ROOT}` is the
+plugin's directory, so the checker is
+`${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh` from anywhere.
+
 ## Workflow
 
 1. **Decide the kind.** A decision needs a rubric. Thresholds need cases to
@@ -52,19 +59,20 @@ policy is honest about where its numbers come from.
    labels are checked against the requests they grade:
 
    ```sh
-   scripts/jud.sh check path/to/rubric.jud path/to/cases.jud
+   ${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh check path/to/rubric.jud path/to/cases.jud
    ```
 
-   The script finds `jud` on PATH, else builds it from the judgment
-   checkout. Fix every `error` line; it names the field. A refusal is never
+   The script finds `jud` on PATH (`cargo install judgment --features jud`),
+   else builds it from a judgment checkout (`JUDGMENT_DIR`, the project, or
+   the one the plugin sits in). Fix every `error` line; it names the field. A refusal is never
    worked around by loosening the document (dropping a label, widening an
    option list); it is a defect in the document, or in the question.
 5. **When the request depends on the state** (`when`, `part_when`,
    `options_from: request`), look at what each case actually sends:
 
    ```sh
-   scripts/jud.sh lower path/to/rubric.jud --cases path/to/cases.jud
-   scripts/jud.sh lower path/to/rubric.jud --state '{"message": "..."}'
+   ${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh lower path/to/rubric.jud --cases path/to/cases.jud
+   ${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh lower path/to/rubric.jud --state '{"message": "..."}'
    ```
 
    A question that is missing from a case's request cannot be labelled for
@@ -145,9 +153,51 @@ round trip.
   gate says why the bar is where it is. Do not invent a `tuning` block, a
   fingerprint or a model version: `tuning.cases` is written by the tuning run
   (`examples/jud_calibration.rs`) from the real cases fingerprint.
+
+## Writing cases a threshold can rest on
+
+A cases document is the labelled examples a rubric is graded on, and the
+only thing a threshold can be tuned against. The reader checks that every
+label fits its question; it cannot check that the labels are right or that
+they cover anything. That is the writer's job.
+
+- **Start from the rubric.** List each question, its primitive, each Choice's
+  options and whether they come with the request, each Score's levels, and
+  every `when`. A label is only valid for a question the case's request
+  actually asks: a case whose state lacks the path a `when` names cannot
+  label that question, and the reader refuses it.
+- **Take real states.** The keys the application really sends, in their real
+  shape, so that a `when` behaves in the cases as it will in production. An
+  invented state tests an invented request.
+- **Cover the outcomes.** Every option of a Choice and every level of a Score
+  should be the right answer at least once, including the way out: the
+  `none_of_these` option, the lowest level, the `false` of a Noul. A set with
+  no negative cases tunes a bar that never says no. Say in the reply how many
+  cases label each outcome, so the gaps are visible.
 - **Label what the case is sure about.** A question left out of `expect` is
-  asked and not graded. Label the obvious cases and the ones that were argued
-  about; a `note` on a hard case says why the label is what it is.
+  asked and not graded. A wrong label costs more than a missing one, because
+  the bar moves to fit it. Label in the answer's own vocabulary: bare `true`
+  or `false` for a Noul, an offered option key for a Choice, a level's text or
+  index for a Score.
+- **Keep the hard ones, and say why.** The cases that were argued about are
+  the ones that define the line. Give each a `note` with the argument, so the
+  next labeller does not reopen it, and leave the question unlabelled on a
+  case that is genuinely ambiguous about it.
+- **A conversation is labelled by turn.** The state is an array of turns;
+  a Noul takes `{from_turn: n}` for the zero-based turn at which it becomes
+  true (assistant turns count) or `{from_turn: null}` for never; every other
+  label stands for the last turn.
+- **Supply what the request needs.** For a Choice with `options_from:
+  request`, each case supplies its own options under `options`, as the
+  application would that day, and the request still needs 2 to 255.
+- **Name the rubric.** `spec.rubric` by name while the questions move, by
+  fingerprint once a run must be reproducible.
+- **Never copy the model's answers in.** A case says what the answer should
+  be; a recording says what it was. A label copied from a recording turns the
+  test into a test of nothing.
+- **Count honestly.** A handful of cases finds a document that is wrong and
+  shows the loop; it does not tune a bar. Say so rather than letting a
+  `tuning` block imply otherwise.
 
 ## Turning questions written in code into a rubric
 
@@ -197,7 +247,7 @@ old reader let through is refused now and must be fixed in the document.
 
 ## Reviewing an existing document
 
-Run `scripts/jud.sh check` first; then read for what the checker cannot see:
+Run `jud.sh check` first; then read for what the checker cannot see:
 a compound question, a Choice with no way out, criteria that restate the
 question instead of defining the outcomes, a `tuning` block with no run
 behind it, a label that contradicts its note. A document the reader refuses

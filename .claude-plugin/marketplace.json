@@ -1,0 +1,15 @@
+{
+  "name": "judgment",
+  "description": "Plugins from the judgment crate: tools for typed, calibrated judgments from System One models.",
+  "owner": {
+    "name": "Clément Hussenot",
+    "url": "https://github.com/chussenot"
+  },
+  "plugins": [
+    {
+      "name": "jud",
+      "source": "./plugins/jud",
+      "description": "Write, review and fix .jud documents (Rubric, Cases, Recording) and check them with the judgment crate's reader: the jud skill and the /jud:rubric, /jud:cases and /jud:check commands."
+    }
+  ]
+}

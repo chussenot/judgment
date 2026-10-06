@@ -25,7 +25,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](jud/rubric.md) |
 | Why the labelled examples are a document of their own, what a label means for each primitive, how cases are bound and graded, and how to write cases a threshold can rest on | [What cases are](jud/cases.md) |
 | Why one model response is kept as a document, what its fingerprint leaves out, how a replay finds and verifies one, and when one is written by hand | [What a recording is](jud/recording.md) |
-| How an agent writes a `.jud` document and checks it with the crate's reader (`jud check`, `jud lower`), how the skill was tested, and how to install it in another project | [The jud skill](skill.md) and `.claude/skills/jud/` |
+| How an agent writes a `.jud` document and checks it with the crate's reader (`jud check`, `jud lower`), the `/jud:rubric`, `/jud:cases` and `/jud:check` commands, how to install the plugin, and how it was tested | [The jud plugin](skill.md) and `plugins/jud/` |
 | What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
 | What the hosted TypeSafe API does with what the crate sends, and with what it refuses to send | [Against the hosted TypeSafe API](verification/hosted-typesafe.md) |
 | Whether the crate works against a second implementation of the wire, what the benchmark measured, and what each `laya-serve` release changed on the wire | [Against Laya typed-decisions](verification/laya-typed-decisions.md) |
@@ -510,20 +510,42 @@ A mock encodes what the client author believed about the wire. Only a real serve
 <!-- source: docs/skill.md -->
 
 
-# The jud skill
+# The jud plugin
 
-An agent writing a `.jud` file has two ways to get it wrong: the shape, which the reader refuses with the field named, and the substance, which no reader can see: a compound question, a Choice with no way out, a threshold the instructions already moved into the model, a `tuning` block with no run behind it. The skill under [`.claude/skills/jud/`](../.claude/skills/jud/) exists for both. It gives an agent the field reference for version 1.3 in one page, the rules writers trip on, and a command that reads a document exactly as the crate does, so a document is checked before it is handed over rather than when it is first loaded.
+An agent writing a `.jud` file has two ways to get it wrong: the shape, which the reader refuses with the field named, and the substance, which no reader can see: a compound question, a Choice with no way out, a threshold the instructions already moved into the model, a `tuning` block with no run behind it. The plugin under [`plugins/jud/`](../plugins/jud/) exists for both. It gives an agent the field reference for version 1.3 in one page, the rules writers trip on, and a command that reads a document exactly as the crate does, so a document is checked before it is handed over rather than when it is first loaded.
 
-It is a [Claude Code skill](https://docs.claude.com/en/docs/claude-code/skills): a directory with a `SKILL.md` whose frontmatter says when the skill applies and whose body says how to work, plus the files it refers to. In this repository it is available to every session; elsewhere it is installed by copying the directory.
+It ships as a [Claude Code plugin](https://code.claude.com/docs/en/plugins), `jud`, from a marketplace this repository serves (`.claude-plugin/marketplace.json`): a skill that loads whenever a task touches a `.jud` file, and three commands, `/jud:rubric`, `/jud:cases` and `/jud:check`. In this repository the plugin is enabled for every session through `.claude/settings.json`; anywhere else it is two commands away.
+
+## Installing it
+
+```sh
+claude plugin marketplace add chussenot/judgment   # once: this repository is the marketplace
+claude plugin install jud@judgment                 # the plugin; --scope project enables it for everyone in a repository
+cargo install judgment --features jud              # the `jud` command the plugin checks with
+```
+
+Or interactively: `/plugin marketplace add chussenot/judgment`, then `/plugin install jud@judgment`. The plugin has no dependency beyond the `jud` command: with none on `PATH`, its script builds one from a judgment checkout named by `JUDGMENT_DIR`, from the project when the project is this crate, or from the checkout the plugin sits in. To work on the plugin itself, add the checkout as a local marketplace (`/plugin marketplace add ./` from the repository root) and reload with `/reload-plugins` after an edit; a plugin loaded from a local marketplace is read in place, not copied. The plugin is not published with the crate (`Cargo.toml` excludes `plugins/`); the `jud` binary is.
+
+## The commands
+
+| Command | What it does |
+|---|---|
+| `/jud:rubric <brief>` | Writes a Rubric from a brief, or revises one at a path: narrow questions with criteria, a policy with a `note` per gate and no invented `tuning`, every deviation from the brief explained, checked with the reader before it is handed over. |
+| `/jud:cases <rubric> [brief]` | Writes the Cases a rubric is tuned on: real states covering every outcome, labels only for what each case is sure about, a `note` on the hard ones, bound to the rubric and checked, with a count of cases per outcome so the gaps are visible. |
+| `/jud:check [files]` | Runs the reader over the files given, or every `.jud` under the project, cases bound to their rubric and recordings verified, and explains every refusal; fixes only when asked, and in the document rather than around it. |
 
 ## What is in it
 
+Under `plugins/jud/`:
+
 | Path | What it is |
 |---|---|
-| `SKILL.md` | The guide: the workflow, the rules the reader enforces that writers trip on, how to write questions that hold up, how to review an existing document, what to report. |
-| `references/format.md` | Version 1.3 in one page: the envelope (`apiVersion`, `kind`, `metadata`, `spec`) and names, the YAML rules, every field of the three kinds, the gate fields per primitive, the label shapes, the fingerprints, and a checklist of what the reader refuses. Condensed from [the specification](jud.md), which wins on any difference. |
-| `scripts/jud.sh` | Runs the `jud` command: a `jud` on `PATH` if there is one, else the one built from the judgment checkout the skill sits in, or the one `JUDGMENT_DIR` names. |
-| `evals/evals.json`, `evals/files/` | The six tasks the skill was tested on and the broken documents, in the old envelope, one of them moves forward and repairs. |
+| `.claude-plugin/plugin.json` | The manifest: name, version, author, where the documentation is. |
+| `commands/rubric.md`, `cases.md`, `check.md` | The three commands above, each a page of instructions that follows the skill. |
+| `skills/jud/SKILL.md` | The guide: the workflow, the rules the reader enforces that writers trip on, how to write questions that hold up, how to review an existing document, what to report. |
+| `skills/jud/references/format.md` | Version 1.3 in one page: the envelope (`apiVersion`, `kind`, `metadata`, `spec`) and names, the YAML rules, every field of the three kinds, the gate fields per primitive, the label shapes, the fingerprints, and a checklist of what the reader refuses. Condensed from [the specification](jud.md), which wins on any difference. |
+| `skills/jud/scripts/jud.sh` | Runs the `jud` command: a `jud` on `PATH` if there is one, else the one built from the judgment checkout the skill sits in, or the one `JUDGMENT_DIR` names. |
+| `skills/jud/evals/` | The six tasks the skill was tested on and the broken documents, in the old envelope, one of them moves forward and repairs. |
 
 The skill triggers on a task that touches a `.jud` file, a rubric, typed questions with thresholds, labelled cases, or questions written in code that should become a document. It does not need the word "jud" in the request.
 
@@ -583,16 +605,6 @@ The skill and its eval set were carried over to the manifest envelope after the 
 6. A brief with traps: a name with spaces, a threshold asked for in the instructions, a twelve-level scale, a one-option Choice and a request to invent a `tuning` block, to be met with a valid document and an explanation of each deviation.
 
 Every document written with the skill passed every assertion (49 of 49); without it, 48 of 49, the miss being a document declared under an older version than the one wanted. The difference the skill makes is mostly in cost and method: in the first round, 14% fewer tokens and 24% less wall-clock on average, ten tool calls per task against fifteen, and no agent with the skill built a throwaway crate to validate its documents, which two baselines did. The second round changed the guide in two places: Score levels are written as plain strings, because an object level's text is its JSON and a `level_at_least` or a label would have to repeat it; and a section on turning questions written in code into a rubric, so parity is proved with `jud lower` rather than a probe crate. The eval set stays in the skill, its prompts and assertions now in the 1.3 format, so a later change to the format or the guide can be run against the same tasks.
-
-## Installing it elsewhere
-
-The skill has no dependency on this repository but the `jud` command. To use it in another project:
-
-1. Copy `.claude/skills/jud/` into that project's `.claude/skills/` (every session in the project sees it) or into `~/.claude/skills/` (every project does).
-2. Give it a `jud` to run: `cargo install judgment --features jud` puts one on `PATH`, or set `JUDGMENT_DIR` to a checkout of this repository and the script builds it from there.
-3. Keep the examples at hand: the guide points at `examples/jud/` as the starting documents, so a checkout of this repository, or a copy of that directory, is worth having beside the skill.
-
-The skill is not published with the crate (`Cargo.toml` excludes `.claude/`); the `jud` binary is.
 
 
 <!-- source: docs/releasing.md -->

@@ -18,6 +18,9 @@ repository = "https://github.com/chussenot/judgment"
 exclude = [
     ".github/",
     ".claude/",
+    # The jud plugin and the marketplace that serves it (docs/skill.md).
+    ".claude-plugin/",
+    "plugins/",
     "CLAUDE.md",
     # The issue tracker and the agent integrations `bd init` installs.
     ".beads/",

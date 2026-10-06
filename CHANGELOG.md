@@ -15,10 +15,14 @@ All notable changes to the `judgment` crate. The format follows
   refusal; `jud lower RUBRIC` prints the request a state or every case
   lowers to. `mise run jud:check` runs it over the examples or the files
   given.
-- A Claude Code skill, `.claude/skills/jud/`, for writing, reviewing and
-  fixing `.jud` documents, with a one-page field reference, the checker as
-  a script, and the six tasks it was tested on; `docs/skill.md` says how to
-  install it elsewhere.
+- A Claude Code plugin, `plugins/jud/`, served by this repository as a
+  marketplace (`.claude-plugin/marketplace.json`; `claude plugin
+  marketplace add chussenot/judgment`, `claude plugin install
+  jud@judgment`): the `jud` skill for writing, reviewing and fixing `.jud`
+  documents, with a one-page field reference, the checker as a script and
+  the six tasks it was tested on, and three commands, `/jud:rubric`,
+  `/jud:cases` and `/jud:check`. `docs/skill.md` says how it works and how
+  to install it.
 - Names and refusals in the `.jud` reader (`docs/jud.md`): every
   `metadata.name` and every case id is a name (letters, digits, `.`, `_`,
   `-`, starting with a letter or a digit), so a case never reaches the file
