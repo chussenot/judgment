@@ -6,6 +6,25 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `jud completion <shell>` prints a completion script for bash, zsh, fish,
+  elvish or PowerShell, generated from the command tree the binary parses
+  with, so it cannot drift from the binary; `docs/cli.md` says where each
+  shell wants it, and `mise run install` refreshes the scripts a shell
+  already has. The binary's arguments are now parsed by `clap`: `jud --help`
+  and every subcommand's `--help` are derived from the same tree, a usage
+  error names the argument and exits 2 as before, and `jud lower` refuses
+  `--state`, `--state-file` and `--cases` together instead of taking the
+  last.
+
+### Changed
+
+- The `jud` binary builds behind its own `cli` feature (`jud`, `http`,
+  `clap`, `clap_complete`): `cargo install judgment --features cli`. The
+  `jud` feature is the format alone again, so a library build with it
+  compiles no command-line parser.
+
 ## [0.9.0] - 2026-10-06
 
 ### Added

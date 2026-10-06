@@ -57,6 +57,10 @@ openapi = []
 # cases file, a recording), read and written as YAML. Off by default: a client
 # that builds its questions in code has no use for a YAML parser.
 jud = ["dep:serde-saphyr"]
+# The `jud` binary: the format and the client, parsed by clap. Its own feature
+# so that a library build with `jud` (the format) never compiles clap and its
+# derive macros for a command line it does not have.
+cli = ["jud", "http", "dep:clap", "dep:clap_complete"]
 
 [dependencies]
 # 1.0.181 is the first with `#[serde(untagged)]` on one variant, which
@@ -77,6 +81,12 @@ tokio = { version = "1", features = ["time", "rt"], optional = true }
 fastrand = { version = "2", optional = true }
 # HTTP dates in `Retry-After` (the retry loop).
 httpdate = { version = "1", optional = true }
+# The `jud` command line (feature `cli`). `clap_complete` generates
+# `jud completion <shell>` from the same command tree clap parses with, so a
+# completion script cannot drift from the binary; it adds no crate of its own
+# beyond the clap already here.
+clap = { version = "4", features = ["derive"], optional = true }
+clap_complete = { version = "4", optional = true }
 
 [dev-dependencies]
 # JSON Schema validation in the contract test against the vendored TypeSafe
@@ -125,7 +135,7 @@ required-features = ["http"]
 # The jud command line as a subprocess, against a wiremock backend.
 [[test]]
 name = "jud_cli"
-required-features = ["jud", "http"]
+required-features = ["cli"]
 
 # The `.jud` format against its JSON Schemas and its example documents.
 [[test]]
@@ -138,7 +148,7 @@ required-features = ["jud"]
 [[bin]]
 name = "jud"
 path = "src/bin/jud/main.rs"
-required-features = ["jud", "http"]
+required-features = ["cli"]
 
 # The benchmark replay talks to a server, so it needs the client.
 [[example]]

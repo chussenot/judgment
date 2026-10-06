@@ -84,11 +84,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
 
       # --locked: the artifact resolves the lockfile the tag carries, not
-      # whatever cargo would pick on the day. `--features jud` with the default
-      # `http`: the binary needs both, and naming it keeps the artifact's
-      # contents a promise rather than a default.
+      # whatever cargo would pick on the day. `--features cli` is the binary's
+      # own feature (the format, the client and clap), named so that the
+      # artifact's contents are a promise rather than a default.
       - name: Build
-        run: cargo build --release --locked --features jud --bin jud --target ${{ matrix.target.triple }}
+        run: cargo build --release --locked --features cli --bin jud --target ${{ matrix.target.triple }}
 
       # Strip before checking, so what is checked is what is packaged. On
       # macOS the linker's ad-hoc signature does not survive strip and an
@@ -116,6 +116,7 @@ jobs:
           "$bin" check examples/jud/triage.jud examples/jud/triage-cases.jud examples/recordings/jud_calibration/receipt.jud
           XDG_CONFIG_HOME="$RUNNER_TEMP/xdg" "$bin" config | jq -e '.base_url == "https://api.typesafe.ai" and .api_key == "missing"'
           echo '{"message": "hi"}' | XDG_CONFIG_HOME="$RUNNER_TEMP/xdg" "$bin" examples/jud/triage.jud 2>&1 | grep -q "no API key"
+          "$bin" completion bash | grep -q "complete -F _jud"
 
       - name: Package
         id: package

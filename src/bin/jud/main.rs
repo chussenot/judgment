@@ -2,14 +2,19 @@
 //! JSON state on stdin against a Rubric document and prints the verdicts, so
 //! a decision written as a file composes with `jq`, `yq`, `cat` and `curl`;
 //! `check` and `lower` read documents the way the crate does; `config` shows
-//! which System One backend a run would talk to. A thin adapter: parsing,
-//! lowering, the call and the policy are the library's.
+//! which System One backend a run would talk to; `completion` prints a shell
+//! completion script. A thin adapter: parsing, lowering, the call and the
+//! policy are the library's, and the command tree is clap's, so the help,
+//! the usage errors and the completions come from one definition.
 //!
 //! Exit status: 0 on verdicts; 1 when the backend call failed; 2 when the
 //! invocation, a file, the state or the configuration is wrong, which is
 //! fixable before any call is made.
 
+use std::io::{ErrorKind, Write};
 use std::process::ExitCode;
+
+use clap::{CommandFactory, Parser, Subcommand, ValueHint};
 
 mod config;
 mod run;
@@ -17,63 +22,101 @@ mod tools;
 
 type Fallible<T> = Result<T, Box<dyn std::error::Error>>;
 
-const USAGE: &str = "\
-jud: evaluate JSON input against a .jud Rubric and print the verdicts
-
-  cat state.json | jud RUBRIC.jud
-  jq '.customer' event.json | jud rubric.jud
-  yq -o=json '.spec' resource.yaml | jud rubric.jud
-
-      The rubric file holds the questions and the policy (kind: Rubric);
-      stdin holds the JSON state the questions are asked about. The
-      configured System One backend answers (TypeSafe by default), the
-      policy reads the answers, and one verdict per question is printed
-      as JSON on stdout.
-
-  jud config
-      The backend a run would use: base URL, model, timeout, and whether an
-      API key is set. Resolved from TYPESAFE_API_KEY and TYPESAFE_BASE_URL,
-      then ~/.config/jud/config.yaml, then the defaults.
-
-  jud check FILE...
-      Read documents as the crate reads them: cases bound to their rubric,
-      recordings verified against the request they answer; exits 2 when
-      any document is refused.
-
-  jud lower RUBRIC [--state JSON | --state-file PATH] [--options JSON]
-  jud lower RUBRIC --cases FILE
-      Print the request a rubric lowers to for a state, or for every case.
-
-  jud --version
-
-Exit status: 0 verdicts printed; 1 the backend call failed; 2 the
-invocation, a file, the state or the configuration is wrong.
-";
-
-/// The invocation, a file, the state or the configuration is wrong.
+/// The invocation, a file, the state or the configuration is wrong. Also
+/// clap's status for a usage error, so one number covers both.
 const EXIT_USAGE: u8 = 2;
 /// The backend was asked and the call failed.
 const EXIT_BACKEND: u8 = 1;
 
+const EXAMPLES: &str = "\
+Examples:
+  cat state.json | jud RUBRIC.jud
+  jq '.customer' event.json | jud rubric.jud
+  yq -o=json '.spec' resource.yaml | jud rubric.jud
+
+Exit status: 0 verdicts printed; 1 the backend call failed; 2 the
+invocation, a file, the state or the configuration is wrong.";
+
+/// Evaluate JSON input against a .jud Rubric and print the verdicts.
+///
+/// The rubric file holds the questions and the policy (kind: Rubric); stdin
+/// holds the JSON state the questions are asked about. The configured System
+/// One backend answers (TypeSafe by default), the policy reads the answers,
+/// and one verdict per question is printed as JSON on stdout.
+#[derive(Parser)]
+#[command(
+    name = "jud",
+    version,
+    after_help = EXAMPLES,
+    arg_required_else_help = true,
+    args_conflicts_with_subcommands = true,
+    subcommand_negates_reqs = true
+)]
+struct Cli {
+    /// The Rubric document to evaluate; the state comes on stdin.
+    #[arg(value_name = "RUBRIC", value_hint = ValueHint::FilePath)]
+    rubric: Option<String>,
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// The backend a run would use: base URL, model, timeout, whether an API
+    /// key is set.
+    ///
+    /// Resolved from TYPESAFE_API_KEY and TYPESAFE_BASE_URL, then
+    /// ~/.config/jud/config.yaml, then the defaults.
+    Config,
+    /// Read documents as the crate reads them.
+    ///
+    /// Cases are bound to their rubric among the files, recordings are
+    /// verified against the request they answer; status 2 when any document
+    /// is refused.
+    Check {
+        /// The .jud documents to read.
+        #[arg(value_name = "FILE", required = true, value_hint = ValueHint::FilePath)]
+        files: Vec<String>,
+    },
+    /// Print the request a rubric lowers to, for a state or for every case.
+    Lower(tools::Lower),
+    /// Print a shell completion script for jud's commands and flags.
+    ///
+    /// Generated from the same command tree clap parses, so it cannot drift
+    /// from the binary. Writes to stdout; docs/cli.md says where each shell
+    /// wants it.
+    Completion {
+        /// The shell whose syntax to emit.
+        shell: clap_complete::Shell,
+    },
+}
+
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.first().map(String::as_str) {
-        None => {
-            eprint!("{USAGE}");
-            ExitCode::from(EXIT_USAGE)
-        }
-        Some("help" | "-h" | "--help") => {
-            print!("{USAGE}");
-            ExitCode::SUCCESS
-        }
-        Some("--version" | "-V") => {
-            println!("jud {}", env!("CARGO_PKG_VERSION"));
-            ExitCode::SUCCESS
-        }
-        Some("config") => report(config::show(), EXIT_USAGE),
-        Some("check") => report(tools::check(&args[1..]), EXIT_USAGE),
-        Some("lower") => report(tools::lower(&args[1..]), EXIT_USAGE),
-        Some(path) => run::run(path, &args[1..]),
+    let cli = Cli::parse();
+    match (cli.command, cli.rubric) {
+        (Some(Command::Config), _) => report(config::show(), EXIT_USAGE),
+        (Some(Command::Check { files }), _) => report(Ok(tools::check(&files)), EXIT_USAGE),
+        (Some(Command::Lower(args)), _) => report(tools::lower(&args), EXIT_USAGE),
+        (Some(Command::Completion { shell }), _) => report(completion(shell), EXIT_USAGE),
+        (None, Some(path)) => run::run(&path),
+        // `arg_required_else_help` has already printed the help and exited.
+        (None, None) => ExitCode::from(EXIT_USAGE),
+    }
+}
+
+/// `jud completion <shell>`: the script, generated from [`Cli`] into a
+/// buffer first so nothing reaches stdout until the whole script exists. A
+/// reader that closes early (`jud completion bash | head -1`) is not an
+/// error: the script was complete, it is the pipe that ended.
+fn completion(shell: clap_complete::Shell) -> Fallible<bool> {
+    let mut command = Cli::command();
+    let name = command.get_name().to_owned();
+    let mut script = Vec::new();
+    clap_complete::generate(shell, &mut command, name, &mut script);
+    match std::io::stdout().write_all(&script) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == ErrorKind::BrokenPipe => Ok(true),
+        Err(e) => Err(e.into()),
     }
 }
 

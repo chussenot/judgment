@@ -177,12 +177,26 @@ JUDGMENT_LIVE_BASE_URL="${LAYA_URL:-http://127.0.0.1:8000}" JUDGMENT_LIVE_MODEL=
 # ---------------------------------------------------------------------------
 
 [tasks.install]
-description = "Install the jud command line from this checkout (cargo install --path . --features jud); a release binary is `mise use -g github:chussenot/judgment@latest` (docs/cli.md)"
-run = "cargo install --path . --features jud --force"
+description = "Install the jud command line from this checkout (cargo install --path . --features cli) and refresh the completion scripts a shell already has; a release binary is `mise use -g github:chussenot/judgment@latest` (docs/cli.md)"
+run = [
+  "cargo install --path . --features cli --force",
+  """
+  # Refresh the completion scripts too. They are generated from the command
+  # tree, so they cannot drift from the binary that wrote them, but a shell
+  # keeps the file it has, so an install would leave yesterday's commands
+  # completing until someone regenerated it by hand. Only a directory that
+  # already exists is written: a machine without one is left alone.
+  refresh() { [ -d "$1" ] && jud completion "$2" > "$1/$3" && echo "completions: $1/$3"; true; }
+  command -v jud >/dev/null || exit 0
+  refresh "${ZDOTDIR:-$HOME}/.zsh/completions" zsh _jud
+  refresh "$HOME/.local/share/bash-completion/completions" bash jud
+  refresh "$HOME/.config/fish/completions" fish jud.fish
+  """,
+]
 
 [tasks."jud:check"]
-description = "Read .jud documents as the crate reads them and bind cases to their rubric (src/bin/jud.rs); `mise run jud:check -- FILE...`, default: the examples"
-run = """sh -c 'if [ $# -eq 0 ]; then set -- examples/jud/*.jud examples/recordings/jud_calibration/*.jud; fi; cargo run -q --features jud --bin jud -- check "$@"' --"""
+description = "Read .jud documents as the crate reads them and bind cases to their rubric (src/bin/jud/); `mise run jud:check -- FILE...`, default: the examples"
+run = """sh -c 'if [ $# -eq 0 ]; then set -- examples/jud/*.jud examples/recordings/jud_calibration/*.jud; fi; cargo run -q --features cli --bin jud -- check "$@"' --"""
 
 [tasks."bd:ready"]
 description = "Issues ready to work on (bd ready)"

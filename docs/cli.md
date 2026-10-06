@@ -78,7 +78,19 @@ install -m755 "jud-$TAG-$TARGET/jud" /usr/local/bin/
 
 Each tarball carries a build-provenance attestation: `gh attestation verify jud-$TAG-$TARGET.tar.gz --repo chussenot/judgment` says which workflow, commit and run produced it.
 
-From source, with a Rust toolchain: `cargo install judgment --features jud` from crates.io, or `mise run install` in a checkout.
+From source, with a Rust toolchain: `cargo install judgment --features cli` from crates.io, or `mise run install` in a checkout.
+
+### Shell completion
+
+`jud completion <shell>` prints a completion script on stdout, for `bash`, `zsh`, `fish`, `elvish` and `powershell`. It is generated from the same command tree the binary parses arguments with, so a subcommand or a flag is completed the moment it exists, and nothing is checked in to go stale. Where each shell wants it:
+
+```sh
+jud completion bash > ~/.local/share/bash-completion/completions/jud   # or /etc/bash_completion.d/jud
+jud completion zsh  > "${fpath[1]}/_jud"
+jud completion fish > ~/.config/fish/completions/jud.fish
+```
+
+Regenerate it after upgrading: a script written by an older binary completes that binary's commands, which is the one way it can still fall behind. `mise run install` does that for the three files above when their directory exists. The script reads no configuration and needs no key, so a profile can source it before anything else is set up; where a file name is expected (`RUBRIC`, `check FILE...`, `--state-file`, `--cases`) the shell completes paths.
 
 ### Platforms
 
@@ -153,10 +165,11 @@ Every error goes to stderr, prefixed `jud:`; stdout carries verdicts and nothing
 | `jud check FILE...` | Reads documents as the crate does, binds cases to the rubric they name among the files, verifies recordings against the request they answer, prints names and fingerprints; status 2 when any document is refused. |
 | `jud lower RUBRIC --state JSON` / `--state-file PATH` / `--cases FILE` | Prints the request a rubric lowers to for a state or for every case, so a `when` or a `part_when` is seen rather than guessed. |
 | `jud config` | The resolved backend, as above. |
+| `jud completion SHELL` | A completion script for the shell, generated from the command tree ([above](#shell-completion)). |
 | `jud --version` | The version, the manifest's. |
 
 Nothing writes a file. A `.jud` document is written by a person or an agent, with the plugin, and checked by `jud check` before it is handed over.
 
 ## In the repository
 
-The binary is `src/bin/jud/` behind the `jud` feature (with the default `http`): `main.rs` dispatches and sets the exit status, `run.rs` is the evaluation path, `config.rs` the resolution above, `tools.rs` the reader subcommands. `tests/jud_cli.rs` runs it as a subprocess against a wiremock server standing in for any backend, through the environment and through the configuration file, with no key and no network. `.github/workflows/release.yml` builds, checks and packages it on every platform above when a version tag is pushed, and attaches the tarballs and `SHA256SUMS` to the release the crate's publish already creates ([Releasing](releasing.md)). [Decision 0019](decisions/0019-a-command-line-for-the-format.md) says why the command, the configuration file and the release shape are what they are.
+The binary is `src/bin/jud/` behind the `cli` feature (`jud` and `http`, plus `clap` and `clap_complete`, which a library build never compiles): `main.rs` holds the command tree, from which clap derives the help, the usage errors and the completions, and sets the exit status, `run.rs` is the evaluation path, `config.rs` the resolution above, `tools.rs` the reader subcommands. `tests/jud_cli.rs` runs it as a subprocess against a wiremock server standing in for any backend, through the environment and through the configuration file, with no key and no network. `.github/workflows/release.yml` builds, checks and packages it on every platform above when a version tag is pushed, and attaches the tarballs and `SHA256SUMS` to the release the crate's publish already creates ([Releasing](releasing.md)). [Decision 0019](decisions/0019-a-command-line-for-the-format.md) says why the command, the configuration file and the release shape are what they are.

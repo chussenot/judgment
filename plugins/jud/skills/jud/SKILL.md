@@ -63,7 +63,7 @@ plugin's directory, so the checker is
    ```
 
    The script finds `jud` on PATH (`mise use -g github:chussenot/judgment@latest`
-   or `cargo install judgment --features jud`),
+   or `cargo install judgment --features cli`),
    else builds it from a judgment checkout (`JUDGMENT_DIR`, the project, or
    the one the plugin sits in). Fix every `error` line; it names the field. A refusal is never
    worked around by loosening the document (dropping a label, widening an
