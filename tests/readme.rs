@@ -4,51 +4,51 @@
 
 #![allow(clippy::expect_used)]
 
-#[test]
-fn the_readme_opens_with_the_quickstart_example() {
-    let example = include_str!("../examples/quickstart.rs");
-    let readme = include_str!("../README.md");
-    let begin = example
-        .find("// README:BEGIN\n")
-        .expect("examples/quickstart.rs marks the README's part with // README:BEGIN");
-    let end = example
-        .find("// README:END")
-        .expect("examples/quickstart.rs marks the end of the README's part with // README:END");
+/// The README's part of an example, as the rust block the README must hold.
+fn readme_block(example: &str, name: &str) -> String {
+    let begin = example.find("// README:BEGIN\n").unwrap_or_else(|| {
+        panic!("examples/{name}.rs marks the README's part with // README:BEGIN")
+    });
+    let end = example.find("// README:END").unwrap_or_else(|| {
+        panic!("examples/{name}.rs marks the end of the README's part with // README:END")
+    });
     let code = example[begin + "// README:BEGIN\n".len()..end].trim_end();
-    let block = format!("```rust\n{code}\n```");
-    assert!(
-        readme.contains(&block),
-        "README.md must contain examples/quickstart.rs between its README markers, verbatim, as a rust block"
-    );
-    let first_block = readme.find("```rust").expect("README.md has a rust block");
-    assert_eq!(
-        readme.find(&block),
-        Some(first_block),
-        "the quickstart is the README's first code block"
-    );
+    format!("```rust\n{code}\n```")
 }
 
-/// The README's second example is `examples/jud_quickstart.rs`, held to the
-/// file the same way; it follows the quickstart.
+/// Where the README holds `example`'s block, verbatim.
+fn position_of(readme: &str, example: &str, name: &str) -> usize {
+    let block = readme_block(example, name);
+    readme.find(&block).unwrap_or_else(|| {
+        panic!("README.md must contain examples/{name}.rs between its README markers, verbatim, as a rust block")
+    })
+}
+
+/// The README opens with the quickstart, then the same decision from a `.jud`
+/// rubric, then a rubric from a file asked of the hosted API; each is held to
+/// its example file, in that order.
 #[test]
-fn the_readme_continues_with_the_jud_quickstart_example() {
-    let example = include_str!("../examples/jud_quickstart.rs");
+fn the_readme_holds_the_three_examples_in_order() {
     let readme = include_str!("../README.md");
-    let begin = example
-        .find("// README:BEGIN\n")
-        .expect("examples/jud_quickstart.rs marks the README's part with // README:BEGIN");
-    let end = example
-        .find("// README:END")
-        .expect("examples/jud_quickstart.rs marks the end of the README's part with // README:END");
-    let code = example[begin + "// README:BEGIN\n".len()..end].trim_end();
-    let block = format!("```rust\n{code}\n```");
-    let position = readme.find(&block).expect(
-        "README.md must contain examples/jud_quickstart.rs between its README markers, verbatim, as a rust block",
+    let quickstart = position_of(
+        readme,
+        include_str!("../examples/quickstart.rs"),
+        "quickstart",
     );
+    let jud = position_of(
+        readme,
+        include_str!("../examples/jud_quickstart.rs"),
+        "jud_quickstart",
+    );
+    let live = position_of(readme, include_str!("../examples/jud_live.rs"), "jud_live");
     let first_block = readme.find("```rust").expect("README.md has a rust block");
+    assert_eq!(
+        quickstart, first_block,
+        "the quickstart is the README's first code block"
+    );
     assert!(
-        position > first_block,
-        "the .jud example follows the quickstart"
+        quickstart < jud && jud < live,
+        "the examples follow in order"
     );
 }
 

@@ -123,6 +123,53 @@ rather than guesses: [the .jud format](docs/jud.md) describes the rubric, the
 cases and the recordings, and `examples/jud_calibration.rs` tunes a policy from
 them. The format is behind the `jud` feature, off by default.
 
+The third example asks the real model. It reads a rubric from a file,
+[`examples/jud/triage.jud`](examples/jud/triage.jud), three questions about a
+support message and a policy whose gates were tuned on the labelled cases
+beside it, and sends the request to the hosted TypeSafe API:
+
+```rust
+use std::time::Duration;
+
+use judgment::jud::{Rubric, Supplied};
+use judgment::{Client, SystemOne};
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // A rubric from a file: its questions, and the policy tuned on the
+    // labelled cases beside it, which names them by fingerprint.
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/jud/triage.jud");
+    let rubric = Rubric::parse(&std::fs::read_to_string(path)?)?;
+
+    // The hosted API with the key from TYPESAFE_API_KEY, where the fake was;
+    // TYPESAFE_BASE_URL points it at any server that speaks the wire.
+    let mut builder = Client::builder().timeout(Duration::from_secs(30));
+    if let Ok(url) = std::env::var("TYPESAFE_BASE_URL") {
+        builder = builder.base_url(url);
+    }
+    let client = builder.build()?;
+    let state = serde_json::json!({ "message": "My payouts have been failing for 3 days." });
+    let questions = rubric.lower(&state, &Supplied::default())?;
+    let response = client.answer(&state, "jev-latest", &questions).await?;
+
+    // The policy reads the model's answers into one verdict per question.
+    for (id, verdict) in rubric.apply(&questions, &response)? {
+        println!("{id}: {}", serde_json::to_string(&verdict)?);
+    }
+    println!("answered by {}", response.model);
+    Ok(())
+}
+```
+
+`TYPESAFE_API_KEY=... cargo run --example jud_live --features jud`
+([`examples/jud_live.rs`](examples/jud_live.rs)) spends one model call and
+prints one verdict per question, each a yes or no, an option or a level with
+its confidence, or a deferral to the gate's fallback; `TYPESAFE_BASE_URL`
+sends the same request to any other server that speaks the wire. Nothing in the code names
+a question or a threshold: both live in the file, and the model's answers are
+verified against the questions the file lowered to before the policy reads
+them. `examples/jud_calibration.rs` is where the policy's numbers come from.
+
 ## Why
 
 A generative model asked to classify something answers in prose, or in JSON it
