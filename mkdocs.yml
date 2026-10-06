@@ -17,6 +17,7 @@ nav:
   - Patterns: patterns.md
   - Testing without the model: testing.md
   - The .jud format: jud.md
+  - What a rubric is: rubric.md
   - Releasing: releasing.md
   - Verification:
       - How the crate is checked: verification/method.md
