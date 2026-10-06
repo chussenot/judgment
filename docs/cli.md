@@ -1,6 +1,6 @@
 ---
 title: The jud command line
-description: The jud binary evaluates JSON input from stdin against a .jud Rubric and prints the verdicts, so a decision written as a file composes with jq, yq, cat and curl; what it does, how to install it with mise or by hand, how the backend is configured with TypeSafe as the default, the exit status, and the other subcommands.
+description: The jud binary evaluates JSON input from stdin against a .jud Rubric and prints the verdicts, so a decision written as a file composes with jq, yq, cat and curl; what it does, how to install it with mise or by hand, shell completion, how the backend is configured with TypeSafe as the default, how a run replays recordings with no server, the exit status, and the other subcommands.
 status: current
 last_reviewed: 2026-10-06
 tags: [judgment, jud, cli, mise, release, configuration]
@@ -140,6 +140,14 @@ $ jud config
 }
 ```
 
+### Without a server
+
+`--replay DIR`, or `JUD_REPLAY=DIR`, answers from the recordings under a directory instead of a server: the crate's `Replay` backend, which finds the recording whose request fingerprint matches this state and rubric and verifies it against the questions as a server's response would be. No key, no configuration file and no network are consulted. A state nobody recorded is a backend failure (status 1, "no recording"), never a guess, and a directory that does not exist is a usage error (2). The README's transcript and `scripts/record_demo.sh`, which records the demo as an asciinema cast (`docs/demo.cast`, `mise run demo`), both run this way over [`examples/recordings/jud_calibration`](../examples/recordings/jud_calibration), the answers `jev-1.13.0` gave to the example cases; [What a recording is](jud/recording.md) says how one is written.
+
+```sh
+cat event.json | jud --replay examples/recordings/jud_calibration examples/jud/triage.jud
+```
+
 ### Credentials
 
 A key for the hosted API comes from `TYPESAFE_API_KEY`. A run with no key is refused before any call, naming the variable and the file. A key in the configuration file is accepted for a machine where the environment is awkward to set, with the usual caution about a secret on disk.
@@ -153,7 +161,7 @@ TypeSafe is the default, not the only backend. The crate talks to any server tha
 | Status | Meaning |
 |---|---|
 | 0 | Verdicts printed on stdout. |
-| 1 | The backend was asked and the call failed: a transport error after the retries, an HTTP error, or a response that does not fit the rubric. The message names the backend. |
+| 1 | The backend was asked and the call failed: a transport error after the retries, an HTTP error, a response that does not fit the rubric, or no recording for the state under `--replay`. The message names the backend. |
 | 2 | Something fixable before any call: no rubric argument, a file that cannot be read, a document that is not a valid Rubric, stdin that is empty or not one JSON value, a missing API key, a malformed configuration file. |
 
 Every error goes to stderr, prefixed `jud:`; stdout carries verdicts and nothing else, so a pipeline never reads an error as a result.
@@ -167,6 +175,7 @@ Every error goes to stderr, prefixed `jud:`; stdout carries verdicts and nothing
 | `jud check FILE...` | Reads documents as the crate does, binds cases to the rubric they name among the files, verifies recordings against the request they answer, prints names and fingerprints; status 2 when any document is refused. |
 | `jud lower RUBRIC --state JSON` / `--state-file PATH` / `--cases FILE` | Prints the request a rubric lowers to for a state or for every case, so a `when` or a `part_when` is seen rather than guessed. |
 | `jud config` | The resolved backend, as above. |
+| `jud --replay DIR RUBRIC` | The run above answered from recordings ([without a server](#without-a-server)). |
 | `jud completion SHELL` | A completion script for the shell, generated from the command tree ([above](#shell-completion)). |
 | `jud --version` | The version, the manifest's. |
 
