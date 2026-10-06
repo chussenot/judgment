@@ -16,8 +16,11 @@ nav:
   - How the crate is implemented: implementation.md
   - Patterns: patterns.md
   - Testing without the model: testing.md
-  - The .jud format: jud.md
-  - What a rubric is: rubric.md
+  - The .jud format:
+      - Specification: jud.md
+      - What a rubric is: jud/rubric.md
+      - What cases are: jud/cases.md
+      - What a recording is: jud/recording.md
   - The jud skill: skill.md
   - Releasing: releasing.md
   - Verification:

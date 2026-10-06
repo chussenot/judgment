@@ -319,7 +319,7 @@ default.
 | [Patterns](docs/patterns.md) | TypeSafe's four patterns on the crate's types, one runnable example each, and what the recordings teach about thresholds |
 | [Testing without the model](docs/testing.md) | The fake, the recordings and the metrics |
 | [The .jud format](docs/jud.md) | The specification of the rubric, cases and recording documents, their fingerprints and reading rules, and the loop from labelled cases to a tuned policy |
-| [What a rubric is](docs/rubric.md) | Why a decision is written as questions beside the thresholds that read their answers, what a rubric leaves out, and how to write one that holds up |
+| [What a rubric is](docs/jud/rubric.md), [what cases are](docs/jud/cases.md), [what a recording is](docs/jud/recording.md) | The reasoning behind each kind of `.jud` document: the decision, the labelled examples it is graded on, and what the model answered |
 | [The jud skill](docs/skill.md) | A Claude Code skill that writes and checks `.jud` documents with the crate's own reader (`jud check`), and how to install it in another project |
 | [How the crate is checked](docs/verification/method.md) | The live tests, the benchmark replay and the contract test, and how to run them against the hosted API, Laya, Ollama or Clef on Workers AI |
 | [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md), [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | What real servers did with the live tests, and what the crate changed for it |

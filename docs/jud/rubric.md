@@ -8,7 +8,7 @@ tags: [judgment, jud, rubric, policy, calibration, design]
 
 # What a rubric is
 
-A rubric is a decision written down so that a person can review it and a program can run it. It holds the questions a model is asked about a state, and the thresholds at which the model's answers become actions. It is the first of the three kinds of `.jud` document, and the one the other two exist for: [cases](jud.md#cases) are what a rubric is graded on, [recordings](jud.md#recording) are what a model answered when it was. This page says why a decision takes this shape and how to write one. [The .jud format](jud.md) is the specification; this page is the reasoning behind it.
+A rubric is a decision written down so that a person can review it and a program can run it. It holds the questions a model is asked about a state, and the thresholds at which the model's answers become actions. It is the first of the three kinds of `.jud` document, and the one the other two exist for: [cases](cases.md) are what a rubric is graded on, [recordings](recording.md) are what a model answered when it was. This page says why a decision takes this shape and how to write one. [The .jud format](../jud.md) is the specification; this page is the reasoning behind it.
 
 ## The word
 
@@ -158,7 +158,7 @@ let response = backend.answer(&state, "jev-latest", &questions).await?;
 let verdicts = rubric.apply(&questions, &response)?;
 ```
 
-The reader is strict on purpose. It reads exactly one `apiVersion` and refuses a field it does not know, so a document for a later apiVersion is refused whole rather than half-read. It refuses what hides text from the person reading the file: a merge key, a tag the YAML core schema does not define. It refuses a name that is not a [name](jud.md#names), so a name never reaches a file system as a path. What a reviewer approved is what the program runs.
+The reader is strict on purpose. It reads exactly one `apiVersion` and refuses a field it does not know, so a document for a later apiVersion is refused whole rather than half-read. It refuses what hides text from the person reading the file: a merge key, a tag the YAML core schema does not define. It refuses a name that is not a [name](../jud.md#names), so a name never reaches a file system as a path. What a reviewer approved is what the program runs.
 
 ## How a rubric is written
 
@@ -185,4 +185,4 @@ A rubric is only as good as its questions, and the failure modes repeat.
 
 ## In the crate
 
-`judgment::jud` (feature `jud`, off by default) implements the rubric kind as `Rubric`: `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `lower`, `apply` and `gate`. [The .jud format](jud.md) specifies every field and reading rule; [decision 0014](decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) says why the three kinds share one format, and [decision 0018](decisions/0018-jud-1-3-takes-the-manifest-envelope.md) why the envelope is a manifest's and the reader reads one apiVersion. The two records it supersedes hold reasoning that still stands: [decision 0016](decisions/0016-jud-takes-minor-versions.md) why a request may depend on the state, and [decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) why the reader refuses what a reviewer cannot see. The README's second and third examples run a rubric against a `Fake` and against the hosted API; [`examples/jud/triage.jud`](../examples/jud/triage.jud) is the rubric this page quotes, with the cases it was tuned on beside it.
+`judgment::jud` (feature `jud`, off by default) implements the rubric kind as `Rubric`: `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `lower`, `apply` and `gate`. [The .jud format](../jud.md) specifies every field and reading rule; [decision 0014](../decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) says why the three kinds share one format, and [decision 0018](../decisions/0018-jud-1-3-takes-the-manifest-envelope.md) why the envelope is a manifest's and the reader reads one apiVersion. The two records it supersedes hold reasoning that still stands: [decision 0016](../decisions/0016-jud-takes-minor-versions.md) why a request may depend on the state, and [decision 0017](../decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) why the reader refuses what a reviewer cannot see. The README's second and third examples run a rubric against a `Fake` and against the hosted API; [`examples/jud/triage.jud`](../../examples/jud/triage.jud) is the rubric this page quotes, with the cases it was tuned on beside it.

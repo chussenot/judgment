@@ -12,7 +12,7 @@ share one YAML envelope, a manifest's (`apiVersion`, `kind`, `metadata`,
 `spec`): a **Rubric** (questions + policy), **Cases** (labelled states the
 rubric is graded on) and a **Recording** (what a model answered once).
 `docs/jud.md` in the judgment repository is the specification;
-`docs/rubric.md` is the reasoning. This skill is the working guide.
+`docs/jud/rubric.md`, `docs/jud/cases.md` and `docs/jud/recording.md` are the reasoning behind each kind. This skill is the working guide.
 
 What makes a document good is not the syntax, which `jud check` enforces, but
 two things the checker cannot see: the questions are narrow and atomic, with
