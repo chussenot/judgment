@@ -88,6 +88,7 @@ description = "Regenerate docs/llms.txt and docs/llms-full.txt from mkdocs.yml a
 run = "scripts/gen-llms-txt.sh"
 
 [tasks.check]
+alias = "ci"
 description = "All quality gates, in CI order"
 depends = ["fmt:check", "lint", "check:minimal", "test", "doc", "docs:check"]
 
@@ -197,6 +198,10 @@ run = [
   refresh "$HOME/.config/fish/completions" fish jud.fish
   """,
 ]
+
+[tasks.demo]
+description = "Record the command-line demo as an asciinema cast, docs/demo.cast, from the example recordings (scripts/record_demo.sh); no key, no network"
+run = "scripts/record_demo.sh"
 
 [tasks."jud:check"]
 description = "Read .jud documents as the crate reads them and bind cases to their rubric (src/bin/jud/); `mise run jud:check -- FILE...`, default: the examples"
