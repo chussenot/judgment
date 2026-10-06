@@ -176,6 +176,10 @@ JUDGMENT_LIVE_BASE_URL="${LAYA_URL:-http://127.0.0.1:8000}" JUDGMENT_LIVE_MODEL=
 # Planning (beads)
 # ---------------------------------------------------------------------------
 
+[tasks.install]
+description = "Install the jud command line from this checkout (cargo install --path . --features jud); a release binary is `mise use -g github:chussenot/judgment@latest` (docs/cli.md)"
+run = "cargo install --path . --features jud --force"
+
 [tasks."jud:check"]
 description = "Read .jud documents as the crate reads them and bind cases to their rubric (src/bin/jud.rs); `mise run jud:check -- FILE...`, default: the examples"
 run = """sh -c 'if [ $# -eq 0 ]; then set -- examples/jud/*.jud examples/recordings/jud_calibration/*.jud; fi; cargo run -q --features jud --bin jud -- check "$@"' --"""

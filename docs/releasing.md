@@ -1,8 +1,8 @@
 ---
 title: Releasing
-description: How a version of the judgment crate is cut from its Conventional Commits with cocogitto, how the pushed tag publishes it to crates.io from CI, what to set up once, and what to do when a release goes wrong.
+description: How a version of the judgment crate is cut from its Conventional Commits with cocogitto, how the pushed tag publishes it to crates.io and the jud binaries to a GitHub release from CI, what to set up once, and what to do when a release goes wrong.
 status: current
-last_reviewed: 2026-10-05
+last_reviewed: 2026-10-06
 tags: [judgment, release, versioning, cocogitto, crates-io, ci]
 ---
 
@@ -18,7 +18,7 @@ A release has to be the same every time: the version follows from what changed, 
 | `cog bump --auto` | `cog.toml`, run as `mise run release` | Computes the next version from the commits since the last tag, runs the pre-bump hooks, commits `chore(version): vX.Y.Z` and tags it |
 | `scripts/release-bump.sh` | the first pre-bump hook | Writes the version into `Cargo.toml` and `Cargo.lock` and its major.minor into the README's install snippet, turns the CHANGELOG's Unreleased section into the release's dated section, and refuses an empty one |
 | The gate | the remaining pre-bump hooks, then CI on the pull request and on the tag | Formatting, clippy, the no-`http` build, the tests, rustdoc, the documentation checks and what the package would ship |
-| `.github/workflows/release.yml` | on a pushed `v*` tag | Runs the CI gate on the tagged commit, checks the tag against `Cargo.toml`, runs `cargo publish --dry-run`, publishes, and creates a GitHub release with the CHANGELOG section as notes |
+| `.github/workflows/release.yml` | on a pushed `v*` tag | Runs the CI gate on the tagged commit, builds, checks and packages the `jud` binary for each platform ([The jud command line](cli.md)), checks the tag against `Cargo.toml`, runs `cargo publish --dry-run`, publishes, and creates a GitHub release with the CHANGELOG section as notes and the tarballs with `SHA256SUMS` as assets. A `workflow_dispatch` is a dry run that builds every leg and publishes nothing |
 
 The CHANGELOG stays hand-written, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) form: a pull request that changes what a consumer sees adds its entry under Unreleased, and the bump only dates that section. cocogitto's own changelog generation is off, because a list of commit subjects does not explain a change to a consumer.
 
@@ -41,7 +41,7 @@ A breaking change in a 0.x crate is a minor bump, which is the rule the CHANGELO
 3. `git switch -c release/vX.Y.Z` with that version, then `mise run release`. cocogitto runs the pre-bump hooks (the version into the three files, then the gate), commits `chore(version): vX.Y.Z` and tags `vX.Y.Z` on that commit. A failed hook leaves the tree edited and nothing committed; `git checkout .` restores it.
 4. Push the branch and open a pull request. CI runs the gate and the commit check on it like any other change.
 5. Merge it with a merge commit. Never squash or rebase this pull request: the tag points at the bump commit, and `main` has to carry that very commit for the tag to be a commit on `main`.
-6. `git push origin vX.Y.Z`. The release workflow runs: the gate once more, the version check, the dry run, the publish, the GitHub release. The crate is on crates.io when the `publish` job is green.
+6. `git push origin vX.Y.Z`, one tag per push. The release workflow runs: the gate once more, the three binary legs, the version check, the dry run, the publish, the GitHub release with the binaries attached. The crate is on crates.io and `mise use -g github:chussenot/judgment@latest` resolves the version when the `publish` job is green.
 
 Agents working in the repository cannot do steps 3 and 6 by accident: the Bash guard denies `cargo publish` (the dry run is allowed) and pushing a tag.
 
@@ -64,6 +64,7 @@ Agents working in the repository cannot do steps 3 and 6 by accident: the Bash g
 
 - **The commit check fails on a pull request.** Reword the commit on the branch and force-push the branch; the message, not the code, is what failed.
 - **`cog bump` refuses to run.** It wants a clean tree on `main` or a `release/*` branch and a non-empty Unreleased section; its message says which.
+- **A binary leg fails.** Nothing was published, crates.io included: the publish job needs every leg, so a version whose binary does not build on one platform is not released. The leg's log says which platform and why; fix the cause on `main` through a pull request and retag as below. `workflow_dispatch` on the fixed branch builds every leg without publishing, which is the way to try a pipeline change before a tag.
 - **The release workflow fails before `cargo publish`.** Nothing was published, and the version is still the one `main` carries, so there is nothing to bump again (the bump script refuses a manifest that is already past the latest tag). Fix the cause on `main` through a pull request, move the tag to the fixed head and push it again: `git tag -f vX.Y.Z origin/main && git push --force origin vX.Y.Z`. The workflow's checks hold on any commit that carries the version. Never move a tag once the publish step has run: the version is on crates.io and the tag must keep naming what was published.
 - **`cargo publish` succeeded and a later step failed.** The version is on crates.io and cannot be re-published. Re-run the failed job for the GitHub release; do not retag.
 - **A published version is wrong.** `cargo yank --version X.Y.Z` by hand, from a machine with a token, hides it from new resolutions; a yank is not a deletion and is recorded in the CHANGELOG under the version. The fix is the next release.

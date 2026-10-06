@@ -25,6 +25,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](jud/rubric.md) |
 | Why the labelled examples are a document of their own, what a label means for each primitive, how cases are bound and graded, and how to write cases a threshold can rest on | [What cases are](jud/cases.md) |
 | Why one model response is kept as a document, what its fingerprint leaves out, how a replay finds and verifies one, and when one is written by hand | [What a recording is](jud/recording.md) |
+| How to evaluate JSON input against a Rubric from a shell (`cat input.json \| jud rubric.jud`), install the binary with mise, configure its backend, and read its exit status | [The jud command line](cli.md) |
 | How an agent writes a `.jud` document and checks it with the crate's reader (`jud check`, `jud lower`), the `/jud:rubric`, `/jud:cases` and `/jud:check` commands, how to install the plugin, and how it was tested | [The jud plugin](skill.md) and `plugins/jud/` |
 | What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
 | What the hosted TypeSafe API does with what the crate sends, and with what it refuses to send | [Against the hosted TypeSafe API](verification/hosted-typesafe.md) |
@@ -39,6 +40,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Why a rubric's request may depend on the state (declarations, options supplied per request) and a gate may carry bands, a level threshold and strict bars; superseded by 0018, its versioning rule withdrawn | [Decision 0016](decisions/0016-jud-takes-minor-versions.md) |
 | Why the reader refuses merge keys, foreign tags and path-shaped ids, keeps the document out of error messages, and gives the policy its own fingerprint; superseded by 0018, its versioning rule withdrawn | [Decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) |
 | Why the `.jud` envelope is a Kubernetes manifest's and the reader reads exactly one `apiVersion`, and how the earlier keys map onto `metadata` and `spec` | [Decision 0018](decisions/0018-jud-1-3-takes-the-manifest-envelope.md) |
+| Why the jud binary evaluates stdin against a Rubric file, keeps TypeSafe as the default and a base URL as the only backend switch, reads a configuration file, and is released as one tarball per platform | [Decision 0019](decisions/0019-a-command-line-for-the-format.md) |
 | What changed in each release | [CHANGELOG](../CHANGELOG.md) |
 | Everything, as an agent or a model reads it | [llms.txt](llms.txt), the index; [llms-full.txt](llms-full.txt), every page in one file |
 
@@ -507,6 +509,165 @@ Each harness carries `kani::cover!` statements, and Kani reports all of them sat
 A mock encodes what the client author believed about the wire. Only a real server can contradict that belief, which is what the ignored live tests and the verification records are for ([How the crate is checked](verification/method.md)).
 
 
+<!-- source: docs/cli.md -->
+
+
+# The jud command line
+
+`jud` evaluates JSON input against a `.jud` Rubric and returns the resulting verdicts. The rubric file is the decision: the questions a System One model is asked and the policy that turns its answers into actions. Standard input is the state the questions are asked about. Nothing else is needed.
+
+```sh
+cat input.json | jud rubric.jud
+jq '.customer' customer.json | jud customer.jud
+yq -o=json '.spec' resource.yaml | jud resource.jud
+curl -s https://example.test/event | jud event.jud
+```
+
+The point is composition. Any tool that produces JSON prepares the state; `jud` asks the configured backend and prints one verdict per question as JSON; `jq` reads what comes out. The decision itself lives in a file a reviewer can read, not in a script. [What a rubric is](jud/rubric.md) says why.
+
+## What happens on a run
+
+1. The rubric file is read with the crate's own reader (`Rubric::parse`): a document that is not a `kind: Rubric`, or not valid `jud/v1.3`, is refused with the field named, before anything is read from stdin.
+2. Stdin is read to the end and parsed as one JSON value. Empty input, invalid JSON and a stream of several JSON values (what `jq '.items[]'` prints) are each refused with a message that says what to pipe instead.
+3. The rubric is lowered to the request for that state (`Rubric::lower`): the questions whose `when` holds, with the parts their `part_when` keeps. A rubric whose Choice takes its options from the request cannot be lowered by `jud` yet, and says so.
+4. The configured backend answers (`Client`, the crate's own System One client, with the official SDKs' retries), and the response is verified against the questions as every backend's is.
+5. The policy reads the answers into verdicts (`Rubric::apply`), which are printed to stdout as a JSON object keyed by question id, in the rubric's order, in the library's own serialisation:
+
+```json
+{
+  "actionable": {
+    "verdict": "yes",
+    "probability": 0.91
+  },
+  "desk": {
+    "verdict": "option",
+    "key": "billing",
+    "confidence": 0.8
+  },
+  "tone": {
+    "verdict": "level",
+    "index": 2,
+    "label": "angry",
+    "value": 1.9,
+    "confidence": 0.9
+  }
+}
+```
+
+A Noul gives `yes` or `no` with its probability; a Choice gives `option` with the key, the confidence and the band when the gate has bands; a Score gives `level` with the index, the label, the weighted value, the confidence, and `reached` when the gate has `level_at_least`; a deferred answer gives `deferred` with the fallback, the nearest option or level and the bar it was below. The shape is `judgment::jud::Verdict`, the same the examples print.
+
+`jud` is a thin adapter: parsing, lowering, the call, verification and the policy are the library's, and a program using the crate gets the same verdicts for the same state.
+
+## Installing it
+
+A release publishes one tarball per platform, so a version manager resolves it without ambiguity, and no Rust toolchain is needed.
+
+```sh
+mise use -g github:chussenot/judgment@latest
+jud --version
+```
+
+Pin a version with `@0.9.0`; `mise ls-remote github:chussenot/judgment` lists what exists. The tool is named after the repository and the executable is `jud`; mise finds it inside the tarball.
+
+By hand, with the checksum verified first:
+
+```sh
+TAG=v0.9.0
+TARGET=x86_64-unknown-linux-musl
+BASE="https://github.com/chussenot/judgment/releases/download/$TAG"
+curl -fsSLO "$BASE/jud-$TAG-$TARGET.tar.gz"
+curl -fsSLO "$BASE/SHA256SUMS"
+sha256sum --ignore-missing -c SHA256SUMS
+tar -xzf "jud-$TAG-$TARGET.tar.gz"
+install -m755 "jud-$TAG-$TARGET/jud" /usr/local/bin/
+```
+
+Each tarball carries a build-provenance attestation: `gh attestation verify jud-$TAG-$TARGET.tar.gz --repo chussenot/judgment` says which workflow, commit and run produced it.
+
+From source, with a Rust toolchain: `cargo install judgment --features jud` from crates.io, or `mise run install` in a checkout.
+
+### Platforms
+
+| Target | Runs on |
+|---|---|
+| `x86_64-unknown-linux-musl` | any x86-64 Linux, statically linked, `FROM scratch` included |
+| `aarch64-unknown-linux-musl` | any arm64 Linux |
+| `aarch64-apple-darwin` | Apple-silicon macOS |
+
+Every leg is built on a native runner and the binary is run before it is packaged, so no platform ships a binary nothing executed. Intel macOS has no native runner and is not cross-compiled; it installs from crates.io. There is no Windows build; the configuration directory and the pipeline model assume a Unix shell.
+
+## Configuration
+
+The backend is resolved in this order, each level overriding the one below:
+
+| Level | Base URL | API key | Model | Timeout |
+|---|---|---|---|---|
+| Environment | `TYPESAFE_BASE_URL` | `TYPESAFE_API_KEY` | | |
+| `~/.config/jud/config.yaml` | `base_url` | `api_key` | `model` | `timeout_secs` |
+| Default | `https://api.typesafe.ai` | none | `jev-latest` | 30 |
+
+The environment variables are the ones the crate and its examples already read; the file adds the two values the crate has no variable for. `XDG_CONFIG_HOME` moves the file's directory, as it does for every tool that honours it.
+
+```yaml
+# ~/.config/jud/config.yaml: every field optional
+base_url: https://api.typesafe.ai
+model: jev-latest
+timeout_secs: 30
+# api_key: ...   # prefer TYPESAFE_API_KEY, which no file on disk holds
+```
+
+`jud config` prints what a run would use and where each value came from, with the key reported as `environment`, `config_file` or `missing` and never shown:
+
+```sh
+$ jud config
+{
+  "config_file": "/home/you/.config/jud/config.yaml",
+  "config_file_present": false,
+  "base_url": "https://api.typesafe.ai",
+  "base_url_from": "default",
+  "model": "jev-latest",
+  "model_from": "default",
+  "timeout_secs": 30,
+  "api_key": "environment"
+}
+```
+
+### Credentials
+
+A key for the hosted API comes from `TYPESAFE_API_KEY`. A run with no key is refused before any call, naming the variable and the file. A key in the configuration file is accepted for a machine where the environment is awkward to set, with the usual caution about a secret on disk.
+
+### Other System One backends
+
+TypeSafe is the default, not the only backend. The crate talks to any server that speaks the System One wire through the same client, so another server is a base URL and nothing more: `TYPESAFE_BASE_URL=http://localhost:11434 jud rubric.jud` for an Ollama serving a decision model, or `base_url` in the file for good. [Compatible servers and models](research/compatible-servers-and-models.md) lists what has been run; `tools/systemone/serve.py` is the shim for the ones that do not expose the path directly. There is no provider switch in `jud`, because `SystemOne` is already the abstraction and the client already serves every compatible server.
+
+## Exit status
+
+| Status | Meaning |
+|---|---|
+| 0 | Verdicts printed on stdout. |
+| 1 | The backend was asked and the call failed: a transport error after the retries, an HTTP error, or a response that does not fit the rubric. The message names the backend. |
+| 2 | Something fixable before any call: no rubric argument, a file that cannot be read, a document that is not a valid Rubric, stdin that is empty or not one JSON value, a missing API key, a malformed configuration file. |
+
+Every error goes to stderr, prefixed `jud:`; stdout carries verdicts and nothing else, so a pipeline never reads an error as a result.
+
+## The other subcommands
+
+`jud` was first the reader as a command, for the [jud plugin](skill.md), and keeps those subcommands:
+
+| Command | What it does |
+|---|---|
+| `jud check FILE...` | Reads documents as the crate does, binds cases to the rubric they name among the files, verifies recordings against the request they answer, prints names and fingerprints; status 2 when any document is refused. |
+| `jud lower RUBRIC --state JSON` / `--state-file PATH` / `--cases FILE` | Prints the request a rubric lowers to for a state or for every case, so a `when` or a `part_when` is seen rather than guessed. |
+| `jud config` | The resolved backend, as above. |
+| `jud --version` | The version, the manifest's. |
+
+Nothing writes a file. A `.jud` document is written by a person or an agent, with the plugin, and checked by `jud check` before it is handed over.
+
+## In the repository
+
+The binary is `src/bin/jud/` behind the `jud` feature (with the default `http`): `main.rs` dispatches and sets the exit status, `run.rs` is the evaluation path, `config.rs` the resolution above, `tools.rs` the reader subcommands. `tests/jud_cli.rs` runs it as a subprocess against a wiremock server standing in for any backend, through the environment and through the configuration file, with no key and no network. `.github/workflows/release.yml` builds, checks and packages it on every platform above when a version tag is pushed, and attaches the tarballs and `SHA256SUMS` to the release the crate's publish already creates ([Releasing](releasing.md)). [Decision 0019](decisions/0019-a-command-line-for-the-format.md) says why the command, the configuration file and the release shape are what they are.
+
+
 <!-- source: docs/skill.md -->
 
 
@@ -521,7 +682,7 @@ It ships as a [Claude Code plugin](https://code.claude.com/docs/en/plugins), `ju
 ```sh
 claude plugin marketplace add chussenot/judgment   # once: this repository is the marketplace
 claude plugin install jud@judgment                 # the plugin; --scope project enables it for everyone in a repository
-cargo install judgment --features jud              # the `jud` command the plugin checks with
+mise use -g github:chussenot/judgment@latest       # the `jud` command the plugin checks with (or cargo install judgment --features jud)
 ```
 
 Or interactively: `/plugin marketplace add chussenot/judgment`, then `/plugin install jud@judgment`. The plugin has no dependency beyond the `jud` command: with none on `PATH`, its script builds one from a judgment checkout named by `JUDGMENT_DIR`, from the project when the project is this crate, or from the checkout the plugin sits in. To work on the plugin itself, add the checkout as a local marketplace (`/plugin marketplace add ./` from the repository root) and reload with `/reload-plugins` after an edit; a plugin loaded from a local marketplace is read in place, not copied. The plugin is not published with the crate (`Cargo.toml` excludes `plugins/`); the `jud` binary is.
@@ -557,7 +718,7 @@ The checker is `src/bin/jud.rs`, a binary of this crate behind the `jud` feature
 cargo run -q --features jud --bin jud -- check examples/jud/*.jud examples/recordings/jud_calibration/*.jud
 mise run jud:check                      # the same, over the examples
 mise run jud:check -- path/to/a.jud     # over the files given
-cargo install judgment --features jud   # a `jud` on PATH, from the next release that carries the binary
+mise use -g github:chussenot/judgment@latest   # a `jud` on PATH, from the release tarball (docs/cli.md)
 ```
 
 `jud check FILE...` reads every file. A cases document is bound to the rubric it names among the files, or to the only rubric given, so each label is checked against the request its case lowers to: a label for a question whose `when` is not present in that state, an option the case was not offered, a level past the last one, are all refused here and nowhere later. A recording whose `metadata.name` names a case of a bound document, or one turn of it as `<case>-turn-<n>`, is verified against that request as a live response would be, and its fingerprint compared with the one the request has. The output is one line per document with its name, the `apiVersion` it declares and its fingerprints, `error` lines naming the file and the field, and a summary; the exit status is 1 when any document was refused.
@@ -622,7 +783,7 @@ A release has to be the same every time: the version follows from what changed, 
 | `cog bump --auto` | `cog.toml`, run as `mise run release` | Computes the next version from the commits since the last tag, runs the pre-bump hooks, commits `chore(version): vX.Y.Z` and tags it |
 | `scripts/release-bump.sh` | the first pre-bump hook | Writes the version into `Cargo.toml` and `Cargo.lock` and its major.minor into the README's install snippet, turns the CHANGELOG's Unreleased section into the release's dated section, and refuses an empty one |
 | The gate | the remaining pre-bump hooks, then CI on the pull request and on the tag | Formatting, clippy, the no-`http` build, the tests, rustdoc, the documentation checks and what the package would ship |
-| `.github/workflows/release.yml` | on a pushed `v*` tag | Runs the CI gate on the tagged commit, checks the tag against `Cargo.toml`, runs `cargo publish --dry-run`, publishes, and creates a GitHub release with the CHANGELOG section as notes |
+| `.github/workflows/release.yml` | on a pushed `v*` tag | Runs the CI gate on the tagged commit, builds, checks and packages the `jud` binary for each platform ([The jud command line](cli.md)), checks the tag against `Cargo.toml`, runs `cargo publish --dry-run`, publishes, and creates a GitHub release with the CHANGELOG section as notes and the tarballs with `SHA256SUMS` as assets. A `workflow_dispatch` is a dry run that builds every leg and publishes nothing |
 
 The CHANGELOG stays hand-written, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) form: a pull request that changes what a consumer sees adds its entry under Unreleased, and the bump only dates that section. cocogitto's own changelog generation is off, because a list of commit subjects does not explain a change to a consumer.
 
@@ -645,7 +806,7 @@ A breaking change in a 0.x crate is a minor bump, which is the rule the CHANGELO
 3. `git switch -c release/vX.Y.Z` with that version, then `mise run release`. cocogitto runs the pre-bump hooks (the version into the three files, then the gate), commits `chore(version): vX.Y.Z` and tags `vX.Y.Z` on that commit. A failed hook leaves the tree edited and nothing committed; `git checkout .` restores it.
 4. Push the branch and open a pull request. CI runs the gate and the commit check on it like any other change.
 5. Merge it with a merge commit. Never squash or rebase this pull request: the tag points at the bump commit, and `main` has to carry that very commit for the tag to be a commit on `main`.
-6. `git push origin vX.Y.Z`. The release workflow runs: the gate once more, the version check, the dry run, the publish, the GitHub release. The crate is on crates.io when the `publish` job is green.
+6. `git push origin vX.Y.Z`, one tag per push. The release workflow runs: the gate once more, the three binary legs, the version check, the dry run, the publish, the GitHub release with the binaries attached. The crate is on crates.io and `mise use -g github:chussenot/judgment@latest` resolves the version when the `publish` job is green.
 
 Agents working in the repository cannot do steps 3 and 6 by accident: the Bash guard denies `cargo publish` (the dry run is allowed) and pushing a tag.
 
@@ -668,6 +829,7 @@ Agents working in the repository cannot do steps 3 and 6 by accident: the Bash g
 
 - **The commit check fails on a pull request.** Reword the commit on the branch and force-push the branch; the message, not the code, is what failed.
 - **`cog bump` refuses to run.** It wants a clean tree on `main` or a `release/*` branch and a non-empty Unreleased section; its message says which.
+- **A binary leg fails.** Nothing was published, crates.io included: the publish job needs every leg, so a version whose binary does not build on one platform is not released. The leg's log says which platform and why; fix the cause on `main` through a pull request and retag as below. `workflow_dispatch` on the fixed branch builds every leg without publishing, which is the way to try a pipeline change before a tag.
 - **The release workflow fails before `cargo publish`.** Nothing was published, and the version is still the one `main` carries, so there is nothing to bump again (the bump script refuses a manifest that is already past the latest tag). Fix the cause on `main` through a pull request, move the tag to the fixed head and push it again: `git tag -f vX.Y.Z origin/main && git push --force origin vX.Y.Z`. The workflow's checks hold on any commit that carries the version. Never move a tag once the publish step has run: the version is on crates.io and the tag must keep naming what was published.
 - **`cargo publish` succeeded and a later step failed.** The version is on crates.io and cannot be re-published. Re-run the failed job for the GitHub release; do not retag.
 - **A published version is wrong.** `cargo yank --version X.Y.Z` by hand, from a machine with a token, hides it from new resolutions; a yank is not a deletion and is recorded in the CHANGELOG under the version. The fix is the next release.
@@ -2172,6 +2334,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0016](0016-jud-takes-minor-versions.md) | The .jud format takes minor versions, and 1.1 makes the request depend on the state | superseded by 0018 |
 | [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) | The .jud format 1.2 refuses what a reviewer cannot see, and names the policy | superseded by 0018 |
 | [0018](0018-jud-1-3-takes-the-manifest-envelope.md) | The .jud format 1.3 takes the manifest envelope and reads one apiVersion | accepted |
+| [0019](0019-a-command-line-for-the-format.md) | A command line for the format, released as a binary | accepted |
 
 ## Status notes
 
@@ -2673,3 +2836,77 @@ The mapping from the earlier envelope to this one, recorded here so that the spe
 ## More information
 
 [The .jud format](../jud.md) is the specification of `jud/v1.3`; `schemas/jud/common.schema.json` states the envelope, `metadata` and the name grammar; `src/jud/mod.rs` checks the envelope and reads `metadata`; `src/jud/rubric.rs` and `src/jud/cases.rs` read each kind's `spec`. This record supersedes [0016](0016-jud-takes-minor-versions.md) and [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md): their versioning rules are withdrawn, and the rules they added to the format stand without a version mark.
+
+
+<!-- source: docs/decisions/0019-a-command-line-for-the-format.md -->
+
+
+# 0019 A command line for the format, released as a binary
+
+## Context and problem statement
+
+A `.jud` Rubric is a decision written as a file, so that a reviewer can read it and a program can run it. Until now the program had to be Rust: the crate's examples run a rubric, and the `jud` binary read documents for the plugin, but nothing let a shell evaluate a state against a rubric. The people who write rubrics with the plugin, and the pipelines that produce the states (`jq` over an event, `yq` over a manifest, `curl` from an API), had no way to run one without a crate in the loop.
+
+Four things had to be decided: what the command takes and where, which backend answers and how it is chosen, where its configuration lives, and how a binary reaches a machine that has no Rust toolchain.
+
+## Decision drivers
+
+- The crate is the implementation; a command must not re-implement any of it, or the two drift.
+- A Unix tool composes through stdin and stdout; a bespoke input language or an output format of its own would not.
+- `SystemOne` is already the abstraction over backends, and the client already serves every server that speaks the wire; a provider switch in the command would be a second abstraction over the first.
+- A tool installed on a workstation needs a place for its configuration that the crate, a library, never needed.
+- A release must be installable without Rust, resolve unambiguously under a version manager, and keep the crate's own publish to crates.io intact.
+
+## Considered options
+
+1. **stdin is the state, the argument is the rubric** (`cat state.json | jud rubric.jud`), JSON only; verdicts printed in the library's own serialisation.
+2. The argument is the state file and the rubric comes from a flag or a search path.
+3. A richer input language (YAML states, several states per run, options supplied on the command line).
+4. For the backend: a `--provider` switch with named providers.
+5. For the backend: the crate's client, TypeSafe by default, another server by base URL only.
+6. For configuration: environment variables only, as the crate.
+7. For configuration: `~/.config/jud/config.yaml` under the environment, the environment winning.
+8. For the release: `cargo install` only; `cargo-dist`; a hand-written matrix in the shape of [pact's](https://github.com/chussenot/pact/blob/main/.github/workflows/release.yml), one tarball per platform, checksums, attestation, assets on the release the crate's publish already creates.
+
+## Decision outcome
+
+Options 1, 5, 7 and the hand-written matrix of 8.
+
+**The pipeline model.** The rubric is the one argument because it is the decision and rarely changes; the state is what varies and is what the shell is good at producing, so it comes from stdin as one JSON value. JSON only, because every tool in the pipeline speaks it and `yq -o=json` turns YAML into it; a second input language would be a thing to learn and to parse. The output is the verdict map as `judgment::jud::Verdict` serialises it, the same bytes the examples print, so a program and a shell see one representation. Several states per run, and options supplied for a Choice that takes them from the request, are left for later: a run that needs them says so rather than guessing.
+
+**The backend.** The command builds the crate's `Client` and asks through `SystemOne`. TypeSafe is the default because the crate's defaults are the SDKs' and that is what a first run should hit; another server is a base URL because that is all another server is to the client. A provider abstraction would have named what a URL already names.
+
+**The configuration file.** The crate reads `TYPESAFE_API_KEY` and nothing else, which is right for a library; a command on a workstation needs to remember a base URL and a model between runs, and a key where the environment is awkward. `~/.config/jud/config.yaml`, with `XDG_CONFIG_HOME` honoured, holds `base_url`, `api_key`, `model` and `timeout_secs`; the environment wins over the file, so the crate's variables keep their meaning and a one-off `TYPESAFE_BASE_URL=... jud` still works. `jud config` prints the resolution with the key never shown, because "which backend did that hit" is the first support question.
+
+**The release.** One tarball per platform named `jud-<tag>-<triple>.tar.gz`, built on native runners so that every leg runs the binary it built, stripped and re-signed on macOS, checked (`--version`, `check` over the examples, `config` without a network) before it is packaged, with `SHA256SUMS` and a build-provenance attestation, attached to the GitHub release the crate's publish already creates from the same tag. That is pact's shape, taken rather than re-derived: it is what makes `mise use -g github:chussenot/judgment@latest` resolve, and what lets a checksum and a provenance be verified. `cargo-dist` would have generated a pipeline the repository owns without having written; `cargo install` alone would have kept the Rust toolchain a prerequisite. Intel macOS and Windows are not built, for the reasons pact gives: no native runner for the first, and a Unix pipeline model for the second.
+
+### Consequences
+
+- `cargo install judgment --features jud` still works; the tarball is the way without Rust.
+- A failed binary leg stops the publish, crates.io included, because the publish job needs every leg. That is deliberate: a version whose binary does not build is not released, and the runbook says how to retag once the cause is fixed.
+- The command's exit status is a contract: 0 verdicts, 1 the backend failed, 2 something fixable before a call. Scripts may rely on it.
+- The `jud` feature now also builds the binary's dependencies on an async runtime (`tokio` with `rt`), which the `http` feature already carried.
+
+### Confirmation
+
+`tests/jud_cli.rs` runs the binary as a subprocess against a wiremock server for every outcome: verdicts, the serialisation, an invalid or missing rubric, invalid or empty stdin, a backend failure, an answer that does not fit, missing credentials, the default backend, a backend configured in the file and the environment overriding it, a malformed file. The release workflow's check step runs the packaged binary on each platform.
+
+## Pros and cons of the options
+
+- **stdin state, rubric argument (chosen).** Composes with every tool; one argument to remember. Cannot batch several states in one call without a wrapper.
+- **State as the argument.** Reads naturally for a file on disk, but puts the varying thing where the shell cannot pipe it.
+- **A richer input language.** Would let one run do more, at the price of a parser the crate does not have and a format nobody else writes.
+- **A provider switch.** Familiar from other tools, but a second name for what the base URL already selects, and a list to keep in step with the servers page.
+- **The client, URL-selected (chosen).** No new abstraction; every server the crate has been verified against is reachable the same way.
+- **Environment only.** Simplest, and what the crate does; but a workstation tool that needs four values in the environment of every shell is one people stop using.
+- **A configuration file (chosen).** One more place a value can come from, made legible by `jud config`.
+- **`cargo install` only.** No pipeline to maintain; a toolchain as a prerequisite for a tool whose users write YAML.
+- **`cargo-dist`.** A thousand lines of generated workflow to own.
+- **The hand-written matrix (chosen).** Two screens of YAML with every unusual line explained, already proven on pact.
+
+## More information
+
+- [The jud command line](../cli.md), the user's page.
+- [Releasing](../releasing.md), the runbook with the binary legs.
+- [Decision 0013](0013-releases-cut-with-cocogitto-and-published-from-ci.md), the crate's release process the binary joins.
+- [pact's release workflow](https://github.com/chussenot/pact/blob/main/.github/workflows/release.yml) and [install page](https://github.com/chussenot/pact/blob/main/docs/install.md), the shape taken.

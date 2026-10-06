@@ -20,6 +20,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0016](0016-jud-takes-minor-versions.md) | The .jud format takes minor versions, and 1.1 makes the request depend on the state | superseded by 0018 |
 | [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) | The .jud format 1.2 refuses what a reviewer cannot see, and names the policy | superseded by 0018 |
 | [0018](0018-jud-1-3-takes-the-manifest-envelope.md) | The .jud format 1.3 takes the manifest envelope and reads one apiVersion | accepted |
+| [0019](0019-a-command-line-for-the-format.md) | A command line for the format, released as a binary | accepted |
 
 ## Status notes
 

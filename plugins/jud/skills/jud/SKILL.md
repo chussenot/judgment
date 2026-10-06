@@ -62,7 +62,8 @@ plugin's directory, so the checker is
    ${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh check path/to/rubric.jud path/to/cases.jud
    ```
 
-   The script finds `jud` on PATH (`cargo install judgment --features jud`),
+   The script finds `jud` on PATH (`mise use -g github:chussenot/judgment@latest`
+   or `cargo install judgment --features jud`),
    else builds it from a judgment checkout (`JUDGMENT_DIR`, the project, or
    the one the plugin sits in). Fix every `error` line; it names the field. A refusal is never
    worked around by loosening the document (dropping a label, widening an

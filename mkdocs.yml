@@ -21,7 +21,8 @@ nav:
       - What a rubric is: jud/rubric.md
       - What cases are: jud/cases.md
       - What a recording is: jud/recording.md
-  - The jud skill: skill.md
+  - The jud command line: cli.md
+  - The jud plugin: skill.md
   - Releasing: releasing.md
   - Verification:
       - How the crate is checked: verification/method.md
@@ -39,6 +40,7 @@ nav:
       - 0016 The .jud format takes minor versions: decisions/0016-jud-takes-minor-versions.md
       - 0017 The .jud format 1.2 refuses what a reviewer cannot see: decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md
       - 0018 The .jud format 1.3 takes the manifest envelope: decisions/0018-jud-1-3-takes-the-manifest-envelope.md
+      - 0019 A command line for the format, released as a binary: decisions/0019-a-command-line-for-the-format.md
 
 plugins:
   - techdocs-core

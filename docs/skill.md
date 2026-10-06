@@ -17,7 +17,7 @@ It ships as a [Claude Code plugin](https://code.claude.com/docs/en/plugins), `ju
 ```sh
 claude plugin marketplace add chussenot/judgment   # once: this repository is the marketplace
 claude plugin install jud@judgment                 # the plugin; --scope project enables it for everyone in a repository
-cargo install judgment --features jud              # the `jud` command the plugin checks with
+mise use -g github:chussenot/judgment@latest       # the `jud` command the plugin checks with (or cargo install judgment --features jud)
 ```
 
 Or interactively: `/plugin marketplace add chussenot/judgment`, then `/plugin install jud@judgment`. The plugin has no dependency beyond the `jud` command: with none on `PATH`, its script builds one from a judgment checkout named by `JUDGMENT_DIR`, from the project when the project is this crate, or from the checkout the plugin sits in. To work on the plugin itself, add the checkout as a local marketplace (`/plugin marketplace add ./` from the repository root) and reload with `/reload-plugins` after an edit; a plugin loaded from a local marketplace is read in place, not copied. The plugin is not published with the crate (`Cargo.toml` excludes `plugins/`); the `jud` binary is.
@@ -53,7 +53,7 @@ The checker is `src/bin/jud.rs`, a binary of this crate behind the `jud` feature
 cargo run -q --features jud --bin jud -- check examples/jud/*.jud examples/recordings/jud_calibration/*.jud
 mise run jud:check                      # the same, over the examples
 mise run jud:check -- path/to/a.jud     # over the files given
-cargo install judgment --features jud   # a `jud` on PATH, from the next release that carries the binary
+mise use -g github:chussenot/judgment@latest   # a `jud` on PATH, from the release tarball (docs/cli.md)
 ```
 
 `jud check FILE...` reads every file. A cases document is bound to the rubric it names among the files, or to the only rubric given, so each label is checked against the request its case lowers to: a label for a question whose `when` is not present in that state, an option the case was not offered, a level past the last one, are all refused here and nowhere later. A recording whose `metadata.name` names a case of a bound document, or one turn of it as `<case>-turn-<n>`, is verified against that request as a live response would be, and its fingerprint compared with the one the request has. The output is one line per document with its name, the `apiVersion` it declares and its fingerprints, `error` lines naming the file and the field, and a summary; the exit status is 1 when any document was refused.
