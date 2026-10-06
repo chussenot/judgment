@@ -1,12 +1,9 @@
-//! `jud`: read `.jud` documents the way the crate reads them, and show what
-//! a rubric lowers to. For a person or an agent writing a document by hand:
-//! `check` refuses what the reader refuses, with the field named, binds
-//! cases to their rubric and verifies a recording against the request it
-//! answers; `lower` prints the request one state produces, so a `when` or a
-//! `part_when` can be seen rather than guessed. Behind the `jud` feature:
-//! `cargo run --features jud --bin jud -- check examples/jud/*.jud`.
-
-use std::process::ExitCode;
+//! `jud check` and `jud lower`: read `.jud` documents the way the crate
+//! reads them, and show what a rubric lowers to. For a person or an agent
+//! writing a document by hand: `check` refuses what the reader refuses, with
+//! the field named, binds cases to their rubric and verifies a recording
+//! against the request it answers; `lower` prints the request one state
+//! produces, so a `when` or a `part_when` can be seen rather than guessed.
 
 use judgment::Questions;
 use judgment::eval::Recording;
@@ -14,49 +11,7 @@ use judgment::eval::canonical;
 use judgment::jud::{self, Case, Cases, Document, Rubric, Supplied};
 use serde_json::Value;
 
-const USAGE: &str = "\
-jud: check .jud documents (docs/jud.md, apiVersion jud/v1.3) and show what a rubric lowers to
-
-  jud check FILE...
-      Read each document as the crate reads it. A cases document is bound to
-      the rubric it names among FILE..., or to the only rubric given, so every
-      label is checked against the request its case lowers to. A recording
-      whose `case` is a case of a bound document is verified against that
-      request and its fingerprint compared. Prints each document's ids and
-      fingerprints; exits 1 when any document is refused.
-
-  jud lower RUBRIC [--state JSON | --state-file PATH] [--options JSON]
-  jud lower RUBRIC --cases FILE
-      Print the request (the questions map, as sent) a rubric lowers to for
-      one state, or for every case of a cases document. --options supplies
-      options for a Choice with `options_from: request`, by question id.
-";
-
-fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let result = match args.first().map(String::as_str) {
-        Some("check") => check(&args[1..]),
-        Some("lower") => lower(&args[1..]),
-        Some("help" | "-h" | "--help") => {
-            print!("{USAGE}");
-            Ok(true)
-        }
-        _ => {
-            eprint!("{USAGE}");
-            return ExitCode::from(2);
-        }
-    };
-    match result {
-        Ok(true) => ExitCode::SUCCESS,
-        Ok(false) => ExitCode::FAILURE,
-        Err(e) => {
-            eprintln!("jud: {e}");
-            ExitCode::from(2)
-        }
-    }
-}
-
-type Fallible<T> = Result<T, Box<dyn std::error::Error>>;
+use crate::Fallible;
 
 /// One document read from a file, with the version it declared.
 struct Loaded {
@@ -100,7 +55,7 @@ fn load(paths: &[String]) -> (Vec<Loaded>, usize) {
     (loaded, errors)
 }
 
-fn check(paths: &[String]) -> Fallible<bool> {
+pub(crate) fn check(paths: &[String]) -> Fallible<bool> {
     if paths.is_empty() {
         return Err("check needs at least one file".into());
     }
@@ -257,7 +212,7 @@ fn print_recording(l: &Loaded, recording: &Recording, bound: &[(&Cases, &Rubric)
     true
 }
 
-fn lower(args: &[String]) -> Fallible<bool> {
+pub(crate) fn lower(args: &[String]) -> Fallible<bool> {
     let Some(rubric_path) = args.first() else {
         return Err("lower needs a rubric".into());
     };

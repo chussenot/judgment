@@ -68,7 +68,7 @@ pub enum Error {
         found: String,
     },
     /// A `kind:` this crate does not know.
-    #[error("`kind: {found}` is not a document kind; the kinds are rubric, cases and recording")]
+    #[error("`kind: {found}` is not a document kind; the kinds are Rubric, Cases and Recording")]
     Kind {
         /// What the document said.
         found: String,

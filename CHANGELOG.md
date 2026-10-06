@@ -6,6 +6,28 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `jud RUBRIC` evaluates the JSON state on stdin against a `.jud` Rubric and
+  prints one verdict per question as JSON (`cat input.json | jud rubric.jud`,
+  `jq '.customer' event.json | jud customer.jud`), through the crate's
+  client: TypeSafe by default, any System One server by `TYPESAFE_BASE_URL`
+  or `base_url` in `~/.config/jud/config.yaml` (`api_key`, `model`,
+  `timeout_secs` too; the environment wins). `jud config` prints the
+  resolved backend, `jud --version` the version. Exit status 0 on verdicts,
+  1 when the backend call failed, 2 when the file, the input or the
+  configuration is wrong. The binary now needs the `http` feature beside
+  `jud` (both on for `cargo install judgment --features jud`), and `tokio`
+  gains `rt` under `http`.
+- Release binaries: a pushed version tag builds, checks and packages `jud`
+  for `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl` and
+  `aarch64-apple-darwin`, attaches the tarballs and `SHA256SUMS` with a
+  build-provenance attestation to the GitHub release, so
+  `mise use -g github:chussenot/judgment@latest` installs it without a Rust
+  toolchain (decision 0019; `docs/cli.md`). `mise run install` installs it
+  from a checkout. A `workflow_dispatch` of the release workflow is a dry
+  run that builds every leg and publishes nothing.
+
 ## [0.8.0] - 2026-10-06
 
 ### Added

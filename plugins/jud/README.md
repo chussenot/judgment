@@ -9,7 +9,7 @@ answered. The crate's own reader checks every document the plugin writes.
 ```sh
 claude plugin marketplace add chussenot/judgment
 claude plugin install jud@judgment
-cargo install judgment --features jud   # the `jud` command the plugin checks with
+mise use -g github:chussenot/judgment@latest   # the `jud` command the plugin checks with
 ```
 
 | What | Invoked as |
