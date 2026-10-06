@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-06
+
 ### Added
 
 - `.jud` version 1.2 (decision 0017; `docs/jud.md`): no new field. Every
