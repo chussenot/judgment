@@ -161,6 +161,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+```bash
+# chussenot @ me in ~/judgment py:3.14 nd:24.19 go:1.27 rs:1.94 load:1 on git:main ✓
+$ cargo run --example jud_live --features jud
+✓ Built in 1.27s · saved ~0s compiler work
+0 hits · 0 misses · 0 bypassed · 215 fresh · 1 not looked up
+Savings estimate sums compiler work, not wall-clock time.
+
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.21s
+     Running `mbx-launch target/debug/examples/jud_live`
+mbx[cache]: 0 hits, 0 misses, 1 not looked up; 0 B downloaded, 0 B uploaded, 80.5 MiB stored locally
+actionable: {"verdict":"yes","probability":0.98}
+desk: {"verdict":"option","key":"billing","confidence":0.7}
+tone: {"verdict":"level","index":1,"label":"annoyed","value":1.02,"confidence":0.9}
+answered by jev-1.13.0
+mbx[savings]: 805 compilations, each compiled once and served warm ever since
+```
+
+
 `TYPESAFE_API_KEY=... cargo run --example jud_live --features jud`
 ([`examples/jud_live.rs`](examples/jud_live.rs)) spends one model call and
 prints one verdict per question, each a yes or no, an option or a level with
@@ -198,22 +216,6 @@ each replaying recorded answers so it runs with no key and no network
 [Patterns](docs/patterns.md) says which type carries each shape and what the
 recordings teach about the thresholds.
 
-```
-# chussenot @ me in ~/judgment py:3.14 nd:24.19 go:1.27 rs:1.94 load:1 on git:main ✓
-$ cargo run --example jud_live --features jud
-✓ Built in 1.27s · saved ~0s compiler work
-0 hits · 0 misses · 0 bypassed · 215 fresh · 1 not looked up
-Savings estimate sums compiler work, not wall-clock time.
-
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.21s
-     Running `mbx-launch target/debug/examples/jud_live`
-mbx[cache]: 0 hits, 0 misses, 1 not looked up; 0 B downloaded, 0 B uploaded, 80.5 MiB stored locally
-actionable: {"verdict":"yes","probability":0.98}
-desk: {"verdict":"option","key":"billing","confidence":0.7}
-tone: {"verdict":"level","index":1,"label":"annoyed","value":1.02,"confidence":0.9}
-answered by jev-1.13.0
-mbx[savings]: 805 compilations, each compiled once and served warm ever since
-```
 ## Why
 
 A generative model asked to classify something answers in prose, or in JSON it
