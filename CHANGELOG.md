@@ -19,6 +19,11 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Changed
 
+- Every document under `examples/jud/` and `examples/recordings/jud_calibration/`,
+  and the rubric in `examples/jud_quickstart.rs` and the README, declares
+  `jud: 1.2`; no fingerprint changes, the version being part of none.
+  `examples/jud_calibration.rs` prints the policy fingerprint beside the
+  questions'.
 - The `.jud` reader applies the 1.2 rules to every version it reads: a
   document that used a merge key, a foreign tag or a path-shaped id is
   refused, naming the position or the field. `eval::write_recording` and

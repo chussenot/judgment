@@ -1,7 +1,7 @@
 # Conversation cases: `from_turn` says at which turn (zero-based) the Noul
 # becomes true, and null that it never does. `Case::per_turn` cuts the
 # conversation after each turn and resolves the label for that turn.
-jud: 1
+jud: 1.2
 kind: cases
 id: handoff-cases
 rubric: handoff

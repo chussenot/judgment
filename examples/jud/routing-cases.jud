@@ -1,8 +1,8 @@
-# Cases for the support-routing rubric (jud 1.1). The desks staffed at the
+# Cases for the support-routing rubric. The desks staffed at the
 # time are not in the state, so each case supplies them under `options`;
 # the open tickets are, and are supplied too, as their keys and
 # descriptions.
-jud: 1.1
+jud: 1.2
 kind: cases
 id: support-routing-cases
 rubric: support-routing

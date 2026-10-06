@@ -1,5 +1,6 @@
-# A jud 1.1 rubric: the request depends on the state, and the policy has
-# more than one bar on a question. Every 1.1 feature is used once:
+# A rubric whose request depends on the state and whose policy has more
+# than one bar on a question. It is written under the 1.2 rules and uses
+# every 1.1 feature once:
 #   - an `x-` key holding a YAML anchor the questions share;
 #   - `options_from: request`: the desks staffed now and the customer's
 #     open tickets are supplied per request, before the static no-match
@@ -7,7 +8,7 @@
 #   - `part_when` and `when`: a part and two questions sent only when the
 #     state carries what they are about;
 #   - `bands`, `level_at_least` and `strict` in the policy.
-jud: 1.1
+jud: 1.2
 kind: rubric
 id: support-routing
 description: >-

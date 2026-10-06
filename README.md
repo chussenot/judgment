@@ -68,7 +68,7 @@ use judgment::{Fake, SystemOne};
 // The same questions as above, with the thresholds beside them, in a file
 // another tool can read (docs/jud.md). The policy is never sent to the model.
 const RUBRIC: &str = r"
-jud: 1.1
+jud: 1.2
 kind: rubric
 id: inbox-triage
 questions:
@@ -121,7 +121,11 @@ checked as the builder checks questions, lowered to the same request, and its
 policy turns the answers into verdicts. The thresholds come from labelled cases
 rather than guesses: [the .jud format](docs/jud.md) describes the rubric, the
 cases and the recordings, and `examples/jud_calibration.rs` tunes a policy from
-them. The format is behind the `jud` feature, off by default.
+them. The format is at version 1.2: every id is a name and never a path, the
+reader refuses what hides text from a reviewer (a merge key, a foreign tag), and
+a rubric's policy has a fingerprint of its own beside its questions', so a moved
+threshold is as visible as a changed question. The format is behind the `jud`
+feature, off by default.
 
 The third example asks the real model. It reads a rubric from a file,
 [`examples/jud/triage.jud`](examples/jud/triage.jud), three questions about a

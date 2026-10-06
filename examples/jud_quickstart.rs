@@ -15,7 +15,7 @@ use judgment::{Fake, SystemOne};
 // The same questions as above, with the thresholds beside them, in a file
 // another tool can read (docs/jud.md). The policy is never sent to the model.
 const RUBRIC: &str = r"
-jud: 1.1
+jud: 1.2
 kind: rubric
 id: inbox-triage
 questions:

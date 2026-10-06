@@ -1,6 +1,8 @@
 # A rubric: the questions a request sends, in the order the model sees them,
-# and the policy that reads the answers. The policy is never sent.
-jud: 1
+# and the policy that reads the answers. The policy is never sent. `jud: 1.2`
+# says the file was written under the 1.2 rules: every id is a name, and
+# the policy has a fingerprint of its own (docs/jud.md).
+jud: 1.2
 kind: rubric
 id: inbox-triage
 version: 2
