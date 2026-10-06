@@ -1,6 +1,6 @@
 //! The `.jud` format against its own JSON Schemas and its examples: every
 //! example document validates, everything the crate writes validates, the
-//! parser and the schemas agree on what is refused, the 1.2 reading rules
+//! parser and the schemas agree on what is refused, the reading rules
 //! hold, and a replay answers from `.jud` recordings by fingerprint.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::missing_panics_doc)]
@@ -98,27 +98,27 @@ fn every_example_document_validates_against_its_schema_and_parses() {
             .unwrap_or_else(|| panic!("{}: no kind", path.display()))
             .to_owned();
         let validator = match kind.as_str() {
-            "rubric" => &*RUBRIC,
-            "cases" => &*CASES,
-            "recording" => &*RECORDING,
+            "Rubric" => &*RUBRIC,
+            "Cases" => &*CASES,
+            "Recording" => &*RECORDING,
             other => panic!("{}: kind {other}", path.display()),
         };
         assert_valid(validator, &value, &path.display().to_string());
         let document = jud::parse(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         assert_eq!(
             match document {
-                Document::Rubric(_) => "rubric",
-                Document::Cases(_) => "cases",
-                Document::Recording(_) => "recording",
+                Document::Rubric(_) => "Rubric",
+                Document::Cases(_) => "Cases",
+                Document::Recording(_) => "Recording",
                 _ => "?",
             },
             kind
         );
         *kinds.entry(kind).or_default() += 1;
     }
-    assert_eq!(kinds["rubric"], 3);
-    assert_eq!(kinds["cases"], 3);
-    assert!(kinds["recording"] >= 10, "{kinds:?}");
+    assert_eq!(kinds["Rubric"], 3);
+    assert_eq!(kinds["Cases"], 3);
+    assert!(kinds["Recording"] >= 10, "{kinds:?}");
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn the_example_cases_bind_to_their_rubric_and_the_tuning_names_them() {
         .unwrap()
         .bind(&handoff)
         .unwrap();
-    // The 1.1 pair: every case lowers to a request and its labels fit it.
+    // The routing pair: every case lowers to a request and its labels fit it.
     let routing = Rubric::parse(&read(EXAMPLES, "routing.jud")).unwrap();
     let routing_cases = Cases::parse(&read(EXAMPLES, "routing-cases.jud")).unwrap();
     routing_cases.bind(&routing).unwrap();
@@ -212,140 +212,135 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
         // A misspelt gate field.
         (
             &*RUBRIC,
-            "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\npolicy:\n  n: {treshold: 0.5}\n",
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n  policy:\n    n: {treshold: 0.5}\n",
         ),
         // A one-option Choice.
         (
             &*RUBRIC,
-            "jud: 1\nkind: rubric\nid: r\nquestions:\n  c: {type: choice, instructions: pick, criteria: {only: null}}\n",
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    c: {type: choice, instructions: pick, criteria: {only: null}}\n",
         ),
-        // Another format version.
+        // Another apiVersion, the old envelope, and a kind in the wrong case.
         (
             &*RUBRIC,
-            "jud: 2\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+            "apiVersion: jud/v1.2\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "jud: 1.2\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        // A metadata field the kind does not take, and a document without metadata.
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\n  version: 2\nspec:\n  cases:\n    - state: s\n",
+        ),
+        (
+            &*RECORDING,
+            "apiVersion: jud/v1.3\nkind: Recording\nmetadata:\n  name: c\n  description: d\nspec:\n  response: {model: m, answers: {q: {type: noul, noul: 0.5}}}\n  elapsed_ms: 1\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
         ),
         // A case without a state.
         (
             &*CASES,
-            "jud: 1\nkind: cases\ncases:\n  - expect: {n: true}\n",
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - expect: {n: true}\n",
         ),
         // from_turn with a sibling.
         (
             &*CASES,
-            "jud: 1\nkind: cases\ncases:\n  - state: [a]\n    expect: {n: {from_turn: 0, until: 1}}\n",
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: [a]\n      expect: {n: {from_turn: 0, until: 1}}\n",
         ),
         // A recording without a response.
         (
             &*RECORDING,
-            "jud: 1\nkind: recording\ncase: c\nelapsed_ms: 1\n",
-        ),
-        // A version that does not exist.
-        (
-            &*RUBRIC,
-            "jud: 1.3\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+            "apiVersion: jud/v1.3\nkind: Recording\nmetadata:\n  name: c\nspec:\n  elapsed_ms: 1\n",
         ),
     ]
 }
 
-/// Ids that are not names (1.2): a path, an absolute path, a blank, a
+/// Ids that are not names: a path, an absolute path, a blank, a
 /// space, a leading dot, on a rubric, a cases document, a case and a
 /// recording; refused by the schemas and the reader alike.
 fn refused_names() -> Vec<(&'static jsonschema::Validator, &'static str)> {
     vec![
         (
             &*RUBRIC,
-            "jud: 1\nkind: rubric\nid: ../x\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: ../x\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
         ),
         (
             &*RUBRIC,
-            "jud: 1\nkind: rubric\nid: \"\"\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: \"\"\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
         ),
         (
             &*CASES,
-            "jud: 1\nkind: cases\nid: a b\ncases:\n  - state: s\n",
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: a b\nspec:\n  cases:\n    - state: s\n",
         ),
         (
             &*CASES,
-            "jud: 1\nkind: cases\ncases:\n  - id: /etc/passwd\n    state: s\n",
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - id: /etc/passwd\n      state: s\n",
         ),
         (
             &*CASES,
-            "jud: 1\nkind: cases\ncases:\n  - id: .hidden\n    state: s\n",
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - id: .hidden\n      state: s\n",
         ),
         (
             &*RECORDING,
-            "jud: 1\nkind: recording\ncase: ../c\nresponse: {model: m, answers: {q: {type: noul, noul: 0.5}}}\nelapsed_ms: 1\n",
+            "apiVersion: jud/v1.3\nkind: Recording\nmetadata:\n  name: ../c\nspec:\n  response: {model: m, answers: {q: {type: noul, noul: 0.5}}}\n  elapsed_ms: 1\n",
         ),
-        // A top-level key that is neither a field nor an `x-` key.
+        // A spec field the kind does not define, and a top-level key beyond the envelope.
         (
             &*RUBRIC,
-            "jud: 1.1\nkind: rubric\nid: r\ncomment: hi\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  comment: hi\n  questions:\n    n: {type: noul, instructions: ok?}\n",
         ),
         (
             &*CASES,
-            "jud: 1.1\nkind: cases\nnotes: hi\ncases:\n  - state: s\n",
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  notes: hi\n  cases:\n    - state: s\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nx-tool: 1\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: s\n",
         ),
         // An unknown source of options.
         (
             &*RUBRIC,
-            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  c: {type: choice, instructions: pick, criteria: {a: A}, options_from: database}\n",
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    c: {type: choice, instructions: pick, criteria: {a: A}, options_from: database}\n",
         ),
-        // A 1.1 feature under `jud: 1`, present even with an empty value.
-        (
-            &*RUBRIC,
-            "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: {question: ok?}, when: a.b}\n",
-        ),
-        (
-            &*RUBRIC,
-            "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: {question: ok?}, part_when: {}}\n",
-        ),
-        (
-            &*RUBRIC,
-            "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\npolicy:\n  n: {threshold: 0.5, strict: false}\n",
-        ),
-        (
-            &*RUBRIC,
-            "jud: 1\nkind: rubric\nid: r\nx-a: 1\nquestions:\n  n: {type: noul, instructions: ok?}\n",
-        ),
-        (
-            &*CASES,
-            "jud: 1\nkind: cases\ncases:\n  - state: s\n    options: {c: {a: A}}\n",
-        ),
-        (
-            &*RECORDING,
-            "jud: 1\nkind: recording\nx-tool: 1\ncase: c\nresponse: {model: m, answers: {q: {type: noul, noul: 0.5}}}\nelapsed_ms: 1\n",
-        ),
-        // Null where a 1.1 field takes a value; an empty band list; a blank
+        // Null where a declaration takes a value; an empty band list; a blank
         // band name; a supplied option that is a number.
         (
             &*RUBRIC,
-            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?, when: null}\n",
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?, when: null}\n",
         ),
         (
             &*RUBRIC,
-            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  c: {type: choice, instructions: pick, criteria: {a: A, b: B}}\npolicy:\n  c: {bands: []}\n",
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    c: {type: choice, instructions: pick, criteria: {a: A, b: B}}\n  policy:\n    c: {bands: []}\n",
         ),
         (
             &*RUBRIC,
-            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  c: {type: choice, instructions: pick, criteria: {a: A, b: B}}\npolicy:\n  c: {bands: [{at_least: 0.5, verdict: \" \"}]}\n",
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    c: {type: choice, instructions: pick, criteria: {a: A, b: B}}\n  policy:\n    c: {bands: [{at_least: 0.5, verdict: \" \"}]}\n",
         ),
         (
             &*CASES,
-            "jud: 1.1\nkind: cases\ncases:\n  - state: s\n    options: {c: {a: 1}}\n",
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: s\n      options: {c: {a: 1}}\n",
         ),
         (
             &*CASES,
-            "jud: 1.1\nkind: cases\ncases:\n  - state: s\n    options: null\n",
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: s\n      options: null\n",
         ),
         // A band with a field bands do not have.
         (
             &*RUBRIC,
-            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  c: {type: choice, instructions: pick, criteria: {a: A, b: B}}\npolicy:\n  c: {bands: [{at_least: 0.5, verdict: go, colour: red}]}\n",
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    c: {type: choice, instructions: pick, criteria: {a: A, b: B}}\n  policy:\n    c: {bands: [{at_least: 0.5, verdict: go, colour: red}]}\n",
         ),
         // A state path with an empty segment.
         (
             &*RUBRIC,
-            "jud: 1.1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?, when: \"message..x\"}\n",
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?, when: \"message..x\"}\n",
         ),
     ]
 }
@@ -361,25 +356,25 @@ fn the_schemas_and_the_parser_refuse_the_same_documents() {
     }
 }
 
-/// 1.2: what a reviewer cannot see is refused. A tag the core schema does
+/// What a reviewer cannot see is refused. A tag the core schema does
 /// not define and a merge key are errors with a position; a `!!binary`
 /// scalar is its text, never what the base64 encodes, so the model reads
 /// what the reviewer read.
 #[test]
 fn what_a_reviewer_cannot_see_is_refused() {
-    let tagged = "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: !secret hidden}\n";
+    let tagged = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: !secret hidden}\n";
     let err = jud::parse(tagged).unwrap_err();
     assert!(
-        matches!(&err, jud::Error::Syntax(m) if m.contains("tag") && m.contains("line 5")),
+        matches!(&err, jud::Error::Syntax(m) if m.contains("tag") && m.contains("line 7")),
         "{err}"
     );
-    let merged = "jud: 1.1\nkind: rubric\nid: r\nx-base: &b {type: noul, instructions: ok?}\nquestions:\n  n: {<<: *b}\n";
+    let merged = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {<<: *b}\n";
     let err = jud::parse(merged).unwrap_err();
     assert!(
-        matches!(&err, jud::Error::Syntax(m) if m.contains("merge") && m.contains("line 6")),
+        matches!(&err, jud::Error::Syntax(m) if m.contains("merge") && m.contains("line 7")),
         "{err}"
     );
-    let binary = "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: !!binary SWdub3JlIHRoaXM=}\n";
+    let binary = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: !!binary SWdub3JlIHRoaXM=}\n";
     let rubric = Rubric::parse(binary).unwrap();
     let instructions = match &rubric.questions.get("n").unwrap().question {
         judgment::Question::Noul { instructions, .. } => instructions.clone(),
@@ -392,32 +387,35 @@ fn what_a_reviewer_cannot_see_is_refused() {
     );
 }
 
-/// 1.2: a syntax error names a line and a column and quotes nothing, because
+/// A syntax error names a line and a column and quotes nothing, because
 /// a cases document's state can be someone's data and the message lands in
 /// a log.
 #[test]
 fn a_syntax_error_quotes_no_part_of_the_document() {
-    let broken = "jud: 1\nkind: cases\ncases:\n  - state: {account: TOPSECRET-4411}\n    expect: [not a map\n";
+    let broken = "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: {account: TOPSECRET-4411}\n      expect: [not a map\n";
     let err = Cases::parse(broken).unwrap_err();
     let shown = err.to_string();
     assert!(shown.contains("line"), "{shown}");
     assert!(!shown.contains("TOPSECRET"), "{shown}");
 }
 
-/// A `jud: 1.2` document reads, and is written back as the lowest version
-/// that reads it, since 1.2 adds no field.
+/// Every document is written back under the one apiVersion, with the
+/// envelope's keys in manifest order, and validates against its schema.
 #[test]
-fn jud_1_2_reads_and_is_written_as_the_lowest_version() {
-    let plain = "jud: 1.2\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\n";
+fn a_document_is_written_back_under_the_one_api_version() {
+    let plain = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n";
     let rubric = Rubric::parse(plain).unwrap();
-    assert!(rubric.to_yaml().unwrap().starts_with("jud: 1\n"));
-    let with_feature = "jud: 1.2\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?, when: a}\n";
-    let rubric = Rubric::parse(with_feature).unwrap();
-    assert!(rubric.to_yaml().unwrap().starts_with("jud: 1.1\n"));
+    let yaml = rubric.to_yaml().unwrap();
+    assert!(
+        yaml.starts_with("apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n"),
+        "{yaml}"
+    );
     assert!(RUBRIC.is_valid(&value_of(plain)));
+    assert!(RUBRIC.is_valid(&value_of(&yaml)));
+    assert_eq!(jud::API_VERSION, "jud/v1.3");
 }
 
-/// 1.2: the policy fingerprint is the gates alone, so a moved bar is as
+/// The policy fingerprint is the gates alone, so a moved bar is as
 /// visible as a changed question; `tuning`, the id and the questions are
 /// not part of it, and an empty policy is the fingerprint of `{}`.
 #[test]
@@ -439,7 +437,7 @@ fn the_policy_fingerprint_is_the_gates_alone() {
     );
     let mut other = rubric.clone();
     other.policy.tuning = None;
-    other.id = "renamed".to_owned();
+    other.name = "renamed".to_owned();
     assert_eq!(
         other.policy_fingerprint(),
         pinned,
@@ -460,7 +458,7 @@ fn yes_is_a_string_not_a_boolean() {
     // option called `yes` is the string, and a Noul labelled `yes` is a
     // label that does not fit, not `true`.
     let rubric = Rubric::parse(
-        "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\n  c: {type: choice, instructions: pick, criteria: {yes: null, no: null, maybe: null}}\n",
+        "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n    c: {type: choice, instructions: pick, criteria: {yes: null, no: null, maybe: null}}\n",
     )
     .unwrap();
     let keys: Vec<&str> = match &rubric.questions.get("c").unwrap().question {
@@ -471,10 +469,10 @@ fn yes_is_a_string_not_a_boolean() {
     };
     assert_eq!(keys, ["yes", "no", "maybe"]);
     let cases =
-        Cases::parse("jud: 1\nkind: cases\ncases:\n  - state: s\n    expect: {c: yes}\n").unwrap();
+        Cases::parse("apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: s\n      expect: {c: yes}\n").unwrap();
     cases.bind(&rubric).unwrap();
     let cases =
-        Cases::parse("jud: 1\nkind: cases\ncases:\n  - state: s\n    expect: {n: yes}\n").unwrap();
+        Cases::parse("apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: s\n      expect: {n: yes}\n").unwrap();
     let err = cases.bind(&rubric).unwrap_err();
     assert!(
         matches!(&err, jud::Error::Case { reason, .. } if reason.contains("a Noul expects")),

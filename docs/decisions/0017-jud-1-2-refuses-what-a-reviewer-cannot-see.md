@@ -1,7 +1,7 @@
 ---
 title: 0017 The .jud format 1.2 refuses what a reviewer cannot see, and names the policy
 description: Version 1.2 of the .jud format adds no field; it makes every id a name that is never a path, refuses YAML merge keys and tags the core schema does not define, keeps a binary scalar as its text, keeps the document out of error messages, and gives a rubric's policy a fingerprint of its own, because a threat model found that a reviewed rubric could still read differently from how it looked and that the questions' fingerprint could not show a moved threshold.
-status: accepted
+status: superseded by 0018
 date: 2026-10-06
 decision-makers: [platform engineering]
 consulted: []
@@ -9,6 +9,8 @@ informed: []
 last_reviewed: 2026-10-06
 tags: [decisions, jud, format, versioning, security, fingerprint]
 ---
+
+Superseded by [0018](0018-jud-1-3-takes-the-manifest-envelope.md) on 2026-10-06: the envelope is a manifest's (`apiVersion`, `kind`, `metadata`, `spec`), a reader reads one apiVersion and the versioning rule below is withdrawn; the rules this record added to the format stand, without a version mark. The record is kept as written.
 
 # 0017 The .jud format 1.2 refuses what a reviewer cannot see, and names the policy
 

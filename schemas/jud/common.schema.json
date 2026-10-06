@@ -2,37 +2,42 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/chussenot/judgment/schemas/jud/common.schema.json",
   "title": ".jud common definitions",
-  "description": "Definitions shared by the three document kinds of the .jud format, versions 1, 1.1 and 1.2 (docs/jud.md).",
+  "description": "Definitions shared by the three document kinds of the .jud format (docs/jud.md): the envelope of a manifest, the metadata, names, fingerprints and questions.",
   "$defs": {
     "envelope": {
       "type": "object",
       "properties": {
-        "jud": {
-          "enum": [
-            1,
-            1.1,
-            1.2
-          ],
-          "description": "The format version: 1, 1.1 for a document that uses a 1.1 feature, or 1.2 for one written under the 1.2 rules (which add no field)."
+        "apiVersion": {
+          "const": "jud/v1.3",
+          "description": "The one version a reader reads; any other value is refused by name."
         },
         "kind": {
           "type": "string",
           "enum": [
-            "rubric",
-            "cases",
-            "recording"
+            "Rubric",
+            "Cases",
+            "Recording"
           ]
+        },
+        "metadata": {
+          "$ref": "#/$defs/metadata"
+        },
+        "spec": {
+          "type": "object"
         }
       },
       "required": [
-        "jud",
-        "kind"
-      ]
+        "apiVersion",
+        "kind",
+        "metadata",
+        "spec"
+      ],
+      "additionalProperties": false
     },
     "name": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
-      "description": "An id (1.2): letters, digits, `.`, `_` and `-`, starting with a letter or a digit; never a path."
+      "description": "A name: letters, digits, `.`, `_` and `-`, starting with a letter or a digit; never a path. Every metadata.name and every case id."
     },
     "fingerprint": {
       "type": "string",
@@ -92,11 +97,11 @@
             },
             "when": {
               "$ref": "#/$defs/statePath",
-              "description": "1.1: ask the question only when this state path is present."
+              "description": "ask the question only when this state path is present."
             },
             "part_when": {
               "type": "object",
-              "description": "1.1: instruction part name to the state path that must be present for the part to be sent.",
+              "description": "instruction part name to the state path that must be present for the part to be sent.",
               "additionalProperties": {
                 "$ref": "#/$defs/statePath"
               }
@@ -128,18 +133,18 @@
             },
             "when": {
               "$ref": "#/$defs/statePath",
-              "description": "1.1: ask the question only when this state path is present."
+              "description": "ask the question only when this state path is present."
             },
             "part_when": {
               "type": "object",
-              "description": "1.1: instruction part name to the state path that must be present for the part to be sent.",
+              "description": "instruction part name to the state path that must be present for the part to be sent.",
               "additionalProperties": {
                 "$ref": "#/$defs/statePath"
               }
             },
             "options_from": {
               "const": "request",
-              "description": "1.1: the options are supplied per request, before the static ones in criteria."
+              "description": "the options are supplied per request, before the static ones in criteria."
             }
           },
           "required": [
@@ -192,11 +197,11 @@
             },
             "when": {
               "$ref": "#/$defs/statePath",
-              "description": "1.1: ask the question only when this state path is present."
+              "description": "ask the question only when this state path is present."
             },
             "part_when": {
               "type": "object",
-              "description": "1.1: instruction part name to the state path that must be present for the part to be sent.",
+              "description": "instruction part name to the state path that must be present for the part to be sent.",
               "additionalProperties": {
                 "$ref": "#/$defs/statePath"
               }
@@ -213,11 +218,42 @@
     "statePath": {
       "type": "string",
       "pattern": "^[^.\\s](?:[^.]*[^.\\s])?(?:\\.[^.\\s](?:[^.]*[^.\\s])?)*$",
-      "description": "A state path (1.1): dot-separated object keys, a number indexing an array. Present when it leads to a value that is not null, \"\", [] or {}."
+      "description": "A state path: dot-separated object keys, a number indexing an array. Present when it leads to a value that is not null, \"\", [] or {}."
     },
-    "extensionKeys": {
-      "description": "Top-level keys a reader ignores (1.1): any key starting with x-.",
-      "pattern": "^x-"
+    "metadata": {
+      "type": "object",
+      "description": "What names the document and what a tool keeps beside the format. Which optional fields a kind takes, its own schema says.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "version": {
+          "type": [
+            "string",
+            "number"
+          ],
+          "description": "A Rubric's edition, free-form; a number is read as its text."
+        },
+        "description": {
+          "type": "string"
+        },
+        "labels": {
+          "$ref": "#/$defs/stringMap"
+        },
+        "annotations": {
+          "$ref": "#/$defs/stringMap"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
     }
   }
 }

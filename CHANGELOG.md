@@ -11,36 +11,52 @@ All notable changes to the `judgment` crate. The format follows
 - The `jud` binary (feature `jud`; `cargo install judgment --features jud`):
   `jud check FILE...` reads documents as the crate does, binds cases to the
   rubric they name and verifies a recording against the request it answers,
-  printing ids and fingerprints and exiting 1 on a refusal; `jud lower
-  RUBRIC` prints the request a state or every case lowers to. `mise run
-  jud:check` runs it over the examples or the files given.
+  printing names, the `apiVersion` and fingerprints and exiting 1 on a
+  refusal; `jud lower RUBRIC` prints the request a state or every case
+  lowers to. `mise run jud:check` runs it over the examples or the files
+  given.
 - A Claude Code skill, `.claude/skills/jud/`, for writing, reviewing and
-  fixing `.jud` documents in version 1.2, with a one-page field reference,
-  the checker as a script, and the four tasks it was tested on;
-  `docs/skill.md` says how to install it elsewhere.
-- `.jud` version 1.2 (decision 0017; `docs/jud.md`): no new field. Every
-  id is a name (letters, digits, `.`, `_`, `-`, starting with a letter or
-  a digit), so a case id never reaches the file system as a path; a merge
-  key and a tag the core schema does not define are refused with their
-  position, and a `!!binary` scalar is its text, never decoded; a syntax
-  error names a line and a column and quotes nothing. `Rubric::policy_fingerprint`
-  is the fingerprint of the gates alone, so a moved threshold is as visible
-  as a changed question. `eval::is_name` states the grammar.
-
-### Changed
-
-- Every document under `examples/jud/` and `examples/recordings/jud_calibration/`,
-  and the rubric in `examples/jud_quickstart.rs` and the README, declares
-  `jud: 1.2`; no fingerprint changes, the version being part of none.
-  `examples/jud_calibration.rs` prints the policy fingerprint beside the
-  questions'.
-- The `.jud` reader applies the 1.2 rules to every version it reads: a
-  document that used a merge key, a foreign tag or a path-shaped id is
-  refused, naming the position or the field. `eval::write_recording` and
+  fixing `.jud` documents, with a one-page field reference, the checker as
+  a script, and the six tasks it was tested on; `docs/skill.md` says how to
+  install it elsewhere.
+- Names and refusals in the `.jud` reader (`docs/jud.md`): every
+  `metadata.name` and every case id is a name (letters, digits, `.`, `_`,
+  `-`, starting with a letter or a digit), so a case never reaches the file
+  system as a path; a merge key and a tag the core schema does not define
+  are refused with their position, and a `!!binary` scalar is its text,
+  never decoded; a syntax error names a line and a column and quotes
+  nothing. `Rubric::policy_fingerprint` is the fingerprint of the gates
+  alone, so a moved threshold is as visible as a changed question.
+  `eval::is_name` states the grammar; `eval::write_recording` and
   `eval::read_recording` refuse a case id that is not a name
   (`eval::Error::NotAName`). `Replay::open` skips symlinks and
   subdirectories, and a replay looks a request up by its SHA-256
   fingerprint before the FNV request hash.
+
+### Changed
+
+- **Breaking:** the `.jud` envelope is a manifest's (decision 0018;
+  `docs/jud.md`): `apiVersion: jud/v1.3`, `kind: Rubric`, `Cases` or
+  `Recording`, `metadata` (`name`, required on every kind; `version`,
+  `description`, `labels`, `annotations`) and `spec`, which holds every
+  field a kind had at the top level. A rubric's or a cases document's `id`
+  and a recording's `case` are `metadata.name`, a cases document's
+  `rubric` is `spec.rubric`, and the top-level `x-` keys are
+  `metadata.annotations`. The reader reads exactly `jud/v1.3` and refuses
+  any other `apiVersion` by name: there is no compatibility with the
+  `jud: 1`, `1.1` and `1.2` envelopes, and a document is moved forward by
+  rewriting its envelope. In the crate, `jud::API_VERSION` replaces
+  `jud::VERSION` and `jud::MINOR`; `Rubric::id` is `name` and
+  `Rubric::extensions` is `labels` and `annotations`
+  (`IndexMap<String, String>`); `Cases::id` is `name`, now a required
+  `String`, and `Cases::extensions` likewise; `Rubric::new(name, questions)`.
+  Every document under `examples/jud/` and
+  `examples/recordings/jud_calibration/`, the rubric in
+  `examples/jud_quickstart.rs` and the README, and the JSON Schemas carry
+  the new envelope. No fingerprint changes: every fingerprint is over a
+  value inside `spec`, and the envelope is part of none.
+- `examples/jud_calibration.rs` prints the policy fingerprint beside the
+  questions'.
 
 ## [0.6.1] - 2026-10-06
 

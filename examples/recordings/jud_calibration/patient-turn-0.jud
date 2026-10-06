@@ -1,18 +1,20 @@
 # Recorded answer for case `patient-turn-0`; found by fingerprint.
-jud: 1.2
-kind: recording
-case: patient-turn-0
-response:
-  model: jev-1.13.0
-  answers:
-    wants_human:
-      type: noul
-      noul: 0.05
-  usage:
-    input_tokens: 0
-    output_tokens: 0
-elapsed_ms: 140
-fingerprint: sha256:b34b99d441dc58c87017ad81bba80832d30011414b226269f0c59e849abfc6dd
-rubric: handoff
-server: https://api.typesafe.ai
-recorded_at: "2026-10-04T11:58:00Z"
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: patient-turn-0
+spec:
+  response:
+    model: jev-1.13.0
+    answers:
+      wants_human:
+        type: noul
+        noul: 0.05
+    usage:
+      input_tokens: 0
+      output_tokens: 0
+  elapsed_ms: 140
+  fingerprint: sha256:b34b99d441dc58c87017ad81bba80832d30011414b226269f0c59e849abfc6dd
+  rubric: handoff
+  server: https://api.typesafe.ai
+  recorded_at: "2026-10-04T11:58:00Z"

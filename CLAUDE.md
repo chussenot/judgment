@@ -54,15 +54,15 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   together, and the recordings under `examples/recordings/*/` must still
   replay (`cargo test` runs them).
 - The `.jud` format (`docs/jud.md`, `src/jud/`, feature `jud`) is a
-  specification other tools implement: a change to what a document may hold
-  or how it is read moves `docs/jud.md`, `schemas/jud/`, `tests/jud.rs` and
-  the documents under `examples/jud/` together. A purely additive change
-  takes the next minor version (`jud: 1.1`, decision 0016), a change of
-  meaning the next major; a document must declare the version of the
-  features it uses, and a writer declares the lowest that reads it, so a
-  `jud: 1` rubric keeps its fingerprint and is still written as `jud: 1`. The
+  specification other tools implement. Its envelope is a manifest's
+  (`apiVersion`, `kind`, `metadata`, `spec`), and the reader reads exactly
+  one apiVersion, `jud/v1.3` (`jud::API_VERSION`), refusing any other by
+  name. A change to what a document may hold or how it is read takes a new
+  apiVersion (decision 0018) and moves `docs/jud.md`, `schemas/jud/`,
+  `tests/jud.rs` and the documents under `examples/jud/` together. The
   questions in a rubric are the wire's shape, never a translation of it, and
-  fingerprints are RFC 8785 canonical JSON (`src/eval/canonical.rs`), checked
+  fingerprints are RFC 8785 canonical JSON (`src/eval/canonical.rs`) over
+  values inside `spec`, so the envelope moves none of them; they are checked
   against the known vector on the page. `Questions` and a Choice's options
   keep insertion order: it is the order the model sees.
 - Documentation: every page under `docs/` carries frontmatter (`title`,

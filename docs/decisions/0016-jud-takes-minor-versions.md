@@ -1,14 +1,16 @@
 ---
 title: 0016 The .jud format takes minor versions, and 1.1 makes the request depend on the state
 description: The .jud format gains a minor version, 1.1, which only adds; it lets a rubric declare when a question or an instruction part is sent and that a Choice's options come with the request, lets a gate carry bands, a level threshold and strict comparison, and reserves top-level x- keys, so that a real application's questions and policy fit in the file.
-status: accepted
+status: superseded by 0018
 date: 2026-10-04
 decision-makers: [platform engineering]
 consulted: []
 informed: []
-last_reviewed: 2026-10-04
+last_reviewed: 2026-10-06
 tags: [decisions, jud, format, versioning, rubric, policy]
 ---
+
+Superseded by [0018](0018-jud-1-3-takes-the-manifest-envelope.md) on 2026-10-06: the envelope is a manifest's (`apiVersion`, `kind`, `metadata`, `spec`), a reader reads one apiVersion and the versioning rule below is withdrawn; the rules this record added to the format stand, without a version mark. The record is kept as written.
 
 # 0016 The .jud format takes minor versions, and 1.1 makes the request depend on the state
 

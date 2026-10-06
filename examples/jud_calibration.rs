@@ -219,7 +219,7 @@ async fn run() -> Result<(Rubric, Graded, Vec<Judgment>), Box<dyn Error>> {
     // reads their answers, so a moved bar is as visible as a changed question.
     println!(
         "rubric {} (questions {}, policy {}), {} cases ({}), {} recordings\n",
-        rubric.id,
+        rubric.name,
         rubric.fingerprint(),
         rubric.policy_fingerprint(),
         cases.cases.len(),
@@ -240,7 +240,7 @@ async fn run() -> Result<(Rubric, Graded, Vec<Judgment>), Box<dyn Error>> {
     let handoff = Rubric::parse(&read("handoff.jud")?)?;
     let conversations = Cases::parse(&read("handoff-cases.jud")?)?;
     conversations.bind(&handoff)?;
-    println!("conversations, turn by turn ({}):", handoff.id);
+    println!("conversations, turn by turn ({}):", handoff.name);
     let turns = run_conversations(&handoff, &conversations, &replay).await?;
     let m = QuestionMetrics::summarise(&turns, ECE_BINS);
     println!(

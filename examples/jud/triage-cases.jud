@@ -1,72 +1,74 @@
 # Labelled cases for the inbox-triage rubric. Each case labels the questions
 # it is sure about; a question left out is asked and not graded.
-jud: 1.2
-kind: cases
-id: inbox-triage-cases
-rubric: inbox-triage
-description: Seven messages, labelled by the support lead on 2026-10-04.
+apiVersion: jud/v1.3
+kind: Cases
+metadata:
+  name: inbox-triage-cases
+  description: Seven messages, labelled by the support lead on 2026-10-04.
+spec:
+  rubric: inbox-triage
 
-cases:
-  - id: refund-angry
-    state:
-      message: >-
-        This is the third time I'm writing. I was charged twice last month and
-        nobody has refunded me. Fix it today or I cancel.
-    expect:
-      actionable: true
-      desk: billing
-      tone: angry
-    tags: [billing, repeat]
+  cases:
+    - id: refund-angry
+      state:
+        message: >-
+          This is the third time I'm writing. I was charged twice last month and
+          nobody has refunded me. Fix it today or I cancel.
+      expect:
+        actionable: true
+        desk: billing
+        tone: angry
+      tags: [billing, repeat]
 
-  - id: thanks
-    state:
-      message: Sorted now, thanks a lot for the quick help!
-    expect:
-      actionable: false
-      desk: none_of_these
-      tone: calm
+    - id: thanks
+      state:
+        message: Sorted now, thanks a lot for the quick help!
+      expect:
+        actionable: false
+        desk: none_of_these
+        tone: calm
 
-  - id: login-loop
-    state:
-      message: >-
-        After the update I get sent back to the sign-in page every time I log
-        in. Cleared cookies, same thing. Chrome on a Mac.
-    expect:
-      actionable: true
-      desk: technical
-      tone: annoyed
+    - id: login-loop
+      state:
+        message: >-
+          After the update I get sent back to the sign-in page every time I log
+          in. Cleared cookies, same thing. Chrome on a Mac.
+      expect:
+        actionable: true
+        desk: technical
+        tone: annoyed
 
-  - id: receipt
-    state:
-      message: >-
-        Your payment of 12.00 EUR was received. This is an automated message,
-        please do not reply.
-    expect:
-      actionable: false
-      desk: none_of_these
-    tags: [automated]
-    note: the Noul is the hard one here; the message is about billing but asks nothing
+    - id: receipt
+      state:
+        message: >-
+          Your payment of 12.00 EUR was received. This is an automated message,
+          please do not reply.
+      expect:
+        actionable: false
+        desk: none_of_these
+      tags: [automated]
+      note: the Noul is the hard one here; the message is about billing but asks nothing
 
-  - id: close-account
-    state:
-      message: Please close my account and delete my data. Thanks.
-    expect:
-      actionable: true
-      desk: account
-      tone: 0
+    - id: close-account
+      state:
+        message: Please close my account and delete my data. Thanks.
+      expect:
+        actionable: true
+        desk: account
+        tone: 0
 
-  - id: how-to-export
-    state:
-      message: Is there a way to export my data as CSV? Could not find it in settings.
-    expect:
-      actionable: true
-      desk: technical
-      tone: calm
+    - id: how-to-export
+      state:
+        message: Is there a way to export my data as CSV? Could not find it in settings.
+      expect:
+        actionable: true
+        desk: technical
+        tone: calm
 
-  - id: invoice-vat
-    state:
-      message: Can you reissue last month's invoice with our VAT number on it?
-    expect:
-      actionable: true
-      desk: billing
-      tone: calm
+    - id: invoice-vat
+      state:
+        message: Can you reissue last month's invoice with our VAT number on it?
+      expect:
+        actionable: true
+        desk: billing
+        tone: calm

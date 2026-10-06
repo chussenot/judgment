@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/chussenot/judgment/schemas/jud/recording.schema.json",
-  "title": ".jud recording",
-  "description": "One model response to one request, with the request's fingerprint, the server and the time (docs/jud.md). The response is the wire's own shape; a server's extra top-level fields are kept.",
+  "title": ".jud Recording",
+  "description": "One model response to one request, with the request's fingerprint, the server and the time (docs/jud.md). metadata.name is the case it answers (or the request hash); metadata takes name, labels and annotations.",
   "type": "object",
   "allOf": [
     {
@@ -10,104 +10,106 @@
     }
   ],
   "properties": {
-    "jud": true,
+    "apiVersion": true,
     "kind": {
-      "const": "recording"
+      "const": "Recording"
     },
-    "case": {
-      "$ref": "common.schema.json#/$defs/name",
-      "description": "The case it answers (a name), or the request hash."
-    },
-    "response": {
-      "type": "object",
-      "properties": {
-        "model": {
-          "type": "string"
-        },
-        "answers": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string"
-              }
-            },
+    "metadata": {
+      "$ref": "common.schema.json#/$defs/metadata",
+      "not": {
+        "anyOf": [
+          {
             "required": [
-              "type"
+              "version"
+            ]
+          },
+          {
+            "required": [
+              "description"
             ]
           }
-        },
-        "usage": {
+        ]
+      }
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "response": {
           "type": "object",
           "properties": {
-            "input_tokens": {
-              "type": "integer",
-              "minimum": 0
+            "model": {
+              "type": "string"
             },
-            "output_tokens": {
-              "type": "integer",
-              "minimum": 0
+            "answers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              }
+            },
+            "usage": {
+              "type": "object",
+              "properties": {
+                "input_tokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "output_tokens": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "request_id": {
+              "type": "string"
             }
-          }
+          },
+          "required": [
+            "model",
+            "answers"
+          ]
         },
-        "request_id": {
+        "elapsed_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "request_hash": {
+          "type": "string",
+          "description": "This crate's own 16-hex-digit request hash, when a Recorder made the file."
+        },
+        "fingerprint": {
+          "$ref": "common.schema.json#/$defs/fingerprint"
+        },
+        "server": {
           "type": "string"
+        },
+        "recorded_at": {
+          "$ref": "common.schema.json#/$defs/rfc3339"
+        },
+        "rubric": {
+          "type": "string",
+          "description": "The rubric the questions came from, by name or by fingerprint."
         }
       },
       "required": [
-        "model",
-        "answers"
-      ]
-    },
-    "elapsed_ms": {
-      "type": "integer",
-      "minimum": 0
-    },
-    "request_hash": {
-      "type": "string",
-      "description": "This crate's own 16-hex-digit request hash, when a Recorder made the file."
-    },
-    "fingerprint": {
-      "$ref": "common.schema.json#/$defs/fingerprint"
-    },
-    "rubric": {
-      "type": "string"
-    },
-    "server": {
-      "type": "string"
-    },
-    "recorded_at": {
-      "$ref": "common.schema.json#/$defs/rfc3339"
+        "response",
+        "elapsed_ms"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
-    "jud",
+    "apiVersion",
     "kind",
-    "case",
-    "response",
-    "elapsed_ms"
+    "metadata",
+    "spec"
   ],
-  "additionalProperties": false,
-  "patternProperties": {
-    "^x-": true
-  },
-  "if": {
-    "properties": {
-      "jud": {
-        "const": 1
-      }
-    },
-    "required": [
-      "jud"
-    ]
-  },
-  "then": {
-    "propertyNames": {
-      "not": {
-        "pattern": "^x-"
-      }
-    }
-  },
-  "$comment": "Under jud: 1 top-level x- keys (1.1) are refused."
+  "additionalProperties": false
 }

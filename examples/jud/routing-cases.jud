@@ -2,55 +2,57 @@
 # time are not in the state, so each case supplies them under `options`;
 # the open tickets are, and are supplied too, as their keys and
 # descriptions.
-jud: 1.2
-kind: cases
-id: support-routing-cases
-rubric: support-routing
-x-provenance:
-  labelled_by: support lead
-  labelled_at: 2026-10-04
+apiVersion: jud/v1.3
+kind: Cases
+metadata:
+  name: support-routing-cases
+  annotations:
+    labelled_by: support lead
+    labelled_at: 2026-10-04
+spec:
+  rubric: support-routing
 
-cases:
-  - id: double-charge
-    state:
-      message:
-        text: You charged me twice for order 1042. I want one of them back today.
-      customer:
-        account: {plan: pro, region: eu}
-        recent_orders: ["#1042", "#0998"]
-    options:
-      desk:
-        billing: Invoices, payments, refunds
-        technical: Errors and how-to questions
-    expect:
-      desk: billing
-      tone: 2
-      refund_request: true
+  cases:
+    - id: double-charge
+      state:
+        message:
+          text: You charged me twice for order 1042. I want one of them back today.
+        customer:
+          account: {plan: pro, region: eu}
+          recent_orders: ["#1042", "#0998"]
+      options:
+        desk:
+          billing: Invoices, payments, refunds
+          technical: Errors and how-to questions
+      expect:
+        desk: billing
+        tone: 2
+        refund_request: true
 
-  - id: export-question
-    state:
-      message:
-        text: Is there a way to export my data as CSV?
-    options:
-      desk:
-        billing: Invoices, payments, refunds
-        technical: Errors and how-to questions
-    expect:
-      desk: technical
-      tone: calm
+    - id: export-question
+      state:
+        message:
+          text: Is there a way to export my data as CSV?
+      options:
+        desk:
+          billing: Invoices, payments, refunds
+          technical: Errors and how-to questions
+      expect:
+        desk: technical
+        tone: calm
 
-  - id: follow-up
-    state:
-      message:
-        text: Any news on my sign-in problem? Still locked out, this is getting ridiculous.
-      customer:
-        open_tickets: [{id: T-4821, summary: Locked out after password reset}]
-    options:
-      desk:
-        billing: Invoices, payments, refunds
-        technical: Errors and how-to questions
-      duplicate_of:
-        T-4821: Locked out after password reset
-    expect:
-      duplicate_of: T-4821
-      tone: 2
+    - id: follow-up
+      state:
+        message:
+          text: Any news on my sign-in problem? Still locked out, this is getting ridiculous.
+        customer:
+          open_tickets: [{id: T-4821, summary: Locked out after password reset}]
+      options:
+        desk:
+          billing: Invoices, payments, refunds
+          technical: Errors and how-to questions
+        duplicate_of:
+          T-4821: Locked out after password reset
+      expect:
+        duplicate_of: T-4821
+        tone: 2
