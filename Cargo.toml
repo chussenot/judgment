@@ -163,6 +163,12 @@ name = "jud_calibration"
 required-features = ["jud"]
 test = true
 
+# The README's second example: the quickstart's questions as a `.jud` rubric
+# read through its policy; needs the format, not the client.
+[[example]]
+name = "jud_quickstart"
+required-features = ["jud"]
+
 # Pedantic clippy, no `unwrap` or `expect` outside tests, every public item
 # documented: the bar the crate was written to.
 [lints.rust]

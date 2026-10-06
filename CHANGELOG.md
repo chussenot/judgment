@@ -6,6 +6,13 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A second README example, `examples/jud_quickstart.rs`: the quickstart's
+  two questions as a `.jud` rubric with their thresholds, answered by the
+  `Fake` backend and read through the rubric's policy; `tests/readme.rs`
+  holds the README's copy to the file and CI runs it.
+
 ## [0.6.0] - 2026-10-06
 
 ### Added
