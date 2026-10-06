@@ -1,5 +1,4 @@
-//! Scoring rules for calibrated judgments. Pure functions over probabilities
-//! and outcomes, so they are easy to check by hand and to reuse.
+//! Scoring rules for calibrated judgments: pure functions over probabilities and outcomes.
 
 // Counts and bin indices are small; the casts to and from f64 are exact in
 // practice and truncation is the intended bucketing.
@@ -9,9 +8,9 @@
     clippy::cast_sign_loss
 )]
 
-/// Multi-class Brier score for one question: the squared distance between
-/// the reported distribution and the one-hot truth, summed over options.
-/// `0.0` is perfect; `2.0` is full confidence in the wrong option.
+/// Multi-class Brier score (Brier 1950): `Σ (p_i − y_i)²` over the options against the
+/// one-hot truth, `0.0` perfect, `2.0` full confidence in the wrong option. Other tools halve
+/// it or report the binary form, so figures are not comparable without the definition.
 pub fn brier(probabilities: &[(bool, f64)]) -> f64 {
     probabilities
         .iter()
@@ -22,10 +21,10 @@ pub fn brier(probabilities: &[(bool, f64)]) -> f64 {
         .sum()
 }
 
-/// Expected calibration error over `(confidence, correct)` pairs: confidence
-/// is bucketed into `bins` equal-width bins and the gap between mean
-/// confidence and accuracy is averaged, weighted by bin size. `0.0` means
-/// a 0.8 confidence was right 80% of the time.
+/// Expected calibration error (Naeini et al. 2015) over `(confidence,
+/// correct)` pairs: confidence bucketed into `bins` equal-width bins over
+/// `[0, 1]`, `Σ_b (n_b / n) · |mean confidence_b − accuracy_b|` over the
+/// non-empty bins. `0.0` means a 0.8 confidence was right 80% of the time.
 pub fn expected_calibration_error(pairs: &[(f64, bool)], bins: usize) -> f64 {
     if pairs.is_empty() || bins == 0 {
         return 0.0;
@@ -50,12 +49,8 @@ pub fn expected_calibration_error(pairs: &[(f64, bool)], bins: usize) -> f64 {
         .sum()
 }
 
-/// The bin of `bins` equal-width bins over `[0, 1]` that confidence `c`
-/// falls in: `floor(c × bins)`, with 1.0 in the last bin rather than one past
-/// it, a value below 0 or NaN in the first and, for up to 2^53 bins, a value
-/// of 1 or more in the last. Always an index below `bins` when `bins` is at
-/// least 1. Past 2^53, `bins as f64` can round down, so 1.0 may land short of
-/// the last bin (the bounded proof found `bins` near 2^64); the report uses 10.
+/// `floor(c × bins)`, with 1.0 in the last bin and NaN or a negative value
+/// in the first; always below `bins` (bounded proof below).
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -65,16 +60,10 @@ fn bin_index(c: f64, bins: usize) -> usize {
     ((c * bins as f64).floor() as usize).min(bins.saturating_sub(1))
 }
 
-/// Wilson score interval for a proportion `correct / n` at the given `z`
-/// (1.96 for 95%), as `(low, high)` in `[0, 1]`; `None` when `n` is 0.
-///
-/// A plain accuracy of 1.00 on three cases and 1.00 on three hundred are
-/// different claims, and a report that prints only the ratio invites the
-/// reader to treat them alike. The Wilson interval is chosen over the
-/// normal approximation because it stays inside `[0, 1]` and behaves at
-/// the extremes a small labelled set produces (0 of 3, 3 of 3), where the
-/// normal interval collapses to a point. It assumes independent
-/// observations; related variants of one alert make it optimistic.
+/// Wilson score interval (Wilson 1927) for `correct / n` at `z` (1.96 for 95%), `(low, high)`
+/// in `[0, 1]`; `None` at `n = 0`. Chosen over the normal approximation because it stays in
+/// `[0, 1]` and does not collapse to a point at 0 of 3 or 3 of 3, the extremes a small
+/// labelled set produces; it assumes independent observations.
 pub fn wilson_interval(correct: usize, n: usize, z: f64) -> Option<(f64, f64)> {
     if n == 0 {
         return None;
@@ -107,11 +96,8 @@ pub fn percentile(values: &[f64], q: f64) -> Option<f64> {
     Some(v[nearest_rank(q, v.len())])
 }
 
-/// The index, in `len` sorted values, of the nearest-rank percentile `q`:
-/// rank `ceil(q × len)` clamped to `1..=len`, minus one. `q` is clamped to
-/// `[0, 1]` and a NaN `q` reads as 0. Always an index below `len` when `len`
-/// is at least 1; `q >= 1` is the largest value for up to 2^53 values, past
-/// which `len as f64` can round down (the bounded proof found such a `len`).
+/// Rank `ceil(q × len)` clamped to `1..=len`, minus one; `q` clamped to
+/// `[0, 1]` and NaN read as 0. Always below `len` (bounded proof below).
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -132,13 +118,13 @@ mod tests {
     fn brier_is_zero_when_certain_and_right_and_two_when_certain_and_wrong() {
         assert!((brier(&[(true, 1.0), (false, 0.0)]) - 0.0).abs() < 1e-12);
         assert!((brier(&[(true, 0.0), (false, 1.0)]) - 2.0).abs() < 1e-12);
-        // Uniform over two options: 0.5 + 0.25 ... (0.5-1)^2 + (0.5-0)^2 = 0.5
+        // Uniform over two options: (0.5-1)^2 + (0.5-0)^2 = 0.5
         assert!((brier(&[(true, 0.5), (false, 0.5)]) - 0.5).abs() < 1e-12);
     }
 
     #[test]
     fn ece_is_zero_for_a_calibrated_model_and_large_for_an_overconfident_one() {
-        // 80% confidence, right 4 times out of 5: perfectly calibrated bin.
+        // 80% confidence, right 4 times out of 5: a perfectly calibrated bin.
         let calibrated = [
             (0.8, true),
             (0.8, true),
@@ -177,16 +163,13 @@ mod tests {
     }
 }
 
-/// Bounded proofs of the bin and rank indexing, run with `cargo kani`
-/// (docs/testing.md, "Bounded proofs").
+/// Bounded proofs of the indexing, run with `cargo kani` (docs/testing.md, "Bounded proofs").
 #[cfg(kani)]
 mod kani_proofs {
     use super::*;
 
-    /// `bin_index` is a bin, for any confidence (NaN, infinities and values
-    /// outside `[0, 1]` included) and any bin count from 1: below `bins`,
-    /// 0 for a confidence at or below 0 or NaN, and the last bin from 1 up
-    /// for up to 2^53 bins.
+    /// Below `bins` for any `f64` and any `bins >= 1`; 0 at or below 0 or
+    /// NaN; the last bin from 1 up while `bins` is exact as an `f64` (2^53).
     #[kani::proof]
     fn bin_index_is_a_bin() {
         let c: f64 = kani::any();
@@ -195,13 +178,11 @@ mod kani_proofs {
 
         let b = bin_index(c, bins);
 
-        // Safety, for every bin count.
         assert!(b < bins);
         if c.is_nan() || c <= 0.0 {
             assert_eq!(b, 0);
         }
-        // The last bin from 1 up holds while every bin count is exact as an
-        // `f64` (2^53); past it Kani finds a counterexample near 2^64.
+        // Past 2^53 `bins as f64` can round down; Kani finds a counterexample.
         if c >= 1.0 && bins <= 1 << 53 {
             assert_eq!(b, bins - 1);
         }
@@ -209,10 +190,8 @@ mod kani_proofs {
         kani::cover!(bins == 10 && b == 4);
     }
 
-    /// `nearest_rank` is an index into `len` sorted values, for any `q`
-    /// (NaN and infinities included) and any `len` from 1: below `len`, the
-    /// smallest at `q <= 0` or NaN, and the largest at `q >= 1` for up to
-    /// 2^53 values.
+    /// Below `len` for any `q` and any `len >= 1`; 0 at `q <= 0` or NaN;
+    /// the largest at `q >= 1` while `len` is exact as an `f64` (2^53).
     #[kani::proof]
     fn nearest_rank_is_an_index_into_the_values() {
         let q: f64 = kani::any();
@@ -221,13 +200,11 @@ mod kani_proofs {
 
         let index = nearest_rank(q, len);
 
-        // Safety, for every length.
         assert!(index < len);
         if q.is_nan() || q <= 0.0 {
             assert_eq!(index, 0);
         }
-        // The largest value at `q >= 1` holds while every length is exact as
-        // an `f64` (2^53); past it Kani finds a counterexample near 5.7e17.
+        // Past 2^53 `len as f64` can round down; Kani finds a counterexample.
         if q >= 1.0 && len <= 1 << 53 {
             assert_eq!(index, len - 1);
         }

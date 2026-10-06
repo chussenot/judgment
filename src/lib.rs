@@ -1,92 +1,26 @@
 //! # judgment
 //!
-//! Typed, calibrated judgments from [TypeSafe](https://docs.typesafe.ai) System
-//! One models (Jev) and from any backend that speaks the same wire.
+//! Typed, calibrated judgments from [TypeSafe](https://docs.typesafe.ai)
+//! System One models (Jev) and from any backend that speaks the same wire.
 //!
-//! ## The problem
+//! A System One model does not generate text. It evaluates a `state` (any
+//! JSON) against typed questions and returns calibrated answers: a [`Noul`]
+//! is a probability of yes, a [`Choice`] a chosen option with its
+//! distribution and a [`Confidence`], a [`Score`] a weighted position on
+//! ordered levels. The threshold that turns a number into an action stays in
+//! code, and [`eval`] measures the probabilities against outcomes. The
+//! README says why that matters and what the crate guarantees; `docs/` says
+//! how.
 //!
-//! A generative model asked to classify something answers in prose, or in JSON
-//! it was told to produce. A field named `confidence` in that JSON is generated
-//! text, not a measured probability. The answer drifts between runs and between
-//! prompt versions, a parse failure becomes a failure of the decision it was
-//! meant to inform, and the decision itself is buried in the prose. None of
-//! that can carry an action that pages someone at night.
+//! ## The shape of a call
 //!
-//! A System One model does not generate text. It evaluates a `state` (any JSON)
-//! against typed questions and returns calibrated answers:
-//!
-//! | Primitive | Question | Answer |
-//! |---|---|---|
-//! | [`Noul`] | yes/no | probability of yes |
-//! | [`Choice`] | one of a defined set | chosen option, full distribution, confidence |
-//! | [`Score`] | degree on ordered levels | weighted position, per-level distribution, confidence |
-//!
-//! Calibrated means the probabilities can be measured against outcomes and
-//! held to account ([`eval`] does the measuring). That lets code own the
-//! workflow: the model supplies a number, and the threshold that turns the
-//! number into an action is written, tested and tuned in code, with no new
-//! inference when the threshold changes. The application this crate came from
-//! chose calibrated judgments over generated text for that reason; this crate
-//! is that choice made reusable.
-//!
-//! ## What this crate guarantees
-//!
-//! The wire is a map of `id -> question` going out and `id -> answer` coming
-//! back, and nothing on it ties an answer to the type of the question it
-//! answers. This crate closes that gap on the Rust side:
-//!
-//! * A question's handle fixes its answer's type. [`Questions::noul`],
-//!   [`Questions::choice`] and [`Questions::score`] return a [`Handle`] whose
-//!   type parameter is the answer type. [`Response::get`] checks the id and the
-//!   primitive, and maps a typed Choice's option key back to the enum. A
-//!   mismatch is an [`Error`], never a misread number.
-//! * A response answers the questions it was sent. [`Response::verify`]
-//!   checks that every question has an answer of its primitive, that a
-//!   Choice names only options it offered and that a Score is on the scale
-//!   it sent, and every backend ([`Client`], [`Fake`], [`Replay`],
-//!   [`Recorder`]) calls it before returning. A response that does not fit
-//!   is an [`Error`] naming the question and carrying the request id, never
-//!   an answer read as a guess.
-//! * Probabilities are validated newtypes. [`Probability`] and [`Confidence`]
-//!   refuse values outside `[0, 1]` on construction and on deserialisation,
-//!   and they are distinct types, so a caller cannot threshold one as the
-//!   other.
-//! * Decoding is tolerant and reading is strict. What the API may add does
-//!   not fail a response: an answer of a kind this release does not know is
-//!   kept as [`Answer::Unknown`] (and logged at `warn` by the client), a
-//!   missing `usage` reads as zero, and undocumented top-level fields are
-//!   kept in [`Response::extra`]. A known answer that breaks its own shape
-//!   is still an error. An unknown answer under a question that was asked
-//!   fails the call ([`Error::AnswerTypeMismatch`] through
-//!   [`Response::verify`], naming its kind); under an id nobody asked it is
-//!   kept.
-//! * Limits are checked before sending. 255 options per Choice, 2 to 10 levels
-//!   per Score (the HTTP API reference page's limits, stricter than the
-//!   OpenAPI document, which bounds neither above) and unique ids are
-//!   enforced by the builder, so a bad question is an error naming the
-//!   question, not a round trip whose outcome nobody has observed.
-//! * Retries take the official SDKs' retry count, backoff and retried
-//!   statuses; [`RetryPolicy`] states where they differ (the total budget
-//!   and the server-wait cap among them), bounds the worst case, and gives
-//!   the reasoning behind each field.
-//!
-//! ## What it deliberately is not
-//!
-//! * Not a sync client, and no batching or streaming. The API documents one
-//!   evaluation endpoint (and a model listing) and one request shape, and one
-//!   request already carries many questions. A caller that must block can
-//!   block on the future.
-//! * Not a metrics backend. A library must not choose one for the application
-//!   that embeds it. The crate emits `tracing` spans and hands token usage and
-//!   failed attempts to an [`Observer`]; the application counts them where it
-//!   counts everything else.
-//! * Not tied to the hosted model. [`SystemOne`] is a one-method trait, and
-//!   the code that consumes judgments never knows whether they came from the
-//!   hosted model, a [`Fake`] in a test or a [`Replay`] of recorded answers.
-//!   Should TypeSafe publish an official Rust SDK, it slots in as one more
-//!   backend behind the same trait.
-//!
-//! ## Walkthrough
+//! [`Questions`] builds a request, and each question returns a [`Handle`]
+//! whose type parameter is its answer's type. A [`SystemOne`] backend
+//! ([`Client`] over HTTP, [`Fake`] in a test, [`Replay`] and [`Recorder`]
+//! over recordings) answers it with a [`Response`], verified against the
+//! questions it was sent before it is returned ([`Response::verify`]), and
+//! [`Response::get`] reads an answer through its handle. A mismatch anywhere
+//! is an [`Error`], grouped by what fixes it, never a misread number.
 //!
 //! ```no_run
 //! use judgment::{Client, Questions, options};
@@ -116,68 +50,23 @@
 //! # Ok(()) }
 //! ```
 //!
-//! ## Patterns
+//! ## Features and modules
 //!
-//! TypeSafe documents four shapes a System One call takes inside a larger
-//! program (<https://docs.typesafe.ai/patterns>). The crate's `examples/`
-//! directory holds one runnable example per shape, each replaying recorded
-//! answers of the hosted model by default and taking `--live` or `--record`
-//! to call it:
+//! * `http` (default): [`client`] and the [`http`] retry loop, with the
+//!   official SDKs' defaults and retries ([`RetryPolicy`] states where they
+//!   differ); the loop is public so another client over `reqwest` can share
+//!   it. Without the feature the crate is [`question`], [`answer`], the
+//!   other [`backend`]s, [`error`], [`eval`] (recordings, graded judgments,
+//!   accuracy, Brier score and calibration error) and [`observer`] (the seam
+//!   for an application's own metrics), for a project that brings its own
+//!   transport.
+//! * `openapi`: `contract`, the vendored TypeSafe OpenAPI document as text.
+//! * `jud`: `jud`, the `.jud` format for rubrics, cases and recordings
+//!   (`docs/jud.md`).
 //!
-//! * **Speculative fan-out** (`fan_out`): every question the decision tree
-//!   might need goes in one request, as typed [`Handle`]s on one
-//!   [`Questions`]; the branch that is taken reads its handles and the
-//!   others go unread. Answered in parallel, the extra questions cost input
-//!   tokens rather than latency.
-//! * **Confidence-gated routing** (`confidence_routing`): a [`Choice`]'s
-//!   [`Confidence`] is a second axis. A floor sends uncertainty to a person,
-//!   and each action sets its own bar by what a wrong one would cost.
-//!   [`Choice::confidence_from_probabilities`] shows the formula behind the
-//!   wire's value.
-//! * **Composite scoring** (`composite_scoring`): several atomic [`Score`]s,
-//!   normalised and combined with weights the code owns. The weights change
-//!   over recorded answers, [`Recorder`] then [`Replay`], with no new
-//!   inference.
-//! * **Intent routing** (`intent_routing`): a [`Choice`] and a [`Score`] in
-//!   one request put a cheap classifier in front of expensive handlers, a
-//!   [`Confidence`] read off each gating what is automated.
-//!
-//! `docs/patterns.md` says how each example is run, tested and re-recorded,
-//! and what the recordings teach about thresholds and determinism.
-//!
-//! ## Modules
-//!
-//! * [`question`] builds requests; each question returns a typed [`Handle`].
-//! * [`answer`] validates probabilities, decodes wire answers tolerantly and
-//!   converts them into typed views through those handles.
-//! * [`client`] (feature `http`, on by default) talks HTTP with the SDKs'
-//!   defaults, retries and errors; the differences are stated on
-//!   [`RetryPolicy`]. [`Client::evaluate_with`] takes a [`CallOptions`] for
-//!   one call's timeout, retry policy, headers and extra body fields, and
-//!   refuses any that would replace what the client sets itself.
-//! * [`http`] (feature `http`) is the retry loop and
-//!   [`RetryPolicy`], public so another client over
-//!   `reqwest` can share them.
-//! * [`error`] is one enum, grouped by what fixes each variant.
-//! * [`backend`] is where answers come from: [`SystemOne`] is the trait,
-//!   [`Client`] one implementation, [`Fake`],
-//!   [`Recorder`] and [`Replay`] the others.
-//! * [`eval`] measures: recordings for replay, graded judgments, accuracy,
-//!   Brier score and calibration error per question.
-//! * [`observer`] is the seam an application uses to count tokens and failed
-//!   attempts in its own metrics.
-//! * `contract` (feature `openapi`, off by default) is the vendored TypeSafe
-//!   OpenAPI document as text, for an application that validates its own
-//!   traffic against the contract this crate is tested against.
-//! * `jud` (feature `jud`, off by default) reads and writes the `.jud`
-//!   format: a rubric (questions in wire shape with the policy that reads
-//!   their answers), the labelled cases it is graded on and the recordings
-//!   of what a model answered, each with a content fingerprint any
-//!   implementation computes the same way (`docs/jud.md`).
-//!
-//! Without the `http` feature the crate is the question builder, the typed
-//! answers, the backends other than the client, and the recordings and
-//! metrics, for a project that brings its own transport.
+//! The runnable examples under `examples/` cover the four patterns TypeSafe
+//! documents (<https://docs.typesafe.ai/patterns>); `docs/patterns.md` says
+//! how they are run and re-recorded.
 
 pub mod answer;
 pub mod backend;

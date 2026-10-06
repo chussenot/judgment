@@ -13,6 +13,7 @@ nav:
   - Overview: index.md
   - How judgment works: design.md
   - What is in the crate: tour.md
+  - How the crate is implemented: implementation.md
   - Patterns: patterns.md
   - Testing without the model: testing.md
   - The .jud format: jud.md

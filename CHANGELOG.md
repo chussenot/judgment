@@ -8,6 +8,22 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `docs/implementation.md`, the rules the code applies and why: the path
+  of one call through the modules, the tolerant decoder, what the response
+  check leaves unchecked, how an error body is read, what a per-call option
+  replaces, the retry loop's edge rules, how recordings are keyed, the
+  metric definitions and the `.jud` reader's mechanics, with diagrams.
+
+### Changed
+
+- The comments in `src/` say why and no longer what, once each: dated
+  observations, run numbers, server version histories and restatements of
+  the code moved to the documentation or went; `src/` is about 1,800 lines
+  shorter with no code changed, every public item still documented and
+  every intra-doc link resolving.
+
+### Added
+
 - `tools/systemone/serve.py`, the shim that was `examples/laya/serve_laya.py`,
   serves the wire over a choice of open-weight decision models: Laya in
   this process, the request's `model` choosing among several checkpoints,

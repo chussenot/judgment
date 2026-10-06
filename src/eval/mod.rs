@@ -1,22 +1,8 @@
-//! Measuring judgments: recordings for replay, one graded judgment at a
-//! time, and the metrics that say whether a model is right and whether its
-//! confidence means anything.
-//!
-//! A decision model is only useful if its probabilities can be trusted, and
-//! that is a property to measure, not assume: a model that is right 80% of
-//! the time at 0.8 confidence is calibrated, one that is right 50% of the
-//! time at 0.95 is not, and the thresholds an application sets on those
-//! numbers are only as good as that. This module keeps the measuring
-//! generic. What a label means, which question maps to which label, and
-//! what decision the answers should have produced belong to the
-//! application; it hands each answer and its label to [`Judgment`] and each
-//! question's judgments to [`QuestionMetrics::summarise`].
-//!
-//! Recording keeps inference and tuning apart: the judgments do not change
-//! when a threshold does, so a response recorded once is graded again under
-//! every candidate policy without a model call. [`Recording`] is the file
-//! format, keyed by a case id for a harness or by a request hash for a
-//! [`crate::backend::Replay`].
+//! Measuring judgments: recordings for replay, one graded [`Judgment`] per
+//! answer and label, and per-question metrics for accuracy and calibration
+//! (`docs/testing.md` says what the module is for and what it leaves to the
+//! application). A response recorded once is graded again under every
+//! candidate policy without a model call; [`Recording`] is the file format.
 
 pub mod canonical;
 pub mod metrics;
@@ -37,44 +23,31 @@ pub const ECE_BINS: usize = 10;
 /// A raw model response kept for replay.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Recording {
-    /// The case it answers, or the request hash when recorded by a
-    /// [`crate::backend::Recorder`].
+    /// The case it answers, or the request hash under a [`crate::backend::Recorder`].
     pub case: String,
     /// The response as received.
     pub response: Response,
     /// Wall-clock time of the call.
     pub elapsed_ms: u64,
-    /// Content hash of the request, when recorded by a
-    /// [`crate::backend::Recorder`]; absent in a harness's recordings, which
-    /// are keyed by case.
+    /// [`request_hash`] of the request, set by a [`crate::backend::Recorder`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request_hash: Option<String>,
-    /// The request's [canonical fingerprint](canonical::request_fingerprint),
-    /// `sha256:…`: the name any tool gives the same state and questions,
-    /// model excluded. The [`crate::backend::Recorder`] sets it; a harness
-    /// may.
+    /// The request's [`canonical::request_fingerprint`], model excluded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fingerprint: Option<String>,
-    /// The rubric the request's questions came from, by id or fingerprint,
-    /// when a harness knows it.
+    /// The rubric the questions came from, by id or fingerprint, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rubric: Option<String>,
-    /// The server that answered, as a base URL, when known: two servers
-    /// speaking the same wire answer differently, and a recording that
-    /// does not say which is half a measurement.
+    /// The server that answered, as a base URL: two servers on one wire answer differently.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server: Option<String>,
-    /// When the call was made, RFC 3339 in UTC. The
-    /// [`crate::backend::Recorder`] sets it; a `jev-latest` alias moves, and
-    /// the date says which version it could have been.
+    /// When the call was made, RFC 3339 UTC: a `jev-latest` alias moves; the date says which.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recorded_at: Option<String>,
 }
 
 impl Recording {
-    /// A recording of `response` for `case`, with no fingerprint, rubric,
-    /// server or time: a harness that keys recordings by case id fills what
-    /// it knows.
+    /// A recording of `response` for `case`, every optional field unset.
     pub fn new(case: impl Into<String>, response: Response, elapsed_ms: u64) -> Self {
         Self {
             case: case.into(),
@@ -89,9 +62,7 @@ impl Recording {
     }
 }
 
-/// The current time as RFC 3339 in UTC, to the second (`2026-10-04T12:00:00Z`),
-/// what [`Recording::recorded_at`] holds. Computed from the system clock
-/// without a date dependency.
+/// The current time as RFC 3339 UTC to the second, for [`Recording::recorded_at`].
 pub fn now_rfc3339() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -100,15 +71,12 @@ pub fn now_rfc3339() -> String {
     rfc3339_from_unix(secs)
 }
 
-/// RFC 3339 for a UNIX timestamp in seconds, UTC. The civil-date
-/// arithmetic is the proleptic Gregorian algorithm (days to year, month,
-/// day via the 400-year cycle), exact for every date the clock can give.
+/// RFC 3339 for a UNIX timestamp in seconds, UTC, without a date dependency.
 pub fn rfc3339_from_unix(secs: u64) -> String {
     let days = secs / 86_400;
     let rem = secs % 86_400;
     let (hour, minute, second) = (rem / 3600, (rem % 3600) / 60, rem % 60);
-    // Howard Hinnant's civil_from_days, shifted so the era starts on
-    // 0000-03-01.
+    // Howard Hinnant's `civil_from_days` (proleptic Gregorian, era from 0000-03-01).
     let z = days + 719_468;
     let era = z / 146_097;
     let doe = z - era * 146_097;
@@ -161,8 +129,7 @@ pub fn recording_path(dir: &Path, case: &str) -> PathBuf {
     dir.join(format!("{case}.json"))
 }
 
-/// Write `recording` under `dir` (created if needed), pretty-printed and
-/// newline-terminated like any committed text file.
+/// Write `recording` under `dir` (created if needed), pretty-printed and newline-terminated.
 pub fn write_recording(dir: &Path, recording: &Recording) -> Result<PathBuf> {
     std::fs::create_dir_all(dir).map_err(|source| Error::Io {
         path: dir.display().to_string(),
@@ -196,29 +163,18 @@ pub fn read_recording(dir: &Path, case: &str) -> Result<Recording> {
 /// The `z` of a 95% interval, the one the reports print.
 pub const Z_95: f64 = 1.96;
 
-/// A stable fingerprint of any JSON value: the same FNV-1a hash over the
-/// same canonical form that keys a [`Recording`], so a harness can name the
-/// question texts, the option sets or the policy a run was recorded under
-/// and refuse to grade old answers under new questions. Object keys are
-/// sorted and whitespace is dropped, so two serialisations of one value
-/// agree; two values that differ in any content do not.
+/// The crate's own fingerprint of any JSON value, [`request_hash`]'s hash; it still names the
+/// committed recordings, but a new tool should use [`canonical::fingerprint`].
 pub fn fingerprint(value: &Value) -> String {
     let mut canonical = String::new();
     write_canonical(&mut canonical, value);
     format!("{:016x}", fnv1a64(canonical.as_bytes()))
 }
 
-/// A stable content hash of a request: the same state and questions give
-/// the same hash whatever order their keys were inserted in and whatever
-/// model alias was asked for.
-///
-/// It names recording files, so it must not change between runs, machines
-/// or toolchains. The standard library's `DefaultHasher` promises none of
-/// that (its algorithm and seeding may change between Rust versions), so
-/// this is FNV-1a over a canonical rendering of the JSON with keys sorted at
-/// every level: sixteen hex digits, no dependency, the same result anywhere.
-/// FNV is not collision-resistant against an adversary; for a directory of
-/// recordings an accidental collision is negligible.
+/// A content hash of `{"questions": …, "state": …}`, model excluded, that
+/// names recording files: FNV-1a over key-sorted JSON, because it must not
+/// change across runs, machines or toolchains and `DefaultHasher` promises
+/// none of that. Not collision-resistant against an adversary.
 pub fn request_hash(state: &Value, questions: &Questions) -> String {
     let questions = serde_json::to_value(questions).unwrap_or(Value::Null);
     let mut canonical = String::new();
@@ -236,9 +192,6 @@ pub fn request_hash(state: &Value, questions: &Questions) -> String {
     format!("{:016x}", fnv1a64(canonical.as_bytes()))
 }
 
-/// FNV-1a over bytes: fixed, dependency-free and stable across Rust
-/// releases, unlike `DefaultHasher`, so a recording keyed today is found
-/// tomorrow.
 fn fnv1a64(bytes: &[u8]) -> u64 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for byte in bytes {
@@ -248,8 +201,7 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
     hash
 }
 
-/// JSON with object keys sorted at every level, so two equal values render
-/// the same bytes whichever order their keys were inserted in.
+/// Keys sorted by scalar value, numbers as `serde_json` prints them: not RFC 8785.
 fn write_canonical(out: &mut String, value: &Value) {
     match value {
         Value::Object(map) => {
@@ -280,8 +232,7 @@ fn write_canonical(out: &mut String, value: &Value) {
     }
 }
 
-/// One graded judgment: what the model said, what the label said, and how
-/// sure the model was.
+/// One graded judgment: what the model said, what the label said, how sure it was.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Judgment {
     /// What the model chose (or the application's reading of it).
@@ -290,15 +241,13 @@ pub struct Judgment {
     pub expected: Option<String>,
     /// `predicted == expected`, when labelled.
     pub correct: Option<bool>,
-    /// The model's confidence in `predicted`: the Choice or Score
-    /// confidence, or `max(p, 1 - p)` for a Noul.
+    /// Confidence in `predicted`: the Choice or Score confidence, `max(p, 1 - p)` for a Noul.
     pub confidence: f64,
     /// Probability the model put on the expected option, when labelled.
     pub p_expected: Option<f64>,
     /// The full distribution, keyed by option.
     pub probabilities: BTreeMap<String, f64>,
-    /// False when the question was not asked for this state and the answer
-    /// is the implied one; such judgments are graded but marked.
+    /// False when the question was not asked and the answer is the implied one: graded but marked.
     pub asked: bool,
 }
 
@@ -326,8 +275,7 @@ impl Judgment {
         }
     }
 
-    /// Grade a yes/no probability against a boolean label: `yes` at 0.5 and
-    /// above, confidence `max(p, 1 - p)`.
+    /// Grade a yes/no probability against a bool label: `yes` from 0.5, confidence `max(p, 1 - p)`.
     pub fn noul(p_yes: f64, expected: Option<bool>, asked: bool) -> Self {
         let predicted = if p_yes >= 0.5 { "yes" } else { "no" };
         Self::new(
@@ -339,28 +287,14 @@ impl Judgment {
         )
     }
 
-    /// Grade a wire answer as the model returned it: a Choice by its option
-    /// keys, a Score by its level indices as strings, a Noul as `yes` or
-    /// `no`. An application that names its levels grades through
-    /// [`Self::new`] instead.
+    /// Grade a wire answer as returned (a Choice by option key, a Score by level index as a
+    /// string, a Noul as `yes` or `no`); an application that names its levels uses [`Self::new`].
     ///
-    /// An [`Answer::Unknown`] is graded, not dropped, because dropping it
-    /// would raise the accuracy of a model whose answers could not be read.
-    /// It is a miss whenever there is a label, even an empty one: predicted
-    /// `<kind>` (the escaped kind in angle brackets, which no option key
-    /// equals), probability zero on the label, confidence 0.0 and no
-    /// distribution. In [`QuestionMetrics::summarise`] it lowers accuracy
-    /// and costs a Brier score of 1.0, but its (0.0, wrong) calibration pair
-    /// is perfectly calibrated, so it pulls the expected calibration error
-    /// and the confidence when wrong toward zero. That is accepted because
-    /// the case is rare and loud: an unknown kind means this crate is older
-    /// than the server, the client logs each one at `warn`, and the
-    /// `<kind>` it predicts stands out in the confusion matrix. It is rarer
-    /// still because every backend verifies its response
-    /// ([`Response::verify`](crate::Response::verify)), which refuses an
-    /// unknown answer under an asked question: only an unverified response,
-    /// such as one read by case id with [`read_recording`] or built by hand,
-    /// or an answer to a question nobody asked, can bring one here.
+    /// An [`Answer::Unknown`] is a miss, not dropped, since dropping it would
+    /// raise the accuracy of a model whose answers cannot be read: predicted
+    /// `<kind>`, confidence 0.0, no distribution. Its (0.0, wrong) pair pulls
+    /// the ECE toward zero; accepted because the `<kind>` stands out in the
+    /// confusion matrix and only an unverified response can bring one here.
     pub fn of_answer(answer: &Answer, expected: Option<&str>) -> Self {
         match answer {
             Answer::Unknown(_) => Self {
@@ -422,13 +356,11 @@ pub struct QuestionMetrics {
     pub correct: usize,
     /// `correct / labelled`.
     pub accuracy: Option<f64>,
-    /// 95% Wilson interval around `accuracy`, `(low, high)`; see
-    /// [`metrics::wilson_interval`] for why an interval is reported beside
-    /// the ratio. Independent observations are assumed.
+    /// 95% [Wilson interval](metrics::wilson_interval) around `accuracy`, `(low, high)`.
     pub accuracy_interval95: Option<(f64, f64)>,
-    /// Mean multi-class Brier score (0 perfect, 2 worst).
+    /// Mean multi-class [Brier score](metrics::brier) (0 perfect, 2 worst).
     pub brier: Option<f64>,
-    /// Expected calibration error of the prediction confidence.
+    /// [Expected calibration error](metrics::expected_calibration_error) of the confidence.
     pub ece: Option<f64>,
     /// Mean confidence when right.
     pub confidence_when_right: Option<f64>,
@@ -439,11 +371,9 @@ pub struct QuestionMetrics {
 }
 
 impl QuestionMetrics {
-    /// Aggregate the judgments of one question; unlabelled ones are
-    /// counted in nothing. An expected option the model never offered counts
-    /// as a miss with probability zero, so a label outside the option set
-    /// hurts the score rather than vanishing. `ece_bins` is usually
-    /// [`ECE_BINS`].
+    /// Aggregate one question's labelled judgments. A label the model never
+    /// offered adds 1.0 to that Brier score (the missing `(1 - 0)²` term), so
+    /// it hurts rather than vanishes. `ece_bins` is usually [`ECE_BINS`].
     #[allow(clippy::cast_precision_loss)] // counts, far below 2^52
     pub fn summarise<'a>(
         judgments: impl IntoIterator<Item = &'a Judgment>,
@@ -531,7 +461,6 @@ mod tests {
         assert_eq!(fingerprint(&one), fingerprint(&two));
         assert_ne!(fingerprint(&one), fingerprint(&json!({ "x": 2 })));
         assert_eq!(fingerprint(&one).len(), 16);
-        // The same bytes hash the same way whichever entry point is used.
         let mut q = Questions::new();
         q.noul("a", "Is `x` set?", None).unwrap();
         let questions = serde_json::to_value(&q).unwrap();
@@ -549,7 +478,6 @@ mod tests {
         let m = QuestionMetrics::summarise(&js, ECE_BINS);
         assert_eq!(m.accuracy, Some(1.0));
         let (low, high) = m.accuracy_interval95.unwrap();
-        // 3 of 3: the ratio is 1.0 but the interval is wide and inside [0, 1].
         assert!((0.43..0.44).contains(&low), "{low}");
         assert!((high - 1.0).abs() < 1e-12, "{high}");
         assert_eq!(
@@ -584,7 +512,7 @@ mod tests {
                         noul: Probability::new(0.7).unwrap(),
                     },
                 ),
-                // An answer of a kind this release does not know is kept.
+                // An unknown kind and an undocumented field both survive.
                 (
                     "b".to_owned(),
                     Answer::Unknown(json!({ "type": "rank", "ranking": ["x", "y"] })),
@@ -595,12 +523,10 @@ mod tests {
                 output_tokens: 2,
             },
             request_id: None,
-            // And so is a field the server added beyond the documented shape.
             extra: BTreeMap::from([("routing".to_owned(), json!({ "model": "typed-decisions" }))]),
         };
         let keyed = Recording::new("case-1", response.clone(), 5);
         write_recording(&dir, &keyed).unwrap();
-        // The harness's format has no hash field at all.
         let text = std::fs::read_to_string(recording_path(&dir, "case-1")).unwrap();
         assert!(!text.contains("request_hash"));
         assert!(text.ends_with('\n'));
@@ -616,8 +542,6 @@ mod tests {
 
     #[test]
     fn a_recording_made_before_0_2_reads_with_no_request_id() {
-        // The shape every recording had before responses carried the
-        // request id: no `request_id` key anywhere.
         let text = r#"{
           "case": "0123456789abcdef",
           "response": {
@@ -630,8 +554,6 @@ mod tests {
         }"#;
         let recording: Recording = serde_json::from_str(text).unwrap();
         assert_eq!(recording.response.request_id, None);
-        // Written back, it gains no key: an old recording re-serialises as
-        // it was.
         let again = serde_json::to_string(&recording).unwrap();
         assert!(!again.contains("request_id"), "{again}");
     }
@@ -678,8 +600,7 @@ mod tests {
         assert_eq!(m.correct, 1);
         assert!((m.accuracy.unwrap() - 0.5).abs() < 1e-12);
         assert_eq!(m.confusion["sales"]["billing"], 1);
-        // The wrong case expected an option never offered: its Brier is
-        // the plain score plus one.
+        // `wrong` expected an option never offered: plain Brier plus one.
         let plain = metrics::brier(&[(false, 0.8), (false, 0.2)]);
         let expected_brier = (metrics::brier(&[(true, 0.8), (false, 0.2)]) + plain + 1.0) / 2.0;
         assert!((m.brier.unwrap() - expected_brier).abs() < 1e-12);
@@ -717,10 +638,7 @@ mod tests {
             QuestionMetrics::summarise([&Judgment::of_answer(&rank, Some("billing"))], ECE_BINS);
         assert_eq!((m.labelled, m.correct), (1, 0));
         assert_eq!(m.accuracy, Some(0.0));
-        // No distribution, and the label is not in it: a Brier of 1.0.
         assert_eq!(m.brier, Some(1.0));
-        // A (0.0, wrong) pair is perfectly calibrated: it pulls the ECE and
-        // the confidence when wrong toward zero.
         assert_eq!(m.ece, Some(0.0));
         assert_eq!(m.confidence_when_wrong, Some(0.0));
         assert_eq!(m.confidence_when_right, None);

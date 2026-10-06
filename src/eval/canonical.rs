@@ -1,29 +1,12 @@
 //! Canonical JSON and the fingerprint over it: the one way two tools name
 //! the same request, rubric or document.
 //!
-//! A recording is found by the request it answers, and a policy is tuned
-//! against a particular set of questions, so both need a name for "this
-//! JSON" that does not depend on who serialised it. Byte-hashing the request
-//! fails as soon as two clients order keys differently or print `1.0` and
-//! `1` apart; the fix is to hash a canonical rendering. The rendering here is
-//! [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785), the JSON
-//! Canonicalization Scheme: no whitespace, object keys sorted by their UTF-16
-//! code units, strings escaped as JSON requires and no more, and numbers
-//! written as ECMAScript's `Number.prototype.toString` writes them, so `1.0`
-//! and `1` are one number and `1e21` is `1e+21`. Any implementation of the
-//! scheme, in any language, produces the same bytes and so the same hash.
-//!
-//! The fingerprint is `sha256:` followed by the lowercase hex SHA-256 of
-//! those bytes. [`request_fingerprint`] names a request by its `state` and
-//! `questions` only: the model is not part of the key, so the same request
-//! answered by two models yields two recordings under one name, which is
-//! what a comparison needs.
-//!
-//! The older [`crate::eval::fingerprint`] and [`crate::eval::request_hash`]
-//! are a 64-bit FNV-1a over a near-canonical form (keys sorted by Unicode
-//! scalar value, numbers as `serde_json` prints them). They still name the
-//! committed recordings and stay as they are; a new tool should use this
-//! module.
+//! Byte-hashing fails as soon as two clients order keys differently or print
+//! `1.0` and `1` apart, so the hash is over the
+//! [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) rendering; `docs/jud.md`
+//! states the rules and a known vector. The older [`crate::eval::fingerprint`]
+//! (FNV-1a over a near-canonical form) still names the committed recordings;
+//! a new tool should use this module.
 
 use std::fmt::Write as _;
 
@@ -50,9 +33,8 @@ pub fn fingerprint(value: &Value) -> String {
     hex
 }
 
-/// The fingerprint of a request: `{"questions": …, "state": …}`, model
-/// excluded, so the same state and questions name the same request whatever
-/// model, alias or client asked.
+/// The fingerprint of `{"questions": …, "state": …}`, model left out so the
+/// same request answered by two models yields two recordings under one name.
 pub fn request_fingerprint(state: &Value, questions: &Questions) -> String {
     let questions = serde_json::to_value(questions).unwrap_or(Value::Null);
     fingerprint(&Value::Object(
@@ -70,9 +52,8 @@ fn write(out: &mut String, value: &Value) {
         Value::Null => out.push_str("null"),
         Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
         Value::Number(n) => write_number(out, n),
-        // serde_json escapes `"`, `\` and the control characters, the
-        // latter as `\b \f \n \r \t` or lowercase `\u00xx`, and nothing
-        // else: the escaping RFC 8785 requires.
+        // serde_json escapes `"`, `\` and the control characters (`\b \f \n
+        // \r \t`, else lowercase `\u00xx`) and nothing else: RFC 8785's rule.
         Value::String(s) => out.push_str(&serde_json::to_string(s).unwrap_or_default()),
         Value::Array(items) => {
             out.push('[');
@@ -101,10 +82,6 @@ fn write(out: &mut String, value: &Value) {
     }
 }
 
-/// A number as ECMAScript prints it: an integer without a fraction, a
-/// fraction in positional notation between `1e-7` and `1e21`, exponent
-/// notation with an explicit sign outside that range, the shortest digits
-/// that round-trip throughout.
 fn write_number(out: &mut String, n: &serde_json::Number) {
     if let Some(i) = n.as_i64() {
         out.push_str(&i.to_string());
@@ -115,13 +92,14 @@ fn write_number(out: &mut String, n: &serde_json::Number) {
     }
 }
 
-/// `Number.prototype.toString` for a finite `f64`.
+/// ECMAScript's `Number.prototype.toString` for a finite `f64`: shortest round-trip digits,
+/// positional while the decimal point `n` is in `-6 < n <= 21`, else exponent with a sign.
 fn ecmascript(number: f64) -> String {
     if number == 0.0 {
         return "0".to_owned();
     }
     let negative = number < 0.0;
-    // Rust's `{:e}` is the shortest round-trip digits, as `d.ddde±x`.
+    // Rust's `{:e}` gives the shortest round-trip digits as `d.ddde±x`.
     let sci = format!("{:e}", number.abs());
     let (mantissa, exponent) = sci.split_once('e').unwrap_or((&sci, "0"));
     let exponent: i64 = exponent.parse().unwrap_or(0);
@@ -129,8 +107,7 @@ fn ecmascript(number: f64) -> String {
     let digits = digits.trim_end_matches('0');
     let digits = if digits.is_empty() { "0" } else { digits };
     let digit_count = i64::try_from(digits.len()).unwrap_or(i64::MAX);
-    // The position of the decimal point relative to the digits (ECMAScript's
-    // `n`): `digits × 10^(point − digit_count)`.
+    // ECMAScript's `n`: the value is `digits × 10^(point − digit_count)`.
     let point = exponent + 1;
     let mut out = String::new();
     if negative {
@@ -181,8 +158,8 @@ mod tests {
 
     #[test]
     fn keys_sort_by_utf16_units_as_rfc_8785_requires() {
-        // U+1D11E (a surrogate pair in UTF-16, first unit 0xD834) sorts
-        // before U+FB01 (one unit) in UTF-16 and after it by scalar value.
+        // U+1D11E (surrogate pair, first unit 0xD834) sorts before U+FB01
+        // in UTF-16 and after it by scalar value.
         let v = json!({"\u{FB01}": 1, "\u{1D11E}": 2, "a": 3});
         assert_eq!(to_string(&v), "{\"a\":3,\"\u{1D11E}\":2,\"\u{FB01}\":1}");
     }
@@ -225,8 +202,7 @@ mod tests {
 
     #[test]
     fn a_known_vector() {
-        // Recomputable with any SHA-256 tool over the bytes `{"a":1,"b":"x"}`
-        // (`printf '{"a":1,"b":"x"}' | sha256sum`).
+        // The vector `docs/jud.md` publishes: `printf '{"a":1,"b":"x"}' | sha256sum`.
         let v = json!({"b": "x", "a": 1});
         assert_eq!(to_string(&v), r#"{"a":1,"b":"x"}"#);
         assert_eq!(
