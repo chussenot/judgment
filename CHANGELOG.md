@@ -23,19 +23,6 @@ All notable changes to the `judgment` crate. The format follows
   the six tasks it was tested on, and three commands, `/jud:rubric`,
   `/jud:cases` and `/jud:check`. `docs/skill.md` says how it works and how
   to install it.
-- Names and refusals in the `.jud` reader (`docs/jud.md`): every
-  `metadata.name` and every case id is a name (letters, digits, `.`, `_`,
-  `-`, starting with a letter or a digit), so a case never reaches the file
-  system as a path; a merge key and a tag the core schema does not define
-  are refused with their position, and a `!!binary` scalar is its text,
-  never decoded; a syntax error names a line and a column and quotes
-  nothing. `Rubric::policy_fingerprint` is the fingerprint of the gates
-  alone, so a moved threshold is as visible as a changed question.
-  `eval::is_name` states the grammar; `eval::write_recording` and
-  `eval::read_recording` refuse a case id that is not a name
-  (`eval::Error::NotAName`). `Replay::open` skips symlinks and
-  subdirectories, and a replay looks a request up by its SHA-256
-  fingerprint before the FNV request hash.
 
 ### Changed
 
@@ -59,8 +46,34 @@ All notable changes to the `judgment` crate. The format follows
   `examples/jud_quickstart.rs` and the README, and the JSON Schemas carry
   the new envelope. No fingerprint changes: every fingerprint is over a
   value inside `spec`, and the envelope is part of none.
-- `examples/jud_calibration.rs` prints the policy fingerprint beside the
+
+## [0.7.0] - 2026-10-06
+
+### Added
+
+- `.jud` version 1.2 (decision 0017; `docs/jud.md`): no new field. Every
+  id is a name (letters, digits, `.`, `_`, `-`, starting with a letter or
+  a digit), so a case id never reaches the file system as a path; a merge
+  key and a tag the core schema does not define are refused with their
+  position, and a `!!binary` scalar is its text, never decoded; a syntax
+  error names a line and a column and quotes nothing. `Rubric::policy_fingerprint`
+  is the fingerprint of the gates alone, so a moved threshold is as visible
+  as a changed question. `eval::is_name` states the grammar.
+
+### Changed
+
+- Every document under `examples/jud/` and `examples/recordings/jud_calibration/`,
+  and the rubric in `examples/jud_quickstart.rs` and the README, declares
+  `jud: 1.2`; no fingerprint changes, the version being part of none.
+  `examples/jud_calibration.rs` prints the policy fingerprint beside the
   questions'.
+- The `.jud` reader applies the 1.2 rules to every version it reads: a
+  document that used a merge key, a foreign tag or a path-shaped id is
+  refused, naming the position or the field. `eval::write_recording` and
+  `eval::read_recording` refuse a case id that is not a name
+  (`eval::Error::NotAName`). `Replay::open` skips symlinks and
+  subdirectories, and a replay looks a request up by its SHA-256
+  fingerprint before the FNV request hash.
 
 ## [0.6.1] - 2026-10-06
 
