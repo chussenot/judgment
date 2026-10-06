@@ -1,24 +1,11 @@
-//! Choosing a bar from graded judgments: where a Noul starts reading as
-//! yes, and how sure a Choice or a Score has to be before its answer is
-//! acted on.
+//! Choosing a bar from graded judgments: where a Noul starts reading as yes, and how sure a
+//! Choice or a Score must be before its answer is acted on.
 //!
-//! A threshold is the one number in a decision policy that cannot be read
-//! off the documentation: it is a property of the model, the questions and
-//! the data together, and it moves when any of the three does. These
-//! functions turn labelled judgments into the two tables that make the
-//! choice visible: a sweep over thresholds for a yes/no question (what each
-//! threshold buys in precision, recall and F1) and a gate table for a Choice
-//! or a Score (what share of the answers each confidence bar lets through,
-//! and how often those are right), and a sweep over levels for a Score read
-//! as "this level or higher" (a `level_at_least` gate). [`best_threshold`],
-//! [`lowest_bar`] and [`best_level`] pick from the tables by a stated rule;
-//! the rule is the policy, and it is printed with the result rather than
-//! hidden in it. A rubric's bands are bars of one gate table: each band's
-//! `at_least` is read off the same rows.
-//!
-//! Everything here is pure arithmetic over [`Judgment`]s and leaves the
-//! choice of whether to apply a bar to the application; the `jud` module's
-//! policy carries the chosen numbers with their provenance.
+//! A threshold depends on the model, the questions and the data together, so it is read off a
+//! table ([`threshold_sweep`], [`gate_table`], [`level_sweep`]) rather than guessed, and
+//! [`best_threshold`], [`lowest_bar`] and [`best_level`] pick by a stated rule that is printed
+//! with the result (`docs/testing.md`). Whether to apply a bar is the application's choice; a
+//! `.jud` rubric's policy carries the numbers.
 
 // Counts are small; the casts to f64 are exact in practice.
 #![allow(clippy::cast_precision_loss)]
@@ -59,8 +46,7 @@ pub struct GateRow {
     pub n: usize,
     /// Judgments at or above the bar.
     pub covered: usize,
-    /// `covered / n`: the share of answers the bar lets through; the rest
-    /// go to a person or a fallback.
+    /// `covered / n`: the share the bar lets through; the rest go to a person or a fallback.
     pub coverage: f64,
     /// Correct judgments among the covered.
     pub correct: usize,
@@ -68,23 +54,19 @@ pub struct GateRow {
     pub accuracy: Option<f64>,
 }
 
-/// Thresholds from 0.05 to 0.95 in steps of 0.05, the sweep a report prints.
+/// Thresholds from 0.05 to 0.95 in steps of 0.05.
 pub fn default_thresholds() -> Vec<f64> {
     (1..=19).map(|i| f64::from(i) / 20.0).collect()
 }
 
-/// Bars from 0 to 0.95 in steps of 0.05: the first row is "act on
-/// everything", the baseline every other row is compared with.
+/// Bars from 0 to 0.95 in steps of 0.05; the first row, "act on everything", is the baseline.
 pub fn default_bars() -> Vec<f64> {
     (0..=19).map(|i| f64::from(i) / 20.0).collect()
 }
 
-/// Sweep the thresholds over the judgments of one yes/no question.
-///
-/// A judgment takes part when it is labelled and carries a `yes`
-/// probability (as [`Judgment::noul`] and [`Judgment::of_answer`] produce);
-/// the others are skipped, so a Choice's judgments handed here by mistake
-/// yield rows over zero cases rather than nonsense.
+/// Sweep the thresholds over one yes/no question's judgments. Only labelled
+/// judgments with a `yes` probability take part, so a Choice's judgments
+/// handed here by mistake yield rows over zero cases rather than nonsense.
 pub fn threshold_sweep<'a>(
     judgments: impl IntoIterator<Item = &'a Judgment>,
     thresholds: &[f64],
@@ -138,17 +120,15 @@ pub fn threshold_sweep<'a>(
         .collect()
 }
 
-/// The threshold with the best F1; among equals, the lowest, because a
-/// lower threshold says yes more often and a tie means the extra yeses
-/// cost nothing in F1. `None` when no row has an F1 (nothing labelled yes).
+/// The threshold with the best F1; among equals, the lowest, because a lower
+/// threshold says yes more often and a tie means the extra yeses cost
+/// nothing in F1. `None` when no row has an F1 (nothing labelled yes).
 pub fn best_threshold(rows: &[ThresholdRow]) -> Option<f64> {
     rows.iter()
         .filter_map(|row| row.f1.map(|f1| (f1, row.threshold)))
         .fold(
             None,
             |best: Option<(f64, f64)>, (f1, threshold)| match best {
-                // Keep the incumbent unless this row's F1 is higher, or equal with
-                // a lower threshold.
                 Some((best_f1, best_threshold))
                     if f1 < best_f1 || (f1 <= best_f1 && threshold > best_threshold) =>
                 {
@@ -160,9 +140,8 @@ pub fn best_threshold(rows: &[ThresholdRow]) -> Option<f64> {
         .map(|(_, threshold)| threshold)
 }
 
-/// One row of a level sweep over a Score: the decision "the nearest level
-/// is `level` or higher", against the label "the expected level is `level`
-/// or higher".
+/// One row of a level sweep over a Score: "the nearest level is `level` or
+/// higher" against the label "the expected level is `level` or higher".
 #[derive(Debug, Clone, PartialEq)]
 pub struct LevelRow {
     /// The level the decision starts at.
@@ -187,20 +166,12 @@ pub struct LevelRow {
     pub f1: Option<f64>,
 }
 
-/// Sweep "this level or higher" over the judgments of one Score with
-/// `levels` levels, for every level from 1 (level 0 is reached by every
-/// answer).
-///
-/// The level an answer reached is its nearest level, the probability-
-/// weighted position `Σ i · p_i` rounded, the reading a rubric gate's
-/// `level_at_least` makes ([`crate::jud::Rubric::apply`]), not the most
-/// probable level a [`Judgment`] reports as `predicted`: the two differ on
-/// a spread distribution. It is recomputed from the judgment's
-/// probabilities, so at a .5 boundary it can round apart from the wire's
-/// rounded `score` the gate reads, and it counts every labelled answer,
-/// including those a gate's confidence bar would defer. A
-/// judgment takes part when it is labelled with a level index and carries
-/// level probabilities; the others are skipped.
+/// Sweep "this level or higher" over one Score's judgments, for every level from 1 (level 0
+/// is reached by every answer). The level reached is the nearest level, `Σ i · p_i` rounded, as
+/// a rubric gate's `level_at_least` reads it ([`crate::jud::Rubric::apply`]), not the most
+/// probable level in `predicted`: the two differ on a spread distribution. Recomputed from the
+/// probabilities, it can round apart from the wire's `score` at a .5 boundary, and every
+/// labelled answer counts, including those a confidence bar would defer.
 pub fn level_sweep<'a>(
     judgments: impl IntoIterator<Item = &'a Judgment>,
     levels: usize,
@@ -215,7 +186,6 @@ pub fn level_sweep<'a>(
                 position += level.parse::<usize>().ok()? as f64 * p;
                 any = true;
             }
-            // Rounded and clamped to the scale, as `Score::nearest_level`.
             let nearest = crate::answer::nearest_index(position, levels);
             any.then_some((nearest, expected))
         })
@@ -260,9 +230,8 @@ pub fn level_sweep<'a>(
         .collect()
 }
 
-/// The level with the best F1; among equals, the lowest, for the reason
-/// [`best_threshold`] takes the lowest threshold. `None` when no row has
-/// an F1.
+/// The level with the best F1; among equals, the lowest, as
+/// [`best_threshold`] takes the lowest threshold. `None` when no row has an F1.
 pub fn best_level(rows: &[LevelRow]) -> Option<usize> {
     rows.iter()
         .filter_map(|row| row.f1.map(|f1| (f1, row.level)))
@@ -277,9 +246,8 @@ pub fn best_level(rows: &[LevelRow]) -> Option<usize> {
         .map(|(_, level)| level)
 }
 
-/// The gate table over the judgments of one Choice or Score: for each bar,
-/// how many labelled judgments have a confidence at or above it and how
-/// many of those are right.
+/// The gate table over one Choice's or Score's judgments: per bar, how many
+/// labelled judgments reach it and how many of those are right.
 pub fn gate_table<'a>(
     judgments: impl IntoIterator<Item = &'a Judgment>,
     bars: &[f64],
@@ -309,10 +277,9 @@ pub fn gate_table<'a>(
         .collect()
 }
 
-/// The lowest bar whose covered answers are right at least
-/// `target_accuracy` of the time, over at least `min_covered` judgments.
-/// Lowest, because every step up hands more of the work to a person.
-/// `None` when no bar reaches the target.
+/// The lowest bar whose covered answers are right at least `target_accuracy`
+/// of the time over at least `min_covered` judgments; lowest, because every
+/// step up hands more work to a person. `None` when no bar reaches the target.
 pub fn lowest_bar(rows: &[GateRow], target_accuracy: f64, min_covered: usize) -> Option<f64> {
     rows.iter()
         .filter(|r| r.covered >= min_covered.max(1))
@@ -433,8 +400,7 @@ mod tests {
     #[test]
     fn a_level_sweep_reads_the_nearest_level_as_the_gate_does() {
         let judgments = [
-            // Most probable level 3, but the weighted position 1.8 rounds to
-            // 2: the gate reads 2.
+            // Most probable level 3, but the weighted position 1.8 rounds to 2.
             score([0.3, 0.0, 0.1, 0.6], 2),
             score([0.0, 0.0, 0.0, 1.0], 3),
             score([0.0, 1.0, 0.0, 0.0], 1),
@@ -455,7 +421,6 @@ mod tests {
         assert_eq!(at_2.f1, Some(1.0));
         // Levels 1 and 2 both separate perfectly; the lower wins the tie.
         assert_eq!(best_level(&rows), Some(1));
-        // An unlabelled judgment, or one without level probabilities, is skipped.
         let skipped = [Judgment::noul(0.9, Some(true), true)];
         assert!(level_sweep(&skipped, 4).iter().all(|r| r.n == 0));
         assert_eq!(best_level(&level_sweep(&skipped, 4)), None);

@@ -1,21 +1,11 @@
-//! HTTP plumbing any client over `reqwest` can share: retry policy, backoff,
-//! the server's wait (`retry-after-ms` and `Retry-After`) and a send loop
-//! that retries transient failures.
+//! The retry loop every client over `reqwest` shares: [`RetryPolicy`] and
+//! [`send_with_retries`].
 //!
-//! It is public so that one loop serves every upstream: the TypeSafe client
-//! uses it, and the application this crate was extracted from runs two more
-//! clients through it, so the retry rules and the failure counting are
-//! written once and every upstream behaves the same way under failure. The
-//! loop returns the last response, headers included; each client classifies
-//! it into its own error type and reads its own upstream's headers from it.
-//! Nothing here names a header or a status that belongs to one vendor:
-//! `retry-after-ms` is read because it is a convention several vendors'
-//! SDKs share, not a TypeSafe identifier, and the loop needs the wait before
-//! it sleeps.
-//!
-//! The defaults follow the official TypeSafe SDKs'; where this module
-//! differs from them, the total budget and the server-wait cap among them,
-//! is stated on [`RetryPolicy`].
+//! Public so that another client in the same application retries the same
+//! way and reports to the same [`crate::Observer`]. The loop names no
+//! vendor's header or status and returns the last response, headers
+//! included, for each client to classify. `docs/design.md` ("Retries")
+//! draws it.
 
 use std::collections::BTreeSet;
 use std::time::{Duration, SystemTime};
@@ -23,132 +13,59 @@ use std::time::{Duration, SystemTime};
 use reqwest::StatusCode;
 use reqwest::header::{DATE, HeaderMap, HeaderName, RETRY_AFTER};
 
-/// The server's wait in milliseconds. Not a registered header: a convention
-/// of the `OpenAI` and Anthropic SDKs that both TypeSafe SDKs read too, and
-/// it wins over `Retry-After` when both are sent.
+/// Not registered: a convention of several vendors' SDKs, read before
+/// `Retry-After`.
 const RETRY_AFTER_MS: HeaderName = HeaderName::from_static("retry-after-ms");
 
 /// Which transport failures (no usable response) a [`RetryPolicy`] retries.
 ///
-/// Three levels, because the question that matters for a billed call is
-/// whether the request left the process. A connection that was never made
-/// sent nothing and cannot have been processed; a timeout, a reset or a
-/// body cut short may have been, and retrying it may pay for the same work
-/// twice. The SDKs split transport failures by kind instead (a connection
-/// error, a timeout), which does not answer that question, so one setting
-/// with three values replaces their two flags.
-///
-/// Non-exhaustive, so a new level is an addition rather than a break.
-///
-/// [`BeforeSend`](Self::BeforeSend) relies on reqwest's
-/// [`is_connect`](reqwest::Error::is_connect). An error reqwest does not
-/// mark as a connect error is not retried, so a misclassification can only
-/// make it retry less, never retry a request that was sent. A connect or
-/// TLS handshake that hangs until the per-attempt timeout ends as a timeout,
-/// not as a connect error, and is not retried either: no client in this
-/// crate sets a separate connect timeout, because doing so would change the
-/// defaults.
+/// The levels split on whether the request left the process, because a
+/// System One call is billed: a connection never made sent nothing, while a
+/// timeout, a reset or a body cut short may have been processed. The SDKs'
+/// two flags (connection error, timeout) do not answer that question.
+/// [`BeforeSend`](Self::BeforeSend) relies on
+/// [`reqwest::Error::is_connect`], so a misclassification only retries less.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum TransportRetry {
-    /// Retry every transport failure: a refused or reset connection, a DNS
-    /// or TLS failure, a timeout, and a response whose body could not be
-    /// read. The SDKs' default.
+    /// Every transport failure, a body cut short included; the SDKs' default.
     #[default]
     Any,
-    /// Retry only a failure to connect, when nothing was sent.
+    /// Only a failure to connect, when nothing was sent.
     BeforeSend,
-    /// Never retry a transport failure.
+    /// None.
     Never,
 }
 
-/// Retry behaviour: which failures are retried, how many times, how long
-/// between attempts, how far to trust the server's own wait, and, when set,
-/// how long retrying may go on in total.
+/// Which failures are retried, how many times, how long between attempts
+/// and how far the server's own wait is trusted.
 ///
-/// The defaults follow the official SDKs': two retries, 0.5 s doubling to
-/// 5 s with up to a quarter of each wait taken off at random, and 408, 429,
-/// every 5xx and every transport failure retried. The total budget and the
-/// server-wait cap differ, and so do a few edge rules; all of them are
-/// listed below, under "Parity with the official SDKs". Two retries also
-/// bound the worst case: three attempts, each under the client's
-/// per-attempt timeout, plus two waits of at most `retry_after_max` each
-/// when the server names a wait, or at most 1.5 s of backoff in total when
-/// it does not.
-///
-/// What each field protects against, at its extremes:
-///
-/// * `max_retries` at 0 turns every blip into a failed call; set high, it
-///   keeps a caller waiting on an upstream that is down and multiplies load
-///   on one that is overloaded.
-/// * `backoff_initial` and `backoff_max` too small hammer an upstream that
-///   asked for room (at zero, retries follow each other with no wait); too
-///   large make every recoverable failure slow.
-/// * `backoff_jitter` at 0 lets many clients that failed together retry in
-///   lockstep; at 1 a wait can shrink to nothing. Jitter only ever shortens
-///   a wait, so the nominal backoff is also the longest one. A value above 1
-///   is read as 1, and a negative or `NaN` value as 0, rather than refused.
-/// * `http_statuses` too wide retries what a retry cannot fix (a 400, 401,
-///   403 or 422 is a request body, a key or an account's access) and adds
-///   load for nothing; too narrow fails a call a second attempt would have
-///   completed. The default is 408, 429 and 500 to 599, TypeSafe's 529
-///   included. A 2xx is never retried, even when listed: re-sending a call
-///   that succeeded would pay for it again.
-/// * `retry_after_max` is the ceiling on how long the server may ask the
-///   client to wait. The server knows better than the client how long to
-///   back off, so its wait wins when present, but a hostile or
-///   misconfigured header must not stall a caller for minutes; above the cap
-///   the client's own backoff applies instead. At zero only a zero wait is
-///   taken from the server.
-/// * `transport` at [`TransportRetry::Any`] retries a failure that may have
-///   reached the server; at [`TransportRetry::Never`] a dropped connection
-///   fails the call.
-/// * `budget` too short turns a slow upstream into a failed call after one
-///   attempt; `None`, the default, leaves the bound to the attempt count.
-/// * `max_body_bytes` is the most of a response body the loop will buffer,
-///   8 MiB by default: a `Content-Length` above it fails the call before a
-///   byte is read, and a body without one is read until it passes the cap.
-///   Every body is decoded from that buffer, so an upstream that answers
-///   with far more than it should, or a proxy that answers in its place,
-///   cannot grow the process without bound. Too small fails a legitimate
-///   page; no upstream this crate serves sends a body near the default. The
-///   failure is [`Exhausted::TooLarge`], never retried: the next attempt
-///   would carry the same body.
+/// The defaults are the official SDKs': two retries; 0.5 s doubling to 5 s,
+/// each wait `backoff × (1 − U·j)` for a uniform `U` in `[0, 1)` and jitter
+/// `j` 0.25, so the nominal backoff is also the longest; 408, 429, every 5xx
+/// (TypeSafe's 529 included) and every transport failure retried. A 2xx is
+/// never retried, even when listed: a System One call is billed, and
+/// re-sending a success would pay for it again.
 ///
 /// # The server's wait
 ///
-/// Read from each failed response, in this order: `retry-after-ms`
-/// (milliseconds), `Retry-After` in seconds, then `Retry-After` as an HTTP
-/// date in any of the three RFC 9110 forms (`IMF-fixdate`, RFC 850,
-/// asctime). A date is measured against the response's own `Date` header
-/// when it has one that parses, so a local clock that disagrees with the
-/// server's neither stretches nor cuts the wait; otherwise against this
-/// machine's clock. A date in the past means retry now. A value that is
-/// empty, negative, not finite or too large for a [`Duration`] is ignored:
-/// a bad `retry-after-ms` leaves `Retry-After` to decide, and a bad
-/// `Retry-After` leaves the backoff. The wait is honoured on any retried status, not
-/// only 429, and replaces the backoff with no jitter: the server named a
+/// Read by [`parse_retry_after`] and honoured on any retried status, not
+/// only 429. It replaces the backoff with no jitter: the server named a
 /// time, and shortening it would retry before the server said it was ready.
-/// [`parse_retry_after`] is the parser.
+/// Above `retry_after_max` the backoff applies instead, so a hostile or
+/// misconfigured header cannot stall a caller for minutes.
 ///
 /// # The budget
 ///
-/// `budget` counts from the first send: every attempt and every wait.
-/// Before each wait the loop checks whether the time elapsed plus the wait
-/// would reach the budget, and if so returns the last failure now instead of
-/// waiting (tenacity's `stop_before_delay`, which the Python SDK uses). It
-/// never cuts an attempt in flight, so a call can run to just under the
-/// budget plus one per-attempt timeout; a caller that needs a hard deadline
-/// wraps the call in `tokio::time::timeout`, which composes with any policy.
-/// `Some(Duration::ZERO)` means no retries. A server wait longer than the
-/// time left returns the failure at once, so a 429 comes back as a rate
-/// limit error carrying the server's wait, which the caller can still
-/// honour. A budget that stops a retry logs `retry budget spent; returning
-/// the last failure` at `warn`.
-///
-/// It is off by default: the attempt count and the per-attempt timeout
-/// already bound a call, the JS SDK has no budget either, and a default one
-/// would change the behaviour of every client that shares this loop.
+/// `budget` counts every attempt and every wait from the first send. A wait
+/// that would end at or beyond it is not started and the last failure is
+/// returned (tenacity's `stop_before_delay`, which the Python SDK uses), so
+/// a 429 comes back as a rate limit error still carrying the server's wait.
+/// An attempt in flight is never cut, so a call can run to just under the
+/// budget plus one per-attempt timeout; `tokio::time::timeout` around the
+/// call is the hard deadline. Off by default: the attempt count and the
+/// per-attempt timeout already bound a call, and a default budget would
+/// change the timing of every client that shares this loop.
 ///
 /// ```
 /// use std::time::Duration;
@@ -167,67 +84,31 @@ pub enum TransportRetry {
 ///
 /// # Parity with the official SDKs (Python 0.7.1, JS 0.6.0)
 ///
-/// Matches both, unless one is named:
+/// Matches both: the count, backoff, jitter, status set and server's wait
+/// above; a per-call policy that replaces the client's whole policy
+/// ([`crate::client::CallOptions::retry`]), as in the Python SDK; a wait
+/// above the cap falling back to the backoff (the JS SDK's
+/// `maxRetryAfterMs`); the budget (the Python SDK's `timeout`); dropping
+/// the future cancelling the call, a wait included.
 ///
-/// * `max_retries` 2, and 0 disables retries.
-/// * Backoff from 0.5 s doubling to 5 s, with jitter 0.25 that is only
-///   subtracted: a wait is `backoff × (1 − U·j)` for a uniform `U` in
-///   `[0, 1)`.
-/// * A settable status set, by default 408, 429 and 500 to 599. A 2xx is
-///   never retried, even when listed (the JS SDK returns on `res.ok` before
-///   it reads the set; the Python SDK retries only a raised error).
-/// * A per-call policy: [`crate::client::CallOptions::retry`] on
-///   [`crate::Client::evaluate_with`] replaces the client's whole policy for
-///   that call, as the Python SDK does (the JS SDK merges field by field;
-///   `CallOptions::retry` shows the struct-update spelling of that).
-/// * The server's wait read as `retry-after-ms`, then `Retry-After` in
-///   seconds, then as a date; a past date means 0; non-finite values are
-///   ignored.
-/// * The server's wait replaces the backoff, with no jitter.
-/// * A server wait above the cap falls back to the backoff (the JS SDK's
-///   `maxRetryAfterMs`; the Python SDK has no cap).
-/// * Every transport failure is retried by default, a body that could not
-///   be read included.
-/// * The budget, when set, stops before a wait that would reach it and
-///   returns the last failure (the Python SDK's `timeout`).
-/// * Dropping the future cancels the call, a wait included.
+/// Deliberately differs: the budget is off by default (Python 30 s, JS
+/// none); the cap is 30 s (JS 60 s, Python none); an HTTP date is measured
+/// against the response's `Date` header (the SDKs use the local clock); an
+/// empty or unrepresentable header is ignored (the SDKs retry at once or
+/// honour it); one three-level `transport` setting replaces
+/// the flags `api_connection_error` and `api_timeout_error`
+/// ([`TransportRetry`]); a jitter outside `[0, 1]` is clamped, not an
+/// error; dates are the three RFC 9110 forms only (JS `Date.parse` also
+/// takes ISO 8601, Python's `email.utils.parsedate_to_datetime` RFC 5322
+/// forms); [`RetryPolicy::conservative`] and `max_body_bytes` have no SDK
+/// equivalent, both SDKs buffering whatever the server sends.
 ///
-/// Deliberately differs:
-///
-/// * The budget is off by default (Python: 30 s; JS: none).
-/// * The cap is 30 s (JS: 60 s; Python: none).
-/// * An HTTP date is measured against the response's `Date` header when it
-///   has one (the SDKs use the local clock).
-/// * An empty header is ignored (the SDKs read it as 0 and retry at once).
-/// * One three-level `transport` setting instead of two flags
-///   (`api_connection_error`, `api_timeout_error`); [`TransportRetry`] says
-///   why.
-/// * A jitter outside `[0, 1]` is clamped instead of raising an error.
-/// * Waits are not rounded to milliseconds.
-/// * `budget: Some(Duration::ZERO)` is accepted and means no retries (the
-///   Python SDK refuses a timeout of 0 or less).
-/// * A `retry-after-ms` too large for a [`Duration`] falls through to
-///   `Retry-After` (the SDKs return it).
-/// * A `Retry-After` in seconds that is too large for a [`Duration`] falls
-///   back to the backoff, while the Python SDK honours it and then stops on
-///   its 30 s budget.
-/// * Dates are the three RFC 9110 forms only (JS `Date.parse` also takes
-///   ISO 8601; Python's `email.utils.parsedate_to_datetime` also takes RFC
-///   5322 forms, such as a numeric offset or no weekday).
-/// * [`RetryPolicy::conservative`] has no SDK equivalent.
-/// * `max_body_bytes` has no SDK equivalent either: both SDKs buffer
-///   whatever the server sends.
-///
-/// Not implemented:
-///
-/// * `respect_retry_after`: set `retry_after_max` to zero instead. That
-///   still takes a zero wait, so `Retry-After: 0` is retried immediately.
-/// * Exception and predicate hooks: a closure field would cost the type its
-///   `PartialEq` and `Debug`.
-/// * `X-TypeSafe-Retry-Count`, which both SDKs send on a retry: not sent in
-///   this release, but reserved (a caller header of that name is
-///   [`crate::Error::ReservedHeader`]), so sending it later breaks no
-///   caller.
+/// Not implemented: `respect_retry_after` (set `retry_after_max` to zero,
+/// which still takes a zero wait); exception and predicate hooks (a closure
+/// field would cost the type `PartialEq` and `Debug`);
+/// `X-TypeSafe-Retry-Count`, which both SDKs send on a retry, reserved
+/// ([`crate::Error::ReservedHeader`]) so that sending it later breaks no
+/// caller.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RetryPolicy {
     /// Retries after the first attempt; 0 disables retries.
@@ -236,26 +117,26 @@ pub struct RetryPolicy {
     pub backoff_initial: Duration,
     /// Cap on the computed backoff.
     pub backoff_max: Duration,
-    /// Fraction of each backoff that may be taken off at random: 0.25 means
-    /// a wait between 75 % and 100 % of the nominal backoff. Clamped to
-    /// `[0, 1]`; `NaN` reads as 0.
+    /// Share of each backoff that may be taken off at random, so clients that
+    /// failed together do not retry in lockstep. Clamped to `[0, 1]`.
     pub backoff_jitter: f64,
-    /// HTTP statuses that are retried; any other status is returned at once.
-    /// A 2xx is never retried, even when listed. Default: 408, 429 and 500
-    /// to 599.
+    /// Statuses retried, never a 2xx. Default 408, 429 and 500 to 599:
+    /// transient by definition, where 400, 401, 403 and 422 are a request
+    /// body, a key or an account's access that a retry cannot fix.
     pub http_statuses: BTreeSet<u16>,
-    /// Longest server wait the client will honour; above it the client's
-    /// own backoff applies. Prevents a hostile or misconfigured header from
-    /// stalling a caller for minutes.
+    /// Longest server wait honoured; above it the backoff applies ("The
+    /// server's wait" above). Default 30 s.
     pub retry_after_max: Duration,
     /// Which transport failures are retried; default [`TransportRetry::Any`].
     pub transport: TransportRetry,
-    /// Time from the first send that retrying may use: no wait starts that
-    /// would end at or beyond it. `None` (the default) for no budget; see
-    /// "The budget" above.
+    /// Time from the first send that retrying may use ("The budget" above);
+    /// `None` (the default) for no budget, `Some(Duration::ZERO)` for none.
     pub budget: Option<Duration>,
-    /// Most bytes of a response body the loop buffers; over it the call
-    /// fails as [`Exhausted::TooLarge`] without a retry. Default 8 MiB.
+    /// Most bytes of a response body the loop buffers, 8 MiB by default; over
+    /// it the call is [`Exhausted::TooLarge`], never retried since the next
+    /// attempt would carry the same body. Every body is decoded from that
+    /// buffer, so an upstream, or a proxy answering in its place, cannot grow
+    /// the process without bound.
     pub max_body_bytes: usize,
 }
 
@@ -284,25 +165,16 @@ impl RetryPolicy {
         }
     }
 
-    /// Retry only what cannot have been charged twice: 408, 429, and
-    /// transport failures before the request left the process.
+    /// Retry only what cannot have been charged twice: 408, 429, and a
+    /// connection that was never made.
     ///
-    /// A System One call is a billed POST: the OpenAPI document describes
-    /// `Usage.input_tokens` as the "Number of billable input tokens", and the
-    /// API reference does not say whether a call that ended in a 5xx or ran
-    /// into a timeout was charged. A 408 (RFC 9110 §15.5.9) and a 429 (RFC
-    /// 6585 §4) say the server did not process the request, and a connection
-    /// that was never made sent nothing, so retrying those cannot pay twice.
-    /// A 529 is excluded although the API reference gives it the same retry
-    /// advice as a 429, because nothing there says an overloaded server
-    /// refused the request before processing it.
-    ///
-    /// The cost: a call fails on the first 5xx or timeout that a retry would
-    /// have saved. Set on the client, the policy applies to every call it
-    /// makes, [`crate::Client::list_models`] included, unless a call's
-    /// [`crate::client::CallOptions::retry`] replaces it. reqwest's own
-    /// retry of an HTTP/2 request the server refused before processing
-    /// still happens, below this policy.
+    /// A System One call is billed (the OpenAPI document calls
+    /// `Usage.input_tokens` the "Number of billable input tokens") and the
+    /// API reference does not say whether a 5xx or a timeout was charged. A
+    /// 408 (RFC 9110 §15.5.9) and a 429 (RFC 6585 §4) say the server did not
+    /// process the request; a 529 gets the same retry advice as a 429 but no
+    /// such promise, so it is excluded. The cost is a call failed on the
+    /// first 5xx or timeout a retry would have saved.
     pub fn conservative() -> Self {
         Self {
             http_statuses: BTreeSet::from([408, 429]),
@@ -311,19 +183,12 @@ impl RetryPolicy {
         }
     }
 
-    /// Whether this policy retries `status`: it is not a success and it is
-    /// in [`http_statuses`](Self::http_statuses). By default that is 408,
-    /// 429 and every 5xx, transient by definition; 400, 401, 403 and 422
-    /// are not retried, since a retry cannot fix a request body, a key or
-    /// an account's access and would only add load. A 2xx is never retried,
-    /// even when listed, as in both SDKs: the call succeeded, and a System
-    /// One call is billed, so sending it again would pay for it twice.
+    /// Whether `status` is retried: in [`http_statuses`](Self::http_statuses) and not a success.
     pub fn is_retryable(&self, status: StatusCode) -> bool {
         !status.is_success() && self.http_statuses.contains(&status.as_u16())
     }
 
-    /// Whether this policy retries the transport failure `e`, by
-    /// [`transport`](Self::transport).
+    /// Whether the transport failure `e` is retried, by [`transport`](Self::transport).
     pub fn retries_transport(&self, e: &reqwest::Error) -> bool {
         match self.transport {
             TransportRetry::Any => true,
@@ -332,15 +197,13 @@ impl RetryPolicy {
         }
     }
 
-    /// Delay before retry number `retry` (1-based): the server's wait when
-    /// it gave one within `retry_after_max`, otherwise the exponential
-    /// backoff shortened by a random share of at most `backoff_jitter`.
+    /// The wait before retry number `retry` (1-based): the server's wait
+    /// within `retry_after_max`, otherwise the backoff less the jitter.
     pub fn delay(&self, retry: u32, retry_after: Option<Duration>) -> Duration {
         self.delay_with(retry, retry_after, fastrand::f64())
     }
 
-    /// [`delay`](Self::delay) with the random draw `unit` (in `[0, 1]`)
-    /// passed in, so the arithmetic is testable.
+    /// [`delay`](Self::delay) with the random draw `unit` passed in, so the arithmetic is testable.
     fn delay_with(&self, retry: u32, retry_after: Option<Duration>, unit: f64) -> Duration {
         if let Some(ra) = retry_after
             && ra <= self.retry_after_max
@@ -367,9 +230,8 @@ impl RetryPolicy {
         exp.saturating_sub(cut)
     }
 
-    /// The wait before the retry that follows attempt number `attempt`, or
-    /// `None` when the policy stops here: retries are used up, or the
-    /// budget would be reached by the time the wait ends.
+    /// The wait before the retry that follows attempt `attempt`, or `None`
+    /// when retries are used up or the wait would reach the budget.
     fn next_wait(
         &self,
         attempt: u32,
@@ -396,10 +258,9 @@ impl RetryPolicy {
     }
 }
 
-/// The last response of a retry loop, ready for the caller to classify.
-///
-/// Non-exhaustive so the loop can hand back more of the response without a
-/// breaking change; destructure it with `..`.
+/// The last response of a retry loop, for the caller to classify.
+/// Non-exhaustive so more of the response can be handed back without a
+/// breaking change.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct Completed {
@@ -409,20 +270,16 @@ pub struct Completed {
     pub body: String,
     /// Total attempts made, including the first.
     pub attempts: u32,
-    /// The last response's wait, from `retry-after-ms` or `Retry-After`
-    /// (seconds or a date), when it named one ([`parse_retry_after`]).
+    /// The last response's wait, when it named one ([`parse_retry_after`]).
     pub retry_after: Option<Duration>,
-    /// The last response's headers. The loop itself reads only the retry
-    /// headers; each client reads its own upstream's headers here (a request
-    /// id, say), so this module stays free of any one vendor's names.
-    /// Responses that were retried are dropped with their headers.
+    /// The last response's headers, for each client to read its own
+    /// upstream's (a request id, say), so the loop names no vendor.
     pub headers: HeaderMap,
 }
 
 /// The retry loop gave up without a response the caller can classify.
-///
-/// Exhaustive on purpose: a new kind must be mapped by every client, the
-/// way [`crate::Error::request_id`] names every variant.
+/// Exhaustive on purpose: every client must map a new kind, as
+/// [`crate::Error::request_id`] names every variant.
 #[derive(Debug)]
 pub enum Exhausted {
     /// A transport-level failure the policy stopped retrying.
@@ -432,11 +289,8 @@ pub enum Exhausted {
         /// The last error.
         source: reqwest::Error,
     },
-    /// The last response's body was over the policy's
-    /// [`max_body_bytes`](RetryPolicy::max_body_bytes): its `Content-Length`
-    /// said so before a byte was read, or the read passed the cap. Never
-    /// retried, since the next attempt would carry the same body; the
-    /// response's status and headers are dropped with it.
+    /// The last response's body was over
+    /// [`max_body_bytes`](RetryPolicy::max_body_bytes).
     TooLarge {
         /// Total attempts made, including the first.
         attempts: u32,
@@ -446,29 +300,16 @@ pub enum Exhausted {
 }
 
 /// Send `make()` until it yields a response the policy does not retry, or
-/// the policy stops.
+/// the policy stops (`docs/design.md`, "Retries", draws the loop).
 ///
-/// `make` is called once per attempt, in order, so it builds a fresh request
-/// each time. A status the policy retries
-/// ([`is_retryable`](RetryPolicy::is_retryable): in its
-/// [`http_statuses`](RetryPolicy::http_statuses), never a 2xx) is retried;
-/// a transport failure, or a body that could not be read, is retried as the
-/// policy's [`transport`](RetryPolicy::transport) says. The policy stops when the
-/// retries are used up or when the next wait would reach its
-/// [`budget`](RetryPolicy::budget), measured from the first send.
-///
-/// Successful and non-retried statuses, and the last retried one when the
-/// policy stops, return `Ok(Completed)` so the caller maps them; the last
-/// transport failure, or a body over the policy's
-/// [`max_body_bytes`](RetryPolicy::max_body_bytes), returns `Err(Exhausted)`.
-/// The body is decoded as UTF-8, invalid sequences replaced: every upstream
-/// this loop serves answers in JSON, which is UTF-8 by definition. `service`
-/// labels every failed attempt reported to the global [`crate::Observer`]
-/// (an application passes its own upstream names): the status, `transport`,
-/// or `too_large`. Every failed attempt is reported, retried or not: a retry
-/// that succeeds hides the failure from the caller, but the attempt was
-/// still load on the upstream and still a symptom. The loop is the one place
-/// every client passes through, so it is where the count lives.
+/// A status the policy does not retry, or the last retried one when it
+/// stops, is `Ok(Completed)`; the last transport failure, or a body over
+/// [`max_body_bytes`](RetryPolicy::max_body_bytes), is `Err(Exhausted)`. The
+/// body is decoded as UTF-8 with invalid sequences replaced, since every
+/// upstream answers in JSON. Every failed attempt, retried or not, goes to
+/// the global [`crate::Observer`] under `service` as the status, `transport`
+/// or `too_large`: a retry that succeeds hides the failure from the caller,
+/// but the attempt was still load on the upstream.
 pub async fn send_with_retries(
     policy: &RetryPolicy,
     service: &'static str,
@@ -560,8 +401,7 @@ enum BodyRead {
     Transport(reqwest::Error),
 }
 
-/// Buffer a body of at most `limit` bytes: a `Content-Length` over the cap
-/// fails before a read, otherwise chunks are read until they would pass it.
+/// The body, refusing more than `limit` bytes, before a read when `Content-Length` says so.
 async fn read_body(mut resp: reqwest::Response, limit: usize) -> Result<String, BodyRead> {
     let declared = resp.content_length();
     if declared.is_some_and(|n| n > u64::try_from(limit).unwrap_or(u64::MAX)) {
@@ -578,17 +418,14 @@ async fn read_body(mut resp: reqwest::Response, limit: usize) -> Result<String, 
         .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
 }
 
-/// The server's wait, from a response's headers ([`RetryPolicy`], "The
-/// server's wait").
-///
-/// In order: `retry-after-ms` when it is a finite, non-negative number of
-/// milliseconds that fits a [`Duration`] (anything else falls through);
-/// then `Retry-After` as a number of seconds, where a negative, non-finite
-/// or unrepresentable number gives `None`; then `Retry-After` as an HTTP
-/// date (`IMF-fixdate`, RFC 850 or asctime), measured against the
-/// response's `Date` header when it parses and against this machine's clock
-/// otherwise, a past date giving zero. An empty or unreadable value is
-/// ignored. No input panics.
+/// The server's wait ("The server's wait" on [`RetryPolicy`]):
+/// `retry-after-ms`, then `Retry-After` in seconds, then as an HTTP date in
+/// the three RFC 9110 forms. A date is measured against the
+/// response's own `Date` header when it parses, so a local clock that
+/// disagrees with the server's neither stretches nor cuts the wait; a past
+/// date means retry now. A value that is empty, negative, not finite or too
+/// large for a [`Duration`] is ignored: a bad `retry-after-ms` leaves
+/// `Retry-After` to decide, and a bad `Retry-After` leaves the backoff.
 pub fn parse_retry_after(headers: &HeaderMap) -> Option<Duration> {
     parse_retry_after_at(headers, SystemTime::now())
 }
@@ -617,8 +454,7 @@ fn parse_retry_after_at(headers: &HeaderMap, now: SystemTime) -> Option<Duration
     Some(at.duration_since(reference).unwrap_or(Duration::ZERO))
 }
 
-/// A header's value, trimmed; `None` when absent, not visible ASCII, or
-/// empty.
+/// A header's value, trimmed; empty or not visible ASCII reads as absent.
 fn header_str<'a>(headers: &'a HeaderMap, name: &HeaderName) -> Option<&'a str> {
     let value = headers.get(name)?.to_str().ok()?.trim();
     (!value.is_empty()).then_some(value)
@@ -631,10 +467,8 @@ pub fn truncate(s: String) -> String {
     truncate_to(s, 2_000)
 }
 
-/// `s` cut to at most `max` bytes on a character boundary, with `…`
-/// appended when anything was cut; `s` unchanged otherwise. The cap is a
-/// parameter so the bounded proof can reach the cutting path with a short
-/// string.
+/// `s` cut to at most `max` bytes on a character boundary, `…` appended when
+/// cut. The cap is a parameter so the bounded proof reaches the cutting path.
 fn truncate_to(mut s: String, max: usize) -> String {
     if s.len() > max {
         let cut = s.floor_char_boundary(max);
@@ -677,7 +511,6 @@ mod tests {
             p.delay(1, Some(Duration::from_secs(3))),
             Duration::from_secs(3)
         );
-        // Above the 30 s cap the backoff applies, and jitter only shortens it.
         let d = p.delay(1, Some(Duration::from_secs(600)));
         assert!(d <= Duration::from_millis(500), "{d:?}");
     }
@@ -788,21 +621,16 @@ mod tests {
             budget: Some(Duration::from_secs(1)),
             ..no_jitter()
         };
-        // First wait is the 500 ms backoff: 400 + 500 stays under 1 s,
-        // 500 + 500 reaches it.
+        // The first wait is 500 ms: 400 + 500 stays under the 1 s budget, 500 + 500 reaches it.
         assert_eq!(p.next_wait(1, None, ms(400)), Some(ms(500)));
         assert_eq!(p.next_wait(1, None, ms(500)), None);
-        // A server wait longer than the time left is not waited either.
         assert_eq!(p.next_wait(1, Some(Duration::from_secs(2)), ms(0)), None);
-        // Retries used up stops with or without a budget.
         assert_eq!(p.next_wait(3, None, ms(0)), None);
         assert_eq!(no_jitter().next_wait(3, None, ms(0)), None);
-        // No budget never stops on time.
         assert_eq!(
             no_jitter().next_wait(2, None, Duration::from_secs(3600)),
             Some(ms(1000))
         );
-        // A zero budget allows no retry at all.
         let zero = RetryPolicy {
             budget: Some(Duration::ZERO),
             ..no_jitter()
@@ -853,8 +681,6 @@ mod tests {
             "a past date means retry now"
         );
 
-        // The response's own Date header is the reference, whatever the
-        // local clock says.
         let retry_at = at(1_600_000_000);
         let pairs = [
             (&RETRY_AFTER, httpdate::fmt_http_date(retry_at)),
@@ -870,7 +696,6 @@ mod tests {
                 Some(Duration::from_secs(10))
             );
         }
-        // A Date header that does not parse is ignored.
         assert_eq!(
             parse(&[(&RETRY_AFTER, &ahead), (&DATE, "yesterday")]),
             Some(Duration::from_secs(4))
@@ -890,8 +715,6 @@ mod tests {
 
     #[test]
     fn hostile_retry_after_is_ignored_not_a_panic() {
-        // 0.1 called `Duration::from_secs_f64` on these, and `inf` or `1e20`
-        // panicked inside the retry loop.
         for value in ["inf", "infinity", "NaN", "1e400", "-1", "", "soon", "1e20"] {
             let h = headers(&[(&RETRY_AFTER, value)]);
             assert_eq!(parse_retry_after(&h), None, "Retry-After {value:?}");
@@ -900,39 +723,31 @@ mod tests {
             let h = headers(&[(&RETRY_AFTER_MS, value)]);
             assert_eq!(parse_retry_after(&h), None, "retry-after-ms {value:?}");
         }
-        // 1e20 ms is about 3 billion years: representable, so parsed, and
-        // then above any `retry_after_max`, so the backoff applies.
+        // Representable, so parsed, then above the cap, so the backoff applies.
         let h = headers(&[(&RETRY_AFTER_MS, "1e20")]);
         let huge = parse_retry_after(&h).unwrap();
         assert!(RetryPolicy::default().delay(1, Some(huge)) <= Duration::from_millis(500));
-        // Not visible ASCII: unreadable, so ignored.
         let mut h = HeaderMap::new();
         h.insert(RETRY_AFTER, HeaderValue::from_bytes(b"\xff").unwrap());
         assert_eq!(parse_retry_after(&h), None);
     }
 }
 
-/// Bounded proofs of the retry arithmetic and the body truncation, run with
-/// `cargo kani` (docs/testing.md, "Bounded proofs").
+/// Bounded proofs, run with `cargo kani`; the bounds and their reasons are
+/// in `docs/testing.md`, "Bounded proofs".
 #[cfg(kani)]
 mod kani_proofs {
     use super::*;
 
-    /// A `Duration` from any whole seconds and any valid nanoseconds:
-    /// `Duration::new` panics only when a nanosecond carry overflows the
-    /// seconds, which a nanosecond part below one second never causes.
+    /// Any `Duration`: `Duration::new` panics only when a nanosecond carry
+    /// overflows the seconds, which a part below one second never causes.
     fn any_duration() -> Duration {
         let nanos: u32 = kani::any();
         kani::assume(nanos < 1_000_000_000);
         Duration::new(kani::any(), nanos)
     }
 
-    /// A policy duration, bounded: any whole number of milliseconds up to
-    /// one hour, or `Duration::MAX`, so the saturating path stays covered.
-    /// Unbounded (`any_duration`), the solver must show two symbolic 64-bit
-    /// divisions equal (the nanosecond carry in `Duration::saturating_mul`,
-    /// computed in `delay_with` and again below) and did not finish in 40
-    /// minutes.
+    /// Bounded, or the solver does not finish; `Duration::MAX` keeps the saturating path covered.
     fn policy_duration() -> Duration {
         if kani::any() {
             return Duration::MAX;
@@ -942,12 +757,9 @@ mod kani_proofs {
         Duration::from_millis(ms)
     }
 
-    /// Any `Duration`, or the error, whatever the seconds asked for: stands
-    /// in for `Duration::try_from_secs_f64`, whose bit-level float decoding
-    /// keeps the solver from finishing (40 minutes without a verdict
-    /// unstubbed). The stub over-approximates the real function, so what
-    /// holds for every cut it returns holds for the real one; that the real
-    /// one never panics is `std`'s contract (it returns a `Result`).
+    /// Stub for `Duration::try_from_secs_f64`, whose float decoding keeps the
+    /// solver from finishing: any result, so what holds for every one holds
+    /// for the real function, which never panics by `std`'s contract.
     fn any_try_from_secs_f64(_secs: f64) -> Result<Duration, std::time::TryFromFloatSecsError> {
         if kani::any() {
             Ok(any_duration())
@@ -957,11 +769,7 @@ mod kani_proofs {
         }
     }
 
-    /// `delay_with` never panics, for any policy, retry number, server wait
-    /// and random draw: a server wait within `retry_after_max` is returned
-    /// as is; otherwise the delay is at most `backoff_max`, at most the
-    /// nominal backoff, and exactly the nominal backoff when there is no
-    /// jitter (zero, negative or NaN). Run with `-Z stubbing`.
+    /// Run with `-Z stubbing`.
     #[kani::proof]
     #[kani::stub(std::time::Duration::try_from_secs_f64, any_try_from_secs_f64)]
     fn delay_never_panics_and_stays_within_the_policy() {
@@ -977,12 +785,9 @@ mod kani_proofs {
             budget: None,
             max_body_bytes: kani::any(),
         };
-        // Retry 0 (read as 1 by `saturating_sub`) to 10: the default policy
-        // retries twice, and a client that retries more than ten times
-        // waits out `backoff_max` long before.
+        // Past ten retries the backoff sits at `backoff_max` anyway.
         let retry: u32 = kani::any();
         kani::assume(retry <= 10);
-        // A server's wait is any duration, unbounded: it is only compared.
         let retry_after = if kani::any() {
             Some(any_duration())
         } else {
@@ -1012,11 +817,6 @@ mod kani_proofs {
         kani::cover!(retry_after.is_some_and(|ra| ra > policy.retry_after_max));
     }
 
-    /// `truncate_to` never panics, whatever the cap falls on: the kept part
-    /// is a prefix of the input, at most `max` bytes, on a character
-    /// boundary, and the longest such prefix (less than one character, so
-    /// under 4 bytes, short of `max`); an input within the cap is
-    /// returned unchanged.
     #[kani::proof]
     #[kani::unwind(8)]
     fn truncate_cuts_on_a_char_boundary_within_the_cap() {

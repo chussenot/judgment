@@ -1,180 +1,71 @@
-//! Answers: wire shapes, validated probabilities, and the typed views that
-//! [`Response::get`] produces from a [`crate::Handle`].
+//! Answers: the wire shapes, the validated probabilities and the typed
+//! views that [`Response::get`] reads through a [`crate::Handle`].
 //!
 //! # Two newtypes, not one `f64`
 //!
-//! The API returns two kinds of number in `[0, 1]`. A [`Probability`] is the
-//! model's estimate for one outcome: that the answer is yes, that this option
-//! is the right one. A [`Confidence`] is a summary of a whole Choice or Score
-//! distribution: how concentrated it is on one outcome. A caller thresholds
-//! them differently (act when the probability of yes is above 0.6; refuse to
-//! act when the confidence is below 0.5), and swapping them is a silent bug,
-//! so they are distinct types. Both refuse values outside `[0, 1]` on
-//! construction and on deserialisation: a wire value of 1.2 fails the decode
-//! ([`Error::Decode`], whose message names the value), never a number
-//! downstream. The cost is a `.value()` call wherever the raw `f64` is
-//! wanted.
-//!
-//! # What confidence means, and does not mean
-//!
+//! A [`Probability`] is the model's estimate for one outcome; a
+//! [`Confidence`] is how concentrated a whole Choice or Score distribution
+//! is on one. A caller thresholds them differently and swapping them is a
+//! silent bug, so they are distinct types; both refuse a value outside
+//! `[0, 1]` on construction and on deserialisation ([`Error::Decode`]).
 //! TypeSafe's [confidence page](https://docs.typesafe.ai/confidence) defines
-//! `confidence` as a statistic computed from the answer's own `probabilities`:
-//! concentrated on one option or level means high, spread out means low. It
-//! is a convenience the API computes so a caller can threshold without doing
-//! the arithmetic, and the full distribution is returned so a caller can
-//! compute a different measure. Noul answers carry none; `max(p, 1 - p)` is
-//! the usual stand-in and what [`crate::eval`] uses.
-//!
-//! Confidence is a measure of the model's certainty, not a permission to act.
-//! The same page's guidance is that the threshold is the caller's risk
-//! tolerance: gate a destructive action higher than a read-only one, treat
-//! low confidence as "route to a person", and set the numbers from observed
-//! results rather than by intuition. This crate supplies
-//! [`Confidence::at_least`] and nothing else; the policy is the caller's.
+//! `confidence` as a statistic of the answer's own `probabilities` (a Noul
+//! carries none; [`crate::eval`] uses `max(p, 1 - p)`) and makes the
+//! threshold the caller's risk tolerance, so the crate supplies
+//! [`Confidence::at_least`] and no policy.
 //!
 //! # Decoding is tolerant, reading is strict
 //!
-//! A response is decoded whole, so a strict decoder fails it whole: one
-//! answer of a primitive this release does not know, a server that reports
-//! no `usage`, and every answer in the response is lost, the ones the caller
-//! asked for and could have read included. TypeSafe adds primitives and
-//! fields over time and a compatible server adds fields of its own (Laya's
-//! `routing`, the `id` and `provider` of `OpenRouter`'s decisions endpoint),
-//! so a strict decoder turns each addition into an outage until this crate
-//! is upgraded.
+//! A response is decoded whole, so a strict decoder loses every answer over
+//! one it does not know, and TypeSafe and compatible servers add primitives
+//! and fields. So the decoder keeps what it does not know, and reading
+//! refuses it where it matters:
 //!
-//! The decoder therefore keeps what it does not know, and reading refuses it
-//! where it matters:
-//!
-//! * An answer whose `type` is a string other than `noul`, `choice` or
-//!   `score` decodes as [`Answer::Unknown`], the answer as it came. The
-//!   client logs it at `warn`, naming the question and the kind. Under a
-//!   question that was asked, [`Response::verify`], which every backend
-//!   runs, refuses the whole response as [`Error::AnswerTypeMismatch`]
-//!   ([`Error::is_unfit`]); under an id nobody asked, the answer is kept.
-//!   Read with [`Response::get`] from a response that was not verified, such
-//!   as one read from a recording by case id, it fails only that question.
-//! * A known kind is decoded as strictly as before: `{"type": "noul",
-//!   "noul": 1.2}` claims a shape and breaks it, and is [`Error::Decode`],
-//!   not an unknown answer. So is an answer with no `type`, a `type` that is
-//!   not a string, or an answer that is not an object.
-//! * An absent or `null` `usage`, and an absent or `null` count inside it,
-//!   read as zero ([`Usage`]). A negative, fractional or string count is
-//!   still [`Error::Decode`].
-//! * Top-level fields other than `model`, `answers`, `usage` and
-//!   `request_id` are kept in [`Response::extra`] and written back where
-//!   they were, so a recording keeps them. A body `request_id` that is not a
-//!   string reads as `None` rather than failing the response. Fields inside
-//!   an answer that this crate does not model are ignored, as in the Python
-//!   SDK.
-//!
-//! An answer this release cannot read, from a later API or from a server
-//! that answers something else, therefore no longer fails the response at
-//! decode time. Under a question that was asked it still fails the whole
-//! call, in every backend, because [`Response::verify`] refuses it: the
-//! client counts it as a failed attempt with status `unfit`, and a
-//! [`crate::Recorder`] writes nothing. Only an unknown answer under an id
-//! nobody asked reaches the caller and a recording. The `warn` line is what
-//! shows it, and upgrading this crate (or fixing the server) is the remedy.
-//! The Python SDK logs a warning, skips only that answer and returns the
-//! rest, so on this point this crate is stricter than the SDK.
+//! * An answer whose `type` is an unknown string is [`Answer::Unknown`],
+//!   logged by the client at `warn`. Under an asked question
+//!   [`Response::verify`] refuses the response ([`Error::AnswerTypeMismatch`],
+//!   [`Error::is_unfit`]) and [`Response::get`] fails that question; under
+//!   an id nobody asked it is kept. The Python SDK skips such an answer and
+//!   returns the rest; the crate is stricter here.
+//! * A known kind still decodes strictly: `{"type": "noul", "noul": 1.2}`,
+//!   a missing or non-string `type` and a non-object are [`Error::Decode`].
+//! * An absent or `null` `usage`, or count in it, is zero ([`Usage`]).
+//! * Undocumented top-level fields are kept in [`Response::extra`]; fields
+//!   inside an answer are ignored, as in the Python SDK.
 //!
 //! # What `Response::verify` checks
 //!
-//! Nothing on the wire ties a response to the request it answers: the
-//! answers come back as a map of id to answer, and a server can leave a
-//! question out, answer it with another primitive, choose an option it was
-//! never offered or describe a Score on another scale. Decoding cannot catch
-//! any of that, since it does not know the questions. [`Response::verify`]
-//! does: it holds a response against the [`Questions`] it was sent for, and
-//! every backend in this crate (the client, [`crate::Fake`],
-//! [`crate::Replay`] and [`crate::Recorder`]) calls it before it returns, so
-//! a response that reaches the caller answers what was asked. After it
-//! succeeds, [`Response::get`] with any handle from the same questions cannot
-//! fail.
+//! Nothing on the wire ties an answer to its question beyond the id, and
+//! decoding does not know the questions. [`Response::verify`] holds a
+//! response against the [`Questions`] it was sent for; every backend calls
+//! it before returning, so afterwards [`Response::get`] with a handle from
+//! the same questions cannot fail. In id order, stopping at the first
+//! failure: an answer under every id, of the question's primitive, a Choice
+//! naming only offered options (the chosen one, then every distribution
+//! key), a Score on the scale sent: one legend entry per level keyed `"0"`
+//! to `"n-1"`, each the level as sent, probability keys among those exact
+//! indices (`"01"` is not one), a score within `0..=n-1` plus a float-error
+//! margin, NaN excluded. Every error carries [`Response::request_id`].
 //!
-//! For each question, in id order, stopping at the first failure:
-//!
-//! * There is an answer under its id ([`Error::MissingAnswer`]).
-//! * The answer is of the question's primitive
-//!   ([`Error::AnswerTypeMismatch`]). An answer of a kind this release does
-//!   not know ([`Answer::Unknown`]) is a mismatch here, named by its escaped
-//!   kind: under an asked question it is an answer the caller cannot read.
-//! * A Choice names only options the question offered: the chosen option,
-//!   then every key of its distribution ([`Error::UnknownOption`]).
-//! * A Score is on the scale the question sent ([`Error::InvalidAnswer`]):
-//!   its legend has one entry per level, keyed `"0"` to `"n-1"`, each the
-//!   level as it was sent; its probabilities are keyed by those same indices
-//!   and nothing else (`"01"` is not a level); and its score lies within
-//!   `0..=n-1`, with a margin of `1e-9` for float error and nothing more. A
-//!   NaN score fails. The message never quotes a level's text.
-//!
-//! Every error carries the response's [`Response::request_id`], because a
-//! response that does not fit is a call TypeSafe can look up.
-//!
-//! What it leaves out, on purpose:
-//!
-//! * Sums. A distribution that sums to 0.97 or to 1.0002 is rounding, and
-//!   the API does not promise a tolerance to check it against.
-//! * An offered option missing from a Choice's distribution reads as zero
-//!   ([`Choice::probability_of`]), as it would if the server had sent it with
-//!   zero. That is a deliberate gap: the check is for keys the question never
-//!   offered, not for a response to a narrower question.
-//! * Which option is chosen. The chosen option is the most probable one on
-//!   the wire, but ties and rounding make the argmax a poor check.
-//! * Whether a Score's value is the expectation of its distribution. The
-//!   server rounds both (a recorded Jev answer reports 2.23 where its rounded
-//!   probabilities give 2.22), so only the scale is checked.
-//! * Answers under ids nobody asked, [`Response::extra`], the model name and
-//!   the usage.
-//!
-//! An off-list option fails rather than being read as the question's
-//! no-match option: an option nobody offered names nothing the code can act
-//! on, and reading it as another option would decide on an answer the model
-//! did not give. That is the rule the typed handles were designed around
-//! for a typed Choice, now applied to every question: an unknown option is
-//! an explicit error naming the question, never a default. Nothing is
-//! snapped or clamped either: a score of 3.001 on a four-level scale is
-//! refused, not read as 3.
+//! Left out on purpose: distribution sums (rounding, and the API promises no
+//! tolerance); an offered option missing from a distribution (it reads as
+//! zero, [`Choice::probability_of`]); which option is chosen (ties and
+//! rounding make the argmax a poor check); whether a Score's value is its
+//! distribution's expectation (the server rounds both); unasked ids,
+//! [`Response::extra`], the model and the usage. An off-list option is an
+//! error, never the no-match option: reading it as another option would
+//! decide on an answer the model did not give, and nothing is snapped or
+//! clamped either. Both official SDKs check an answer's shape and not
+//! whether it answers the question it is filed under.
 //!
 //! A structured level (an object or an array) may be echoed as itself or as
-//! a string that parses back to it. Both forms have been seen: the hosted
-//! API echoes the value (2026-10-03), and `laya-serve` from 0.3.22 echoes
-//! the JSON text it showed the model, with Python's `", "` and `": "`
-//! separators (0.3.20 and 0.3.21 echoed the value). The HTTP API reference
-//! types the legend as a map of strings while the OpenAPI document and the
-//! Python SDK allow a string, an object or an array, so neither form
-//! contradicts the contract. The comparison is on the parsed value, so
-//! spacing and key order do not matter; a number written differently
-//! inside a structured level (`1.0` for `1`) is a different JSON value and
-//! still fails. A string level must come back as that exact string, and is
-//! never parsed: a string that reads like JSON is still a string, and
-//! parsing it would let a structured echo pass for it. Whichever way a
-//! structured level was echoed, [`Score::levels`] labels it with its
-//! compact JSON. The ignored live test `a_structured_score_level_is_echoed`
-//! prints what a server echoes.
-//!
-//! This goes beyond both official SDKs, which check the shape of each answer
-//! and not whether it answers the question it is filed under. The cost is a
-//! walk over the questions per response, and that a server which answers
-//! more loosely than it is asked fails where an SDK would have returned the
-//! answer.
-//!
-//! # What `Response::get` checks
-//!
-//! [`Response::get`] takes the handle a question was added with and returns
-//! the answer as that handle's type. It fails with [`Error::MissingAnswer`]
-//! when the response has no answer under the handle's id; with
-//! [`Error::AnswerTypeMismatch`] when the answer is a different primitive
-//! than the handle was created for, or one this release does not know
-//! ([`Answer::Unknown`], named by its escaped `type`); with
-//! [`Error::UnknownOption`] when a typed Choice's chosen option, or any key
-//! in its distribution, is not in the Rust option set; and with
-//! [`Error::Decode`] when a Score's legend keys are not level indices. Each
-//! of the first three carries the response's request id. A
-//! [`Choice<String>`] from a dynamic choice passes its keys through
-//! unchecked, since there is no set to check them against; a verified
-//! response has had them checked against the options the question offered.
+//! a string that parses to it: servers differ (the hosted API echoes the
+//! value, `laya-serve` the JSON text it showed the model; see
+//! `docs/verification/`) and the contract allows either. The comparison is
+//! on the parsed value, so spacing and key order do not matter. A string
+//! level must come back as that exact string and is never parsed, or a
+//! structured echo could pass for it. Either way [`Score::levels`] labels a
+//! structured level by its compact JSON.
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
@@ -187,14 +78,12 @@ use serde_json::Value;
 use crate::error::{Error, Result};
 use crate::question::{Options, Question, Questions};
 
-/// How far a Score's value may fall outside `0..=n-1` and still be on the
-/// scale: float error in the server's arithmetic, and nothing a server could
-/// mean. Private, so no caller comes to depend on a looser scale.
+/// Margin a Score's value may fall outside `0..=n-1` by: float error in the
+/// server's arithmetic. Private, so no caller depends on a looser scale.
 const SCORE_EPSILON: f64 = 1e-9;
 
-/// The model's estimate for one outcome, in `[0, 1]`, validated on
-/// construction and on deserialisation so an out-of-range wire value is an
-/// error and never a number downstream.
+/// The model's estimate for one outcome, in `[0, 1]`; a value outside fails
+/// construction and deserialisation (module docs).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(try_from = "f64", into = "f64")]
 pub struct Probability(f64);
@@ -239,11 +128,9 @@ impl fmt::Display for Probability {
     }
 }
 
-/// How concentrated a Choice or Score distribution is on one outcome, from 0
-/// (flat) to 1 (all on one option). Same domain as [`Probability`] but a
-/// distinct type: a confidence is not the probability of any particular
-/// outcome, and a caller thresholds the two differently. The module docs say
-/// what it means and does not mean.
+/// How concentrated a Choice or Score distribution is on one outcome, in
+/// `[0, 1]`. Distinct from [`Probability`] because a caller thresholds the
+/// two differently (module docs).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(try_from = "f64", into = "f64")]
 pub struct Confidence(f64);
@@ -290,11 +177,10 @@ impl fmt::Display for Confidence {
 
 /// One answer as returned on the wire, discriminated by `type`.
 ///
-/// Non-exhaustive: TypeSafe adds primitives, and each one this crate learns
-/// becomes a variant in a minor release, so a `match` outside this crate
-/// needs a wildcard arm (an `if let` needs nothing). Until a kind is learnt
-/// it decodes as [`Answer::Unknown`] (module docs, `# Decoding is tolerant,
-/// reading is strict`).
+/// Non-exhaustive: TypeSafe adds primitives, each learnt one becomes a
+/// variant in a minor release, and until then it decodes as
+/// [`Answer::Unknown`] (module docs, `# Decoding is tolerant, reading is
+/// strict`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 #[non_exhaustive]
@@ -317,45 +203,28 @@ pub enum Answer {
     Score {
         /// Weighted position; may fall between levels.
         score: f64,
-        /// Level index (as string) to the level as it was sent: a string,
-        /// or the object a structured level was described with. The API
-        /// echoes the level, it does not summarise it, so the value is kept
-        /// as JSON rather than forced into a string that a structured level
-        /// would fail to decode into.
+        /// Level index (as string) to the level as it was sent. JSON, not a
+        /// string: the API echoes a structured level as it was described.
         legend: BTreeMap<String, Value>,
         /// Level index (as string) to probability.
         probabilities: BTreeMap<String, Probability>,
         /// Distribution concentration.
         confidence: Confidence,
     },
-    /// An answer whose `type` this release does not know: a primitive the
-    /// API added after it, or a server that answers something else. It holds
-    /// the JSON object as it came, `type` included; [`Answer::kind`] reads
-    /// that `type`, and reading it through a handle is
-    /// [`Error::AnswerTypeMismatch`]. The client logs one at `warn`.
-    ///
-    /// It serialises back as that object, so a [`crate::Recorder`] keeps one
-    /// filed under an id nobody asked and a [`crate::Replay`] returns it
-    /// (under an asked id, [`Response::verify`] refuses the response first).
-    /// A hand-built `Unknown` whose `type` is `noul`, `choice` or `score`
-    /// serialises as that kind, and decodes back as the known variant (or
-    /// fails to). When a later release learns a kind, answers of it stop
-    /// decoding as `Unknown`; that is a change in behaviour for code that
-    /// inspects `Unknown`, so such code should look at [`Answer::kind`]
-    /// rather than rely on a kind staying unknown.
+    /// An answer whose `type` this release does not know, as the JSON
+    /// object it came as; a handle reads it as [`Error::AnswerTypeMismatch`]
+    /// and it serialises back as it came, so a recording keeps it. A later
+    /// release that learns the kind stops decoding it as `Unknown`, so
+    /// inspect [`Answer::kind`] rather than this variant.
     #[serde(untagged)]
     Unknown(Value),
 }
 
 impl Answer {
-    /// The answer's wire `type`: `noul`, `choice` or `score`, or an unknown
-    /// answer's own `type` string, as the server sent it (`unknown` when it
-    /// has none, which only a hand-built [`Answer::Unknown`] can lack).
-    ///
-    /// An unknown kind is whatever string the server chose, so this crate
-    /// escapes it and cuts it to 64 characters before it goes into an error
-    /// message, a log line or a graded judgment; a caller that logs it should
-    /// do the same.
+    /// The wire `type`: `noul`, `choice`, `score`, or an unknown answer's
+    /// own `type` as the server sent it (`unknown` when a hand-built
+    /// [`Answer::Unknown`] has none). Not sanitised: escape and cut it, as
+    /// the crate does, before it reaches a message or a log line.
     pub fn kind(&self) -> &str {
         match self {
             Self::Noul { .. } => "noul",
@@ -374,25 +243,17 @@ const KNOWN_KINDS: [&str; 3] = ["noul", "choice", "score"];
 /// error message, a log line, a span event or a graded judgment.
 const SERVER_STR_MAX_CHARS: usize = 64;
 
-/// A string the server chose, made safe to print: control characters, quotes
-/// and anything else `escape_debug` escapes are escaped, and the result is
-/// cut to 64 characters, with no marker. Without this a hostile or broken
-/// server could put a line break or an unbounded string into a log line or
-/// an exported span event.
-///
-/// The one bound for every such string, so they all read the same way: an
-/// unknown answer's kind, an answer's key in the client's warning about it
-/// (the server's own string when no question by that id was asked), an
-/// off-list option in [`Error::UnknownOption`]'s message and a probability
-/// key in a Score's [`Error::InvalidAnswer`] reason. A short string that
-/// needs no escaping reads as it came.
+/// A string the server chose, made safe to print: escaped with
+/// `escape_debug` and cut to `SERVER_STR_MAX_CHARS`, so a hostile or
+/// broken server cannot put a line break or an unbounded string into a log
+/// line, an error message or an exported span event. The one bound for
+/// every such string, so they all read the same way.
 pub(crate) fn sanitize_server_str(text: &str) -> String {
     text.escape_debug().take(SERVER_STR_MAX_CHARS).collect()
 }
 
-/// The known answers, decoded strictly: the derive `Answer` had before
-/// `Unknown` existed. [`Answer`]'s `Deserialize` goes through it for a known
-/// `type`, and `From` below turns it into the public enum.
+/// The known kinds, decoded strictly by derive; [`Answer`]'s `Deserialize`
+/// goes through it for a known `type`.
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum KnownAnswer {
@@ -442,27 +303,13 @@ impl From<KnownAnswer> for Answer {
     }
 }
 
-/// Decodes a known `type` strictly and keeps any other string `type` as
-/// [`Answer::Unknown`] (module docs, `# Decoding is tolerant, reading is
-/// strict`).
-///
-/// The answer is buffered as a [`Value`] and dispatched on its `type` by
-/// hand, rather than derived with an untagged fallback variant. A derived
-/// fallback catches every answer the tagged variants refuse, so `{"type":
-/// "noul", "noul": 1.2}` would become an unknown answer instead of an error
-/// (checked with serde 1.0.229): a broken Noul would be read as a kind this
-/// crate does not know, and the remedy the error suggests, upgrading, would
-/// be wrong. By hand, a string `type` of `noul`, `choice` or `score` decodes
-/// through the strict derive and its errors stand; any other string is
-/// `Unknown`; a `type` that is not a string, a missing `type`, and an answer
-/// that is not an object are errors.
-///
-/// Buffering through a [`Value`] means the last of two duplicate keys wins,
-/// as it does for every JSON object `serde_json` reads into a map. A
-/// duplicate `type` can therefore make a known answer `Unknown`, or the
-/// reverse. That is accepted, as `kunobi-jev` accepts it: JSON leaves
-/// duplicate keys undefined, and a server that sends them has no one
-/// answer to read. A unit test pins the behaviour.
+/// Dispatches on `type` by hand rather than deriving an untagged fallback
+/// variant, which would catch every answer the tagged variants refuse:
+/// `{"type": "noul", "noul": 1.2}` would become an unknown kind whose
+/// suggested remedy, upgrading, is wrong. A known `type` goes through the
+/// strict derive and its errors stand. Buffering through a [`Value`] makes
+/// the last of two duplicate keys win, `type` included; accepted, as
+/// `kunobi-jev` accepts it, since JSON leaves duplicate keys undefined.
 impl<'de> Deserialize<'de> for Answer {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let raw = Value::deserialize(deserializer)?;
@@ -499,16 +346,13 @@ fn unexpected(value: &Value) -> Unexpected<'_> {
             .map(Unexpected::Unsigned)
             .or_else(|| n.as_i64().map(Unexpected::Signed))
             .unwrap_or_else(|| Unexpected::Float(n.as_f64().unwrap_or(f64::NAN))),
-        // Not the string itself: the server chose it, and serde would quote
-        // all of it in the message.
         Value::String(_) => Unexpected::Other("string"),
         Value::Array(_) => Unexpected::Seq,
         Value::Object(_) => Unexpected::Map,
     }
 }
 
-/// Reads an absent or `null` field as the type's default: a missing
-/// `usage`, or a missing or `null` count inside it, is zero.
+/// An absent or `null` field as its default: a missing count is zero.
 fn null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
@@ -517,8 +361,8 @@ where
     Option::<T>::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
-/// Reads a string as itself and anything else (`null`, a number, an
-/// object) as `None`, for a field the documented body does not have.
+/// A string as itself, anything else as `None`: for a body `request_id`,
+/// which the documented body does not have, so it may be of any type.
 fn string_or_none<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
     Ok(match Value::deserialize(deserializer)? {
         Value::String(text) => Some(text),
@@ -528,25 +372,16 @@ fn string_or_none<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<S
 
 /// Token usage for one request. Output tokens are free; input tokens are billed.
 ///
-/// A count the server did not report reads as zero: an absent or `null`
-/// `usage` object ([`Response::usage`]), and an absent or `null` count in
-/// it. TypeSafe always reports both counts (the OpenAPI document marks them
-/// required), so from a compatible server zero means "not reported", and
-/// every consumer of these numbers is a counter or a sum, which a zero
-/// leaves right. A missing `usage` object is tolerated beyond both the
-/// schema and the Python SDK, whose `SystemOneResponse.usage` has no default
-/// although its counts are optional. A negative, fractional or string count
-/// is still [`Error::Decode`]; the schema's integer counts have no minimum,
-/// so a negative count is valid against it and still refused here. Other
-/// keys inside `usage` (`cost`, from `OpenRouter`'s decisions endpoint) are
-/// ignored.
+/// A count the server did not report reads as zero, which leaves a counter
+/// or a sum right; more tolerant than the OpenAPI document (both counts
+/// required) and the Python SDK (`usage` has no default). A negative,
+/// fractional or string count is still [`Error::Decode`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Usage {
-    /// Tokens in `state` plus all questions; zero when the server reports
-    /// none.
+    /// Tokens in `state` plus all questions.
     #[serde(default, deserialize_with = "null_as_default")]
     pub input_tokens: u64,
-    /// Tokens in the answers; zero when the server reports none.
+    /// Tokens in the answers.
     #[serde(default, deserialize_with = "null_as_default")]
     pub output_tokens: u64,
 }
@@ -555,76 +390,48 @@ pub struct Usage {
 ///
 /// `model` and `answers` are required, although the Python SDK defaults
 /// `answers` to empty: the OpenAPI document requires both, and a response
-/// with nothing to read is a server error, not an empty result. Everything
-/// else is tolerated (module docs, `# Decoding is tolerant, reading is
-/// strict`).
+/// with nothing to read is a server error. Everything else is tolerated
+/// (module docs).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Response {
     /// The versioned model that answered (e.g. `jev-1.13.0`), even when the
     /// request used an alias. Log it: thresholds are tuned per version.
     pub model: String,
-    /// One answer per question id. An answer of a kind this release does not
-    /// know is [`Answer::Unknown`], not a failed decode; under a question
-    /// that was asked, [`Response::verify`] refuses it.
+    /// One answer per question id; an unknown kind is [`Answer::Unknown`],
+    /// which [`Response::verify`] refuses under an asked question.
     pub answers: BTreeMap<String, Answer>,
-    /// Token accounting; zero for a count, or a whole `usage`, the server
-    /// did not report ([`Usage`]).
+    /// Token accounting; zero for whatever the server did not report.
     #[serde(default, deserialize_with = "null_as_default")]
     pub usage: Usage,
-    /// TypeSafe's request id for the call that produced this response: the
-    /// value of the `x-typesafe-request-id` response header (the client's
-    /// `REQUEST_ID_HEADER`), the one link from a surprising answer to
-    /// TypeSafe's own logs. It is a header, not part of the documented body:
-    /// the client sets it from the last attempt's header after decoding, and
-    /// overwrites any `request_id` key the body had, with `None` when the
-    /// header was absent.
-    ///
-    /// `None` from a [`crate::Fake`], from recordings made before 0.2, and
-    /// from a server that sends no such header (the OpenAPI document lists
-    /// no response headers, and a self-hosted server may not send one). It
-    /// is serialised only when present, so a [`crate::Recorder`] keeps it, a
-    /// [`crate::Replay`] returns the recorded call's id, and a response
-    /// without one serialises as it did before the field existed.
-    ///
-    /// A body `request_id` that is not a string (a number, an object) reads
-    /// as `None` and does not fail the response: the documented body has no
-    /// such field, so a compatible server may send one of any type, and on
-    /// the live path the header replaces it anyway.
+    /// TypeSafe's request id for this call, from the `x-typesafe-request-id`
+    /// response header, the one link to TypeSafe's own logs
+    /// (`docs/design.md`); the client sets it after decoding, over any body
+    /// `request_id`. `None` from a [`crate::Fake`] or a server without the
+    /// header; serialised only when present, so a recording keeps it. A body
+    /// `request_id` that is not a string reads as `None` rather than failing
+    /// the response, since the documented body has no such field.
     #[serde(
         default,
         deserialize_with = "string_or_none",
         skip_serializing_if = "Option::is_none"
     )]
     pub request_id: Option<String>,
-    /// Every top-level field of the body other than `model`, `answers`,
-    /// `usage` and `request_id`, as it came: what a server adds beyond the
-    /// documented shape, such as Laya's `routing` (which checkpoint
-    /// answered) or the `id` and `provider` of `OpenRouter`'s decisions
-    /// endpoint. Kept so an operator can log it without a second decoder.
-    ///
-    /// It is written back at the top level, beside the known fields, so a
-    /// recording keeps it, and nothing is written when it is empty, so a
-    /// response without extras serialises as it did before the field
-    /// existed. The client does not warn about extras: they are expected
-    /// from a compatible server. A misspelt field in a hand-written body
-    /// lands here too, which is why tests assert it is empty. Fields inside
-    /// an answer are not kept.
+    /// Every top-level field beyond the documented ones, as it came (Laya's
+    /// `routing`, the `id` and `provider` of `OpenRouter`'s decisions
+    /// endpoint), so an operator can log it without a second decoder, and
+    /// written back at the top level so a recording keeps it.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
 }
 
 impl Response {
-    /// Read the answer for `handle` as its typed view.
-    ///
-    /// Fails with [`Error::MissingAnswer`] if the id is absent,
-    /// [`Error::AnswerTypeMismatch`] if the primitive differs from what the
-    /// handle was created for, [`Error::UnknownOption`] if a typed Choice
-    /// names an option outside the enum, and [`Error::Decode`] if a Score's
-    /// legend is not indexed. The module docs explain each. The first three
-    /// carry this response's [`Response::request_id`].
-    ///
-    /// On a response that [`Response::verify`] accepted for the questions
-    /// the handle came from, it cannot fail.
+    /// Read the answer for `handle` as its typed view: [`Error::MissingAnswer`],
+    /// [`Error::AnswerTypeMismatch`] (an unknown kind included),
+    /// [`Error::UnknownOption`] for a typed Choice naming an option outside
+    /// its enum (a [`Choice<String>`] passes its keys through), or
+    /// [`Error::Decode`] for legend keys that are not indices, the first
+    /// three with this response's request id. After [`Response::verify`], it
+    /// cannot fail.
     pub fn get<A: FromAnswer>(&self, handle: &crate::Handle<A>) -> Result<A> {
         let id = handle.id();
         let answer = self.answers.get(id).ok_or_else(|| Error::MissingAnswer {
@@ -634,23 +441,14 @@ impl Response {
         A::from_answer(id, answer).map_err(|e| e.with_request_id(self.request_id.as_deref()))
     }
 
-    /// Check that this response answers `questions` as they were asked: an
-    /// answer under every id, of the question's primitive, a Choice naming
-    /// only offered options, a Score on the scale the question sent (module
-    /// docs, `# What Response::verify checks`).
-    ///
-    /// Pure and idempotent: it reads the response and changes nothing. It
-    /// walks the questions in id order and returns the first failure, as
-    /// [`Error::MissingAnswer`], [`Error::AnswerTypeMismatch`],
-    /// [`Error::UnknownOption`] or [`Error::InvalidAnswer`]
-    /// ([`Error::is_unfit`]), each carrying this response's request id.
-    ///
-    /// Every backend in this crate calls it before returning, so a caller of
-    /// one never needs to; it is public for a response that did not come
-    /// through a backend: one read from a recording by case id
-    /// ([`crate::eval::read_recording`]), one decoded by a caller's own
-    /// transport, or one built by hand. After it succeeds, [`Response::get`]
-    /// with any handle from the same `questions` cannot fail.
+    /// Check that this response answers `questions` as they were asked
+    /// (module docs, `# What Response::verify checks`): the first failure in
+    /// id order, as [`Error::MissingAnswer`], [`Error::AnswerTypeMismatch`],
+    /// [`Error::UnknownOption`] or [`Error::InvalidAnswer`], with this
+    /// response's request id. Every backend calls it; it is public for a
+    /// response that came another way: read from a recording by case id
+    /// ([`crate::eval::read_recording`]), a caller's own transport, or built
+    /// by hand.
     pub fn verify(&self, questions: &Questions) -> Result<()> {
         for (id, question) in questions.iter() {
             self.verify_answer(id, question)?;
@@ -715,11 +513,10 @@ impl Response {
     }
 }
 
-/// Whether a Score answer is on the scale of `levels`, or why not. The
-/// reasons never quote a level's text: it is the caller's own question, it
-/// can be long, and the index says which level. A probability key is the
-/// server's string, so it is quoted escaped and cut
-/// ([`sanitize_server_str`]).
+/// Whether a Score answer is on the scale of `levels`, or why not. A reason
+/// never quotes a level's text (the caller's own, possibly long; the index
+/// says which) and quotes a probability key only through
+/// [`sanitize_server_str`], since the server chose it.
 fn score_fits(
     levels: &[Value],
     score: f64,
@@ -749,8 +546,7 @@ fn score_fits(
             sanitize_server_str(key)
         ));
     }
-    // A question has 2 to 10 levels (`Questions::score`), so the top index
-    // is exact as a float.
+    // At most 10 levels (`Questions::score`), so the top index is exact.
     #[allow(clippy::cast_precision_loss)]
     let top = n.saturating_sub(1) as f64;
     // `contains` is false for NaN, so a NaN score is off the scale too.
@@ -762,21 +558,16 @@ fn score_fits(
     Ok(())
 }
 
-/// Whether `key` is exactly the decimal index of one of `n` levels: `"0"`
-/// to `"n-1"`, with no sign and no leading zero (`"01"` and `"+1"` parse as
-/// 1, and are not what a server keys level 1 by).
+/// Whether `key` is exactly the decimal index of one of `n` levels: `"01"`
+/// and `"+1"` parse as 1 and are not what a server keys level 1 by.
 fn is_level_key(key: &str, n: usize) -> bool {
     key.parse::<usize>()
         .is_ok_and(|i| i < n && i.to_string() == key)
 }
 
-/// Whether a legend entry echoes the level the question sent. A string
-/// level must come back as that string. A structured level may come back as
-/// the same JSON value or as a string that parses to it (module docs,
-/// `# What Response::verify checks`): the hosted API echoes the value,
-/// `laya-serve` 0.3.22 and later the JSON text it showed the model, and
-/// comparing parsed values takes both without caring how a server spaces
-/// or orders what it writes.
+/// Whether a legend entry echoes the level sent: a string level as that
+/// string, a structured level as the same value or as text that parses to
+/// it (module docs, `# What Response::verify checks`).
 fn legend_matches(echoed: &Value, sent: &Value) -> bool {
     match sent {
         Value::String(_) => echoed == sent,
@@ -844,20 +635,12 @@ impl<K: Eq + Hash> Choice<K> {
 
     /// The confidence TypeSafe documents for a Choice, computed from
     /// `probabilities`: `(p_max − 1/n) / (1 − 1/n)` for `n` options, so an
-    /// even split reads 0 and all the probability on one option reads 1.
-    /// Only the top probability counts. A Choice of one option is 1.
-    ///
-    /// On the hosted API this matches the wire's `confidence` within about
-    /// 0.01: the server computes it from unrounded probabilities and sends
-    /// both rounded to two decimals (observed against `jev-1.13.0`,
-    /// 2026-10-03, `tests/live.rs`). The same request sent again can come
-    /// back with other probabilities: by up to 0.05 on a clear-cut input in
-    /// that run, and by up to 0.19 (0.28 in confidence) over six repeats of
-    /// an ambiguous one, so neither value is a constant of the question. The
-    /// chosen option was, in every repeat. A compatible server may define
-    /// confidence otherwise (Laya reports one minus the normalised entropy),
-    /// which is what comparing the two tells a caller. [`Response::verify`]
-    /// does not check it: the formula is documentation, not the schema.
+    /// even split reads 0 and all on one option reads 1; one option is 1.
+    /// The hosted API agrees to its two decimals
+    /// (`docs/verification/hosted-typesafe.md`); a compatible server may
+    /// define confidence otherwise (Laya: one minus the normalised entropy),
+    /// which comparing the two shows. [`Response::verify`] does not check
+    /// it: the formula is documentation, not the schema.
     #[allow(clippy::cast_precision_loss)]
     pub fn confidence_from_probabilities(&self) -> f64 {
         let n = self.probabilities.len();
@@ -929,16 +712,10 @@ impl FromAnswer for Choice<String> {
 pub struct Score {
     /// Probability-weighted position, `0.0 ..= levels.len() - 1`.
     pub value: f64,
-    /// Level descriptions, lowest first, as echoed by the API. A level sent
-    /// as a string is that string. A structured level (an object with
-    /// `what` and `examples`, say) is its compact JSON whichever way the
-    /// server echoed it, as the value (the hosted API) or as JSON text
-    /// (`laya-serve` 0.3.22 and later), so a label is always available for
-    /// a log line or a note without the caller re-deriving it from the
-    /// question, and reads the same from every server. The one string
-    /// level a label does not keep verbatim is one whose own text is a JSON
-    /// object or array: it is re-spaced like a structured level, in the
-    /// label only.
+    /// Level descriptions, lowest first: a string level as is, a structured
+    /// level as its compact JSON whichever way the server echoed it, so a
+    /// label reads the same from every server. A string level that is
+    /// itself JSON text is re-spaced the same way, in the label only.
     pub levels: Vec<String>,
     /// Probability per level, same order as `levels`.
     pub probabilities: Vec<Probability>,
@@ -947,9 +724,8 @@ pub struct Score {
 }
 
 /// The index of the level nearest to `value` on a scale of `len` levels:
-/// `value` rounded half away from zero and clamped to `0..len`, so 0 when
-/// there are no levels, and 0 for a NaN value. [`Score::nearest_level`] and
-/// the level sweep in [`crate::eval::tuning`] read a position this way.
+/// rounded half away from zero and clamped to `0..len` (0 for no levels or
+/// a NaN). Shared with the level sweep in [`crate::eval::tuning`].
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub(crate) fn nearest_index(value: f64, len: usize) -> usize {
     (value.round().max(0.0) as usize).min(len.saturating_sub(1))
@@ -969,11 +745,9 @@ impl Score {
     }
 
     /// The probability-weighted level, `Σ i · p_i`, computed from
-    /// `probabilities`. The OpenAPI document defines `score` as exactly this
-    /// expected value, and on the hosted API the two agree to the two
-    /// decimals the wire carries (observed against `jev-1.13.0`, 2026-10-03,
-    /// `tests/live.rs`); a difference means a server that defines `score`
-    /// otherwise, or a response edited by hand.
+    /// `probabilities`. The OpenAPI document defines `score` as exactly this,
+    /// so a difference means a server that defines `score` otherwise or a
+    /// response edited by hand.
     #[allow(clippy::cast_precision_loss)]
     pub fn expected_value(&self) -> f64 {
         self.probabilities
@@ -984,18 +758,12 @@ impl Score {
     }
 
     /// The confidence TypeSafe documents for a Score, computed from
-    /// `probabilities`: `max(0, 1 − spread / even_spread)`, where `spread`
-    /// is the probability-weighted mean distance in levels from the most
-    /// likely level and `even_spread` the mean distance of a flat
-    /// distribution from its centre, so probability on a neighbouring level
-    /// costs less confidence than the same probability two levels away. A
-    /// Score of one level is 1.
-    ///
-    /// On the hosted API this matches the wire's `confidence` within about
-    /// 0.015, the server computing from unrounded probabilities (observed
-    /// against `jev-1.13.0`, 2026-10-03, `tests/live.rs`). As for
-    /// [`Choice::confidence_from_probabilities`], [`Response::verify`] does
-    /// not check it, and a compatible server may define confidence otherwise.
+    /// `probabilities`: `max(0, 1 − spread / even_spread)`, `spread` the
+    /// probability-weighted mean distance in levels from the most likely
+    /// level and `even_spread` that of a flat distribution from its centre,
+    /// so probability on a neighbouring level costs less than the same two
+    /// levels away; one level is 1. As for
+    /// [`Choice::confidence_from_probabilities`], not checked on the wire.
     #[allow(clippy::cast_precision_loss)]
     pub fn confidence_from_probabilities(&self) -> f64 {
         let n = self.probabilities.len();
@@ -1027,13 +795,10 @@ impl Score {
 }
 
 /// The text of a legend entry: a string as is, anything else as compact
-/// JSON. A string that is itself the JSON text of an object or an array is
-/// taken for a structured level echoed as text (`laya-serve` 0.3.22 and
-/// later) and re-rendered compact, so a label does not depend on which
-/// server answered and carries none of the server's spacing or escapes; a
-/// string level whose own text is such JSON is re-spaced the same way, in
-/// its label only, while [`Response::verify`] still holds it to its exact
-/// text.
+/// JSON. A string that is the JSON text of an object or an array is taken
+/// for a structured level echoed as text and re-rendered compact, so a label
+/// carries none of the server's spacing ([`Response::verify`] still holds a
+/// string level to its exact text).
 fn level_label(level: &Value) -> String {
     match level {
         Value::String(text) => match serde_json::from_str::<Value>(text) {
@@ -1056,7 +821,7 @@ impl FromAnswer for Score {
         else {
             return Err(mismatch(id, Self::KIND, answer));
         };
-        // Keys are level indices as strings; order them numerically.
+        // Numerically, not lexically: `"10"` sorts before `"2"` as text.
         let mut indexed: Vec<(usize, &Value)> = legend
             .iter()
             .map(|(k, v)| {
@@ -1090,11 +855,9 @@ impl FromAnswer for Score {
     }
 }
 
-/// The error for an answer of another primitive than `expected`, with no
-/// request id (the caller that has the response adds it). An unknown
-/// answer's kind is the server's own string, so it is escaped and cut
-/// ([`sanitize_server_str`]) before it becomes part of a message; the three
-/// known kinds pass through it unchanged.
+/// [`Error::AnswerTypeMismatch`] with no request id (the caller holding the
+/// response adds it). An unknown kind is the server's string, so it is
+/// escaped and cut ([`sanitize_server_str`]); the known kinds pass through.
 fn mismatch(id: &str, expected: &'static str, actual: &Answer) -> Error {
     Error::AnswerTypeMismatch {
         id: id.to_owned(),
@@ -1113,10 +876,9 @@ mod tests {
 
     #[test]
     fn the_documented_formulas_reproduce_the_wire_s_confidence_and_score() {
-        // Wire values of jev-1.13.0 on 2026-10-03 (`tests/live.rs`): the
-        // department Choice came back billing 0.92, technical 0.08,
-        // none_of_these 0.0 with confidence 0.88; the severity Score came
-        // back 0.0 / 0.02 / 0.98 with score 1.98 and confidence 0.97.
+        // Wire values of one hosted Choice and Score
+        // (`docs/verification/hosted-typesafe.md`), so the formulas are
+        // checked against the server, not against themselves.
         let p = |v: f64| Probability::new(v).unwrap();
         let choice = Choice {
             chosen: "billing".to_owned(),
@@ -1137,8 +899,6 @@ mod tests {
         assert!((score.expected_value() - 1.98).abs() < 1e-6);
         assert!((score.confidence_from_probabilities() - 0.97).abs() < 1e-6);
 
-        // The ends of the scale: one option or level is certain (the hosted
-        // API answers both with confidence 1), a flat distribution is 0.
         let one = Choice {
             chosen: "only".to_owned(),
             probabilities: HashMap::from([("only".to_owned(), p(1.0))]),
@@ -1243,9 +1003,6 @@ mod tests {
 
     #[test]
     fn a_structured_level_is_echoed_as_json_and_labelled_as_text() {
-        // The API accepts a level described as an object and echoes it back
-        // in the legend as that object, not as a string; a legend typed as
-        // strings fails to decode the whole response.
         let mut q = Questions::new();
         let h = q
             .score(
@@ -1266,10 +1023,6 @@ mod tests {
 
     #[test]
     fn a_structured_level_echoed_as_text_is_labelled_by_its_compact_json() {
-        // laya-serve 0.3.22 and later echo a structured level as the JSON
-        // text they showed the model, with Python's separators; it
-        // verifies, and the label is the compact JSON the value form gets,
-        // so a label reads the same from every server.
         let mut q = Questions::new();
         let h = q
             .score(
@@ -1287,8 +1040,7 @@ mod tests {
         let s = r.get(&h).unwrap();
         assert_eq!(s.levels, vec![r#"{"examples":["a"],"what":"low"}"#, "high"]);
         assert_eq!(s.nearest_label(), r#"{"examples":["a"],"what":"low"}"#);
-        // A string level whose own text is a JSON object is held to that
-        // exact text by `verify` and re-spaced in its label only.
+        // A string level that is JSON text: exact for `verify`, re-spaced in its label.
         let mut q = Questions::new();
         let h = q.score("s", "?", [r#"{ "what": "low" }"#, "high"]).unwrap();
         let r = response(&json!({
@@ -1335,7 +1087,6 @@ mod tests {
         assert_eq!(answer.kind(), "rank");
         assert_eq!(serde_json::to_value(&answer).unwrap(), raw);
 
-        // Inside a response, and back out of it, unchanged.
         let r = response(&json!({ "later": raw }));
         assert!(r.extra.is_empty(), "{:?}", r.extra);
         let again: Response = decode(&serde_json::to_value(&r).unwrap()).unwrap();
@@ -1345,7 +1096,6 @@ mod tests {
             raw
         );
 
-        // The known kinds serialise as they always did.
         let noul = Answer::Noul {
             noul: Probability::new(0.25).unwrap(),
         };
@@ -1354,8 +1104,6 @@ mod tests {
             json!({ "type": "noul", "noul": 0.25 })
         );
 
-        // A hand-built Unknown with a known `type` serialises as that kind,
-        // and decodes back as the known variant.
         let hand = Answer::Unknown(json!({ "type": "noul", "noul": 0.5 }));
         assert_eq!(hand.kind(), "noul");
         assert_eq!(
@@ -1364,7 +1112,6 @@ mod tests {
                 noul: Probability::new(0.5).unwrap()
             }
         );
-        // Only a hand-built one can lack a string `type`.
         assert_eq!(Answer::Unknown(json!(5)).kind(), "unknown");
         assert_eq!(Answer::Unknown(json!({ "type": 5 })).kind(), "unknown");
     }
@@ -1389,8 +1136,6 @@ mod tests {
         for (bad, message) in cases {
             let err = decode::<Answer>(&bad).unwrap_err();
             assert!(err.to_string().contains(message), "{bad}: {err}");
-            // And it fails the response, as before: a broken known answer
-            // is not an unknown one.
             let body = json!({ "model": "m", "answers": { "x": bad }, "usage": {} });
             let err = decode::<Response>(&body).unwrap_err();
             assert!(err.to_string().contains(message), "{body}: {err}");
@@ -1499,7 +1244,6 @@ mod tests {
         assert!(actual.chars().count() <= 64, "{}", actual.chars().count());
         assert!(actual.starts_with(r"a\nb"), "{actual:?}");
         assert!(!err.to_string().contains('\n'), "{err}");
-        // A kind that needs no escaping and fits is kept as it is.
         assert_eq!(sanitize_server_str("rank"), "rank");
         assert_eq!(sanitize_server_str(&"r".repeat(64)), "r".repeat(64));
         assert_eq!(sanitize_server_str(&"r".repeat(65)), "r".repeat(64));
@@ -1515,8 +1259,7 @@ mod tests {
             message
         };
 
-        // An off-list option through verify: the message is cut, the field
-        // keeps the server's string whole.
+        // The message is cut; the field keeps the server's string whole.
         let Asked { q, dept, .. } = asked();
         let err = with(
             "owner",
@@ -1534,7 +1277,6 @@ mod tests {
             "{message}"
         );
 
-        // The same through a typed Choice's `get`, with a line break in it.
         let r = with(
             "dept",
             json!({ "type": "choice", "choice": format!("a\nb{long}"),
@@ -1544,7 +1286,6 @@ mod tests {
         assert!(matches!(&err, Error::UnknownOption { .. }), "{err:?}");
         assert!(bounded(&err).contains(r#"option "a\nb"#), "{err}");
 
-        // A probability key that is not a level of a Score.
         let mut probs = json!({ "0": 0.0, "1": 0.0, "2": 1.0 });
         probs[long.as_str()] = json!(0.0);
         let err = with("impact", score_answer(2.0, &legend(), &probs))
@@ -1616,8 +1357,6 @@ mod tests {
 
     #[test]
     fn undocumented_top_level_fields_are_kept_and_written_back() {
-        // The shape Laya's server answers in: a `routing` object at the top,
-        // and fields inside each answer that the API does not have.
         let laya = json!({
             "model": "laya-rl-agent",
             "answers": {
@@ -1645,9 +1384,6 @@ mod tests {
         assert!(written.get("extra").is_none(), "{written}");
         assert_eq!(decode::<Response>(&written).unwrap(), r);
 
-        // A body in the shape of OpenRouter's decisions endpoint, written for
-        // this test: `id` and `provider` at the top, `cost` in the usage,
-        // and integer zeros among the probabilities.
         let routed = json!({
             "model": "typesafe/jev-1.13",
             "answers": {
@@ -1686,13 +1422,10 @@ mod tests {
         assert_eq!(written["provider"], "TypeSafe");
         assert_eq!(decode::<Response>(&written).unwrap(), r);
 
-        // A body `request_id` goes to its own field, not to the extras.
         let r: Response =
             decode(&json!({ "model": "m", "answers": {}, "request_id": "req_1" })).unwrap();
         assert_eq!(r.request_id.as_deref(), Some("req_1"));
         assert!(r.extra.is_empty(), "{:?}", r.extra);
-        // One that is not a string reads as none and fails nothing: the
-        // documented body has no such field.
         for id in [
             json!(123),
             json!({ "a": 1 }),
@@ -1705,14 +1438,11 @@ mod tests {
             assert_eq!(r.request_id, None, "{body}");
             assert!(r.extra.is_empty(), "{body}: {:?}", r.extra);
         }
-        // A response is an object: the array form a derived struct accepted
-        // is gone (nothing sent or recorded it).
+        // A response is an object, never serde's array form of a struct.
         assert!(serde_json::from_str::<Response>(r#"["m", {}, {}]"#).is_err());
     }
 
-    // -----------------------------------------------------------------------
     // Response::verify
-    // -----------------------------------------------------------------------
 
     const LEVELS: [&str; 4] = ["none", "minor", "major", "outage"];
 
@@ -1805,7 +1535,6 @@ mod tests {
         r.verify(&q).unwrap();
         r.verify(&q).unwrap();
 
-        // After verify, every read through the same questions' handles works.
         assert_eq!(r.get(&dept).unwrap().chosen, Dept::Billing);
         let owner = r.get(&owner).unwrap();
         assert_eq!(owner.chosen, "payments");
@@ -2012,15 +1741,12 @@ mod tests {
                 &json!({ "0": 0.6, "1": 0.4 }),
             ) }))
         };
-        // The value itself: the hosted API, laya-serve to 0.3.21.
+        // The value itself (the hosted API).
         answer(level.clone()).verify(&q).unwrap();
-        // Its compact JSON, the crate's own label.
         answer(json!(r#"{"examples":["a typo"],"what":"low"}"#))
             .verify(&q)
             .unwrap();
-        // The text `json.dumps` writes with Python's default separators, in
-        // the order the server received the keys: laya-serve 0.3.22 and
-        // later.
+        // `json.dumps` with Python's separators, keys as received: `laya-serve`.
         answer(json!(r#"{"what": "low", "examples": ["a typo"]}"#))
             .verify(&q)
             .unwrap();
@@ -2030,8 +1756,7 @@ mod tests {
         ))
         .verify(&q)
         .unwrap();
-        // Text that parses to another value, text that does not parse, and
-        // the text of one field are not the level.
+        // Another value, text that does not parse, one field's text: not it.
         for echo in [
             json!(r#"{"what": "low", "examples": ["a typo", "another"]}"#),
             json!(r#"{"what": "low""#),
@@ -2079,8 +1804,7 @@ mod tests {
             reason(&err),
             "legend level 1 is not the level the question sent"
         );
-        // A string level is not matched against a structured echo, nor
-        // against other text that parses to the same value.
+        // A string level matches neither a structured echo nor equivalent text.
         let mut q = Questions::new();
         q.score("s", "?", [r#"{"what":"low"}"#, "high"]).unwrap();
         let answer = |echo: Value| {
@@ -2134,8 +1858,7 @@ mod tests {
                 format!("score {off} is outside 0..=3, the scale the question sent")
             );
         }
-        // NaN never reaches the wire as JSON, but a hand-built response can
-        // carry one; it is off the scale too.
+        // NaN never reaches the wire as JSON, but a hand-built response can carry one.
         let mut r = with("impact", score_answer(1.0, &legend(), &probs));
         if let Some(Answer::Score { score, .. }) = r.answers.get_mut("impact") {
             *score = f64::NAN;
@@ -2189,9 +1912,8 @@ mod tests {
 mod kani_proofs {
     use super::*;
 
-    /// `nearest_index` is always an index into a scale of `len` levels (0
-    /// when there are none), for any value including NaN and infinities and
-    /// any `len`; for a value on the scale it is within half a level.
+    /// For any value (NaN and infinities included) and any `len`, the result
+    /// indexes the scale (0 when empty), within half a level of a value on it.
     #[kani::proof]
     fn nearest_index_is_a_level_of_the_scale() {
         let value: f64 = kani::any();

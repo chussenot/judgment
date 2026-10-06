@@ -13,24 +13,19 @@ use crate::answer::Response;
 use crate::eval::{Judgment, canonical};
 use crate::question::{Question, Questions};
 
-/// Labelled cases: states with, for each, what the right answer to some of
-/// a rubric's questions is. The gates of a rubric are tuned on them, and a
-/// model is graded on them ([`grade`]).
+/// Labelled states a rubric is graded on ([`grade`]) and its gates are
+/// tuned on (`docs/jud.md`, cases).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Cases {
-    /// A name for the set, when it has one; the
-    /// [`fingerprint`](Self::fingerprint) is its exact identity.
+    /// A name for the set; [`fingerprint`](Self::fingerprint) is exact.
     pub id: Option<String>,
-    /// The rubric the labels are for, by id or by fingerprint
-    /// (`sha256:…`), when the author says. [`Cases::bind`] checks the
-    /// labels against a rubric whichever way it is named.
+    /// The rubric the labels are for, by id or fingerprint ([`Cases::bind`]).
     pub rubric: Option<String>,
     /// Where the cases came from, for the person reading them.
     pub description: Option<String>,
     /// The cases, in document order.
     pub cases: Vec<Case>,
-    /// The document's top-level `x-` keys (1.1), kept as read and part of
-    /// no fingerprint.
+    /// The top-level `x-` keys (1.1), kept as read and part of no fingerprint.
     pub extensions: IndexMap<String, Value>,
 }
 
@@ -38,38 +33,28 @@ pub struct Cases {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Case {
-    /// A name, stable across edits; without one the case is named by its
-    /// position ([`Case::name`]).
+    /// A name stable across edits; without one, the position ([`Case::name`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    /// The state the questions are asked about: any JSON. A conversation is
-    /// a state that is an array, one element per turn ([`turns`]).
+    /// Any JSON; an array is a conversation, one element per turn ([`turns`]).
     pub state: Value,
-    /// The right answer, by question id, for the questions this case is
-    /// labelled for; a question left out is asked and not graded.
+    /// The right answer, by question id; a question left out is not graded.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub expect: IndexMap<String, Expect>,
-    /// Options supplied for this case's request (1.1), by question id: what
-    /// a Choice with `options_from: request` is asked over, before its
-    /// static options ([`Rubric::lower`]). A case is then a complete
-    /// request: its state, these options and the rubric.
+    /// Options supplied for this case's request (1.1), as [`Rubric::lower`]
+    /// takes them: with them, a case is a complete request.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub options: Supplied,
-    /// Free labels for slicing a report (`edge`, `multilingual`).
+    /// Free labels for slicing a report.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
-    /// Why the label is what it is, when it needs saying.
+    /// Why the label is what it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
 
-/// What a case expects of one question. Which forms fit which primitive is
-/// checked by [`Cases::bind`] and [`grade`]:
-///
-/// - a Noul: `true` or `false`, or over a conversation `{from_turn: n}`
-///   (true from turn `n` on, zero-based, and `{from_turn: null}` for never);
-/// - a Choice: the option key;
-/// - a Score: the level's index as a number, or its text.
+/// What a case expects of one question; which form fits which primitive is
+/// `docs/jud.md`, cases, checked by [`Cases::bind`] and [`grade`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Expect {
@@ -84,8 +69,7 @@ pub enum Expect {
 }
 
 /// `{from_turn: n}`: a Noul over a conversation is true from turn `n`
-/// (zero-based) on, and `{from_turn: null}` says it never is. The key is
-/// required, so `{}` is not a label.
+/// (zero-based) on; `{from_turn: null}` says never.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FromTurn {
@@ -94,16 +78,14 @@ pub struct FromTurn {
     pub from_turn: Option<u64>,
 }
 
-/// An `Option` field that must be present, null included: serde would
-/// otherwise read a missing field as `None`.
+/// Required even when `null`: serde would otherwise read a missing key as `None`.
 fn nullable<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> std::result::Result<Option<u64>, D::Error> {
     Option::<u64>::deserialize(deserializer)
 }
 
-/// One turn of a conversation case, from [`Case::per_turn`]: the state cut
-/// after this turn and the expectations as they stand at it.
+/// One turn of a conversation case ([`Case::per_turn`]).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Turn {
     /// Zero-based index of the last turn included.
@@ -112,8 +94,7 @@ pub struct Turn {
     pub case: Case,
 }
 
-/// The turns of a state that is a conversation: its elements when it is an
-/// array, `None` otherwise.
+/// The turns of a conversation: the state's elements when it is an array.
 pub fn turns(state: &Value) -> Option<&[Value]> {
     state.as_array().map(Vec::as_slice)
 }
@@ -131,8 +112,7 @@ impl Case {
         }
     }
 
-    /// The request this case asks under `rubric`: [`Rubric::lower`] over its
-    /// state and its options.
+    /// [`Rubric::lower`] over the case's state and options.
     pub fn request(&self, rubric: &Rubric) -> Result<Questions> {
         rubric.lower(&self.state, &self.options)
     }
@@ -142,11 +122,8 @@ impl Case {
         self.id.clone().unwrap_or_else(|| format!("#{index}"))
     }
 
-    /// A conversation case at each of its turns, first turn first: the
-    /// state cut to the turns so far, a `from_turn` expectation resolved to
-    /// `true` or `false` for that turn, and every other expectation kept at
-    /// the last turn only, since it labels the whole conversation. Empty
-    /// when the state is not a conversation.
+    /// A conversation case at each of its turns (`docs/jud.md`,
+    /// Conversations); empty when the state is not a conversation.
     pub fn per_turn(&self) -> Vec<Turn> {
         let Some(all) = turns(&self.state) else {
             return Vec::new();
@@ -201,8 +178,7 @@ struct RawCases {
     rest: IndexMap<String, Value>,
 }
 
-/// A case as read: `options` present is a 1.1 feature whatever its value,
-/// and `null` is refused.
+/// A case as read; `options` counts by its presence ([`some`]).
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawCase {
@@ -235,9 +211,8 @@ struct CasesDoc<'a> {
 }
 
 impl Cases {
-    /// Parse a `cases` document, YAML or JSON. The labels are not checked
-    /// against a rubric here, since the document may not name one;
-    /// [`Cases::bind`] does that.
+    /// Parse a `cases` document, YAML or JSON. The labels are checked by
+    /// [`Cases::bind`], since the document need not name its rubric.
     pub fn parse(text: &str) -> Result<Self> {
         let raw: RawCases = from_text(text)?;
         let declared = check_version(raw.jud.as_ref())?;
@@ -283,9 +258,7 @@ impl Cases {
                     reason: "an id cannot be empty; leave it out instead".to_owned(),
                 });
             }
-            // A supplied option is what a Choice's criteria hold: a
-            // non-empty key, and a description that is text, an object, an
-            // array or null, as the schema says.
+            // A supplied option has the shape of a Choice's criteria entry.
             for (question, options) in &case.options {
                 if let Some((key, _)) = options.iter().find(|(key, description)| {
                     key.is_empty() || matches!(description, Value::Bool(_) | Value::Number(_))
@@ -311,7 +284,7 @@ impl Cases {
         Ok(cases)
     }
 
-    /// The first `jud: 1.1` feature the document uses, as a field path.
+    /// The first 1.1 feature used, as a field path.
     fn feature(&self) -> Option<String> {
         self.extensions.keys().next().cloned().or_else(|| {
             self.cases
@@ -321,8 +294,7 @@ impl Cases {
         })
     }
 
-    /// The cases as a `.jud` document, YAML, declaring `jud: 1.1` only when
-    /// it uses a 1.1 feature.
+    /// The cases as YAML, declaring the lowest version that reads it.
     pub fn to_yaml(&self) -> Result<String> {
         to_yaml(&CasesDoc {
             jud: version_value(u64::from(self.feature().is_some())),
@@ -335,23 +307,15 @@ impl Cases {
         })
     }
 
-    /// The fingerprint of the cases, `sha256:…` over the canonical JSON of
-    /// the `cases` array ([`canonical::fingerprint`]): what a rubric's
-    /// `tuning.cases` names. The id and description are not part of it.
+    /// The fingerprint of the `cases` array alone ([`canonical::fingerprint`]).
     pub fn fingerprint(&self) -> String {
         canonical::fingerprint(&serde_json::to_value(&self.cases).unwrap_or(Value::Null))
     }
 
-    /// Check every case against `rubric`: its request lowers ([`Case::request`]:
-    /// options are supplied only to questions that take them, and every
-    /// Choice ends up with 2 to 255 options), and every label names a
-    /// question that request asks (a question whose `when` does not hold
-    /// for the case's state is not asked, so cannot be labelled) and fits
-    /// it ([`Expect`]): a Choice label is an option offered, static or
-    /// supplied; a Score label is a level; a `from_turn` label is on a
-    /// conversation and within its turns. When the document names its
-    /// rubric, that name must be the rubric's id or fingerprint. The first
-    /// failure is returned as [`Error::Case`] or [`Error::Invalid`].
+    /// Check every case against `rubric`: its request lowers
+    /// ([`Case::request`]) and every label names a question that request
+    /// asks and fits it (`docs/jud.md`, cases); the document's `rubric`,
+    /// when named, is the rubric's id or fingerprint.
     pub fn bind(&self, rubric: &Rubric) -> Result<()> {
         if let Some(named) = &self.rubric
             && *named != rubric.id
@@ -384,9 +348,8 @@ fn request(rubric: &Rubric, case: &Case, index: usize) -> Result<Questions> {
     })
 }
 
-/// The label a case's expectation grades as, in [`Judgment::of_answer`]'s
-/// vocabulary: `yes` or `no`, an option key, or a level index as a string,
-/// checked against the request the case asks.
+/// The label in [`Judgment::of_answer`]'s vocabulary (`yes`/`no`, an option
+/// key, a level index as a string), checked against the request asked.
 fn expected_label(
     rubric: &Rubric,
     asked: &Questions,
@@ -467,13 +430,10 @@ fn yes_no(yes: bool) -> String {
 }
 
 /// Grade a response to `case` against its labels: one [`Judgment`] per
-/// labelled question, in the case's order, each keyed by question id.
-///
-/// The response is verified against the case's request first
-/// ([`Case::request`], [`Error::Response`]); a label that does not fit its
-/// question is [`Error::Case`], as [`Cases::bind`] would have reported. `index` names the case in errors
-/// when it has no id. A `from_turn` label grades the whole conversation;
-/// grade each [`Turn`] of [`Case::per_turn`] to grade turn by turn.
+/// labelled question, in the case's order, after [`Response::verify`]
+/// ([`Error::Response`]); `index` names a case without an id in errors. A
+/// `from_turn` label grades the whole conversation; [`Case::per_turn`]
+/// gives the turns to grade one by one.
 pub fn grade(
     rubric: &Rubric,
     case: &Case,
@@ -578,7 +538,6 @@ cases:
             Expect::FromTurn(FromTurn { from_turn: None })
         );
         cases.bind(&rubric).unwrap();
-        // Named by fingerprint is as good as by id; another name is not.
         let mut by_fingerprint = cases.clone();
         by_fingerprint.rubric = Some(rubric.fingerprint());
         by_fingerprint.bind(&rubric).unwrap();
@@ -651,13 +610,11 @@ cases:
                 "turn {i}"
             );
         }
-        // The whole-conversation label is graded at the last turn only.
         assert!(!per_turn[0].case.expect.contains_key("owner"));
         assert_eq!(
             per_turn[2].case.expect["owner"],
             Expect::Text("support".to_owned())
         );
-        // Never: false at every turn.
         for turn in cases.cases[3].per_turn() {
             assert_eq!(turn.case.expect["handoff"], Expect::Bool(false));
         }
@@ -713,7 +670,7 @@ cases:
         assert_eq!(by_id["actionable"].expected.as_deref(), Some("yes"));
         assert_eq!(by_id["actionable"].correct, Some(true));
         assert_eq!(by_id["owner"].expected.as_deref(), Some("billing"));
-        // `angry` is level 2, which is what the answer's distribution is keyed by.
+        // `angry` is level 2: the answer's distribution is keyed by index.
         assert_eq!(by_id["tone"].expected.as_deref(), Some("2"));
         assert_eq!(by_id["tone"].correct, Some(true));
         assert_eq!(by_id["tone"].p_expected, Some(0.6));
@@ -727,7 +684,6 @@ cases:
             .unwrap()
             .into_iter()
             .collect();
-        // Turn 2 exists, so over the whole conversation the handoff is yes.
         assert_eq!(graded["handoff"].expected.as_deref(), Some("yes"));
         assert_eq!(graded["handoff"].correct, Some(false));
     }
@@ -758,15 +714,12 @@ questions:
         let asked = cases.cases[0].request(&rubric).unwrap();
         let ids: Vec<&str> = asked.ids().collect();
         assert_eq!(ids, ["desk", "refund_request"]);
-        // The document round-trips, as 1.1, and its fingerprint does not
-        // depend on the `x-` key.
         let yaml = cases.to_yaml().unwrap();
         assert!(yaml.starts_with("jud: 1.1\n"), "{yaml}");
         assert_eq!(Cases::parse(&yaml).unwrap(), cases);
         let mut bare = cases.clone();
         bare.extensions.clear();
         assert_eq!(bare.fingerprint(), cases.fingerprint());
-        // Options make a document 1.1.
         let err = Cases::parse(&text.replacen("jud: 1.1", "jud: 1", 1).replacen(
             "x-source: {export: 2026-10-04}\n",
             "",
@@ -787,20 +740,17 @@ questions:
                 .unwrap()
                 .bind(&rubric)
         };
-        // No recent order: `refund_request` is not asked, so not labelled.
         let err = bind("    state: {message: {text: x}}\n    options: {desk: {billing: B}}\n    expect: {refund_request: false}\n").unwrap_err();
         assert!(
             matches!(&err, Error::Case { reason, .. } if reason.contains("not asked for this state")),
             "{err}"
         );
-        // A label among the supplied options is offered; another is not.
         bind("    state: {message: {text: x}}\n    options: {desk: {billing: B}}\n    expect: {desk: billing}\n").unwrap();
         let err = bind("    state: {message: {text: x}}\n    options: {desk: {billing: B}}\n    expect: {desk: technical}\n").unwrap_err();
         assert!(
             matches!(&err, Error::Case { reason, .. } if reason.contains("not one of the offered options")),
             "{err}"
         );
-        // A case whose request cannot be built says so.
         let err = bind("    state: {message: {text: x}}\n    expect: {desk: none_of_these}\n")
             .unwrap_err();
         assert!(

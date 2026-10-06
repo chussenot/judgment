@@ -16,6 +16,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 |---|---|
 | How a question's handle ties it to its answer, how a response is checked, how the retry loop decides | [How judgment works](design.md) |
 | What each module is for and what it promises, before opening the rustdoc | [What is in the crate](tour.md) |
+| The rules the code applies and why: the tolerant decoder, what the response check leaves unchecked, how an error body is read, what a per-call option replaces, how recordings are keyed, how a rubric is lowered | [How the crate is implemented](implementation.md) |
 | Which crate types carry speculative fan-out, confidence-gated routing, composite scoring and intent routing, and what the recordings teach about thresholds | [Patterns](patterns.md) and the examples under `examples/` |
 | How to test a decision with no key and no network, and grade recordings against labels | [Testing without the model](testing.md) |
 | How to keep the questions, the thresholds, the labelled cases and the recorded answers in files that name each other by content, and tune a threshold from them, including a request that depends on the state | [The .jud format](jud.md) and `examples/jud/` |

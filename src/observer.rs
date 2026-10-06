@@ -1,23 +1,16 @@
 //! The seam between this crate and an application's metrics.
 //!
-//! A library should emit `tracing` spans and nothing else: it must not pick a
-//! metrics backend for the application that embeds it. But the two numbers an
-//! application always wants from a decision model, tokens per response and
-//! failed attempts per upstream, are only known inside the client and the
-//! retry loop. [`Observer`] hands them out; the application counts them where
-//! it counts everything else. The default is a no-op, so nothing changes for a
-//! caller that does not care.
+//! A library must not pick a metrics backend for the application that embeds
+//! it, so the crate emits `tracing` spans and hands the two numbers an
+//! application always wants, tokens per response and failed attempts per
+//! upstream, to an [`Observer`]; the default is a no-op.
 //!
 //! Set one per client with [`crate::client::ClientBuilder::observer`], or
 //! once per process with [`set_global`]. Token usage goes to the client's own
 //! observer when it has one and to the global one otherwise, the way
 //! `tracing` falls back to its global subscriber. Failed attempts always go
 //! to the global one: the retry loop in [`crate::http`] is shared with
-//! clients that carry no observer, so it has no client to ask. The loop
-//! reports every failed attempt by status, and the TypeSafe client also
-//! reports a 2xx it could not use, which the loop saw as a success: one
-//! whose body did not decode, or one that did not answer the questions it
-//! was sent.
+//! clients that carry no observer, so it has no client to ask.
 
 use std::sync::{Arc, OnceLock};
 
@@ -31,14 +24,12 @@ pub trait Observer: Send + Sync + 'static {
     }
 
     /// One attempt against `service` failed with `status`: an HTTP status
-    /// code, `transport` when no response came back, `too_large` when the
-    /// body was over the policy's cap, or, from the TypeSafe client,
-    /// `decode` (a 2xx whose body did not decode) or `unfit` (a 2xx that did
-    /// not fit the questions sent, [`crate::Response::verify`]). Retried
-    /// attempts are reported too; they are load whether or not a later
-    /// attempt succeeds. `too_large`, `decode` and `unfit` are never
-    /// retried, and a `unfit` response's usage is reported through
-    /// [`Observer::on_usage`] as well, since it was billed.
+    /// code, `transport` (no response), `too_large` (body over the policy's
+    /// cap), or, from the TypeSafe client, `decode` (a 2xx whose body did not
+    /// decode) or `unfit` (a 2xx that did not fit the questions sent).
+    /// Retried attempts are reported too: they are load whether or not a
+    /// later attempt succeeds. An `unfit` response's usage is also reported
+    /// through [`Observer::on_usage`], since it was billed.
     fn on_failed_attempt(&self, service: &'static str, status: &str) {
         let _ = (service, status);
     }
@@ -59,8 +50,7 @@ pub fn set_global(observer: Arc<dyn Observer>) -> bool {
     GLOBAL.set(observer).is_ok()
 }
 
-/// The process-wide observer: the one installed by [`set_global`], or a
-/// no-op.
+/// The process-wide observer installed by [`set_global`], or a no-op.
 pub fn global() -> Arc<dyn Observer> {
     static NOOP: OnceLock<Arc<dyn Observer>> = OnceLock::new();
     GLOBAL

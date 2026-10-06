@@ -1,88 +1,33 @@
 //! Questions: the three System One primitives, a request builder, and the
-//! typed handles that connect each question to the shape of its answer.
-//!
-//! The API is a map of `id -> Question`; the response is a map of
-//! `id -> Answer`. Nothing on the wire ties a Noul question to a Noul answer.
-//! [`Questions::noul`], [`Questions::choice`] and [`Questions::score`] return a
-//! [`Handle<A>`] whose type parameter records what the answer must be, and
-//! [`crate::Response::get`] checks it, so mismatches surface as errors instead
-//! of a silently misread number.
+//! typed handles that tie each question to the shape of its answer
+//! (`docs/design.md` draws the mechanism).
 //!
 //! # Ids are for code, not for the model
 //!
-//! The id is the key the answer comes back under. The API does not send it to
-//! the model and does not use it in inference, so an id such as `is_urgent`
-//! tells the model nothing. The `instructions` must stand alone as the
-//! complete question. When it is about one part of the state, name that part
-//! by its backticked path (`` `message` ``, `` `alert.title` ``) so the model
-//! knows what to judge.
-//!
-//! The instructions may be `null`, when the criteria carry the whole
-//! question: a Choice whose option descriptions already say what is being
-//! decided, a Noul whose meaning of yes and no does. Every builder accepts
-//! `()`, [`Value::Null`], `None::<&str>` or an `Option<String>` for them.
-//! Leave them null only then; with neither instructions nor criteria a Noul
-//! asks the model nothing, and [`Questions::noul`] refuses it, because the
-//! answer would still be a confident-looking probability. Criteria that
-//! describe neither outcome (`{}`, or both sides null) count as none.
-//!
-//! A null is sent as `"instructions": null`, not left out. The OpenAPI
-//! document requires only `type` (and `criteria` for a Choice or a Score)
-//! and accepts a null for all three primitives; the HTTP API reference page
-//! marks `instructions` required. The Python SDK omits a null field, the JS
-//! SDK sends null, and this crate sends null because Laya reads the key
-//! unconditionally (`qdef["instructions"]` in its `agent.py`), so a server
-//! that follows the reference page or Laya's code still gets the field, and
-//! the request hash of a recording does not change.
+//! The API never shows the id to the model, so `instructions` must stand
+//! alone; they may be `null` (`()`, [`Value::Null`], `None::<&str>`,
+//! `Option<String>`) only when the criteria carry the question. A null is
+//! sent, never omitted: the OpenAPI document allows it, the reference page
+//! marks the field required and Laya reads the key unconditionally.
 //!
 //! # A Choice should carry a no-match option
 //!
-//! A Choice answer is always one of the options given, with the probability
-//! mass spread over them. When no option fits, the model still has to pick
-//! one, and a confident-looking wrong answer is the result. An `other` or
-//! `none_of_these` option gives the model a way to say so and gives the code a
-//! branch to route on. The [`options!`](crate::options) macro does not add one
-//! for you: what "none" means is part of the question's design, and the crate
-//! cannot know it for your set.
-//!
-//! # Static and dynamic option sets
-//!
-//! [`Questions::choice`] takes a Rust enum implementing [`Options`], so the
-//! option keys the API sees and the variants the code matches on are one
-//! definition and cannot drift. Some option sets exist only at runtime: the
-//! candidate records fetched from another system, the ids of the passages
-//! retrieved for a query. [`Questions::dynamic_choice`] takes those as
-//! `(key, description)` pairs and returns a handle to a [`Choice<String>`].
-//! That loses the enum and keeps everything else: the id check, the
-//! primitive check and the validated probabilities.
+//! The model must pick one option even when none fits; an `other` option
+//! gives the code a branch. [`options!`](crate::options) does not add one,
+//! because what "none" means is part of the question.
 //!
 //! # Limits are checked here
 //!
-//! The HTTP API reference page allows at most 255 options per Choice, and
-//! says a Score "should have at least two levels; the API accepts up to
-//! 10". The OpenAPI document TypeSafe publishes is looser: it bounds a
-//! Score's levels only below (`minItems: 1`) and a Choice's options not at
-//! all. The builder follows the reference page ([`MAX_CHOICE_OPTIONS`],
-//! [`MAX_SCORE_LEVELS`], at least 2 levels) and adds a minimum of 2 options,
-//! since a Choice of one option decides nothing. It is deliberately stricter
-//! than the schema, and it rejects a duplicate id too, before anything is
-//! sent: the error names the question, and no round trip, retry or token is
-//! spent finding out. The hosted API was probed past these limits on
-//! 2026-10-03 (`tests/live.rs`, `the_server_s_limits_match_the_reference_page`):
-//! it refuses 256 options and 11 levels with a 400 whose `detail` is a
-//! sentence (`Too many choices. Must have at most 255 choices.`), refuses
-//! zero options with a 400 and zero levels with a 422, and answers a Choice
-//! of one option and a Score of one level, both with probability 1 and
-//! confidence 1. So the upper bounds here are the server's, and the lower
-//! ones are this crate's alone: a one-option Choice and a one-level Score
-//! are accepted upstream and decide nothing. An empty question id is
-//! refused here too, as the server refuses it (`Question key cannot be
-//! empty.`), and so is an empty option key, which the server accepts and
-//! can choose, leaving the caller an answer it cannot name. The cost is
-//! that the limits are duplicated here and must follow the API when it
-//! changes them; `tests/contract.rs` pins the difference from the schema in
-//! both directions, so a refreshed OpenAPI document that adds or moves a
-//! bound fails there.
+//! The HTTP API reference page allows at most 255 options per Choice and
+//! 2 to 10 levels per Score; the OpenAPI document is looser. The builder
+//! follows the page and adds a minimum of 2 options, since one decides
+//! nothing. The upper bounds are the hosted server's own (a 400 past
+//! them); the lower ones are this crate's, as the server answers one
+//! option or one level with probability 1
+//! (`docs/verification/hosted-typesafe.md`). An empty id is refused as the
+//! server refuses it, an empty option key because the server can choose
+//! it, an answer the caller cannot name. Refusing before sending costs no
+//! round trip; `tests/contract.rs` pins the limits against the schema.
 
 use indexmap::IndexMap;
 use indexmap::map::Entry;
@@ -95,17 +40,9 @@ use serde_json::Value;
 use crate::answer::{Choice, FromAnswer, Noul, Score};
 use crate::error::{Error, Result};
 
-/// Maximum options a Choice may define: the HTTP API reference page's limit
-/// ("a maximum of 255 options per Choice"), checked by the builder so a
-/// violation is an error here rather than whatever a server does with it.
-/// The OpenAPI document states no maximum; the builder is deliberately the
-/// stricter of the two (module docs, `# Limits are checked here`).
+/// The reference page's maximum options per Choice (module docs, `# Limits are checked here`).
 pub const MAX_CHOICE_OPTIONS: usize = 255;
-/// Maximum levels a Score may define: the HTTP API reference page's limit
-/// ("the API accepts up to 10"), checked by the builder. The minimum is 2,
-/// also the reference page's ("at least two levels"), since one level cannot
-/// be a scale; the OpenAPI document says only `minItems: 1` and no maximum
-/// (module docs, `# Limits are checked here`).
+/// The reference page's maximum levels per Score; the minimum is 2 (module docs).
 pub const MAX_SCORE_LEVELS: usize = 10;
 
 /// One question, as sent on the wire.
@@ -114,9 +51,7 @@ pub const MAX_SCORE_LEVELS: usize = 10;
 pub enum Question {
     /// Yes/no; the answer is the probability of yes.
     Noul {
-        /// What to decide. String, object or array; `null` when the criteria
-        /// say it all (module docs, `# Ids are for code, not for the model`).
-        /// Sent as `null`, never omitted.
+        /// What to decide; `null` when the criteria say it all.
         instructions: Value,
         /// Optional meaning of yes and no.
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -125,16 +60,13 @@ pub enum Question {
     /// One option from a defined set.
     Choice {
         /// What to decide; `null` when the option descriptions say it all.
-        /// Sent as `null`, never omitted.
         instructions: Value,
-        /// Option key to rubric description (`null` allowed), in the order
-        /// the options were given: the order the model sees them in.
+        /// Option key to description (`null` allowed), in the order the model sees them.
         criteria: IndexMap<String, Value>,
     },
     /// A position along ordered levels.
     Score {
-        /// What to rate; `null` when the levels say it all. Sent as `null`,
-        /// never omitted.
+        /// What to rate; `null` when the levels say it all.
         instructions: Value,
         /// Ordered level descriptions, lowest first.
         criteria: Vec<Value>,
@@ -142,9 +74,7 @@ pub enum Question {
 }
 
 impl Question {
-    /// The primitive's wire `type`: `noul`, `choice` or `score`. It is what
-    /// the answer to this question must be, and what
-    /// [`crate::Response::verify`] names as `expected` when it is not.
+    /// The wire `type`: `noul`, `choice` or `score` ([`crate::Response::verify`]'s `expected`).
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::Noul { .. } => "noul",
@@ -175,14 +105,10 @@ impl NoulCriteria {
     }
 }
 
-/// The closed set of options for a typed [`Choice`].
-///
-/// Implement this for a Rust enum (the [`options!`](crate::options) macro writes it for you).
-/// The wire `criteria` map is generated from [`Options::ALL`], and the answer's
-/// `choice` string is mapped back with [`Options::from_key`], so the Rust type
-/// and the API contract cannot disagree.
+/// The closed set of options for a typed [`Choice`]: the wire `criteria` come
+/// from [`Options::ALL`], the answer maps back through [`Options::from_key`].
 pub trait Options: Copy + Eq + Hash + std::fmt::Debug + Send + Sync + 'static {
-    /// Every option, in a stable order.
+    /// Every option, in the order the model sees them.
     const ALL: &'static [Self];
     /// The key sent to and returned by the API.
     fn key(self) -> &'static str;
@@ -194,7 +120,8 @@ pub trait Options: Copy + Eq + Hash + std::fmt::Debug + Send + Sync + 'static {
     }
 }
 
-/// Define an enum implementing [`Options`] with its wire keys and rubric.
+/// Define an enum implementing [`Options`]; each variant is
+/// `Name = "wire_key" => description`, the description a `&str` or `None`.
 ///
 /// ```
 /// judgment::options! {
@@ -263,10 +190,7 @@ impl IntoDescription for Option<&'static str> {
     }
 }
 
-/// A typed reference to one question in a request.
-///
-/// `A` is the answer type ([`Noul`], [`Choice<O>`] or [`Score`]); it is only
-/// a compile-time marker, nothing about it is sent on the wire.
+/// A typed reference to one question; `A` ([`Noul`], [`Choice<O>`], [`Score`]) is a marker only.
 #[derive(Debug, Clone)]
 pub struct Handle<A> {
     id: String,
@@ -280,7 +204,7 @@ impl<A> Handle<A> {
     }
 }
 
-/// The `questions` map of one request, built through typed constructors.
+/// The `questions` map of one request, in the order the model sees them.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct Questions {
@@ -308,28 +232,18 @@ impl Questions {
         self.map.get(id)
     }
 
-    /// The question ids, in wire order (the order they were added): what a
-    /// backend must answer and what a test asserts was asked.
+    /// The question ids, in wire order.
     pub fn ids(&self) -> impl Iterator<Item = &str> {
         self.map.keys().map(String::as_str)
     }
 
-    /// The questions with their ids, in wire order, for a backend or a
-    /// harness that needs the questions themselves (a Choice's option keys, a
-    /// Score's levels) rather than only their ids.
+    /// The questions with their ids, in wire order.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &Question)> {
         self.map.iter().map(|(k, q)| (k.as_str(), q))
     }
 
-    /// Add a yes/no question.
-    ///
-    /// `instructions` may be null when `criteria` say what yes and no mean;
-    /// with neither, the question is refused with [`Error::InvalidQuestion`].
-    /// Criteria that describe neither outcome (both sides `None` or null)
-    /// count as none. The id is never shown to the model, so such a Noul
-    /// asks it nothing, yet the answer would come back as a probability that
-    /// reads like a judgment. A Choice and a Score always carry criteria, so
-    /// they have no such check.
+    /// Add a yes/no question; [`Error::InvalidQuestion`] when neither
+    /// `instructions` nor `criteria` say anything (module docs).
     pub fn noul(
         &mut self,
         id: impl Into<String>,
@@ -369,14 +283,8 @@ impl Questions {
         )
     }
 
-    /// Add a Choice whose options are only known at runtime: candidate
-    /// records fetched from another system, passage ids for a query.
-    ///
-    /// Options are `(key, description)` pairs; a `None` description sends
-    /// `null`, as the API allows. The answer is a [`Choice<String>`] keyed by
-    /// those strings, so the check that a typed Choice gets from its enum
-    /// (every returned key is one the code knows) is the caller's to do. The
-    /// same 2 to [`MAX_CHOICE_OPTIONS`] limit applies and is checked here.
+    /// Add a Choice from runtime `(key, description)` pairs. The answer is a
+    /// [`Choice<String>`]: checking that the returned key is known is the caller's.
     pub fn dynamic_choice(
         &mut self,
         id: impl Into<String>,
@@ -396,10 +304,7 @@ impl Questions {
         )
     }
 
-    /// Add a Score over ordered levels, lowest first: 2 to
-    /// [`MAX_SCORE_LEVELS`], checked here. The answer is a [`Score`] whose
-    /// value is a probability-weighted position on these levels, so the order
-    /// given here is the meaning of that number.
+    /// Add a Score over ordered levels, lowest first; the order is the meaning of the [`Score`].
     pub fn score(
         &mut self,
         id: impl Into<String>,
@@ -415,20 +320,12 @@ impl Questions {
         )
     }
 
-    /// Add a question already in wire shape: one read from a file, or
-    /// copied from another request. It gets exactly the checks the typed
-    /// builders run (module docs, `# Limits are checked here`), and no
-    /// handle: read its answer through [`Questions::handle`], or from
-    /// [`crate::Response::answers`] by id.
+    /// Add a wire-shaped question, same checks, no handle: read it via [`Questions::handle`].
     pub fn add(&mut self, id: impl Into<String>, question: Question) -> Result<()> {
         self.push::<()>(id.into(), question).map(drop)
     }
 
-    /// A typed handle to a question added by id, for reading its answer
-    /// with [`crate::Response::get`]: `None` when no question has that id
-    /// or it is not of `A`'s primitive (a `Handle<Noul>` to a Choice would
-    /// fail at every read). A handle from a builder never needs this; a
-    /// question added with [`Questions::add`] or read from a rubric does.
+    /// A typed handle to a question added by id; `None` if absent or not of `A`'s primitive.
     pub fn handle<A: FromAnswer>(&self, id: &str) -> Option<Handle<A>> {
         let question = self.map.get(id)?;
         (question.kind() == A::KIND).then(|| Handle {
@@ -444,8 +341,6 @@ impl Questions {
     }
 
     fn insert<A>(&mut self, id: String, question: Question) -> Result<Handle<A>> {
-        // The hosted API refuses an empty key with a 400 (`Question key
-        // cannot be empty.`); refusing it here costs no round trip.
         if id.is_empty() {
             return Err(Error::InvalidQuestion {
                 id,
@@ -475,16 +370,13 @@ impl IntoIterator for Questions {
     }
 }
 
-/// The checks every question gets before it is added, whichever way it
-/// came (module docs, `# Limits are checked here`).
+/// The checks every question gets (module docs, `# Limits are checked here`).
 pub(crate) fn validate(id: &str, question: &Question) -> Result<()> {
     validate_with(id, question, 2)
 }
 
-/// [`validate`] with a Choice allowed `min_options` options: the static
-/// part of a Choice whose other options are supplied per request
-/// (`crate::jud`) may have fewer than the 2 a request needs, which the
-/// request itself is checked for when it is built.
+/// [`validate`] allowing `min_options`: the static part of a Choice whose other options come
+/// per request (`crate::jud`) may hold fewer than the 2 the built request is checked for.
 pub(crate) fn validate_with(id: &str, question: &Question, min_options: usize) -> Result<()> {
     let refuse = |reason: String| {
         Err(Error::InvalidQuestion {
@@ -497,8 +389,6 @@ pub(crate) fn validate_with(id: &str, question: &Question, min_options: usize) -
             instructions,
             criteria,
         } => {
-            // Criteria that describe neither outcome (`{}`, or both sides
-            // null) tell the model no more than no criteria at all.
             let criteria_say_nothing = criteria.as_ref().is_none_or(|c| {
                 c.yes.as_ref().is_none_or(Value::is_null)
                     && c.no.as_ref().is_none_or(Value::is_null)
@@ -519,19 +409,12 @@ pub(crate) fn validate_with(id: &str, question: &Question, min_options: usize) -
                     "a Choice allows at most {MAX_CHOICE_OPTIONS} options"
                 ));
             }
-            // The hosted API accepts an empty key and gives it probability
-            // like any other, so it can come back as the `choice`: an answer
-            // no caller can name or act on.
             if criteria.contains_key("") {
                 return refuse("a Choice option key cannot be empty".to_owned());
             }
         }
         Question::Score { criteria, .. } => {
-            // A level is "described in words", a string or an object; the
-            // API has no meaning for a null level and a lenient backend
-            // would echo the null into the legend. Refuse it here, where
-            // the question id is known, rather than let it fail a round
-            // trip.
+            // The API gives a null level no meaning; a lenient backend echoes it into the legend.
             if let Some(index) = criteria.iter().position(Value::is_null) {
                 return refuse(format!(
                     "Score level {index} is null; every level needs a description"
@@ -557,8 +440,6 @@ mod tests {
 
     #[test]
     fn an_empty_question_id_is_refused_before_sending() {
-        // The hosted API answers it with a 400 (`Question key cannot be
-        // empty.`); here it costs no round trip.
         let mut q = Questions::new();
         let err = q.noul("", "Is `m` a greeting?", None).unwrap_err();
         assert!(
@@ -570,8 +451,6 @@ mod tests {
 
     #[test]
     fn an_empty_option_key_is_refused_before_sending() {
-        // The hosted API accepts it and can choose it; a chosen empty string
-        // is an answer no caller can name.
         let mut q = Questions::new();
         let err = q
             .dynamic_choice("c", "pick", [(String::new(), None), ("a".to_owned(), None)])
@@ -674,8 +553,6 @@ mod tests {
     #[test]
     fn a_noul_with_neither_instructions_nor_criteria_is_refused() {
         let mut q = Questions::new();
-        // Criteria that describe neither outcome say no more than none: `{}`
-        // on the wire, or both sides null.
         let says_nothing = [
             ("none", None),
             ("empty", Some(NoulCriteria::default())),
@@ -709,7 +586,6 @@ mod tests {
         }
         assert!(q.is_empty(), "a refused question is not added");
 
-        // Criteria alone carry the question: accepted.
         q.noul(
             "spam",
             (),
@@ -719,7 +595,6 @@ mod tests {
             )),
         )
         .unwrap();
-        // One side described is enough, whether the other is absent or null.
         q.noul(
             "spam_yes_only",
             (),
@@ -738,8 +613,6 @@ mod tests {
             }),
         )
         .unwrap();
-        // Instructions alone: accepted, as always, and so are instructions
-        // with criteria that describe nothing.
         q.noul("urgent", "Is `message` urgent?", None).unwrap();
         q.noul(
             "urgent_empty_criteria",
@@ -758,11 +631,8 @@ mod tests {
         q.score("s", "?", ["low", "high"]).unwrap();
         let json = serde_json::to_value(&q).unwrap();
         for (id, question) in q.iter() {
-            // The kind is the `type` the question is sent with.
             assert_eq!(json[id]["type"], question.kind(), "{id}");
         }
-        // Questions keep the order they were added in: it is the order the
-        // model sees them, and the order the answers come back in.
         let kinds: Vec<&str> = q.iter().map(|(_, question)| question.kind()).collect();
         assert_eq!(kinds, ["noul", "choice", "score"]);
         let ids: Vec<&str> = q.ids().collect();

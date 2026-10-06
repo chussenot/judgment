@@ -1,58 +1,13 @@
 //! The `.jud` document format: a rubric with its policy, the cases it is
-//! graded on, and the recordings of what a model answered, as YAML any tool
-//! can read, write and name by content.
+//! graded on and the recordings of what a model answered, as YAML or JSON
+//! any tool can read, write and name by content. The specification is
+//! `docs/jud.md`; this module implements versions `1` and `1.1` of it:
+//! [`parse`] for any kind, [`Rubric`], [`Cases`], and [`parse_recording`]
+//! and [`recording_to_yaml`] for a [`crate::eval::Recording`]. Fingerprints
+//! are [`crate::eval::canonical`].
 //!
-//! A System One request is simple; what is hard to keep is everything around
-//! it. The questions live in code, the threshold a probability is acted on
-//! at lives in a configuration file or a constant, the labelled examples the
-//! threshold was tuned on live in a notebook, and the answers a model gave
-//! last month live nowhere. When the model version moves, nobody can say
-//! which of the four changed. The format gives each of them a file with a
-//! stated shape, an identity, and a fingerprint that any implementation
-//! computes the same way, so a policy says which rubric and which cases it
-//! was tuned on, a recording says which request and which server it
-//! answers, and two tools exchange all three without agreeing on anything
-//! but the files.
-//!
-//! Three kinds of document share one envelope, `jud` (the format's version,
-//! `1` or `1.1`) and `kind`:
-//!
-//! - **`rubric`**: the questions exactly as the wire sends them, in the order
-//!   the model should see them, with what makes the request depend on the
-//!   state (1.1: `when`, `part_when`, `options_from`), plus `policy`: the
-//!   gates (a Noul's `threshold`, a Choice's or a Score's `confidence` or
-//!   `bands` and `fallback`, a Score's `level_at_least`, `strict`) and the
-//!   `tuning` they came from. The policy is never sent; it
-//!   is what the application does with an answer, kept beside the question
-//!   it applies to ([`Rubric`], [`Policy`]).
-//! - **`cases`**: labelled states to grade a rubric on, one expectation per
-//!   question the case is labelled for; a conversation is a state that is an
-//!   array of turns and may be labelled by the turn a Noul becomes true
-//!   ([`Cases`], [`Expect`]).
-//! - **`recording`**: a model's response to one request, with the request's
-//!   fingerprint, the server, the model and the time
-//!   ([`crate::eval::Recording`]).
-//!
-//! The fingerprint of a document, a rubric's questions or a request is the
-//! SHA-256 of its canonical JSON ([`crate::eval::canonical`], RFC 8785).
-//! The questions of a rubric are the wire's own shape, so lowering a rubric
-//! into a [`Questions`](crate::Questions) loses nothing and runs the same
-//! checks the builder runs; what a `.jud` adds is what the wire has no place
-//! for. YAML is the encoding because people write and review rubrics, and
-//! JSON is valid YAML, so a reader of one reads the other. The specification
-//! is `docs/jud.md`; the JSON Schemas under `schemas/jud/` are the formal
-//! statement of each kind.
-//!
-//! Version 1.1 adds, without changing what a `jud: 1` document means:
-//! declarations that make a rubric's request depend on the state (`when`,
-//! `part_when`, `options_from: request`, and a case's `options`), gates
-//! with bands, a level threshold and strict comparison, and top-level `x-`
-//! keys every reader ignores. A document that uses one says `jud: 1.1`; a
-//! writer declares `1.1` only when it has to, so a `jud: 1` reader reads
-//! every document it can.
-//!
-//! This module is behind the `jud` feature, off by default: a client that
-//! builds its questions in code has no use for a YAML parser.
+//! Behind the `jud` feature, off by default: a client that builds its
+//! questions in code has no use for a YAML parser.
 
 use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
@@ -70,13 +25,11 @@ pub use rubric::{
     Verdict,
 };
 
-/// The format's major version: the `1` of `jud: 1` and `jud: 1.1`. A
-/// document of another major version is refused.
+/// The format's major version, the `1` of `jud: 1` and `jud: 1.1`; another
+/// major version is refused.
 pub const VERSION: u64 = 1;
 
-/// The highest minor version this crate reads and writes: `jud: 1.1`. A
-/// minor version only adds, so this crate reads every `jud: 1` document as
-/// it always meant.
+/// The highest minor version this crate reads and writes: `jud: 1.1`.
 pub const MINOR: u64 = 1;
 
 /// The file extension of a document of any kind.
@@ -98,8 +51,7 @@ pub enum Document {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    /// The text is not YAML, or not the shape the kind requires; the
-    /// message names the line.
+    /// Not YAML, or not the kind's shape; the message names the line.
     #[error("not a .jud document: {0}")]
     Syntax(String),
     /// A `jud:` version this crate does not read.
@@ -128,13 +80,12 @@ pub enum Error {
         /// What is wrong with it.
         reason: String,
     },
-    /// A question the builder refused: the same checks a question built in
-    /// code gets.
+    /// A question the builder refused, as it would one built in code.
     #[error("question `{id}`: {source}")]
     Question {
         /// The question id.
         id: String,
-        /// The builder's reason, boxed because the crate's error is large.
+        /// The builder's reason, boxed because [`crate::Error`] is large.
         #[source]
         source: Box<crate::Error>,
     },
@@ -146,12 +97,10 @@ pub enum Error {
         /// What is wrong.
         reason: String,
     },
-    /// A response that does not answer the rubric's questions as asked:
-    /// what [`crate::Response::verify`] found.
+    /// What [`crate::Response::verify`] found wrong with a response.
     #[error("the response does not answer the rubric: {source}")]
     Response {
-        /// The verification failure, boxed because the crate's error is
-        /// large.
+        /// The verification failure, boxed as [`Error::Question`]'s source is.
         #[source]
         source: Box<crate::Error>,
     },
@@ -190,9 +139,8 @@ pub fn parse(text: &str) -> Result<Document> {
     }
 }
 
-/// Parse a recording document: the fields of [`Recording`] under the
-/// envelope. A field [`Recording`] does not define is refused, except a
-/// top-level `x-` key (1.1), which is ignored.
+/// Parse a `recording` document: the fields of [`Recording`] under the
+/// envelope.
 pub fn parse_recording(text: &str) -> Result<Recording> {
     #[derive(serde::Deserialize)]
     struct Doc {
@@ -230,11 +178,8 @@ pub fn recording_to_yaml(recording: &Recording) -> Result<String> {
     })
 }
 
-/// Read YAML (or JSON) under the YAML 1.2 core schema: only `true` and
-/// `false` are booleans, so a Choice option or a level called `yes`, `no`,
-/// `on` or `off` is the string it reads as, and a duplicate key is an
-/// error rather than a silent overwrite. Both are what another
-/// implementation reading the same file with a YAML 1.2 parser does.
+/// YAML 1.2 core schema, as the reading rules require: an option called
+/// `yes` is a string, and a duplicate key is an error, not an overwrite.
 pub(crate) fn from_text<T: DeserializeOwned>(text: &str) -> Result<T> {
     let mut options = serde_saphyr::Options::default();
     options.strict_booleans = true;
@@ -245,8 +190,7 @@ pub(crate) fn to_yaml<T: Serialize>(value: &T) -> Result<String> {
     serde_saphyr::to_string(value).map_err(|e| Error::Syntax(e.to_string()))
 }
 
-/// The minor version a document declares: 0 for `jud: 1` (or `1.0`), 1
-/// for `jud: 1.1`. A string, another number or no `jud` is refused.
+/// The minor version declared: 0 for `jud: 1` or `1.0`, 1 for `jud: 1.1`.
 pub(crate) fn check_version(found: Option<&Value>) -> Result<u64> {
     let Some(value) = found else {
         return Err(Error::Missing { field: "jud" });
@@ -254,8 +198,7 @@ pub(crate) fn check_version(found: Option<&Value>) -> Result<u64> {
     if value.as_u64() == Some(VERSION) {
         return Ok(0);
     }
-    // Number literals parse to the same `f64` whichever document spelt
-    // them, so comparing the parsed values is exact.
+    // Every spelling of the literal parses to one `f64`, so this is exact.
     match value.as_f64() {
         Some(1.0) => Ok(0),
         Some(1.1) if MINOR >= 1 => Ok(1),
@@ -265,10 +208,9 @@ pub(crate) fn check_version(found: Option<&Value>) -> Result<u64> {
     }
 }
 
-/// For an optional field whose presence matters: present is `Some`
-/// whatever the value, absent is `None` (with `#[serde(default)]`), and
-/// `null` is refused. Read through a JSON value first, because a YAML
-/// reader may otherwise take `null` for an empty map.
+/// For a 1.1 field, which counts by its presence: `Some` whatever the value,
+/// `None` when absent (with `#[serde(default)]`), `null` refused. Read via a
+/// JSON value, because a YAML reader may otherwise take `null` for an empty map.
 pub(crate) fn some<'de, D: Deserializer<'de>, T: DeserializeOwned>(
     deserializer: D,
 ) -> std::result::Result<Option<T>, D::Error> {
@@ -292,8 +234,7 @@ pub(crate) fn version_value(minor: u64) -> Value {
     }
 }
 
-/// A document's top-level keys beyond its kind's fields: every `x-` key is
-/// an extension, any other key is a field the kind does not define.
+/// The top-level keys beyond the kind's fields: `x-` or refused.
 pub(crate) fn extensions(
     rest: IndexMap<String, Value>,
     kind: &str,
@@ -307,9 +248,8 @@ pub(crate) fn extensions(
     Ok(rest)
 }
 
-/// Refuse a document that uses a 1.1 feature, named by its field path,
-/// without declaring `jud: 1.1`: a `jud: 1` reader would refuse it, and the
-/// declared version is how a reader knows before it tries.
+/// Refuse a 1.1 feature (a field path) under `jud: 1`: the declared version
+/// is how a reader knows before it tries.
 pub(crate) fn require_minor(declared: u64, feature: Option<String>) -> Result<()> {
     match feature {
         Some(field) if declared < 1 => Err(Error::Invalid {
@@ -321,14 +261,10 @@ pub(crate) fn require_minor(declared: u64, feature: Option<String>) -> Result<()
     }
 }
 
-/// Whether `path` is present in `state`: what a rubric's `when` and
-/// `part_when` test (1.1). A path is dot-separated object keys, with a
-/// canonical decimal indexing an array (`customer.open_tickets`,
-/// `turns.0.text`; `01` and `+0` index nothing). It is
-/// present when it leads to a value that is not `null`, not an empty
-/// string, not an empty array and not an empty object; `false` and `0` are
-/// present. There is no other test: deterministic logic beyond presence
-/// belongs to the caller, which can put what it decided into the state.
+/// Whether `path` is present in `state`: the one test `when` and `part_when`
+/// make (`docs/jud.md`, State paths). Dot-separated keys, a canonical decimal
+/// indexing an array (`turns.0.text`); present is not `null` and not an empty
+/// string, array or object, so `false` and `0` are present.
 pub fn present(state: &Value, path: &str) -> bool {
     let mut value = state;
     for segment in path.split('.') {
@@ -351,9 +287,7 @@ pub fn present(state: &Value, path: &str) -> bool {
     }
 }
 
-/// An array index in a state path: a canonical decimal, `0` or a non-zero
-/// digit followed by digits, so `01` and `+0` index nothing, as in a JSON
-/// Pointer and in every implementation that follows the specification.
+/// A canonical decimal, as a JSON Pointer's: `01` and `+0` index nothing.
 fn array_index(segment: &str) -> Option<usize> {
     let canonical = segment == "0"
         || (segment.starts_with(|c: char| ('1'..='9').contains(&c))
@@ -365,8 +299,7 @@ fn array_index(segment: &str) -> Option<usize> {
     }
 }
 
-/// A state path is non-empty dot-separated segments, none empty and none
-/// with surrounding space.
+/// A well-formed state path: non-empty segments, none padded with space.
 pub(crate) fn check_path(field: &str, path: &str) -> Result<()> {
     if path.is_empty() || path.split('.').any(|s| s.is_empty() || s.trim() != s) {
         return Err(Error::Invalid {
@@ -448,7 +381,6 @@ mod tests {
             ("customer.history.0.text", true),
             ("customer.history.1", true),
             ("customer.history.2", false),
-            // Only a canonical decimal indexes an array.
             ("customer.history.01", false),
             ("customer.history.+1", false),
             ("customer.account.plan.deeper", false),

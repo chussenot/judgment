@@ -146,6 +146,7 @@ default.
 |---|---|
 | [How judgment works](docs/design.md) | How a handle ties a question to its answer, how a response is checked before it is read, how the retry loop decides |
 | [What is in the crate](docs/tour.md) | What each module is for and what it promises |
+| [How the crate is implemented](docs/implementation.md) | The rules the code applies and why: the decoder, the response check, the error bodies, the per-call options, the retry loop's edges, the recordings, the metrics and the .jud reader |
 | [Patterns](docs/patterns.md) | TypeSafe's four patterns on the crate's types, one runnable example each, and what the recordings teach about thresholds |
 | [Testing without the model](docs/testing.md) | The fake, the recordings and the metrics |
 | [The .jud format](docs/jud.md) | The specification of the rubric, cases and recording documents, their fingerprints and reading rules, and the loop from labelled cases to a tuned policy |

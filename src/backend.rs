@@ -1,36 +1,14 @@
 //! Where the answers come from.
 //!
-//! A [`SystemOne`] is anything that takes a state and a set of questions
-//! and returns calibrated answers: the hosted model behind
-//! [`Client`](crate::client::Client), an
-//! open-weights model behind the same wire, a recording of an earlier run,
-//! or a fake with the answers a test wants. The trait exists so that the
-//! code consuming judgments never has to know which; an application, a
-//! harness or a test holds a `&dyn SystemOne` and the choice is made at
-//! construction. It is also the seam that makes an official SDK, should
-//! one appear, an adapter rather than a rewrite.
-//!
-//! The state is a [`serde_json::Value`] rather than a generic `Serialize`
-//! so the trait can be used as a trait object; a typed state is one
-//! `serde_json::to_value` away, and [`SystemOne::answer_typed`] does it.
-//! The cost is one boxed future per call and that one conversion, both
-//! small next to a network round trip.
-//!
-//! Three implementations ship here besides the client: [`Fake`] answers
-//! from a table and remembers what it was asked; [`Recorder`] wraps another
-//! backend and writes every response to a directory; [`Replay`] answers
-//! from such a directory without any model, keyed by a content hash of the
-//! request, so a suite can run against yesterday's real answers offline.
-//!
-//! Every one of them returns only a response that answers the questions it
-//! was given ([`Response::verify`]), so the code consuming judgments can
-//! rely on it whichever backend is behind the trait: a test with a [`Fake`]
-//! cannot pass on a scripted answer the real client would have refused, and
-//! a [`Replay`] never answers questions it was not recorded for. The request
-//! hash covers the questions, so a changed question set is
-//! [`Error::NoRecording`], and a recording filed under the right hash that
-//! no longer fits (edited by hand, or made by an older release that did not
-//! check) fails naming the question.
+//! A [`SystemOne`] takes a state and questions and returns calibrated
+//! answers: the hosted model behind [`Client`](crate::client::Client), a
+//! compatible server, a recording ([`Replay`]) or a [`Fake`]. The code
+//! consuming judgments holds a `&dyn SystemOne` and the choice is made at
+//! construction. The state is a [`serde_json::Value`] rather than a generic
+//! `Serialize` so the trait can be a trait object;
+//! [`SystemOne::answer_typed`] converts. Every backend returns only a
+//! response that answers the questions it was given ([`Response::verify`]);
+//! `docs/testing.md` shows the backends in use.
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -52,17 +30,14 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Something that answers typed questions about a state.
 ///
-/// The contract: an implementation returns only a [`Response`] that fits
-/// `questions`, that is one [`Response::verify`] accepts, and an error
-/// otherwise (one of the [`Error::is_unfit`] errors when the answer came
-/// back but does not fit). Every backend in this crate verifies, so a caller
-/// reads the answers through its handles without checking them again. A
-/// backend written elsewhere should call [`Response::verify`] before it
-/// returns, since nothing else will; [`Recorder`] verifies what the backend
-/// it wraps returns, because that may be one of those.
+/// The contract: only a [`Response`] that [`Response::verify`] accepts for
+/// `questions`, or an error ([`Error::is_unfit`] when an answer came back
+/// but does not fit), so a caller reads the answers through its handles
+/// without checking again. A backend written elsewhere must verify itself;
+/// [`Recorder`] verifies what it wraps because nothing forces that.
 pub trait SystemOne: Send + Sync {
     /// Answer `questions` about `state` with `model` (a name or alias; a
-    /// backend that has one model may ignore it and report its own).
+    /// backend with one model may ignore it and report its own).
     fn answer<'a>(
         &'a self,
         state: &'a Value,
@@ -121,11 +96,9 @@ impl<T: SystemOne + ?Sized> SystemOne for Box<T> {
 }
 
 /// Through [`Client::evaluate`](crate::client::Client::evaluate), with the
-/// client's own settings and default headers: per-call options do not cross
-/// the trait (`client` module docs, `# Per-call options`). If extra body
-/// fields ever do, they must enter [`request_hash`], with an empty set
-/// hashing as it does today, or a [`Replay`] would answer a different
-/// request.
+/// client's own settings: per-call options do not cross the trait, because
+/// a [`Replay`] is keyed by [`request_hash`] and an extra body field can
+/// change the answer. If they ever do, they enter that hash.
 #[cfg(feature = "http")]
 impl SystemOne for crate::client::Client {
     fn answer<'a>(
@@ -145,10 +118,6 @@ impl SystemOne for crate::client::Client {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Fake
-// ---------------------------------------------------------------------------
-
 /// One request a [`Fake`] received.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Call {
@@ -162,19 +131,11 @@ pub struct Call {
 
 /// A backend that answers from a table and remembers what it was asked.
 ///
-/// Every question in a request must have an answer, or the call fails with
-/// [`Error::MissingAnswer`] naming it: a test that forgets a question learns
-/// so from the fake, not from a wrong decision downstream. The response is
-/// verified against the questions like the client's ([`Response::verify`]),
-/// so a scripted answer of the wrong primitive, a Choice option the question
-/// does not offer or a Score off its scale fails the call, as it would from
-/// the real client, and a test cannot pass on an answer the client would
-/// have refused. A refused call is not recorded in [`Fake::calls`]. A test
-/// that needs a malformed response builds the [`Response`] directly.
-///
-/// A Score is scripted as probabilities only ([`Fake::score`]); its legend
-/// is the levels of the question it answers, filled in when it answers, so
-/// the echo the client checks is the one a server would send.
+/// A question without a scripted answer is [`Error::MissingAnswer`], and the
+/// response is verified like the client's ([`Response::verify`]), so a test
+/// cannot pass on an answer the client would have refused; a refused call
+/// is not in [`Fake::calls`]. A test that needs a malformed response builds
+/// the [`Response`] directly.
 #[derive(Debug, Default)]
 pub struct Fake {
     model: String,
@@ -183,8 +144,7 @@ pub struct Fake {
     calls: Mutex<Vec<Call>>,
 }
 
-/// One scripted answer: a wire answer as given, or a Score whose legend and
-/// score are derived from the question it answers.
+/// A wire answer as given, or a Score derived from the question it answers.
 #[derive(Debug, Clone)]
 enum Scripted {
     Answer(Answer),
@@ -195,10 +155,8 @@ enum Scripted {
 }
 
 impl Scripted {
-    /// The wire answer to `question`. A scripted Score echoes `question`'s
-    /// levels as its legend when `question` is a Score, and has an empty
-    /// legend otherwise, so the check then reports the primitive rather
-    /// than the legend.
+    /// A scripted Score takes `question`'s levels as its legend, or an empty
+    /// one when `question` is not a Score, so the check reports the primitive.
     #[allow(clippy::cast_precision_loss)] // at most ten levels
     fn answer(&self, question: &Question) -> Answer {
         match self {
@@ -258,30 +216,25 @@ impl Fake {
         self
     }
 
-    /// The wire answer for question `id`, stored as given: for a shape the
-    /// helpers below do not build, or to feed a real recorded answer back
-    /// through a fake. It is verified like any other when the fake answers,
-    /// so a Score given here must carry the question's levels as its legend.
+    /// The wire answer for question `id`, stored as given, for a shape the
+    /// helpers do not build or a recorded answer fed back; a Score given
+    /// here carries the question's levels as its legend.
     #[must_use]
     pub fn with_answer(mut self, id: impl Into<String>, answer: Answer) -> Self {
         self.answers.insert(id.into(), Scripted::Answer(answer));
         self
     }
 
-    /// A Noul answer: the probability of yes. Fails when `p_yes` is outside
-    /// `[0, 1]`, the same check the wire gets.
+    /// A Noul answer: the probability of yes, checked as on the wire.
     pub fn noul(self, id: impl Into<String>, p_yes: f64) -> Result<Self> {
         let noul = Probability::new(p_yes)?;
         Ok(self.with_answer(id, Answer::Noul { noul }))
     }
 
     /// A Choice answer from `(option, probability)` pairs; the chosen option
-    /// is the most probable one and the confidence is as given. Fails when a
-    /// probability or the confidence is outside `[0, 1]`. Whether the
-    /// probabilities sum to 1 is not checked, since the wire layer does not
-    /// check it either. Every option named here must be one the question
-    /// offers, or the fake refuses the call with [`Error::UnknownOption`];
-    /// an offered option left out reads as zero.
+    /// is the most probable, the probabilities need not sum to 1 (nor on
+    /// the wire), an option the question does not offer is
+    /// [`Error::UnknownOption`] when the fake answers.
     pub fn choice<'p>(
         self,
         id: impl Into<String>,
@@ -307,18 +260,11 @@ impl Fake {
         ))
     }
 
-    /// A Score answer from one probability per level, lowest level first.
-    /// When the fake answers, the legend is the levels of the question it
-    /// answers, as a server echoes them, and the score is the
-    /// probability-weighted position `Σ i·p_i`. Fails when a probability or
-    /// the confidence is outside `[0, 1]`.
-    ///
-    /// Fewer probabilities than the question has levels read as zero for the
-    /// rest; more than it has levels is [`Error::InvalidAnswer`] when the
-    /// fake answers. The probabilities should sum to at most 1, or the
-    /// derived score can leave the scale: `[0, 0, 1, 1]` on four levels gives
-    /// a score of 5, which the fake refuses with [`Error::InvalidAnswer`] as
-    /// the client would.
+    /// A Score answer from one probability per level, lowest first; the
+    /// legend is the question's levels, as a server echoes them, and the
+    /// score `Σ i·p_i`. Fewer probabilities than levels read as zero; more,
+    /// or a sum above 1 that pushes the score off the scale, are
+    /// [`Error::InvalidAnswer`] when the fake answers.
     pub fn score(
         mut self,
         id: impl Into<String>,
@@ -340,9 +286,7 @@ impl Fake {
         Ok(self)
     }
 
-    /// Every request received so far, oldest first: what a test asserts to
-    /// check that the code under test asked the right questions about the
-    /// right state with the right model.
+    /// Every request received so far, oldest first.
     pub fn calls(&self) -> Vec<Call> {
         self.calls.lock().map(|c| c.clone()).unwrap_or_default()
     }
@@ -385,25 +329,14 @@ impl SystemOne for Fake {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Recorder and Replay
-// ---------------------------------------------------------------------------
-
 /// A backend that passes every request to another and writes the response
-/// to `dir/<request hash>.json` as a [`Recording`], so a [`Replay`] over the
-/// same directory answers the same requests later without a model.
+/// to `dir/<request hash>.json` as a [`Recording`], for a [`Replay`] over
+/// the same directory.
 ///
 /// The response is written as received, [`Response::request_id`] included,
-/// so a recording still names the call TypeSafe can look up.
-///
-/// The inner response is verified against the questions before anything is
-/// written ([`Response::verify`]), and a response that does not fit is
-/// returned as the error with no file written: a recording is only ever a
-/// response a replay can return. The error and its request id are then the
-/// only trace of that response. For the crate's own backends the check has
-/// already been made; it matters for a third-party backend behind the
-/// recorder, which the [`SystemOne`] contract asks to verify but nothing
-/// forces to.
+/// so a recording still names the call TypeSafe can look up, and only when
+/// it fits the questions ([`Response::verify`]): a recording is only ever a
+/// response a replay can return.
 #[derive(Debug)]
 pub struct Recorder<B> {
     inner: B,
@@ -419,8 +352,7 @@ impl<B: SystemOne> Recorder<B> {
         }
     }
 
-    /// The wrapped backend, for reading what it saw: a [`Fake`]'s calls, for
-    /// example.
+    /// The wrapped backend, for reading what it saw: a [`Fake`]'s calls, say.
     pub fn inner(&self) -> &B {
         &self.inner
     }
@@ -463,22 +395,12 @@ impl<B: SystemOne> SystemOne for Recorder<B> {
 /// nothing else: a request nobody recorded is [`Error::NoRecording`].
 ///
 /// A replayed response carries the recorded call's
-/// [`Response::request_id`], not a new one: it is that call's answers, and
-/// the id is how to find that call in TypeSafe's logs. A recording made
-/// before the field existed replays with `None`.
-///
-/// A recorded response is verified against the questions of the request
-/// that found it ([`Response::verify`]), as the client verifies a live one,
-/// so a recording that no longer fits (edited by hand, or made by an older
-/// release that did not check) fails naming the question rather than
-/// replaying an answer the client would refuse. The request hash and the
-/// fingerprint both cover the questions, so a recording found by either was
-/// made for these questions.
-///
-/// With the `jud` feature, `*.jud` files of kind `recording` are read
-/// beside the `*.json` ones ([`crate::jud`]), and a recording that carries
-/// only a [`Recording::fingerprint`] (one made by another tool) is found by
-/// it.
+/// [`Response::request_id`], the way to find that call in TypeSafe's logs,
+/// and is verified against the questions that found it
+/// ([`Response::verify`]), so a recording edited by hand fails naming the
+/// question. With the `jud` feature, `*.jud` recordings are read beside the
+/// `*.json` ones ([`crate::jud`]), found by [`Recording::fingerprint`] when
+/// another tool made them.
 #[derive(Debug, Default)]
 pub struct Replay {
     responses: Vec<Response>,
@@ -487,10 +409,9 @@ pub struct Replay {
 }
 
 impl Replay {
-    /// Load every `*.json` recording under `dir` (and every `*.jud`
-    /// recording, with the `jud` feature) that carries a request hash or a
-    /// fingerprint. Recordings with neither (a harness's, keyed by case) are
-    /// skipped; a file that is not a recording is an error.
+    /// Load every `*.json` (and, with the `jud` feature, `*.jud`) recording
+    /// under `dir` that carries a request hash or a fingerprint; a harness's
+    /// recording keyed by case alone is skipped.
     pub fn open(dir: &Path) -> Result<Self> {
         let mut replay = Self::default();
         let entries = std::fs::read_dir(dir).map_err(|source| Error::Io {
@@ -527,9 +448,8 @@ impl Replay {
         Ok(replay)
     }
 
-    /// Add one recording, under its request hash, its fingerprint, or both.
-    /// A recording with neither is skipped. A later recording of the same
-    /// request replaces an earlier one.
+    /// Add one recording under its request hash and its fingerprint (neither:
+    /// skipped); a later recording of the same request replaces an earlier.
     pub fn add(&mut self, recording: Recording) {
         let Recording {
             response,
@@ -555,9 +475,7 @@ impl Replay {
         self.responses.len()
     }
 
-    /// True when the directory held no hashed or fingerprinted recording:
-    /// it was never recorded, or it was recorded by a harness keyed by case
-    /// id, which [`Replay::open`] skips.
+    /// True when no recording carries a hash or a fingerprint.
     pub fn is_empty(&self) -> bool {
         self.by_hash.is_empty() && self.by_fingerprint.is_empty()
     }
