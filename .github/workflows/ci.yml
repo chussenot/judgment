@@ -52,6 +52,8 @@ jobs:
       # The README's opening example, run without the `http` feature: no
       # client is compiled in, so it cannot need a key or the network.
       - run: cargo run --example quickstart --no-default-features
+      # The README's second example, the same questions as a .jud rubric.
+      - run: cargo run --example jud_quickstart --features jud
       - run: cargo doc --no-deps --document-private-items --all-features
         env:
           RUSTDOCFLAGS: -D warnings
