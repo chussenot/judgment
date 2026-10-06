@@ -8,6 +8,16 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- The `jud` binary (feature `jud`; `cargo install judgment --features jud`):
+  `jud check FILE...` reads documents as the crate does, binds cases to the
+  rubric they name and verifies a recording against the request it answers,
+  printing ids and fingerprints and exiting 1 on a refusal; `jud lower
+  RUBRIC` prints the request a state or every case lowers to. `mise run
+  jud:check` runs it over the examples or the files given.
+- A Claude Code skill, `.claude/skills/jud/`, for writing, reviewing and
+  fixing `.jud` documents in version 1.2, with a one-page field reference,
+  the checker as a script, and the four tasks it was tested on;
+  `docs/skill.md` says how to install it elsewhere.
 - `.jud` version 1.2 (decision 0017; `docs/jud.md`): no new field. Every
   id is a name (letters, digits, `.`, `_`, `-`, starting with a letter or
   a digit), so a case id never reaches the file system as a path; a merge

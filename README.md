@@ -125,7 +125,9 @@ them. The format is at version 1.2: every id is a name and never a path, the
 reader refuses what hides text from a reviewer (a merge key, a foreign tag), and
 a rubric's policy has a fingerprint of its own beside its questions', so a moved
 threshold is as visible as a changed question. The format is behind the `jud`
-feature, off by default.
+feature, off by default. An agent writes these files with [the jud
+skill](docs/skill.md) (`.claude/skills/jud/`), which checks them with the
+crate's own reader: `cargo run --features jud --bin jud -- check a.jud`.
 
 The third example asks the real model. It reads a rubric from a file,
 [`examples/jud/triage.jud`](examples/jud/triage.jud), three questions about a
@@ -316,6 +318,7 @@ default.
 | [Testing without the model](docs/testing.md) | The fake, the recordings and the metrics |
 | [The .jud format](docs/jud.md) | The specification of the rubric, cases and recording documents, their fingerprints and reading rules, and the loop from labelled cases to a tuned policy |
 | [What a rubric is](docs/rubric.md) | Why a decision is written as questions beside the thresholds that read their answers, what a rubric leaves out, and how to write one that holds up |
+| [The jud skill](docs/skill.md) | A Claude Code skill that writes and checks `.jud` documents with the crate's own reader (`jud check`), and how to install it in another project |
 | [How the crate is checked](docs/verification/method.md) | The live tests, the benchmark replay and the contract test, and how to run them against the hosted API, Laya, Ollama or Clef on Workers AI |
 | [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md), [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | What real servers did with the live tests, and what the crate changed for it |
 | [Compatible servers and models](docs/research/compatible-servers-and-models.md) | Which servers speak the wire and how the open models compare with Jev |

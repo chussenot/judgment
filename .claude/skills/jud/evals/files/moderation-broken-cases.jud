@@ -1,0 +1,17 @@
+jud: 1
+kind: cases
+id: forum moderation cases
+rubric: forum-moderation
+cases:
+  - id: ../spam-1
+    state:
+      comment: {text: "Buy cheap followers at http://example.test, 50% off today!!!"}
+    expect: {is_spam: yes, category: spam, severity: rude}
+  - id: polite
+    state:
+      comment: {text: "Thanks, this fixed my issue with the export."}
+    expect: {is_spam: false, category: on_topic, severity: 0}
+  - id: threat
+    state:
+      comment: {text: "I know where you live. Post that again and see what happens."}
+    expect: {is_spam: false, category: abuse, severity: 5}

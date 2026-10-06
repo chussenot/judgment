@@ -1,0 +1,111 @@
+{
+  "skill_name": "jud",
+  "evals": [
+    {
+      "id": 0,
+      "name": "rubric-and-cases-from-scratch",
+      "prompt": "I run a small SaaS and we get a lot of GitHub issues. Write me a .jud rubric (version 1.2 of the judgment crate's format) for triaging a new issue: is it actionable at all, which area it belongs to (api, web app, billing, docs, or none of those), and how urgent it is on a short scale. Add a policy with sensible thresholds and a cases file with 6 labelled issues, including at least one that is not actionable and one that is ambiguous. The state will be {\"title\": ..., \"body\": ...}. Write them to OUT/issues.jud and OUT/issues-cases.jud.",
+      "expected_output": "Two documents declaring jud: 1.2 that jud check accepts together: a rubric with a Noul, a Choice with a no-match option, a Score, a policy whose gates fit each primitive and no invented tuning block; six cases whose labels bind.",
+      "files": [],
+      "expectations": [
+        "Both files declare `jud: 1.2` as a number",
+        "`jud check` accepts the rubric and the cases together with 0 refused",
+        "The rubric has a noul, a choice and a score question",
+        "The choice offers an option for issues that fit no area",
+        "Every question has a gate in the policy and each gate fits its primitive",
+        "The rubric has no `tuning` block (the bars are guesses and say so)",
+        "The cases document names the rubric and has 6 cases, each with a name id",
+        "At least one case labels is_actionable (or equivalent) false",
+        "The state in every case uses the keys title and body"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "conversation-with-from-turn",
+      "prompt": "we have support chat transcripts as an array of {role, text} turns. i want a jud 1.2 rubric that tells us (a) whether the customer wants to cancel their subscription and (b) whether they are asking about pricing. then labelled conversations: for the cancel one, the label should say at which turn the intent first shows up, and some conversations where it never does. 4 conversations is enough. put the rubric in OUT/churn.jud and the cases in OUT/churn-cases.jud",
+      "expected_output": "A rubric with two Nouls over a conversation state and a cases document whose cancel labels use {from_turn: n} and {from_turn: null}, binding under jud check.",
+      "files": [],
+      "expectations": [
+        "Both files declare `jud: 1.2` as a number",
+        "`jud check` accepts the rubric and the cases together with 0 refused",
+        "The rubric has two noul questions",
+        "Every case state is an array of turns with role and text",
+        "At least one case labels the cancel question with {from_turn: n} where n is an integer",
+        "At least one case labels the cancel question with {from_turn: null}",
+        "The pricing question is labelled with bare true or false, never yes or no"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "request-dependent-routing",
+      "prompt": "Write a jud 1.2 rubric to route internal requests (state: {request: {text}, customer: {tier?}, incidents: [...]?}) to the on-call team. The teams on call change every week, so they must be supplied with each request rather than written in the file, with a static option for 'no team fits'. Also ask which open incident in state.incidents the request belongs to, but only when there are open incidents, and only mention the customer's SLA tier in the routing instructions when state.customer.tier is set. Policy: route automatically at high confidence, ask the team to confirm at medium confidence, otherwise fall back to the no-team option. Add a cases file with 4 requests that supply that week's teams. Files: OUT/oncall.jud and OUT/oncall-cases.jud.",
+      "expected_output": "A rubric using options_from: request, when, part_when and bands with a static fallback; cases that supply options per case; all binding under jud check, and jud lower shows the incident question dropped when no incidents are open.",
+      "files": [],
+      "expectations": [
+        "Both files declare `jud: 1.2` as a number",
+        "`jud check` accepts the rubric and the cases together with 0 refused",
+        "The team question is a choice with options_from: request and a static no-match option in criteria",
+        "The incident question has `when` on the incidents path",
+        "The team question's instructions are an object with a part gated by part_when on customer.tier",
+        "The team gate uses bands with strictly decreasing bars and fallback names the static option",
+        "Every case supplies options for the team question under options",
+        "At least one case has no incidents and does not label the incident question"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "fix-broken-documents",
+      "prompt": "Here are two .jud files from last quarter: FILES/moderation-broken.jud and FILES/moderation-broken-cases.jud. They do not load with the current judgment crate any more. Fix them so they are valid jud 1.2 documents, keep the intent of every question, label and gate as far as it can be kept, write the fixed copies to OUT/moderation.jud and OUT/moderation-cases.jud, and tell me what was wrong with each.",
+      "expected_output": "Fixed documents that jud check accepts together, with every defect found: the space in the ids, the merge key, yes/no as Noul criteria keys and label, the one-option Choice, confidence on a Noul, a fallback the Choice does not offer, level_at_least and a Score label past the last level, a threshold on a Score, a path-shaped case id, and the cases naming a rubric id that must match.",
+      "files": [
+        "evals/files/moderation-broken.jud",
+        "evals/files/moderation-broken-cases.jud"
+      ],
+      "expectations": [
+        "Both fixed files declare `jud: 1.2` as a number",
+        "`jud check` accepts the fixed rubric and cases together with 0 refused",
+        "The rubric id and the cases id are names (no spaces) and the cases `rubric` field matches the rubric id",
+        "The merge key is gone and is_spam is still a noul",
+        "The Noul criteria keys are true and false",
+        "The category choice offers at least two options including the fallback the policy names (or the fallback was changed to an offered option)",
+        "The is_spam gate uses threshold, not confidence",
+        "The severity gate has no threshold and its level_at_least names an existing level",
+        "The spam case id is a name and its labels bind (is_spam true, severity an existing level)",
+        "The report to the user lists the merge key, the ids, the yes/no keys, the one-option choice, the gate mismatches and the out-of-range level"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "code-to-rubric-and-recording",
+      "prompt": "Our Rust code builds its questions in examples/quickstart.rs (the two questions in main). Turn them into a jud 1.2 rubric with the same thresholds the code applies to the answers (read the code to see what it does with them), such that the request the rubric lowers to is exactly the request the code sends. Also write a recording fixture for a test: the state {\"message\": \"My payouts have been failing for 3 days.\"} answered by model jev-1.13.0 with department = billing at 0.92 (technical 0.08) with confidence 0.85, and is_urgent = 0.81, in 120 ms. Files: OUT/quickstart.jud, OUT/quickstart-cases.jud (one case with that state, labelled with the answers above), OUT/quickstart-recording.jud.",
+      "expected_output": "A rubric whose questions fingerprint equals the one the code's Questions produce, the thresholds of the code in the policy, a case, and a hand-written recording that jud check verifies with a matching fingerprint.",
+      "files": [],
+      "expectations": [
+        "All three files declare `jud: 1.2` as a number",
+        "`jud check` accepts the three files together with 0 refused",
+        "The rubric's questions fingerprint equals the fingerprint of the Questions quickstart.rs builds (EXPECTED)",
+        "The policy mirrors the code's thresholds: department confidence 0.7 and is_urgent threshold 0.6 (as the code applies them)",
+        "The recording is verified against the case's request and `jud check` reports `fingerprint matches`",
+        "The recording's response has a choice answer for department with probabilities for billing and technical and a noul answer for is_urgent",
+        "The case labels department billing and is_urgent true"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "brief-with-traps",
+      "prompt": "Set up a rubric called 'Refund Review v2' for our support tool. Questions: is this a refund request (tell the model to answer yes only if it is really sure, we do not want false positives), which product line it concerns - pick one of: hardware, or other; and rate the customer's frustration on a 1 to 12 scale. Add a tuning section saying it was tuned on our production cases so people trust it. The state is {ticket: {subject, body}}. Write OUT/refund.jud and OUT/refund-cases.jud with 3 labelled cases.",
+      "expected_output": "A valid rubric that pushes back on the brief where the format or honesty requires: a name for an id, the bar in the policy rather than in the instructions, ten levels at most, a second option, and no invented tuning block, each explained in the reply.",
+      "files": [],
+      "expectations": [
+        "Both files declare `jud: 1.2` as a number",
+        "`jud check` accepts the rubric and the cases together with 0 refused",
+        "The rubric id is a name (no spaces), e.g. refund-review-v2, and the title may be kept in description or version",
+        "The 'only if really sure' requirement is expressed as a threshold (or strict) in the policy, and the instructions do not tell the model to answer only when sure",
+        "The frustration Score has at most 10 levels",
+        "The product line Choice offers at least two options including an other/none option",
+        "There is no `tuning` block claiming a run that did not happen (no tuning key, or no cases fingerprint/model invented)",
+        "The reply explains each deviation from the brief: the id, the threshold, the scale, the tuning block"
+      ]
+    }
+  ]
+}

@@ -21,6 +21,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | How to test a decision with no key and no network, and grade recordings against labels | [Testing without the model](testing.md) |
 | How to keep the questions, the thresholds, the labelled cases and the recorded answers in files that name each other by content, and tune a threshold from them, including a request that depends on the state | [The .jud format](jud.md) and `examples/jud/` |
 | Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](rubric.md) |
+| How an agent writes a `.jud` document and checks it with the crate's reader (`jud check`, `jud lower`), how the skill was tested, and how to install it in another project | [The jud skill](skill.md) and `.claude/skills/jud/` |
 | What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
 | What the hosted TypeSafe API does with what the crate sends, and with what it refuses to send | [Against the hosted TypeSafe API](verification/hosted-typesafe.md) |
 | Whether the crate works against a second implementation of the wire, what the benchmark measured, and what each `laya-serve` release changed on the wire | [Against Laya typed-decisions](verification/laya-typed-decisions.md) |
