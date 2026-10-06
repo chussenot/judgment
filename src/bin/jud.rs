@@ -1,0 +1,296 @@
+//! `jud`: read `.jud` documents the way the crate reads them, and show what
+//! a rubric lowers to. For a person or an agent writing a document by hand:
+//! `check` refuses what the reader refuses, with the field named, binds
+//! cases to their rubric and verifies a recording against the request it
+//! answers; `lower` prints the request one state produces, so a `when` or a
+//! `part_when` can be seen rather than guessed. Behind the `jud` feature:
+//! `cargo run --features jud --bin jud -- check examples/jud/*.jud`.
+
+use std::process::ExitCode;
+
+use judgment::Questions;
+use judgment::eval::Recording;
+use judgment::eval::canonical;
+use judgment::jud::{self, Case, Cases, Document, Rubric, Supplied};
+use serde_json::Value;
+
+const USAGE: &str = "\
+jud: check .jud documents (docs/jud.md) and show what a rubric lowers to
+
+  jud check FILE...
+      Read each document as the crate reads it. A cases document is bound to
+      the rubric it names among FILE..., or to the only rubric given, so every
+      label is checked against the request its case lowers to. A recording
+      whose `case` is a case of a bound document is verified against that
+      request and its fingerprint compared. Prints each document's ids and
+      fingerprints; exits 1 when any document is refused.
+
+  jud lower RUBRIC [--state JSON | --state-file PATH] [--options JSON]
+  jud lower RUBRIC --cases FILE
+      Print the request (the questions map, as sent) a rubric lowers to for
+      one state, or for every case of a cases document. --options supplies
+      options for a Choice with `options_from: request`, by question id.
+";
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let result = match args.first().map(String::as_str) {
+        Some("check") => check(&args[1..]),
+        Some("lower") => lower(&args[1..]),
+        Some("help" | "-h" | "--help") => {
+            print!("{USAGE}");
+            Ok(true)
+        }
+        _ => {
+            eprint!("{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
+    match result {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::FAILURE,
+        Err(e) => {
+            eprintln!("jud: {e}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+type Fallible<T> = Result<T, Box<dyn std::error::Error>>;
+
+/// One document read from a file, with the version it declared.
+struct Loaded {
+    path: String,
+    declared: String,
+    document: Document,
+}
+
+fn declared_version(text: &str) -> String {
+    serde_saphyr::from_str::<Value>(text)
+        .ok()
+        .and_then(|v| v.get("jud").cloned())
+        .map_or_else(|| "?".to_owned(), |v| v.to_string())
+}
+
+fn load(paths: &[String]) -> (Vec<Loaded>, usize) {
+    let mut loaded = Vec::new();
+    let mut errors = 0;
+    for path in paths {
+        let text = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(e) => {
+                println!("error     {path}: {e}");
+                errors += 1;
+                continue;
+            }
+        };
+        match jud::parse(&text) {
+            Ok(document) => loaded.push(Loaded {
+                path: path.clone(),
+                declared: declared_version(&text),
+                document,
+            }),
+            Err(e) => {
+                println!("error     {path}: {e}");
+                errors += 1;
+            }
+        }
+    }
+    (loaded, errors)
+}
+
+fn check(paths: &[String]) -> Fallible<bool> {
+    if paths.is_empty() {
+        return Err("check needs at least one file".into());
+    }
+    let (loaded, mut errors) = load(paths);
+    let rubrics: Vec<(&str, &Rubric)> = loaded
+        .iter()
+        .filter_map(|l| match &l.document {
+            Document::Rubric(r) => Some((l.path.as_str(), r)),
+            _ => None,
+        })
+        .collect();
+    let mut bound: Vec<(&Cases, &Rubric)> = Vec::new();
+    for l in &loaded {
+        match &l.document {
+            Document::Rubric(rubric) => print_rubric(l, rubric),
+            Document::Cases(cases) => {
+                let rubric = find_rubric(cases.rubric.as_deref(), &rubrics);
+                print_cases(l, cases, rubric.map(|(p, _)| p));
+                if let Some((_, rubric)) = rubric {
+                    match cases.bind(rubric) {
+                        Ok(()) => bound.push((cases, rubric)),
+                        Err(e) => {
+                            println!("error     {}: {e}", l.path);
+                            errors += 1;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    for l in &loaded {
+        if let Document::Recording(recording) = &l.document {
+            errors += usize::from(!print_recording(l, recording, &bound));
+        }
+    }
+    let documents = loaded.len() + errors;
+    println!("{documents} documents, {errors} refused");
+    Ok(errors == 0)
+}
+
+fn find_rubric<'a>(
+    named: Option<&str>,
+    rubrics: &[(&'a str, &'a Rubric)],
+) -> Option<(&'a str, &'a Rubric)> {
+    match named {
+        Some(name) => rubrics
+            .iter()
+            .copied()
+            .find(|(_, r)| r.id == name || r.fingerprint() == name),
+        None if rubrics.len() == 1 => rubrics.first().copied(),
+        None => None,
+    }
+}
+
+fn print_rubric(l: &Loaded, rubric: &Rubric) {
+    let gates = rubric.policy.gates.len();
+    let tuned = if rubric.policy.tuning.is_some() {
+        "tuned"
+    } else {
+        "untuned"
+    };
+    println!(
+        "rubric    {}: id {}, jud {}, {} questions, {gates} gates ({tuned})",
+        l.path,
+        rubric.id,
+        l.declared,
+        rubric.questions.len()
+    );
+    println!("          questions {}", rubric.fingerprint());
+    println!("          policy    {}", rubric.policy_fingerprint());
+    if let Some(cases) = rubric
+        .policy
+        .tuning
+        .as_ref()
+        .and_then(|t| t.cases.as_deref())
+    {
+        println!("          tuned on  {cases}");
+    }
+}
+
+fn print_cases(l: &Loaded, cases: &Cases, rubric_path: Option<&str>) {
+    let bound_to = match (rubric_path, cases.rubric.as_deref()) {
+        (Some(path), _) => format!("bound to {path}"),
+        (None, Some(name)) => format!("rubric `{name}` not among the files, labels unchecked"),
+        (None, None) => "no rubric given, labels unchecked".to_owned(),
+    };
+    println!(
+        "cases     {}: id {}, jud {}, {} cases, {bound_to}",
+        l.path,
+        cases.id.as_deref().unwrap_or("(none)"),
+        l.declared,
+        cases.cases.len()
+    );
+    println!("          cases     {}", cases.fingerprint());
+}
+
+/// The state and the request a recording's `case` names among the bound
+/// cases: a case by its name, or one turn of a conversation case as
+/// `<case>-turn-<n>` (the names `examples/jud_calibration.rs` records under).
+fn find_request(bound: &[(&Cases, &Rubric)], name: &str) -> Option<Fallible<(Value, Questions)>> {
+    for (cases, rubric) in bound {
+        for (i, case) in cases.cases.iter().enumerate() {
+            let case_name = case.name(i);
+            if case_name == name {
+                return Some(request_of(case, rubric));
+            }
+            for turn in case.per_turn() {
+                if format!("{case_name}-turn-{}", turn.index) == name {
+                    return Some(request_of(&turn.case, rubric));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn request_of(case: &Case, rubric: &Rubric) -> Fallible<(Value, Questions)> {
+    Ok((case.state.clone(), case.request(rubric)?))
+}
+
+/// Print one recording; false when it fails against the request it answers.
+fn print_recording(l: &Loaded, recording: &Recording, bound: &[(&Cases, &Rubric)]) -> bool {
+    let mut line = format!(
+        "recording {}: case {}, jud {}, model {}",
+        l.path, recording.case, l.declared, recording.response.model
+    );
+    let Some(found) = find_request(bound, &recording.case) else {
+        println!("{line}, no bound case of that name, answers unchecked");
+        return true;
+    };
+    let (state, questions) = match found {
+        Ok(found) => found,
+        Err(e) => {
+            println!("{line}");
+            println!("error     {}: the case's request: {e}", l.path);
+            return false;
+        }
+    };
+    if let Err(e) = recording.response.verify(&questions) {
+        println!("{line}");
+        println!("error     {}: against the request: {e}", l.path);
+        return false;
+    }
+    let expected = canonical::request_fingerprint(&state, &questions);
+    let verdict = match recording.fingerprint.as_deref() {
+        Some(f) if f == expected => "fingerprint matches".to_owned(),
+        Some(_) => format!("fingerprint differs (expected {expected})"),
+        None => format!("no fingerprint (would be {expected})"),
+    };
+    line.push_str(", verified, ");
+    line.push_str(&verdict);
+    println!("{line}");
+    true
+}
+
+fn lower(args: &[String]) -> Fallible<bool> {
+    let Some(rubric_path) = args.first() else {
+        return Err("lower needs a rubric".into());
+    };
+    let rubric = Rubric::parse(&std::fs::read_to_string(rubric_path)?)?;
+    let mut state: Option<Value> = None;
+    let mut options = Supplied::default();
+    let mut cases: Option<Cases> = None;
+    let mut rest = args[1..].iter();
+    while let Some(flag) = rest.next() {
+        let value = rest.next().ok_or_else(|| format!("{flag} needs a value"))?;
+        match flag.as_str() {
+            "--state" => state = Some(serde_json::from_str(value)?),
+            "--state-file" => state = Some(serde_json::from_str(&std::fs::read_to_string(value)?)?),
+            "--options" => options = serde_json::from_str(value)?,
+            "--cases" => cases = Some(Cases::parse(&std::fs::read_to_string(value)?)?),
+            other => return Err(format!("unknown flag {other}").into()),
+        }
+    }
+    match (cases, state) {
+        (Some(cases), _) => {
+            for (i, case) in cases.cases.iter().enumerate() {
+                let questions = case.request(&rubric)?;
+                println!("# {}", case.name(i));
+                println!("{}", serde_json::to_string_pretty(&questions)?);
+            }
+        }
+        (None, Some(state)) => {
+            let questions = rubric.lower(&state, &options)?;
+            println!("{}", serde_json::to_string_pretty(&questions)?);
+        }
+        (None, None) => {
+            let questions = rubric.lower(&Value::Object(serde_json::Map::new()), &options)?;
+            println!("{}", serde_json::to_string_pretty(&questions)?);
+        }
+    }
+    Ok(true)
+}

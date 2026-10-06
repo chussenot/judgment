@@ -124,6 +124,12 @@ required-features = ["http"]
 name = "jud"
 required-features = ["jud"]
 
+# `jud check` and `jud lower`: the reader as a command, for a person or an
+# agent writing a document by hand (docs/skill.md).
+[[bin]]
+name = "jud"
+required-features = ["jud"]
+
 # The benchmark replay talks to a server, so it needs the client.
 [[example]]
 name = "typed_decisions"

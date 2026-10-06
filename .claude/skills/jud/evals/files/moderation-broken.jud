@@ -1,0 +1,36 @@
+# Forum comment moderation rubric; written last quarter, needs an update.
+jud: 1
+kind: rubric
+id: forum moderation
+description: Decide what to do with a new forum comment.
+
+x-shared:
+  base: &base
+    type: noul
+
+questions:
+  is_spam:
+    <<: *base
+    instructions: Is `comment.text` spam or unsolicited advertising?
+    criteria:
+      yes: links to products, repeated promotional text
+      no: a genuine contribution
+  category:
+    type: choice
+    instructions: What kind of comment is `comment.text`?
+    criteria:
+      on_topic: Discusses the thread's subject
+  severity:
+    type: score
+    instructions: How harmful is `comment.text` to the community?
+    criteria: [harmless, rude, hostile, dangerous]
+
+policy:
+  is_spam:
+    confidence: 0.8
+  category:
+    confidence: 0.6
+    fallback: needs_review
+  severity:
+    level_at_least: 4
+    threshold: 0.5
