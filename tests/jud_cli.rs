@@ -596,3 +596,32 @@ fn replay_answers_from_recordings_without_a_server() {
         stderr(&missing)
     );
 }
+
+/// The README's command-line example is a transcript of the binary: the
+/// state after `$ cat event.json` piped into `jud triage.jud` prints exactly
+/// the verdicts the README shows, replayed from the example recordings.
+#[test]
+fn the_readme_shows_what_the_binary_prints() {
+    let readme = include_str!("../README.md");
+    let block = readme
+        .split("```sh\n$ cat event.json\n")
+        .nth(1)
+        .expect("README.md has the `$ cat event.json` transcript")
+        .split("\n```")
+        .next()
+        .unwrap();
+    let (state, rest) = block
+        .split_once("\n$ cat event.json | jud triage.jud\n")
+        .expect("the transcript pipes event.json into `jud triage.jud`");
+    let home = config_home();
+    let root = env!("CARGO_MANIFEST_DIR");
+    let rubric = format!("{root}/examples/jud/triage.jud");
+    let recordings = format!("{root}/examples/recordings/jud_calibration");
+    let out = jud(&["--replay", &recordings, &rubric], state, &[], &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(
+        stdout(&out).trim_end(),
+        rest.trim_end(),
+        "README.md's transcript must be what `jud` prints for that state; regenerate it from the binary"
+    );
+}
