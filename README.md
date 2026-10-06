@@ -170,6 +170,34 @@ a question or a threshold: both live in the file, and the model's answers are
 verified against the questions the file lowered to before the policy reads
 them. `examples/jud_calibration.rs` is where the policy's numbers come from.
 
+The three examples above show the mechanics on one message. The ones under
+[`examples/`](examples/) show the shapes a System One call takes inside a
+real program, one per pattern TypeSafe documents, each in its own domain and
+each replaying recorded answers so it runs with no key and no network
+(`-- --live` asks the model, `-- --record` rewrites the recordings):
+
+- [`fan_out.rs`](examples/fan_out.rs): speculative fan-out, every question a
+  decision tree might need in one request, the branch taken reading only its
+  handles.
+- [`confidence_routing.rs`](examples/confidence_routing.rs): confidence-gated
+  routing, the answer says what and the confidence says whether to act, each
+  action with its own bar.
+- [`composite_scoring.rs`](examples/composite_scoring.rs): composite scoring,
+  atomic Scores combined with weights the code owns, re-weighted over
+  recordings without a new call.
+- [`intent_routing.rs`](examples/intent_routing.rs): intent routing, a cheap
+  classifier in front of expensive handlers, with a second question gating the
+  escalation.
+- [`jud_calibration.rs`](examples/jud_calibration.rs): the `.jud` loop, a
+  rubric and its labelled cases from files, answers replayed, thresholds swept
+  and written back with their provenance.
+- [`typed_decisions.rs`](examples/typed_decisions.rs): the typed-decisions
+  benchmark replayed through the crate and scored, against any server that
+  speaks the wire.
+
+[Patterns](docs/patterns.md) says which type carries each shape and what the
+recordings teach about the thresholds.
+
 ```
 # chussenot @ me in ~/judgment py:3.14 nd:24.19 go:1.27 rs:1.94 load:1 on git:main ✓
 $ cargo run --example jud_live --features jud
