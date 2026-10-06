@@ -2,7 +2,7 @@
 title: judgment documentation
 description: Map of the judgment crate's documentation, what each page answers, and where the crate's documentation ends and an application's begins.
 status: current
-last_reviewed: 2026-10-04
+last_reviewed: 2026-10-06
 tags: [judgment, index]
 ---
 
@@ -20,6 +20,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Which crate types carry speculative fan-out, confidence-gated routing, composite scoring and intent routing, and what the recordings teach about thresholds | [Patterns](patterns.md) and the examples under `examples/` |
 | How to test a decision with no key and no network, and grade recordings against labels | [Testing without the model](testing.md) |
 | How to keep the questions, the thresholds, the labelled cases and the recorded answers in files that name each other by content, and tune a threshold from them, including a request that depends on the state | [The .jud format](jud.md) and `examples/jud/` |
+| Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](rubric.md) |
 | What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
 | What the hosted TypeSafe API does with what the crate sends, and with what it refuses to send | [Against the hosted TypeSafe API](verification/hosted-typesafe.md) |
 | Whether the crate works against a second implementation of the wire, what the benchmark measured, and what each `laya-serve` release changed on the wire | [Against Laya typed-decisions](verification/laya-typed-decisions.md) |
