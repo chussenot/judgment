@@ -51,7 +51,7 @@ One models (Jev) and with any server that speaks the same wire.
 
 ```toml
 [dependencies]
-judgment = "0.8"
+judgment = "0.9"
 # What the example above uses besides the crate.
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt"] }

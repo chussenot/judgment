@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-06
+
 ### Added
 
 - `jud RUBRIC` evaluates the JSON state on stdin against a `.jud` Rubric and
