@@ -22,7 +22,9 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Which crate types carry speculative fan-out, confidence-gated routing, composite scoring and intent routing, and what the recordings teach about thresholds | [Patterns](patterns.md) and the examples under `examples/` |
 | How to test a decision with no key and no network, and grade recordings against labels | [Testing without the model](testing.md) |
 | How to keep the questions, the thresholds, the labelled cases and the recorded answers in manifest-shaped files (`apiVersion`, `kind`, `metadata`, `spec`) that name each other by content, and tune a threshold from them, including a request that depends on the state | [The .jud format](jud.md) and `examples/jud/` |
-| Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](rubric.md) |
+| Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](jud/rubric.md) |
+| Why the labelled examples are a document of their own, what a label means for each primitive, how cases are bound and graded, and how to write cases a threshold can rest on | [What cases are](jud/cases.md) |
+| Why one model response is kept as a document, what its fingerprint leaves out, how a replay finds and verifies one, and when one is written by hand | [What a recording is](jud/recording.md) |
 | How an agent writes a `.jud` document and checks it with the crate's reader (`jud check`, `jud lower`), how the skill was tested, and how to install it in another project | [The jud skill](skill.md) and `.claude/skills/jud/` |
 | What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
 | What the hosted TypeSafe API does with what the crate sends, and with what it refuses to send | [Against the hosted TypeSafe API](verification/hosted-typesafe.md) |
@@ -505,12 +507,168 @@ Each harness carries `kani::cover!` statements, and Kani reports all of them sat
 A mock encodes what the client author believed about the wire. Only a real server can contradict that belief, which is what the ignored live tests and the verification records are for ([How the crate is checked](verification/method.md)).
 
 
+<!-- source: docs/skill.md -->
+
+
+# The jud skill
+
+An agent writing a `.jud` file has two ways to get it wrong: the shape, which the reader refuses with the field named, and the substance, which no reader can see: a compound question, a Choice with no way out, a threshold the instructions already moved into the model, a `tuning` block with no run behind it. The skill under [`.claude/skills/jud/`](../.claude/skills/jud/) exists for both. It gives an agent the field reference for version 1.3 in one page, the rules writers trip on, and a command that reads a document exactly as the crate does, so a document is checked before it is handed over rather than when it is first loaded.
+
+It is a [Claude Code skill](https://docs.claude.com/en/docs/claude-code/skills): a directory with a `SKILL.md` whose frontmatter says when the skill applies and whose body says how to work, plus the files it refers to. In this repository it is available to every session; elsewhere it is installed by copying the directory.
+
+## What is in it
+
+| Path | What it is |
+|---|---|
+| `SKILL.md` | The guide: the workflow, the rules the reader enforces that writers trip on, how to write questions that hold up, how to review an existing document, what to report. |
+| `references/format.md` | Version 1.3 in one page: the envelope (`apiVersion`, `kind`, `metadata`, `spec`) and names, the YAML rules, every field of the three kinds, the gate fields per primitive, the label shapes, the fingerprints, and a checklist of what the reader refuses. Condensed from [the specification](jud.md), which wins on any difference. |
+| `scripts/jud.sh` | Runs the `jud` command: a `jud` on `PATH` if there is one, else the one built from the judgment checkout the skill sits in, or the one `JUDGMENT_DIR` names. |
+| `evals/evals.json`, `evals/files/` | The six tasks the skill was tested on and the broken documents, in the old envelope, one of them moves forward and repairs. |
+
+The skill triggers on a task that touches a `.jud` file, a rubric, typed questions with thresholds, labelled cases, or questions written in code that should become a document. It does not need the word "jud" in the request.
+
+## The `jud` command
+
+The checker is `src/bin/jud.rs`, a binary of this crate behind the `jud` feature. It is the crate's reader as a command, so what it accepts, the crate accepts, and what it refuses, it refuses with the same message.
+
+```sh
+cargo run -q --features jud --bin jud -- check examples/jud/*.jud examples/recordings/jud_calibration/*.jud
+mise run jud:check                      # the same, over the examples
+mise run jud:check -- path/to/a.jud     # over the files given
+cargo install judgment --features jud   # a `jud` on PATH, from the next release that carries the binary
+```
+
+`jud check FILE...` reads every file. A cases document is bound to the rubric it names among the files, or to the only rubric given, so each label is checked against the request its case lowers to: a label for a question whose `when` is not present in that state, an option the case was not offered, a level past the last one, are all refused here and nowhere later. A recording whose `metadata.name` names a case of a bound document, or one turn of it as `<case>-turn-<n>`, is verified against that request as a live response would be, and its fingerprint compared with the one the request has. The output is one line per document with its name, the `apiVersion` it declares and its fingerprints, `error` lines naming the file and the field, and a summary; the exit status is 1 when any document was refused.
+
+```text
+rubric    examples/jud/triage.jud: id inbox-triage, jud/v1.3, 3 questions, 3 gates (tuned)
+          questions sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a
+          policy    sha256:1585094f59711426a98044a00ded2ec747010b5369e941f33a2732a50262e99f
+          tuned on  sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
+cases     examples/jud/triage-cases.jud: id inbox-triage-cases, jud/v1.3, 7 cases, bound to examples/jud/triage.jud
+          cases     sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
+recording examples/recordings/jud_calibration/receipt.jud: case receipt, jud/v1.3, model jev-1.13.0, verified, fingerprint matches
+3 documents, 0 refused
+```
+
+`jud lower RUBRIC` prints the request a rubric lowers to, as the questions map the wire carries, for one state (`--state JSON` or `--state-file PATH`, with `--options JSON` for a Choice whose options come with the request) or for every case of a cases document (`--cases FILE`). It is how a `when`, a `part_when` or an `options_from` is seen rather than guessed: a question missing from a case's request cannot be labelled for that case, and a part missing from the instructions was left out on purpose.
+
+```sh
+cargo run -q --features jud --bin jud -- lower examples/jud/routing.jud --cases examples/jud/routing-cases.jud
+cargo run -q --features jud --bin jud -- lower examples/jud/routing.jud \
+  --state '{"message": {"text": "hi"}, "customer": {"open_tickets": [{"id": "T-1"}]}}' \
+  --options '{"desk": {"billing": "Invoices"}, "duplicate_of": {"T-1": "Locked out"}}'
+```
+
+## How the skill works
+
+1. Decide the kind. A decision needs a rubric; a rubric's thresholds need cases, so the two are usually written together. A recording is written by hand only as a test fixture.
+2. Read `references/format.md` before writing.
+3. Write the document in the 1.3 envelope (`apiVersion: jud/v1.3`, `kind`, `metadata.name`, `spec`), starting from the nearest example under `examples/jud/`.
+4. Check it with `scripts/jud.sh check`, rubric and cases together, and fix every refusal in the document rather than around it.
+5. When the request depends on the state, look at what each case sends with `scripts/jud.sh lower`.
+6. Report the files, the `jud check` summary and, when the rubric will be pinned, its two fingerprints.
+
+The guide spends most of its words on what the checker cannot see, because that is where an agent without it goes wrong: one question per thing, criteria that define the outcomes rather than restate the question, a `none_of_these` option, questions asked only when the state carries what they are about, facts the application already has kept in code, and a policy that is honest about being a guess until a tuning run writes its `tuning` block. A section on turning questions written in code into a rubric says how the builder calls map to the document and how parity is proved with `jud lower`, and one on moving a document forward says how the earlier envelope (a `jud:` key with the fields at the top level) is rewritten into this one, because the reader refuses it by name rather than reading it.
+
+## How it was tested
+
+The skill and its eval set were carried over to the manifest envelope after the test below, which was run before it. The skill was run against six tasks of the kind a user would actually give, each once with the skill and once without it, by independent agents in the same checkout, and the outputs were graded by a script that runs `jud check` on them and checks every assertion in `evals/evals.json` against the parsed documents. The baseline agents could read the specification, the examples and the `jud` command; what they lacked was the guide.
+
+1. A rubric and six labelled cases for triaging GitHub issues, from a one-paragraph brief.
+2. A rubric over a conversation and four labelled transcripts, with `from_turn` labels.
+3. A routing rubric whose options come with each request, with `when`, `part_when`, bands and a static fallback, and cases that supply the options.
+4. Two broken documents from "last quarter" (a merge key, ids with spaces, `yes` and `no` as Noul criteria and label, a one-option Choice, gates on the wrong primitive, a level past the scale, a path-shaped case id) to be repaired into valid documents with a report of what was wrong. The fixtures stay in the envelope of the time, so the task now also moves them forward.
+5. The two questions of `examples/quickstart.rs` turned into a rubric whose request is byte for byte the code's (checked by fingerprint), with a labelled case and a hand-written recording that `jud check` verifies with a matching fingerprint.
+6. A brief with traps: a name with spaces, a threshold asked for in the instructions, a twelve-level scale, a one-option Choice and a request to invent a `tuning` block, to be met with a valid document and an explanation of each deviation.
+
+Every document written with the skill passed every assertion (49 of 49); without it, 48 of 49, the miss being a document declared under an older version than the one wanted. The difference the skill makes is mostly in cost and method: in the first round, 14% fewer tokens and 24% less wall-clock on average, ten tool calls per task against fifteen, and no agent with the skill built a throwaway crate to validate its documents, which two baselines did. The second round changed the guide in two places: Score levels are written as plain strings, because an object level's text is its JSON and a `level_at_least` or a label would have to repeat it; and a section on turning questions written in code into a rubric, so parity is proved with `jud lower` rather than a probe crate. The eval set stays in the skill, its prompts and assertions now in the 1.3 format, so a later change to the format or the guide can be run against the same tasks.
+
+## Installing it elsewhere
+
+The skill has no dependency on this repository but the `jud` command. To use it in another project:
+
+1. Copy `.claude/skills/jud/` into that project's `.claude/skills/` (every session in the project sees it) or into `~/.claude/skills/` (every project does).
+2. Give it a `jud` to run: `cargo install judgment --features jud` puts one on `PATH`, or set `JUDGMENT_DIR` to a checkout of this repository and the script builds it from there.
+3. Keep the examples at hand: the guide points at `examples/jud/` as the starting documents, so a checkout of this repository, or a copy of that directory, is worth having beside the skill.
+
+The skill is not published with the crate (`Cargo.toml` excludes `.claude/`); the `jud` binary is.
+
+
+<!-- source: docs/releasing.md -->
+
+
+# Releasing
+
+A release has to be the same every time: the version follows from what changed, the CHANGELOG says what the version contains, the gate has passed on exactly what is published, and the credential that publishes lives in CI rather than on a laptop. [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) says why the pieces below were chosen over release-plz, cargo-release and a checklist. This page says how to use them.
+
+## The pieces
+
+| Piece | Where | What it does |
+|---|---|---|
+| Conventional Commits | every commit; `cog verify` in the prek `commit-msg` hook, `cog check` in the `commits` job of CI | Gives cocogitto the facts it derives a version from, and refuses a commit message it cannot read |
+| `cog bump --auto` | `cog.toml`, run as `mise run release` | Computes the next version from the commits since the last tag, runs the pre-bump hooks, commits `chore(version): vX.Y.Z` and tags it |
+| `scripts/release-bump.sh` | the first pre-bump hook | Writes the version into `Cargo.toml` and `Cargo.lock` and its major.minor into the README's install snippet, turns the CHANGELOG's Unreleased section into the release's dated section, and refuses an empty one |
+| The gate | the remaining pre-bump hooks, then CI on the pull request and on the tag | Formatting, clippy, the no-`http` build, the tests, rustdoc, the documentation checks and what the package would ship |
+| `.github/workflows/release.yml` | on a pushed `v*` tag | Runs the CI gate on the tagged commit, checks the tag against `Cargo.toml`, runs `cargo publish --dry-run`, publishes, and creates a GitHub release with the CHANGELOG section as notes |
+
+The CHANGELOG stays hand-written, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) form: a pull request that changes what a consumer sees adds its entry under Unreleased, and the bump only dates that section. cocogitto's own changelog generation is off, because a list of commit subjects does not explain a change to a consumer.
+
+## What the commits decide
+
+cocogitto reads the commits since the latest tag. Below 1.0, as the crate is:
+
+| Commits since the last tag | Next version |
+|---|---|
+| Any `feat`, or any commit with `!` after its type or a `BREAKING CHANGE` footer | minor: `0.2.0` to `0.3.0` |
+| Only `fix` (and types that bump nothing) | patch: `0.2.0` to `0.2.1` |
+| Only `docs`, `chore`, `ci`, `test`, `refactor`, `style`, `build`, `perf` | no release; `cog bump` says so and does nothing |
+
+A breaking change in a 0.x crate is a minor bump, which is the rule the CHANGELOG states; from 1.0 on, cocogitto makes it a major. Merge commits are ignored. `mise run release:dry` prints the version the commits call for without touching anything.
+
+## Cutting a release
+
+1. Be on an up-to-date `main` with a clean tree. Check that the CHANGELOG's Unreleased section says what the release contains; a release with an empty section is refused.
+2. `mise run release:dry` to see the version. If it is not the one the changes warrant, the commits say something the changes do not; fix that first (an amended message on an unmerged branch, or a further commit), never the version by hand.
+3. `git switch -c release/vX.Y.Z` with that version, then `mise run release`. cocogitto runs the pre-bump hooks (the version into the three files, then the gate), commits `chore(version): vX.Y.Z` and tags `vX.Y.Z` on that commit. A failed hook leaves the tree edited and nothing committed; `git checkout .` restores it.
+4. Push the branch and open a pull request. CI runs the gate and the commit check on it like any other change.
+5. Merge it with a merge commit. Never squash or rebase this pull request: the tag points at the bump commit, and `main` has to carry that very commit for the tag to be a commit on `main`.
+6. `git push origin vX.Y.Z`. The release workflow runs: the gate once more, the version check, the dry run, the publish, the GitHub release. The crate is on crates.io when the `publish` job is green.
+
+Agents working in the repository cannot do steps 3 and 6 by accident: the Bash guard denies `cargo publish` (the dry run is allowed) and pushing a tag.
+
+## One-time setup
+
+- **The baseline tag.** cocogitto scans from the latest tag because the history before this repository was not written to the convention. Tag the commit that released 0.2.0 and push the tag; its tree has no release workflow, so nothing runs:
+
+  ```sh
+  git tag -a v0.2.0 9ccd761 -m "judgment 0.2.0"
+  git push origin v0.2.0
+  ```
+
+- **The first publish** (done: 0.3.0, 2026-10-03). crates.io lets a trusted publisher be configured only on a crate that already exists, so the first release used an API token with the `publish-new` and `publish-update` scopes, stored as the `CARGO_REGISTRY_TOKEN` secret of the `crates-io` environment. crates.io also requires a verified email address on the publishing account; without one the upload is refused with a 400 and the job is re-run once the address is verified.
+- **Trusted publishing, now that the crate exists.** On the crate's settings page on crates.io, add a trusted publisher: GitHub, owner `chussenot`, repository `judgment`, workflow `release.yml`, environment `crates-io`. Then delete the `CARGO_REGISTRY_TOKEN` secret: the workflow exchanges its OIDC identity for a token that lives for the job and is revoked at its end. That path has not run yet; watch the first release that uses it.
+- **The environment.** Put required reviewers on the `crates-io` environment to have a person approve each publish, and restrict it to tags matching `v*`.
+- **Merge method.** Disable squash merging and rebase merging in the repository settings, or take care on the release pull request (step 5 above).
+- **Locally.** `mise install` builds `cog` from crates.io; `mise run setup` installs the hooks, the `commit-msg` one included; `mise run commits:check` is what CI runs on a pull request.
+
+## When something goes wrong
+
+- **The commit check fails on a pull request.** Reword the commit on the branch and force-push the branch; the message, not the code, is what failed.
+- **`cog bump` refuses to run.** It wants a clean tree on `main` or a `release/*` branch and a non-empty Unreleased section; its message says which.
+- **The release workflow fails before `cargo publish`.** Nothing was published, and the version is still the one `main` carries, so there is nothing to bump again (the bump script refuses a manifest that is already past the latest tag). Fix the cause on `main` through a pull request, move the tag to the fixed head and push it again: `git tag -f vX.Y.Z origin/main && git push --force origin vX.Y.Z`. The workflow's checks hold on any commit that carries the version. Never move a tag once the publish step has run: the version is on crates.io and the tag must keep naming what was published.
+- **`cargo publish` succeeded and a later step failed.** The version is on crates.io and cannot be re-published. Re-run the failed job for the GitHub release; do not retag.
+- **A published version is wrong.** `cargo yank --version X.Y.Z` by hand, from a machine with a token, hides it from new resolutions; a yank is not a deletion and is recorded in the CHANGELOG under the version. The fix is the next release.
+
+
 <!-- source: docs/jud.md -->
 
 
 # The `.jud` format
 
 A System One request is simple: a `state`, a `model` and a map of typed questions. What is hard to keep is everything around it. The questions live in code; the threshold a probability is acted on at lives in a configuration file or a constant; the labelled examples that threshold was tuned on live in a notebook; the answers the model gave last month live nowhere. When the model version moves, nobody can say which of the four changed, or whether the threshold still holds. `.jud` gives each of them a file with a stated shape, an identity and a fingerprint, so a policy can say which rubric and which cases it was tuned on, a recording can say which request and which server it answers, and two tools can exchange all three without agreeing on anything but the files.
+
+Three kinds of document, and the difference between the first two is the one to hold onto. A **Rubric** is the decision itself: the questions the model is asked about a state, in the shape the wire sends them, and the policy that says at which probability or confidence an answer becomes an action. A **Cases** document is the examples the decision is checked against: a handful of real states, each with the answer a person gave for the questions they were sure of. The rubric is what the model sees; the cases are never sent to it, they are what its answers are graded on, and what the rubric's thresholds are tuned from. A **Recording** is what the model actually answered to one request, kept so a run can be replayed or compared without another call. One rubric, graded on one cases document, produces one recording per case. Each kind has a page on the reasoning behind it: [what a rubric is](jud/rubric.md), [what cases are](jud/cases.md), [what a recording is](jud/recording.md).
 
 A `.jud` file is one YAML 1.2 document. JSON is valid YAML, so a JSON file with the same fields is the same document. Three kinds of document share one envelope, the envelope of a Kubernetes manifest or a Backstage catalog file (`apiVersion`, `kind`, `metadata`, `spec`), and nothing in the format depends on this crate: the questions are the wire's own shape, the fingerprints are a published canonicalisation, and the [JSON Schemas](../schemas/jud/) under `schemas/jud/` state each kind formally. This page is the specification of `apiVersion: jud/v1.3`; `judgment::jud` (feature `jud`, off by default) is one implementation of it, and [`examples/jud/`](../examples/jud/) holds a complete set of documents with a runnable round trip.
 
@@ -906,12 +1064,12 @@ An implementation conforms when it reads all three kinds under the reading rules
 `jud/v1.3` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later apiVersion is refused whole rather than half-read. Any change, an added field or a changed meaning, takes a new apiVersion, which a reader of this one refuses by name; a reader says which apiVersion it reads, and a document is moved forward by rewriting it. Two additions are foreseen and deliberately not in this apiVersion: a soft label (a distribution over options or levels, for grading calibration against a panel's disagreement rather than one annotator's pick), and a verdict kind (what an application decided, for auditing a policy's record). Both wait for a second implementation to need them.
 
 
-<!-- source: docs/rubric.md -->
+<!-- source: docs/jud/rubric.md -->
 
 
 # What a rubric is
 
-A rubric is a decision written down so that a person can review it and a program can run it. It holds the questions a model is asked about a state, and the thresholds at which the model's answers become actions. It is the first of the three kinds of `.jud` document, and the one the other two exist for: [cases](jud.md#cases) are what a rubric is graded on, [recordings](jud.md#recording) are what a model answered when it was. This page says why a decision takes this shape and how to write one. [The .jud format](jud.md) is the specification; this page is the reasoning behind it.
+A rubric is a decision written down so that a person can review it and a program can run it. It holds the questions a model is asked about a state, and the thresholds at which the model's answers become actions. It is the first of the three kinds of `.jud` document, and the one the other two exist for: [cases](cases.md) are what a rubric is graded on, [recordings](recording.md) are what a model answered when it was. This page says why a decision takes this shape and how to write one. [The .jud format](../jud.md) is the specification; this page is the reasoning behind it.
 
 ## The word
 
@@ -1061,7 +1219,7 @@ let response = backend.answer(&state, "jev-latest", &questions).await?;
 let verdicts = rubric.apply(&questions, &response)?;
 ```
 
-The reader is strict on purpose. It reads exactly one `apiVersion` and refuses a field it does not know, so a document for a later apiVersion is refused whole rather than half-read. It refuses what hides text from the person reading the file: a merge key, a tag the YAML core schema does not define. It refuses a name that is not a [name](jud.md#names), so a name never reaches a file system as a path. What a reviewer approved is what the program runs.
+The reader is strict on purpose. It reads exactly one `apiVersion` and refuses a field it does not know, so a document for a later apiVersion is refused whole rather than half-read. It refuses what hides text from the person reading the file: a merge key, a tag the YAML core schema does not define. It refuses a name that is not a [name](../jud.md#names), so a name never reaches a file system as a path. What a reviewer approved is what the program runs.
 
 ## How a rubric is written
 
@@ -1088,161 +1246,234 @@ A rubric is only as good as its questions, and the failure modes repeat.
 
 ## In the crate
 
-`judgment::jud` (feature `jud`, off by default) implements the rubric kind as `Rubric`: `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `lower`, `apply` and `gate`. [The .jud format](jud.md) specifies every field and reading rule; [decision 0014](decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) says why the three kinds share one format, and [decision 0018](decisions/0018-jud-1-3-takes-the-manifest-envelope.md) why the envelope is a manifest's and the reader reads one apiVersion. The two records it supersedes hold reasoning that still stands: [decision 0016](decisions/0016-jud-takes-minor-versions.md) why a request may depend on the state, and [decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) why the reader refuses what a reviewer cannot see. The README's second and third examples run a rubric against a `Fake` and against the hosted API; [`examples/jud/triage.jud`](../examples/jud/triage.jud) is the rubric this page quotes, with the cases it was tuned on beside it.
+`judgment::jud` (feature `jud`, off by default) implements the rubric kind as `Rubric`: `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `lower`, `apply` and `gate`. [The .jud format](../jud.md) specifies every field and reading rule; [decision 0014](../decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) says why the three kinds share one format, and [decision 0018](../decisions/0018-jud-1-3-takes-the-manifest-envelope.md) why the envelope is a manifest's and the reader reads one apiVersion. The two records it supersedes hold reasoning that still stands: [decision 0016](../decisions/0016-jud-takes-minor-versions.md) why a request may depend on the state, and [decision 0017](../decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) why the reader refuses what a reviewer cannot see. The README's second and third examples run a rubric against a `Fake` and against the hosted API; [`examples/jud/triage.jud`](../../examples/jud/triage.jud) is the rubric this page quotes, with the cases it was tuned on beside it.
 
 
-<!-- source: docs/skill.md -->
+<!-- source: docs/jud/cases.md -->
 
 
-# The jud skill
+# What cases are
 
-An agent writing a `.jud` file has two ways to get it wrong: the shape, which the reader refuses with the field named, and the substance, which no reader can see: a compound question, a Choice with no way out, a threshold the instructions already moved into the model, a `tuning` block with no run behind it. The skill under [`.claude/skills/jud/`](../.claude/skills/jud/) exists for both. It gives an agent the field reference for version 1.3 in one page, the rules writers trip on, and a command that reads a document exactly as the crate does, so a document is checked before it is handed over rather than when it is first loaded.
+A cases document is the labelled examples a decision is graded on. Each case is one state the rubric's questions are asked about, with the answer a person gave for the questions they were sure of. It is the second kind of `.jud` document: [a rubric](rubric.md) says what the model is asked and where the line is drawn, cases say what the right answers are for a handful of real states, and [recordings](recording.md) say what the model actually answered. The specification is [the .jud format](../jud.md#cases); this page is the reasoning.
 
-It is a [Claude Code skill](https://docs.claude.com/en/docs/claude-code/skills): a directory with a `SKILL.md` whose frontmatter says when the skill applies and whose body says how to work, plus the files it refers to. In this repository it is available to every session; elsewhere it is installed by copying the directory.
+## The word
 
-## What is in it
+A case is one piece of work the grader has already marked. When a new grader is trained, they are given marked work and asked to mark it again; where they differ, the rubric is unclear or the grader is wrong, and either is worth knowing before the real work starts. A cases document is that marked work: states with the marks a person gave, so a model's marks can be compared with them.
 
-| Path | What it is |
-|---|---|
-| `SKILL.md` | The guide: the workflow, the rules the reader enforces that writers trip on, how to write questions that hold up, how to review an existing document, what to report. |
-| `references/format.md` | Version 1.3 in one page: the envelope (`apiVersion`, `kind`, `metadata`, `spec`) and names, the YAML rules, every field of the three kinds, the gate fields per primitive, the label shapes, the fingerprints, and a checklist of what the reader refuses. Condensed from [the specification](jud.md), which wins on any difference. |
-| `scripts/jud.sh` | Runs the `jud` command: a `jud` on `PATH` if there is one, else the one built from the judgment checkout the skill sits in, or the one `JUDGMENT_DIR` names. |
-| `evals/evals.json`, `evals/files/` | The six tasks the skill was tested on and the broken documents, in the old envelope, one of them moves forward and repairs. |
+The person who labels a case is not asked to guess what the model will say. They are asked what a careful colleague would say, with the rubric in front of them. That is the standard the model is held to, and the only one a threshold can be tuned against.
 
-The skill triggers on a task that touches a `.jud` file, a rubric, typed questions with thresholds, labelled cases, or questions written in code that should become a document. It does not need the word "jud" in the request.
+## The problem cases solve
 
-## The `jud` command
+A threshold is a claim about a model's probabilities: that above this number, the model is right often enough to act on. Nothing in the rubric can justify that number. It takes examples where the right answer is known, the model's answer on each, and a count of how often the two agree at every candidate bar.
 
-The checker is `src/bin/jud.rs`, a binary of this crate behind the `jud` feature. It is the crate's reader as a command, so what it accepts, the crate accepts, and what it refuses, it refuses with the same message.
+Those examples tend to live where they were last needed: a notebook that no longer runs, a spreadsheet one person keeps, a test file whose expected values were copied from the model's own output. The labels drift from the questions when the questions change, nobody can say which examples a threshold was tuned on, and when the model version moves, the examples cannot be rerun because the request they stood for is gone.
 
-```sh
-cargo run -q --features jud --bin jud -- check examples/jud/*.jud examples/recordings/jud_calibration/*.jud
-mise run jud:check                      # the same, over the examples
-mise run jud:check -- path/to/a.jud     # over the files given
-cargo install judgment --features jud   # a `jud` on PATH, from the next release that carries the binary
+A cases document keeps the examples beside the rubric, in a shape a program can run and a reviewer can read. Each case carries the state the application would actually send, so a case is a complete request once the rubric is known. Each label is written in the answer's own vocabulary, so grading needs no translation. The document has a fingerprint, so a rubric's `tuning` block names exactly which labels its bars rest on, and an edited case set is visibly a different one.
+
+```mermaid
+flowchart LR
+    R[rubric] --> L[lower]
+    C[case<br/>state + options] --> L
+    L --> Q[request]
+    Q --> M[model or replay]
+    M --> A[answers]
+    A --> G[grade]
+    E[expect<br/>the labels] --> G
+    G --> J[judgments<br/>per question]
+    J --> T[tune]
+    T -. writes policy and tuning .-> R
 ```
 
-`jud check FILE...` reads every file. A cases document is bound to the rubric it names among the files, or to the only rubric given, so each label is checked against the request its case lowers to: a label for a question whose `when` is not present in that state, an option the case was not offered, a level past the last one, are all refused here and nowhere later. A recording whose `metadata.name` names a case of a bound document, or one turn of it as `<case>-turn-<n>`, is verified against that request as a live response would be, and its fingerprint compared with the one the request has. The output is one line per document with its name, the `apiVersion` it declares and its fingerprints, `error` lines naming the file and the field, and a summary; the exit status is 1 when any document was refused.
+## What a case holds
 
-```text
-rubric    examples/jud/triage.jud: id inbox-triage, jud/v1.3, 3 questions, 3 gates (tuned)
-          questions sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a
-          policy    sha256:1585094f59711426a98044a00ded2ec747010b5369e941f33a2732a50262e99f
-          tuned on  sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
-cases     examples/jud/triage-cases.jud: id inbox-triage-cases, jud/v1.3, 7 cases, bound to examples/jud/triage.jud
-          cases     sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
-recording examples/recordings/jud_calibration/receipt.jud: case receipt, jud/v1.3, model jev-1.13.0, verified, fingerprint matches
-3 documents, 0 refused
+A case is small on purpose.
+
+- **`state`** is any JSON: what the questions are asked about, with the keys the application really sends. An array is a conversation, one element per turn.
+- **`expect`** is the right answer by question id, for the questions this case labels. A question left out is still asked and not graded. That is the one escape hatch a labeller has, and it is the honest one: a case about billing need not say how upset the writer is.
+- **`options`** are the options supplied for this case's request, for a Choice whose options come with each request. With them, a case is the whole request and not a fragment of one.
+- **`id`** is a name, so a recording can be filed under it; **`tags`** slice a report; **`note`** says why a label is what it is, which matters most on the cases that were argued about.
+
+A label fits the question's primitive, and a label that does not fit is refused when the cases are bound to the rubric. A Noul takes `true` or `false`. A Choice takes an option key the case's request offers, static or supplied. A Score takes a level by its index or by its text. Over a conversation, a Noul may instead take `{from_turn: n}`, the turn at which it becomes true, or `{from_turn: null}` for never.
+
+```yaml
+apiVersion: jud/v1.3
+kind: Cases
+metadata:
+  name: inbox-triage-cases
+  description: Seven messages, labelled by the support lead.
+spec:
+  rubric: inbox-triage
+  cases:
+    - id: refund-angry
+      state:
+        message: I was charged twice last month and nobody has refunded me. Fix it today or I cancel.
+      expect: {actionable: true, desk: billing, tone: angry}
+      tags: [billing, repeat]
+    - id: receipt
+      state:
+        message: Your payment of 12.00 EUR was received. This is an automated message.
+      expect: {actionable: false, desk: none_of_these}
+      note: the hard one; about billing, but asks nothing
 ```
 
-`jud lower RUBRIC` prints the request a rubric lowers to, as the questions map the wire carries, for one state (`--state JSON` or `--state-file PATH`, with `--options JSON` for a Choice whose options come with the request) or for every case of a cases document (`--cases FILE`). It is how a `when`, a `part_when` or an `options_from` is seen rather than guessed: a question missing from a case's request cannot be labelled for that case, and a part missing from the instructions was left out on purpose.
+## Binding: a label is checked against the request it grades
 
-```sh
-cargo run -q --features jud --bin jud -- lower examples/jud/routing.jud --cases examples/jud/routing-cases.jud
-cargo run -q --features jud --bin jud -- lower examples/jud/routing.jud \
-  --state '{"message": {"text": "hi"}, "customer": {"open_tickets": [{"id": "T-1"}]}}' \
-  --options '{"desk": {"billing": "Invoices"}, "duplicate_of": {"T-1": "Locked out"}}'
+A cases document can be read on its own, but it means nothing until it is bound to a rubric. Binding lowers each case's request from its state and options, exactly as the application would, and checks every label against that request. Three things are caught here and nowhere later.
+
+- A label for a question the request does not ask, because the question's `when` is not present in this state, is refused. A question not asked has no answer to grade, and a label for it is a mistake in the case or in the rubric.
+- A Choice label that names an option this case was not offered is refused. The option list is per request when options are supplied, so the check is per case.
+- A Score label past the last level, a `from_turn` on a question that is not a Noul or a state that is not an array, or a turn past the last one, is refused.
+
+The document's `rubric` field names the rubric the labels are for, by name or by fingerprint, and binding checks the value against both. Naming by fingerprint says exactly which questions the labels were written against; naming by name says which rubric, and lets the questions move.
+
+## Conversations
+
+A state that is an array is a conversation, and some questions change their answer as it goes. A customer who was only annoyed at turn one wants a person by turn three. Labelling the whole conversation with one `true` would lose when it became true, and the model is asked at every turn, not once at the end.
+
+`{from_turn: n}` labels the turn at which a Noul becomes true, zero-based over the whole array, so assistant turns count. Grading the whole conversation resolves it once: `true` if the conversation has a turn `n`. Grading turn by turn cuts the state after each turn, resolves the label to `true` or `false` for that turn, and keeps every other label for the last turn only, since those label the conversation as a whole. Each turn is then its own request, with its own fingerprint and its own recording, named `<case>-turn-<n>`.
+
+```yaml
+    - id: escalates
+      state:
+        - {role: user, text: Hi, my export has been stuck at 99% for an hour.}
+        - {role: assistant, text: Sorry about that. Could you tell me the export id?}
+        - {role: user, text: "It's exp_4411. Honestly, can I just talk to a person?"}
+      expect:
+        wants_human: {from_turn: 2}
 ```
 
-## How the skill works
+## What cases are not
 
-1. Decide the kind. A decision needs a rubric; a rubric's thresholds need cases, so the two are usually written together. A recording is written by hand only as a test fixture.
-2. Read `references/format.md` before writing.
-3. Write the document in the 1.3 envelope (`apiVersion: jud/v1.3`, `kind`, `metadata.name`, `spec`), starting from the nearest example under `examples/jud/`.
-4. Check it with `scripts/jud.sh check`, rubric and cases together, and fix every refusal in the document rather than around it.
-5. When the request depends on the state, look at what each case sends with `scripts/jud.sh lower`.
-6. Report the files, the `jud check` summary and, when the rubric will be pinned, its two fingerprints.
+- **Not examples for the model.** A case is never sent to the model. The model sees the state and the questions; the labels are for grading its answers. A rubric that wants the model to see examples puts them in the instructions, where the fingerprint witnesses them.
+- **Not what the model said.** A case says what the answer should be. A [recording](recording.md) says what it was. Copying a model's output into `expect` turns a test of the model into a test of nothing.
+- **Not the policy.** A case labels answers, not actions. Whether a `true` at 0.55 becomes a page or a ticket is the rubric's policy, and the cases are what that policy is tuned on, not where it is written.
+- **Not a training set.** Seven cases are enough to find a document that is wrong and to show the loop. They are not enough to tune a bar; a threshold tuned on them has an interval wider than the number. The crate reports the interval, and an honest `tuning` block carries the count.
 
-The guide spends most of its words on what the checker cannot see, because that is where an agent without it goes wrong: one question per thing, criteria that define the outcomes rather than restate the question, a `none_of_these` option, questions asked only when the state carries what they are about, facts the application already has kept in code, and a policy that is honest about being a guess until a tuning run writes its `tuning` block. A section on turning questions written in code into a rubric says how the builder calls map to the document and how parity is proved with `jud lower`, and one on moving a document forward says how the earlier envelope (a `jud:` key with the fields at the top level) is rewritten into this one, because the reader refuses it by name rather than reading it.
+## Two identities
 
-## How it was tested
+A cases document has a name and a fingerprint. The fingerprint is over the `cases` array alone, as canonical JSON: the states, the labels, the ids, the tags and the notes, in order. The document's name, description, labels and annotations are not part of it.
 
-The skill and its eval set were carried over to the manifest envelope after the test below, which was run before it. The skill was run against six tasks of the kind a user would actually give, each once with the skill and once without it, by independent agents in the same checkout, and the outputs were graded by a script that runs `jud check` on them and checks every assertion in `evals/evals.json` against the parsed documents. The baseline agents could read the specification, the examples and the `jud` command; what they lacked was the guide.
+That is what a rubric's `tuning.cases` names. A label that moves, a case added or removed, a note edited, each gives a different fingerprint, so a rubric whose bars were tuned on one set cannot quietly claim another. The name is for people and for the `rubric` field of a report; the fingerprint is for the claim.
 
-1. A rubric and six labelled cases for triaging GitHub issues, from a one-paragraph brief.
-2. A rubric over a conversation and four labelled transcripts, with `from_turn` labels.
-3. A routing rubric whose options come with each request, with `when`, `part_when`, bands and a static fallback, and cases that supply the options.
-4. Two broken documents from "last quarter" (a merge key, ids with spaces, `yes` and `no` as Noul criteria and label, a one-option Choice, gates on the wrong primitive, a level past the scale, a path-shaped case id) to be repaired into valid documents with a report of what was wrong. The fixtures stay in the envelope of the time, so the task now also moves them forward.
-5. The two questions of `examples/quickstart.rs` turned into a rubric whose request is byte for byte the code's (checked by fingerprint), with a labelled case and a hand-written recording that `jud check` verifies with a matching fingerprint.
-6. A brief with traps: a name with spaces, a threshold asked for in the instructions, a twelve-level scale, a one-option Choice and a request to invent a `tuning` block, to be met with a valid document and an explanation of each deviation.
+## How cases are read
 
-Every document written with the skill passed every assertion (49 of 49); without it, 48 of 49, the miss being a document declared under an older version than the one wanted. The difference the skill makes is mostly in cost and method: in the first round, 14% fewer tokens and 24% less wall-clock on average, ten tool calls per task against fifteen, and no agent with the skill built a throwaway crate to validate its documents, which two baselines did. The second round changed the guide in two places: Score levels are written as plain strings, because an object level's text is its JSON and a `level_at_least` or a label would have to repeat it; and a section on turning questions written in code into a rubric, so parity is proved with `jud lower` rather than a probe crate. The eval set stays in the skill, its prompts and assertions now in the 1.3 format, so a later change to the format or the guide can be run against the same tasks.
+By a reviewer, as the examples that define the decision. A rubric's criteria say what a yes means in words; the cases say it in instances, and the instances are easier to argue about. A reviewer who disagrees with a label has found either a bad label or an unclear question, and the `note` on the case is where that argument is settled.
 
-## Installing it elsewhere
+By a program, in the loop. `Cases::parse` reads the file; `Cases::bind` checks every label against the rubric before any call is made; `Case::request` lowers one case to the request a backend answers, and `Case::per_turn` cuts a conversation into one request per turn; `grade` compares one response with one case's labels into judgments, in the answer's own vocabulary; the sweeps in `eval::tuning` read a bar off the judgments. The calibration example runs the whole loop over the documents in `examples/jud/`.
 
-The skill has no dependency on this repository but the `jud` command. To use it in another project:
+## How cases are written
 
-1. Copy `.claude/skills/jud/` into that project's `.claude/skills/` (every session in the project sees it) or into `~/.claude/skills/` (every project does).
-2. Give it a `jud` to run: `cargo install judgment --features jud` puts one on `PATH`, or set `JUDGMENT_DIR` to a checkout of this repository and the script builds it from there.
-3. Keep the examples at hand: the guide points at `examples/jud/` as the starting documents, so a checkout of this repository, or a copy of that directory, is worth having beside the skill.
+1. **Take real states.** The keys the application sends, with their real shape, so that a `when` behaves in the cases as it will in production. An invented state tests an invented request.
+2. **Label what you are sure of.** A question left out of `expect` is asked and not graded. A wrong label costs more than a missing one, because the bar moves to fit it.
+3. **Cover the outcomes.** Every option of a Choice and every level of a Score should be the right answer at least once, including the way out: the `none_of_these` option, the `calm` level, the `false` of a Noul. A set with no negative cases tunes a bar that never says no.
+4. **Keep the hard ones, and say why.** The cases that were argued about are the ones that define the line. Give each a `note` with the argument, so the next labeller does not reopen it.
+5. **Supply what the request needs.** For a Choice whose options come with the request, each case supplies its own, as the application would that day.
+6. **Name the rubric.** By name while the questions are being written; by fingerprint once a tuning run should be reproducible.
 
-The skill is not published with the crate (`Cargo.toml` excludes `.claude/`); the `jud` binary is.
+When the questions change, bind the cases again. A label that no longer fits is refused with the case and the field named, and that refusal is the point: the cases are the part of a decision that notices when the decision moved.
 
+## In the crate
 
-<!-- source: docs/releasing.md -->
+`judgment::jud` (feature `jud`) implements the kind as `Cases { name, description, labels, annotations, rubric, cases }` with `parse`, `to_yaml`, `fingerprint` and `bind`; `Case { id, state, expect, options, tags, note }` with `request`, `name` and `per_turn`; `Expect` for a label; and `grade` for one case against one response. [The .jud format](../jud.md#cases) specifies every field and reading rule, and [`examples/jud/triage-cases.jud`](../../examples/jud/triage-cases.jud), [`routing-cases.jud`](../../examples/jud/routing-cases.jud) and [`handoff-cases.jud`](../../examples/jud/handoff-cases.jud) are the three shapes: one message, per-request options, a conversation.
 
 
-# Releasing
+<!-- source: docs/jud/recording.md -->
 
-A release has to be the same every time: the version follows from what changed, the CHANGELOG says what the version contains, the gate has passed on exactly what is published, and the credential that publishes lives in CI rather than on a laptop. [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) says why the pieces below were chosen over release-plz, cargo-release and a checklist. This page says how to use them.
 
-## The pieces
+# What a recording is
 
-| Piece | Where | What it does |
-|---|---|---|
-| Conventional Commits | every commit; `cog verify` in the prek `commit-msg` hook, `cog check` in the `commits` job of CI | Gives cocogitto the facts it derives a version from, and refuses a commit message it cannot read |
-| `cog bump --auto` | `cog.toml`, run as `mise run release` | Computes the next version from the commits since the last tag, runs the pre-bump hooks, commits `chore(version): vX.Y.Z` and tags it |
-| `scripts/release-bump.sh` | the first pre-bump hook | Writes the version into `Cargo.toml` and `Cargo.lock` and its major.minor into the README's install snippet, turns the CHANGELOG's Unreleased section into the release's dated section, and refuses an empty one |
-| The gate | the remaining pre-bump hooks, then CI on the pull request and on the tag | Formatting, clippy, the no-`http` build, the tests, rustdoc, the documentation checks and what the package would ship |
-| `.github/workflows/release.yml` | on a pushed `v*` tag | Runs the CI gate on the tagged commit, checks the tag against `Cargo.toml`, runs `cargo publish --dry-run`, publishes, and creates a GitHub release with the CHANGELOG section as notes |
+A recording is one model response to one request, kept as it was received. It is the third kind of `.jud` document: [a rubric](rubric.md) says what the model is asked, [cases](cases.md) say what the right answers are, and a recording says what the model actually answered, on which server, when, and for exactly which request. The specification is [the .jud format](../jud.md#recording); this page is the reasoning.
 
-The CHANGELOG stays hand-written, in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) form: a pull request that changes what a consumer sees adds its entry under Unreleased, and the bump only dates that section. cocogitto's own changelog generation is off, because a list of commit subjects does not explain a change to a consumer.
+## The problem a recording solves
 
-## What the commits decide
+Every answer a System One model gives costs a call, and the call is the one part of a decision that cannot be rerun for free. Once the answer is read and acted on, it is gone: the probabilities, the confidence, the request id that would find the call in the server's logs. A month later, when the threshold is questioned or the model version moves, nobody can say what the model said last time, and the only way to find out is to spend the calls again, against a model that may no longer be the same.
 
-cocogitto reads the commits since the latest tag. Below 1.0, as the crate is:
+A recording keeps the answer. With a directory of them, a run is replayed with no key and no network, in a test or on a laptop; graded again when a label changes; compared with a later model's answers without a second account; and traced to the server's logs by the request id it carries. The calibration loop runs on recordings the same way it runs live, because a replay is a backend like any other.
 
-| Commits since the last tag | Next version |
-|---|---|
-| Any `feat`, or any commit with `!` after its type or a `BREAKING CHANGE` footer | minor: `0.2.0` to `0.3.0` |
-| Only `fix` (and types that bump nothing) | patch: `0.2.0` to `0.2.1` |
-| Only `docs`, `chore`, `ci`, `test`, `refactor`, `style`, `build`, `perf` | no release; `cog bump` says so and does nothing |
+```mermaid
+flowchart LR
+    S[state] --> L[lower]
+    R[rubric] --> L
+    L --> Q[request]
+    Q --> F[request fingerprint<br/>state + questions]
+    F --> X{replay has it?}
+    X -- yes --> V[verify against<br/>the questions]
+    V --> A[answers, as recorded]
+    X -- no --> E[NoRecording]
+    Q -. live, through a Recorder .-> M[model]
+    M --> W[write recording<br/>with the fingerprint]
+```
 
-A breaking change in a 0.x crate is a minor bump, which is the rule the CHANGELOG states; from 1.0 on, cocogitto makes it a major. Merge commits are ignored. `mise run release:dry` prints the version the commits call for without touching anything.
+## What a recording holds
 
-## Cutting a release
+- **`response`**, exactly as received: the model that answered, the answers by question id in the wire's shape, the usage, the request id, and any field the server added. Nothing is normalised, because the point is to keep what the server said.
+- **`elapsed_ms`**, the wall-clock time of the call, so a replay can report what a live run would have cost.
+- **`fingerprint`**, the identity of the request: the state and the questions, as canonical JSON. It is the key a replay finds the recording by.
+- **`rubric`**, the rubric the questions came from, by name or by fingerprint; **`server`**, the base URL that answered; **`recorded_at`**, when. A `jev-latest` alias moves, and the date says which version it could have been.
+- **`metadata.name`**, the case the recording answers, or one turn of it as `<case>-turn-<n>`, or the request hash when a recorder keyed it by content alone. It is a name, so the file can be named after it.
 
-1. Be on an up-to-date `main` with a clean tree. Check that the CHANGELOG's Unreleased section says what the release contains; a release with an empty section is refused.
-2. `mise run release:dry` to see the version. If it is not the one the changes warrant, the commits say something the changes do not; fix that first (an amended message on an unmerged branch, or a further commit), never the version by hand.
-3. `git switch -c release/vX.Y.Z` with that version, then `mise run release`. cocogitto runs the pre-bump hooks (the version into the three files, then the gate), commits `chore(version): vX.Y.Z` and tags `vX.Y.Z` on that commit. A failed hook leaves the tree edited and nothing committed; `git checkout .` restores it.
-4. Push the branch and open a pull request. CI runs the gate and the commit check on it like any other change.
-5. Merge it with a merge commit. Never squash or rebase this pull request: the tag points at the bump commit, and `main` has to carry that very commit for the tag to be a commit on `main`.
-6. `git push origin vX.Y.Z`. The release workflow runs: the gate once more, the version check, the dry run, the publish, the GitHub release. The crate is on crates.io when the `publish` job is green.
+```yaml
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: receipt
+spec:
+  response:
+    model: jev-1.13.0
+    answers:
+      actionable: {type: noul, noul: 0.52}
+      desk:
+        type: choice
+        choice: billing
+        probabilities: {account: 0.02, billing: 0.55, none_of_these: 0.4, technical: 0.03}
+        confidence: 0.4
+    usage: {input_tokens: 410, output_tokens: 38}
+    request_id: req_01a1…
+  elapsed_ms: 140
+  fingerprint: sha256:8afe973c8409a45fc93b67678fa8954351ea4a5291b1ba58a9e6754c289890cd
+  rubric: inbox-triage
+  server: https://api.typesafe.ai
+  recorded_at: "2026-10-04T11:58:00Z"
+```
 
-Agents working in the repository cannot do steps 3 and 6 by accident: the Bash guard denies `cargo publish` (the dry run is allowed) and pushing a tag.
+## The fingerprint leaves the model out
 
-## One-time setup
+The request fingerprint is over the state and the questions, and not the model name. That is deliberate. The model is the thing a comparison varies: the same request answered by one version and by the next, or by the hosted server and by a local one, has the same fingerprint, and each recording says in `response.model`, `server` and `recorded_at` who answered. A replay that must tell two models apart keeps their recordings in two directories.
 
-- **The baseline tag.** cocogitto scans from the latest tag because the history before this repository was not written to the convention. Tag the commit that released 0.2.0 and push the tag; its tree has no release workflow, so nothing runs:
+The fingerprint sees content, not key order: canonical JSON sorts keys. A rubric whose options were reordered produces the same fingerprint and so finds the same recording, although the model saw the options in another order. For a replay that is the right behaviour, since the answer was to the same content; for a comparison of two orderings it is not, and that comparison needs two runs rather than one replay.
 
-  ```sh
-  git tag -a v0.2.0 9ccd761 -m "judgment 0.2.0"
-  git push origin v0.2.0
-  ```
+## Verified before it is replayed
 
-- **The first publish** (done: 0.3.0, 2026-10-03). crates.io lets a trusted publisher be configured only on a crate that already exists, so the first release used an API token with the `publish-new` and `publish-update` scopes, stored as the `CARGO_REGISTRY_TOKEN` secret of the `crates-io` environment. crates.io also requires a verified email address on the publishing account; without one the upload is refused with a 400 and the job is re-run once the address is verified.
-- **Trusted publishing, now that the crate exists.** On the crate's settings page on crates.io, add a trusted publisher: GitHub, owner `chussenot`, repository `judgment`, workflow `release.yml`, environment `crates-io`. Then delete the `CARGO_REGISTRY_TOKEN` secret: the workflow exchanges its OIDC identity for a token that lives for the job and is revoked at its end. That path has not run yet; watch the first release that uses it.
-- **The environment.** Put required reviewers on the `crates-io` environment to have a person approve each publish, and restrict it to tags matching `v*`.
-- **Merge method.** Disable squash merging and rebase merging in the repository settings, or take care on the release pull request (step 5 above).
-- **Locally.** `mise install` builds `cog` from crates.io; `mise run setup` installs the hooks, the `commit-msg` one included; `mise run commits:check` is what CI runs on a pull request.
+A recording is not trusted because it is on disk. When a replay finds one, it verifies the recorded response against the questions of the request that found it, exactly as a live response would be verified: an answer for every question, of its primitive, a Choice naming only offered options, a Score whose legend parses to the levels sent. A recording edited by hand, or recorded against a rubric that has since changed, fails naming the question rather than replaying an answer the rubric would refuse.
 
-## When something goes wrong
+The replayed response carries the recorded request id, so an answer that looks wrong in a replay can still be found in the server's logs.
 
-- **The commit check fails on a pull request.** Reword the commit on the branch and force-push the branch; the message, not the code, is what failed.
-- **`cog bump` refuses to run.** It wants a clean tree on `main` or a `release/*` branch and a non-empty Unreleased section; its message says which.
-- **The release workflow fails before `cargo publish`.** Nothing was published, and the version is still the one `main` carries, so there is nothing to bump again (the bump script refuses a manifest that is already past the latest tag). Fix the cause on `main` through a pull request, move the tag to the fixed head and push it again: `git tag -f vX.Y.Z origin/main && git push --force origin vX.Y.Z`. The workflow's checks hold on any commit that carries the version. Never move a tag once the publish step has run: the version is on crates.io and the tag must keep naming what was published.
-- **`cargo publish` succeeded and a later step failed.** The version is on crates.io and cannot be re-published. Re-run the failed job for the GitHub release; do not retag.
-- **A published version is wrong.** `cargo yank --version X.Y.Z` by hand, from a machine with a token, hides it from new resolutions; a yank is not a deletion and is recorded in the CHANGELOG under the version. The fix is the next release.
+A request nobody recorded is an error, never a silent default. A replay directory answers what it holds and refuses the rest, which is how a test notices that a case was added and not yet recorded.
+
+## How recordings are made
+
+Almost always by a program, not by hand. The crate's `Recorder` wraps any backend and writes a recording for every call it forwards, keyed by the request's content, so a test suite records once against the real model and replays forever. The `.jud` form is written by `recording_to_yaml`, and the crate's own `.json` form by `write_recording`; a replay reads both from one directory and finds either by fingerprint. The pattern examples under `examples/` each keep their recordings under `examples/recordings/<example>/`, replay them by default, and record anew only when asked.
+
+A conversation case records one file per turn, `<case>-turn-<n>`, because each turn is its own request with its own fingerprint.
+
+A recording is written by hand in one situation: a test fixture, where the answer is scripted and the point is the shape. Then the fingerprint is the one the request has, which `jud check` prints when it binds the recording to its case, and the response is written in the wire's own shape so that verification passes for the reason a real one would.
+
+## What a recording is not
+
+- **Not a label.** A recording says what the model said; a [case](cases.md) says what it should have said. The two are compared at grading time and never merged. Copying a recorded answer into a case's `expect` is how a test comes to pass by definition.
+- **Not a verdict.** A recording holds probabilities, never what the policy made of them. The policy can move after the recording was made, and the recording still grades, because the verdict is derived when it is read.
+- **Not a cache.** A cache serves what it has and fetches what it lacks. A replay refuses what it lacks, by design: the test that reaches for a missing recording has found a request the suite never saw.
+- **Not evidence of correctness.** A recording that verifies fits the questions; whether the answer was right is the cases' business.
+
+## How recordings are read
+
+By a reviewer, rarely, and mostly for one thing: what did the model say on this case, with what confidence, and when. A directory of recordings beside a cases document is the audit trail of a tuning run.
+
+By a program, through `Replay::open` on a directory, which loads every regular `.json` and `.jud` file that carries a request hash or a fingerprint, skips anything else, and answers requests by fingerprint. Any code written against the `SystemOne` trait runs on a replay unchanged: the calibration example, the pattern examples and the tests all do.
+
+## In the crate
+
+`judgment::jud` (feature `jud`) reads and writes the kind with `parse_recording` and `recording_to_yaml`, into and from `eval::Recording { case, response, elapsed_ms, request_hash, fingerprint, rubric, server, recorded_at }`, whose `case` is the document's `metadata.name`. `Recorder` makes recordings and `Replay` serves them; `eval::canonical::request_fingerprint` is the key; `eval::write_recording` and `read_recording` handle the crate's own `.json` form. [The .jud format](../jud.md#recording) specifies every field, and the thirteen documents under [`examples/recordings/jud_calibration/`](../../examples/recordings/jud_calibration/) are what the calibration example replays.
 
 
 <!-- source: docs/verification/method.md -->

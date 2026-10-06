@@ -20,7 +20,9 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Which crate types carry speculative fan-out, confidence-gated routing, composite scoring and intent routing, and what the recordings teach about thresholds | [Patterns](patterns.md) and the examples under `examples/` |
 | How to test a decision with no key and no network, and grade recordings against labels | [Testing without the model](testing.md) |
 | How to keep the questions, the thresholds, the labelled cases and the recorded answers in manifest-shaped files (`apiVersion`, `kind`, `metadata`, `spec`) that name each other by content, and tune a threshold from them, including a request that depends on the state | [The .jud format](jud.md) and `examples/jud/` |
-| Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](rubric.md) |
+| Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](jud/rubric.md) |
+| Why the labelled examples are a document of their own, what a label means for each primitive, how cases are bound and graded, and how to write cases a threshold can rest on | [What cases are](jud/cases.md) |
+| Why one model response is kept as a document, what its fingerprint leaves out, how a replay finds and verifies one, and when one is written by hand | [What a recording is](jud/recording.md) |
 | How an agent writes a `.jud` document and checks it with the crate's reader (`jud check`, `jud lower`), how the skill was tested, and how to install it in another project | [The jud skill](skill.md) and `.claude/skills/jud/` |
 | What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
 | What the hosted TypeSafe API does with what the crate sends, and with what it refuses to send | [Against the hosted TypeSafe API](verification/hosted-typesafe.md) |
