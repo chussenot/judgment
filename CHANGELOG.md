@@ -8,10 +8,12 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
-- A second README example, `examples/jud_quickstart.rs`: the quickstart's
-  two questions as a `.jud` rubric with their thresholds, answered by the
-  `Fake` backend and read through the rubric's policy; `tests/readme.rs`
-  holds the README's copy to the file and CI runs it.
+- Two more README examples, each held to its file by `tests/readme.rs`:
+  `examples/jud_quickstart.rs`, the quickstart's two questions as a `.jud`
+  rubric with their thresholds, answered by the `Fake` backend and read
+  through the rubric's policy, which CI runs; and `examples/jud_live.rs`,
+  the rubric in `examples/jud/triage.jud` read from the file and asked of
+  the hosted API with `TYPESAFE_API_KEY`.
 
 ## [0.6.0] - 2026-10-06
 

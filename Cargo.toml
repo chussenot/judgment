@@ -169,6 +169,12 @@ test = true
 name = "jud_quickstart"
 required-features = ["jud"]
 
+# The README's third example: a rubric from a file, asked of the hosted API;
+# needs the format and the client, and a key to run.
+[[example]]
+name = "jud_live"
+required-features = ["jud", "http"]
+
 # Pedantic clippy, no `unwrap` or `expect` outside tests, every public item
 # documented: the bar the crate was written to.
 [lints.rust]
