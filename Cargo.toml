@@ -30,6 +30,8 @@ exclude = [
     "cog.toml",
     ".pre-commit-config.yaml",
     "scripts/",
+    # The Laya shim and the benchmark export (Python, docs/verification).
+    "tools/",
     ".env.example",
     ".gitattributes",
     "rust-toolchain.toml",

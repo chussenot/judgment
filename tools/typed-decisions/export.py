@@ -9,8 +9,8 @@ and gold. The other columns (factors, label_agreement) describe how the gold
 was produced and are not needed to score against it.
 
     pip install pyarrow huggingface_hub
-    python export.py --split test --out typed-decisions-test.jsonl
-    python export.py --split test --per-workflow 10 --out sample.jsonl
+    python tools/typed-decisions/export.py --split test --out typed-decisions-test.jsonl
+    python tools/typed-decisions/export.py --split test --per-workflow 10 --out examples/typed-decisions/sample.jsonl
 """
 import argparse
 import json

@@ -2,7 +2,7 @@
 title: How the crate is checked
 description: The three checks that stand between the crate's mocks and a real server, the ignored live tests, the benchmark replay and the contract test against the vendored OpenAPI document, what each one can and cannot establish, and how to run them against the hosted API, Laya or Ollama.
 status: current
-last_reviewed: 2026-10-04
+last_reviewed: 2026-10-06
 tags: [judgment, verification, contract, openapi, live-tests]
 ---
 
@@ -24,7 +24,7 @@ A run that passes, or that finds a departure, becomes a page under `docs/verific
 
 ## Does it hold at scale?
 
-`examples/typed_decisions.rs` replays the [typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) benchmark (400 cases, 2,000 typed decisions) through the crate and scores it with `judgment::eval`, live or from recordings. `examples/typed-decisions/` holds a 40-case sample and the script that exports the full split. The example is a compatibility test at scale before it is an evaluation: every combination of primitive and criteria shape the benchmark uses goes through the builder, the client and the decoder. It was run against Laya's `typed-decisions` checkpoint, and the decoding bug it caught is in [the Laya record](laya-typed-decisions.md#the-bug-the-run-caught). `examples/laya/serve_laya.py` is a System One-compatible shim over the `laya` package for when `laya-serve` is not wanted; it is the one Laya server that also answers `GET /v1/models`.
+`examples/typed_decisions.rs` replays the [typed-decisions](https://huggingface.co/datasets/LocalLLaMA/typed-decisions) benchmark (400 cases, 2,000 typed decisions) through the crate and scores it with `judgment::eval`, live or from recordings. `examples/typed-decisions/` holds a 40-case sample and `tools/typed-decisions/export.py` exports the full split. The example is a compatibility test at scale before it is an evaluation: every combination of primitive and criteria shape the benchmark uses goes through the builder, the client and the decoder. It was run against Laya's `typed-decisions` checkpoint, and the decoding bug it caught is in [the Laya record](laya-typed-decisions.md#the-bug-the-run-caught). `tools/laya/serve_laya.py` is a System One-compatible shim over the `laya` package for when `laya-serve` is not wanted; it is the one Laya server that also answers `GET /v1/models`.
 
 ## Does the crate match the published contract?
 

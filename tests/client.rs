@@ -183,7 +183,7 @@ async fn a_400_is_an_invalid_request_with_the_servers_message() {
     let q = one_noul();
     let bodies = [
         (r#"{"error":"model mismatch"}"#, "model mismatch", 0),
-        // What examples/laya/serve_laya.py answers when Laya raises.
+        // What tools/laya/serve_laya.py answers when Laya raises.
         (
             r#"{"error":{"message":"'instructions'","type":"invalid_request"}}"#,
             "'instructions'",

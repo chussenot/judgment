@@ -21,7 +21,7 @@
 //! ```
 //!
 //! `--limit N` stops after N cases; `--json` prints the report as JSON.
-//! `export.py` next to `sample.jsonl` produces the full split.
+//! `tools/typed-decisions/export.py` produces the full split.
 
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
@@ -36,7 +36,7 @@ use judgment::{Client, NoulCriteria, Questions, Recorder, Replay, SystemOne};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// One benchmark case, as `export.py` writes it.
+/// One benchmark case, as `tools/typed-decisions/export.py` writes it.
 #[derive(Deserialize)]
 struct Case {
     id: String,

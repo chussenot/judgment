@@ -2,7 +2,7 @@
 title: Against Laya typed-decisions
 description: How the judgment crate was tested against Laya's typed-decisions checkpoint through laya-serve, what each test asserts and why, the decoding bug the first run caught, the benchmark numbers, the 2026-10-03 re-run against laya-serve 0.3.24 and the legend comparison it loosened, and how to repeat the run.
 status: experiment
-last_reviewed: 2026-10-03
+last_reviewed: 2026-10-06
 tags: [judgment, typesafe, laya, evaluation, compatibility]
 ---
 
@@ -77,7 +77,7 @@ cargo run -p judgment --example typed_decisions -- \
   examples/typed-decisions/sample.jsonl --replay /tmp/laya-run
 ```
 
-`examples/typed-decisions/sample.jsonl` is the first ten test cases of each workflow, committed so the example runs from a checkout; `export.py` next to it writes the full split from the Parquet files. The example is a compatibility test at scale before it is an evaluation: 400 cases is 2,000 questions through the builder, 400 requests through the client, 2,000 answers through the decoder, and every combination of primitive and criteria shape the benchmark uses (Noul with and without criteria, Choice with three to five described options, Score with three to five levels).
+`examples/typed-decisions/sample.jsonl` is the first ten test cases of each workflow, committed so the example runs from a checkout; `tools/typed-decisions/export.py` writes the full split from the Parquet files. The example is a compatibility test at scale before it is an evaluation: 400 cases is 2,000 questions through the builder, 400 requests through the client, 2,000 answers through the decoder, and every combination of primitive and criteria shape the benchmark uses (Noul with and without criteria, Choice with three to five described options, Score with three to five levels).
 
 ## The bug the run caught
 
@@ -90,11 +90,11 @@ The fix is in the crate. The legend now holds JSON values, and the typed `Score`
 None of these needs a code change; each is a fact to know when pointing the crate at Laya.
 
 - **The model name routes, and the response does not say where.** `laya-serve` maps `model` onto a checkpoint by name: `typed-decisions` or the full repository id picks the fine-tuned one, and any other value, including the crate's default `jev-latest`, lets Laya's router choose by language, which for English text means the base checkpoint, loaded on demand. With `LAYA_MODELS=typed-decisions` preloaded, a request that named no model still took 78 s the first time while the base checkpoint downloaded. The response's `model` field is `laya-rl-agent` for every checkpoint; which one answered is in a top-level `routing` object. The crate ignored it when this run was made; since judgment 0.2 it is kept, as it came, in `Response::extra`, the map of every top-level field the API does not document, so a caller can log it without a second decoder. Consequence: set `.model("typed-decisions")` on the builder, and do not rely on `Response::model` to tell checkpoints apart; read `Response::extra["routing"]` when the checkpoint matters.
-- **No `GET /v1/models`.** `laya-serve` has never served it: 0.3.20 has `/health` and `POST /v1/systemone`, 0.3.22 added `POST /v1/systemone/batch`, and the `GET /models` in Laya's README belongs to its example server, not to `laya-serve`. `list_models` returns `Error::Http { status: 404 }`. A consumer that lists models has nothing to list; the shim under `examples/laya/` still serves it.
+- **No `GET /v1/models`.** `laya-serve` has never served it: 0.3.20 has `/health` and `POST /v1/systemone`, 0.3.22 added `POST /v1/systemone/batch`, and the `GET /models` in Laya's README belongs to its example server, not to `laya-serve`. `list_models` returns `Error::Http { status: 404 }`. A consumer that lists models has nothing to list; the shim under `tools/laya/` still serves it.
 - **Latency is seconds, and the default timeout is ten.** A five-question case takes about two seconds on four CPU cores, warm. The crate's default per-attempt timeout mirrors the hosted API's hundreds of milliseconds; the example and the live tests set 120 s, and a consumer pointing at Laya sets its own.
 - **Confidence means something else.** TypeSafe computes `confidence` from the spread of the distribution; Laya reports one minus the normalised entropy under that name and adds `answer_confidence`, the probability of the reported answer, which its model card says to gate on. Both are in `[0, 1]`, so the typed `Confidence` accepts either, but a threshold tuned on Jev's confidence does not carry over. The answer-level extras, `answer_confidence` and the `action` object, are still ignored: `Response::extra` keeps top-level fields only, and fields inside an answer that the crate does not model are dropped, as the Python SDK drops them. A caller that wants to gate on `answer_confidence` recomputes it from the answer's own `probabilities`. The server also warned at start-up that the checkpoint's temperature for Choice questions with eleven or more options is outside the range it trusts and was clamped; confidence on such questions is uncalibrated by Laya's own account.
 
-Limits were probed as well. Laya 0.3.20 answered 200 options and 11 levels, past its README's stated budget; the crate's builder stops at TypeSafe's 255 and 10 regardless, so the stricter of the two bounds applies. Since 0.3.21 the server refuses more than 100 options on one question with a 413 ([the re-run](#re-run-against-laya-serve-0324)), so on options the server is now the stricter. A malformed body is a 400 with a FastAPI `detail`. The run reported it as `Error::Http` with the body; the crate now reports it as `Error::InvalidRequest { status: 400, .. }`, the same variant as TypeSafe's 422, with the message read from `detail` (or `error`, which the shim under `examples/laya/` sends), and still not retried.
+Limits were probed as well. Laya 0.3.20 answered 200 options and 11 levels, past its README's stated budget; the crate's builder stops at TypeSafe's 255 and 10 regardless, so the stricter of the two bounds applies. Since 0.3.21 the server refuses more than 100 options on one question with a 413 ([the re-run](#re-run-against-laya-serve-0324)), so on options the server is now the stricter. A malformed body is a 400 with a FastAPI `detail`. The run reported it as `Error::Http` with the body; the crate now reports it as `Error::InvalidRequest { status: 400, .. }`, the same variant as TypeSafe's 422, with the message read from `detail` (or `error`, which the shim under `tools/laya/` sends), and still not retried.
 
 ## What the benchmark measured
 
@@ -153,7 +153,7 @@ The fix compares a structured level by what the echo parses to: the same JSON va
 
 ### What the run showed
 
-All fifteen tests pass against three servers on `laya` 0.3.24: `laya-serve` with its full payload; `laya-serve` with `LAYA_JEV_STRICT=1` and `LAYA_API_KEY` set, which runs the bearer test too; and the shim at `examples/laya/serve_laya.py`, which answers `GET /v1/models` and has no limits of its own (256 options are a 400 from Laya itself, `only 255 of its 256 option markers fit in max_len=1024`, and the 50,000-character state is answered after truncation). The suite takes about nine seconds on four cores.
+All fifteen tests pass against three servers on `laya` 0.3.24: `laya-serve` with its full payload; `laya-serve` with `LAYA_JEV_STRICT=1` and `LAYA_API_KEY` set, which runs the bearer test too; and the shim at `tools/laya/serve_laya.py`, which answers `GET /v1/models` and has no limits of its own (256 options are a 400 from Laya itself, `only 255 of its 256 option markers fit in max_len=1024`, and the 50,000-character state is answered after truncation). The suite takes about nine seconds on four cores.
 
 - **Limits.** 256 options are a 413, `too many choice options for 'c' (256 > 100)`; 11 levels are answered; one option and one level are answered with probability 1, as on the hosted API.
 - **The over-budget state.** 413 `state too large (50600 > 50000 chars)`, which `is_request_too_large` names; the hosted API's 400 `max_tokens_exceeded` is the other side of the same predicate.
@@ -179,7 +179,7 @@ USE_TF=0 LAYA_MODELS=typed-decisions LAYA_DEVICE=cpu LAYA_THREADS=4 LAYA_PORT=80
 # a second one that checks keys and serves the strict Jev shape, for the bearer test and the other shape
 USE_TF=0 LAYA_MODELS=typed-decisions LAYA_DEVICE=cpu LAYA_PORT=8001 LAYA_API_KEY=secret LAYA_JEV_STRICT=1 .venv/bin/laya-serve
 # the shim, the one server with GET /v1/models (from the crate directory)
-USE_TF=0 LAYA_SUBFOLDER=typed-decisions LAYA_PORT=8099 .venv/bin/python examples/laya/serve_laya.py
+USE_TF=0 LAYA_SUBFOLDER=typed-decisions LAYA_PORT=8099 .venv/bin/python tools/laya/serve_laya.py
 
 # the live tests
 JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8000 JUDGMENT_LIVE_MODEL=typed-decisions \
@@ -187,7 +187,7 @@ JUDGMENT_LIVE_AUTH_BASE_URL=http://127.0.0.1:8001 JUDGMENT_LIVE_AUTH_API_KEY=sec
   cargo test -p judgment --test live -- --ignored --nocapture --test-threads=1
 
 # the full benchmark
-.venv/bin/python examples/typed-decisions/export.py --split test --out /tmp/typed-decisions-test.jsonl
+.venv/bin/python tools/typed-decisions/export.py --split test --out /tmp/typed-decisions-test.jsonl
 TYPESAFE_BASE_URL=http://127.0.0.1:8000 TYPESAFE_MODEL=typed-decisions TYPESAFE_API_KEY=unused \
   cargo run -p judgment --example typed_decisions -- /tmp/typed-decisions-test.jsonl --record /tmp/laya-full --json
 ```
