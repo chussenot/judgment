@@ -1,6 +1,6 @@
 # A rubric asked about a conversation: the state is the array of turns so
 # far, and the answer can change from one turn to the next.
-jud: 1
+jud: 1.2
 kind: rubric
 id: handoff
 description: Whether the user of a chat wants a person to take over.

@@ -1,6 +1,6 @@
 # Labelled cases for the inbox-triage rubric. Each case labels the questions
 # it is sure about; a question left out is asked and not graded.
-jud: 1
+jud: 1.2
 kind: cases
 id: inbox-triage-cases
 rubric: inbox-triage

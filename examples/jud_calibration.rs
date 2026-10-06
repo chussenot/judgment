@@ -215,10 +215,13 @@ async fn run() -> Result<(Rubric, Graded, Vec<Judgment>), Box<dyn Error>> {
     let cases = Cases::parse(&read("triage-cases.jud")?)?;
     cases.bind(&rubric)?;
     let replay = Replay::open(&common::recordings("jud_calibration"))?;
+    // Two fingerprints name the rubric: the questions, and the policy that
+    // reads their answers, so a moved bar is as visible as a changed question.
     println!(
-        "rubric {} ({}), {} cases ({}), {} recordings\n",
+        "rubric {} (questions {}, policy {}), {} cases ({}), {} recordings\n",
         rubric.id,
         rubric.fingerprint(),
+        rubric.policy_fingerprint(),
         cases.cases.len(),
         cases.fingerprint(),
         replay.len()

@@ -1,5 +1,5 @@
 # Recorded answer for case `login-loop`; found by fingerprint.
-jud: 1
+jud: 1.2
 kind: recording
 case: login-loop
 response:
