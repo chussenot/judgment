@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-06
+
 ### Added
 
 - The `jud` binary (feature `jud`; `cargo install judgment --features jud`):
