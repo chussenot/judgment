@@ -32,6 +32,7 @@ nav:
       - 0013 Releases cut with cocogitto and published from CI: decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md
       - 0014 A file format for rubrics, cases and recordings: decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md
       - 0016 The .jud format takes minor versions: decisions/0016-jud-takes-minor-versions.md
+      - 0017 The .jud format 1.2 refuses what a reviewer cannot see: decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md
 
 plugins:
   - techdocs-core

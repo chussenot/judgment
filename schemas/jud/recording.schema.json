@@ -15,8 +15,8 @@
       "const": "recording"
     },
     "case": {
-      "type": "string",
-      "description": "The case it answers, or the request hash."
+      "$ref": "common.schema.json#/$defs/name",
+      "description": "The case it answers (a name), or the request hash."
     },
     "response": {
       "type": "object",

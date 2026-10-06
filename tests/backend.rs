@@ -81,6 +81,71 @@ async fn a_fake_refuses_a_question_it_has_no_answer_for() {
     );
 }
 
+/// 1.2 (decision 0017): a replay reads only the regular files of its
+/// directory, so a symlink or a subdirectory planted there reads nothing.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_replay_skips_what_is_not_a_regular_file() {
+    let dir = test_dir("a_replay_skips_what_is_not_a_regular_file");
+    let (q, _, _) = questions();
+    let state = json!({ "message": "charged twice" });
+    Recorder::new(fake(), &dir)
+        .answer(&state, "m", &q)
+        .await
+        .unwrap();
+    let file = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.extension().is_some_and(|e| e == "json"))
+        .unwrap();
+    std::os::unix::fs::symlink(&file, dir.join("link.json")).unwrap();
+    std::fs::create_dir(dir.join("sub.json")).unwrap();
+    let replay = Replay::open(&dir).unwrap();
+    assert_eq!(
+        replay.len(),
+        1,
+        "the file, not the link to it, and not the directory"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 1.2 (decision 0017): a request is looked up by its SHA-256 fingerprint
+/// before the crate's FNV hash, so a recording that carries only a hash
+/// cannot shadow the one the published key names.
+#[tokio::test]
+async fn a_replay_prefers_the_fingerprint_to_the_hash() {
+    let dir = test_dir("a_replay_prefers_the_fingerprint_to_the_hash");
+    let (q, dept, _) = questions();
+    let state = json!({ "message": "charged twice" });
+    let recorded = Recorder::new(fake(), &dir)
+        .answer(&state, "m", &q)
+        .await
+        .unwrap();
+    let mut replay = Replay::open(&dir).unwrap();
+    // The same request answered otherwise, filed under the hash alone.
+    let other = Fake::new()
+        .model("other")
+        .choice("department", [("billing", 0.1), ("technical", 0.9)], 0.8)
+        .unwrap()
+        .noul("urgent", 0.9)
+        .unwrap()
+        .answer(&state, "m", &q)
+        .await
+        .unwrap();
+    replay.add(Recording {
+        request_hash: Some(judgment::eval::request_hash(&state, &q)),
+        fingerprint: None,
+        ..Recording::new("shadow", other, 1)
+    });
+    let answered = replay.answer(&state, "m", &q).await.unwrap();
+    assert_eq!(
+        answered, recorded,
+        "the fingerprint's recording, not the hash's"
+    );
+    assert_eq!(answered.get(&dept).unwrap().chosen, Department::Billing);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A directory of its own for one test, empty: `judgment-<test>-<pid>`.
 fn test_dir(test: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("judgment-{test}-{}", std::process::id()));

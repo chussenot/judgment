@@ -15,8 +15,7 @@
       "const": "cases"
     },
     "id": {
-      "type": "string",
-      "minLength": 1
+      "$ref": "common.schema.json#/$defs/name"
     },
     "rubric": {
       "type": "string",
@@ -32,8 +31,7 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string",
-            "minLength": 1
+            "$ref": "common.schema.json#/$defs/name"
           },
           "state": {
             "description": "Any JSON; an array is a conversation, one element per turn."

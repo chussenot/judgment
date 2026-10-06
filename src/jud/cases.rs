@@ -6,8 +6,8 @@ use serde_json::Value;
 
 use super::rubric::level_index;
 use super::{
-    Error, Result, Rubric, Supplied, check_version, extensions, from_text, require_minor, some,
-    to_yaml, version_value,
+    Error, Result, Rubric, Supplied, check_name, check_version, extensions, from_text,
+    require_minor, some, to_yaml, version_value,
 };
 use crate::answer::Response;
 use crate::eval::{Judgment, canonical};
@@ -251,12 +251,15 @@ impl Cases {
                 .collect(),
             extensions,
         };
+        if let Some(id) = &cases.id {
+            check_name("id", id)?;
+        }
         for (index, case) in cases.cases.iter().enumerate() {
-            if case.id.as_deref() == Some("") {
-                return Err(Error::Case {
-                    case: case.name(index),
-                    reason: "an id cannot be empty; leave it out instead".to_owned(),
-                });
+            if let Some(id) = &case.id {
+                check_name(&format!("cases.{index}.id"), id).map_err(|e| Error::Case {
+                    case: format!("#{index}"),
+                    reason: e.to_string(),
+                })?;
             }
             // A supplied option has the shape of a Choice's criteria entry.
             for (question, options) in &case.options {
