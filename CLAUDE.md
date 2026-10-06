@@ -51,7 +51,7 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   `tests/openapi_drift.rs`, ignored, network only, no key.
 - A change to what the crate sends or accepts on the wire is a contract
   change: `tests/contract.rs`, the CHANGELOG and the README's guarantees move
-  together, and the recordings under `examples/*/recordings/` must still
+  together, and the recordings under `examples/recordings/*/` must still
   replay (`cargo test` runs them).
 - The `.jud` format (`docs/jud.md`, `src/jud/`, feature `jud`) is a
   specification other tools implement: a change to what a document may hold

@@ -38,7 +38,7 @@ assert_eq!(live, again);
 
 A recording is keyed by a 64-bit hash of the canonical, key-sorted JSON of the state and the questions, so a question changed without re-recording misses the recording and fails the test rather than grading old answers under new questions; `eval::fingerprint` exposes the same hash. The hash is the same whichever client serialised the request, so two clients that order the questions differently share a recording. Each recording also carries the request's `sha256:` fingerprint ([the .jud format](jud.md), RFC 8785 canonical JSON), the key another tool computes the same way, and the time it was made; with the `jud` feature, `Replay` reads `.jud` recordings by that fingerprint beside its own `.json` ones. Replay verifies each recording against the questions as the client would, so a recording made under one set of options cannot answer a question that offers another.
 
-The committed examples work this way: each pattern example under `examples/` replays the recordings beside it by default, runs live with `--live`, re-records with `--record`, and carries a test over its recordings that `cargo test` runs ([Patterns](patterns.md)).
+The committed examples work this way: each pattern example under `examples/` replays its recordings under `examples/recordings/<name>/` by default, runs live with `--live`, re-records with `--record`, and carries a test over its recordings that `cargo test` runs ([Patterns](patterns.md)).
 
 ## Grading recordings
 

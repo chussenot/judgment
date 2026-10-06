@@ -422,7 +422,7 @@ TypeSafe documents four [patterns](https://docs.typesafe.ai/patterns): the shape
 | [Composite scoring](https://docs.typesafe.ai/patterns/composite-scoring) | Several atomic Scores, normalised and combined with weights the code owns; a new weighting needs no new inference | `Score::value` per dimension; `Recorder` and `Replay`, so the weights change over recorded answers | `cargo run --example composite_scoring -- --weights 0.5,0.1,0.3,0.1` |
 | [Intent routing](https://docs.typesafe.ai/patterns/intent-routing) | A cheap classifier in front of expensive handlers, so code, a specialist model or a person each get only what needs them; a second question gates the escalation | A `Choice` and a `Score` in one request, a `Confidence` read off each | `cargo run --example intent_routing` |
 
-Each example replays the recordings committed beside it (`examples/<name>/recordings/`, `jev-1.13.0`'s answers of 2026-10-03) by default, so it runs with no key and no network and prints every answer next to the decision it led to. `-- --live` sends the same requests to the hosted API (`TYPESAFE_API_KEY`; `TYPESAFE_BASE_URL` for another server, `TYPESAFE_MODEL` for another model), and `-- --record` does that and rewrites the recordings. Each example ends in a test over its recordings that `cargo test` runs: the request hash covers the questions, so a question changed without re-recording fails the gate rather than the next reader.
+Each example replays its committed recordings (`examples/recordings/<name>/`, `jev-1.13.0`'s answers of 2026-10-03) by default, so it runs with no key and no network and prints every answer next to the decision it led to. `-- --live` sends the same requests to the hosted API (`TYPESAFE_API_KEY`; `TYPESAFE_BASE_URL` for another server, `TYPESAFE_MODEL` for another model), and `-- --record` does that and rewrites the recordings. Each example ends in a test over its recordings that `cargo test` runs: the request hash covers the questions, so a question changed without re-recording fails the gate rather than the next reader.
 
 ## What the recordings teach
 
@@ -472,7 +472,7 @@ assert_eq!(live, again);
 
 A recording is keyed by a 64-bit hash of the canonical, key-sorted JSON of the state and the questions, so a question changed without re-recording misses the recording and fails the test rather than grading old answers under new questions; `eval::fingerprint` exposes the same hash. The hash is the same whichever client serialised the request, so two clients that order the questions differently share a recording. Each recording also carries the request's `sha256:` fingerprint ([the .jud format](jud.md), RFC 8785 canonical JSON), the key another tool computes the same way, and the time it was made; with the `jud` feature, `Replay` reads `.jud` recordings by that fingerprint beside its own `.json` ones. Replay verifies each recording against the questions as the client would, so a recording made under one set of options cannot answer a question that offers another.
 
-The committed examples work this way: each pattern example under `examples/` replays the recordings beside it by default, runs live with `--live`, re-records with `--record`, and carries a test over its recordings that `cargo test` runs ([Patterns](patterns.md)).
+The committed examples work this way: each pattern example under `examples/` replays its recordings under `examples/recordings/<name>/` by default, runs live with `--live`, re-records with `--record`, and carries a test over its recordings that `cargo test` runs ([Patterns](patterns.md)).
 
 ## Grading recordings
 
@@ -961,7 +961,7 @@ A run that passes, or that finds a departure, becomes a page under `docs/verific
 TypeSafe publishes an OpenAPI document for the System One API at <https://api.typesafe.ai/openapi.json>. A copy is vendored at `tests/fixtures/typesafe-openapi.json` (OpenAPI 3.1.0, API version 0.2.0), and `tests/contract.rs` validates against it as JSON Schema 2020-12, offline and in every `cargo test`:
 
 - every request shape the builders produce (each primitive, string, object, array and null instructions, one-sided and structured Noul criteria, undescribed options, 255 options, 2 and 10 levels of every level shape), sent through each client entry point, with the method, path, content type and bearer scheme the document names, and also against a closed copy of the request components, so a renamed or misspelt field fails even where the published schema, which closes no object, would take it as an extra key;
-- every response a `Fake` builds, and all 40 committed recordings under `examples/typed-decisions/recordings`, as committed and after a decode and re-serialise;
+- every response a `Fake` builds, and all 40 committed recordings under `examples/recordings/typed_decisions`, as committed and after a decode and re-serialise;
 - the document's own examples, which decode through `Response` and read through typed handles, and its model list and validation error, through `list_models` and `Error::InvalidRequest`.
 
 Where the crate and the schema disagree the test pins the difference, each at its own path, so a refreshed document that closes one fails loudly:
@@ -1193,7 +1193,7 @@ The numbers also say what the card says about the model. Mean answer probability
 
 Latency, per five-question case on four CPU cores, warm, with nothing else running: p50 2.1 s, p95 2.2 s. During the full run, which shared the cores with the build gate and a second server, it was p50 4.1 s and p95 6.2 s; the run is I/O-free, so the difference is CPU contention. The card's tens of milliseconds are on a T4.
 
-The 40-case sample committed with the example was recorded from the same server into `examples/typed-decisions/recordings/`; replaying it offline produces the identical report (accuracy 0.725 on 200 questions, the same to every digit as the live run that wrote it), which is the recording round trip checked at benchmark scale rather than on one request. The recordings hold none of Laya's extras (no `routing`, no `action`): the `Recorder` writes the decoded `Response`, and the crate that recorded them dropped what it did not model. A test (`the_committed_recordings_decode_and_rewrite_byte_for_byte` in `tests/backend.rs`) checks that all 40 still decode, with no unknown answer and nothing in `Response::extra`, and write back byte for byte.
+The 40-case sample committed with the example was recorded from the same server into `examples/recordings/typed_decisions/`; replaying it offline produces the identical report (accuracy 0.725 on 200 questions, the same to every digit as the live run that wrote it), which is the recording round trip checked at benchmark scale rather than on one request. The recordings hold none of Laya's extras (no `routing`, no `action`): the `Recorder` writes the decoded `Response`, and the crate that recorded them dropped what it did not model. A test (`the_committed_recordings_decode_and_rewrite_byte_for_byte` in `tests/backend.rs`) checks that all 40 still decode, with no unknown answer and nothing in `Response::extra`, and write back byte for byte.
 
 ## What this does and does not establish
 

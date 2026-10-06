@@ -129,9 +129,10 @@ required-features = ["jud"]
 name = "typed_decisions"
 required-features = ["http"]
 
-# One example per TypeSafe pattern (README, "Patterns"). Each replays the
-# recordings committed beside it by default and talks to a server with
-# --live or --record, so each needs the client. `test = true` makes
+# One example per TypeSafe pattern (README, "Patterns"). Each replays its
+# recordings under examples/recordings/<name>/ by default and talks to a
+# server with --live or --record, so each needs the client; what they share
+# (the directory, the modes, the backend) is examples/common/mod.rs. `test = true` makes
 # `cargo test` run the test inside each one, which replays the recordings
 # and checks the decisions, so a question changed without re-recording fails
 # the gate rather than the next reader.

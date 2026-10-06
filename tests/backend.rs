@@ -117,21 +117,21 @@ async fn a_recorder_writes_what_a_replay_answers_offline() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Every `examples/*/recordings` directory with how many recordings each
-/// must hold: the benchmark sample's 40 Laya answers, and the pattern
-/// examples' Jev answers, one per input. An example committed without its
-/// recordings, or with a stale extra file, fails here.
+/// Every `examples/recordings/<example>` directory of `.json` recordings
+/// with how many each must hold: the benchmark sample's 40 Laya answers, and
+/// the pattern examples' Jev answers, one per input. An example committed
+/// without its recordings, or with a stale extra file, fails here.
 fn recording_dirs() -> Vec<(std::path::PathBuf, usize)> {
-    let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
+    let recordings = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/recordings");
     [
-        ("typed-decisions", 40),
-        ("fan-out", 4),
-        ("confidence-routing", 7),
-        ("composite-scoring", 3),
-        ("intent-routing", 7),
+        ("typed_decisions", 40),
+        ("fan_out", 4),
+        ("confidence_routing", 7),
+        ("composite_scoring", 3),
+        ("intent_routing", 7),
     ]
     .into_iter()
-    .map(|(example, count)| (examples.join(example).join("recordings"), count))
+    .map(|(example, count)| (recordings.join(example), count))
     .collect()
 }
 
@@ -415,9 +415,9 @@ async fn a_replay_of_every_committed_recording_answers_its_sample() {
     // still fit the questions it answered, so the benchmark example replays
     // offline through the verifying Replay. Laya echoes every level and
     // offers no option it was not given.
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/typed-decisions");
-    let replay = Replay::open(&root.join("recordings")).unwrap();
-    let file = std::fs::File::open(root.join("sample.jsonl")).unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
+    let replay = Replay::open(&root.join("recordings/typed_decisions")).unwrap();
+    let file = std::fs::File::open(root.join("typed-decisions/sample.jsonl")).unwrap();
     let mut answered = 0;
     for line in std::io::BufReader::new(file).lines() {
         let line = line.unwrap();

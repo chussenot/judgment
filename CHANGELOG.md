@@ -6,6 +6,14 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The examples' recordings live under `examples/recordings/<example>/`,
+  one directory per example named after it, instead of beside each
+  example under its own name; the pattern examples record and replay
+  through one shared module, `examples/common/mod.rs`, so every example
+  writes its recordings the same way to the same place.
+
 ### Added
 
 - Two more README examples, each held to its file by `tests/readme.rs`:

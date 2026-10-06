@@ -8,7 +8,7 @@
 //! shape and a fingerprint (`docs/jud.md`). This example reads
 //! `examples/jud/triage.jud` (a rubric: three questions and their policy)
 //! and `examples/jud/triage-cases.jud` (seven labelled messages), answers
-//! each case from the `.jud` recordings under `examples/jud/recordings/`
+//! each case from the `.jud` recordings under `examples/recordings/jud_calibration/`
 //! through [`Replay`], grades the answers, sweeps the Noul's threshold and
 //! the Choice's confidence bar, and prints the rubric again with the
 //! tuned gates and a `tuning` block naming the cases by fingerprint. Then
@@ -36,6 +36,8 @@ use judgment::eval::tuning::{
 use judgment::eval::{ECE_BINS, Judgment, QuestionMetrics, now_rfc3339};
 use judgment::jud::{Cases, Gate, Rubric, Tuning, Verdict, grade};
 use judgment::{Replay, SystemOne};
+
+mod common;
 
 /// Where the documents live, next to this file.
 const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/jud");
@@ -212,7 +214,7 @@ async fn run() -> Result<(Rubric, Graded, Vec<Judgment>), Box<dyn Error>> {
     let rubric = Rubric::parse(&read("triage.jud")?)?;
     let cases = Cases::parse(&read("triage-cases.jud")?)?;
     cases.bind(&rubric)?;
-    let replay = Replay::open(&Path::new(DIR).join("recordings"))?;
+    let replay = Replay::open(&common::recordings("jud_calibration"))?;
     println!(
         "rubric {} ({}), {} cases ({}), {} recordings\n",
         rubric.id,

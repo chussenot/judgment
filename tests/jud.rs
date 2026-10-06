@@ -15,6 +15,10 @@ use serde_json::{Value, json};
 
 const SCHEMAS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/schemas/jud");
 const EXAMPLES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/jud");
+const RECORDINGS: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/examples/recordings/jud_calibration"
+);
 const BASE: &str = "https://github.com/chussenot/judgment/schemas/jud/";
 
 fn read(dir: &str, name: &str) -> String {
@@ -73,7 +77,7 @@ fn assert_valid(validator: &jsonschema::Validator, document: &Value, what: &str)
 fn example_files(extension: &str) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(EXAMPLES)
         .unwrap()
-        .chain(std::fs::read_dir(Path::new(EXAMPLES).join("recordings")).unwrap())
+        .chain(std::fs::read_dir(Path::new(RECORDINGS)).unwrap())
         .map(|e| e.unwrap().path())
         .filter(|p| p.extension().is_some_and(|e| e == extension))
         .collect();
@@ -356,7 +360,7 @@ fn yes_is_a_string_not_a_boolean() {
 
 #[tokio::test]
 async fn a_replay_answers_from_jud_recordings_by_fingerprint() {
-    let replay = Replay::open(&Path::new(EXAMPLES).join("recordings")).unwrap();
+    let replay = Replay::open(Path::new(RECORDINGS)).unwrap();
     assert_eq!(
         replay.len(),
         example_files("jud").len() - 6,

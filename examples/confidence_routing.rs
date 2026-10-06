@@ -24,7 +24,7 @@
 //! cargo run -p judgment --example confidence_routing -- --record # live, and rewrite the recordings this example replays
 //! ```
 //!
-//! The recordings under `examples/confidence-routing/recordings/` are
+//! The recordings under `examples/recordings/confidence_routing/` are
 //! `jev-1.13.0`'s answers of 2026-10-03, keyed by a hash of the state and
 //! the question. `cargo test -p judgment` runs the test at the end of this
 //! file over them. The thresholds are the documentation page's; the page
@@ -36,18 +36,13 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use std::error::Error;
-use std::path::Path;
 use std::process::ExitCode;
-use std::time::Duration;
 
-use judgment::{Choice, Client, Options, Questions, Recorder, Replay, SystemOne, options};
+use judgment::{Choice, Options, Questions, SystemOne, options};
 use serde_json::{Value, json};
 
-/// The recordings this example replays, next to it.
-const RECORDINGS: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/examples/confidence-routing/recordings"
-);
+mod common;
+use common::Mode;
 
 options! {
     /// What the user is asking the interface to do.
@@ -219,67 +214,10 @@ fn print_outcome(outcome: &Outcome) {
     println!("  -> {action:?}: {reason}");
 }
 
-/// Where the answers come from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode {
-    /// The committed recordings; the default.
-    Replay,
-    /// The hosted API, or the server `TYPESAFE_BASE_URL` names.
-    Live,
-    /// Live, writing every answer over the committed recordings.
-    Record,
-}
-
-impl Mode {
-    fn from_args() -> Result<Self, String> {
-        let mut mode = Self::Replay;
-        for arg in std::env::args().skip(1) {
-            match arg.as_str() {
-                "--live" => mode = Self::Live,
-                "--record" => mode = Self::Record,
-                other => {
-                    return Err(format!(
-                        "unexpected argument {other}; usage: confidence_routing [--live | --record]"
-                    ));
-                }
-            }
-        }
-        Ok(mode)
-    }
-}
-
-/// The backend for `mode`, and a label for the report.
-fn backend(mode: Mode) -> Result<(Box<dyn SystemOne>, String), Box<dyn Error>> {
-    if mode == Mode::Replay {
-        let replay = Replay::open(Path::new(RECORDINGS)).map_err(|e| {
-            format!("{e}: no recordings to replay; run with --record and TYPESAFE_API_KEY set")
-        })?;
-        let label = format!("the {} recordings under {RECORDINGS}", replay.len());
-        return Ok((Box::new(replay), label));
-    }
-    let mut builder = Client::builder().timeout(Duration::from_secs(30));
-    if let Ok(url) = std::env::var("TYPESAFE_BASE_URL") {
-        builder = builder.base_url(url);
-    }
-    let client = builder.build()?;
-    if mode == Mode::Live {
-        return Ok((Box::new(client), "the live API".to_owned()));
-    }
-    match std::fs::remove_dir_all(RECORDINGS) {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e.into()),
-    }
-    Ok((
-        Box::new(Recorder::new(client, RECORDINGS)),
-        format!("the live API, recorded under {RECORDINGS}"),
-    ))
-}
-
 async fn run_cli() -> Result<(), Box<dyn Error>> {
-    let mode = Mode::from_args()?;
-    let (backend, label) = backend(mode)?;
-    let model = std::env::var("TYPESAFE_MODEL").unwrap_or_else(|_| "jev-latest".to_owned());
+    let mode = Mode::from_args("usage: confidence_routing [--live | --record]")?;
+    let (backend, label) = common::backend("confidence_routing", mode)?;
+    let model = common::model();
     println!(
         "confidence-gated routing: {} commands, one question each, answers from {label}",
         COMMANDS.len()
@@ -306,13 +244,15 @@ async fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    use judgment::Replay;
+
     use super::*;
 
     /// The committed recordings replay to the actions the documentation
     /// page's gate gives them.
     #[tokio::test]
     async fn the_recordings_replay_to_the_documented_actions() -> Result<(), Box<dyn Error>> {
-        let replay = Replay::open(Path::new(RECORDINGS))?;
+        let replay = Replay::open(&common::recordings("confidence_routing"))?;
         let outcomes = run(&replay, "jev-latest").await?;
         let actions: Vec<(&str, Action)> =
             outcomes.iter().map(|o| (o.command.id, o.action)).collect();
