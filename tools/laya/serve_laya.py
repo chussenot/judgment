@@ -9,8 +9,8 @@ run unchanged. From the crate's root directory:
 
     python -m venv .venv && .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
     .venv/bin/pip install laya
-    USE_TF=0 .venv/bin/python examples/laya/serve_laya.py            # English checkpoint, port 8099
-    LAYA_SUBFOLDER=typed-decisions LAYA_PORT=8100 .venv/bin/python examples/laya/serve_laya.py
+    USE_TF=0 .venv/bin/python tools/laya/serve_laya.py            # English checkpoint, port 8099
+    LAYA_SUBFOLDER=typed-decisions LAYA_PORT=8100 .venv/bin/python tools/laya/serve_laya.py
 
     JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8100 cargo test -p judgment --test live -- --ignored --nocapture
 

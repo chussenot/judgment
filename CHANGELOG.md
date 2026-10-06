@@ -6,6 +6,13 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The Laya shim and the benchmark export moved out of `examples/`, which
+  now holds only the Rust examples and the recordings and documents they
+  read: `tools/laya/serve_laya.py` and `tools/typed-decisions/export.py`.
+  `tools/` is excluded from the package, as `scripts/` is.
+
 ## [0.5.1] - 2026-10-04
 
 ### Fixed
