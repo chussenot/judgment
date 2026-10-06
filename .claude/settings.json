@@ -1,12 +1,19 @@
 {
   "enabledPlugins": {
-    "typesafe@typesafe-ai": true
+    "typesafe@typesafe-ai": true,
+    "jud@judgment": true
   },
   "extraKnownMarketplaces": {
     "typesafe-ai": {
       "source": {
         "repo": "typesafe-ai/skills",
         "source": "github"
+      }
+    },
+    "judgment": {
+      "source": {
+        "source": "github",
+        "repo": "chussenot/judgment"
       }
     }
   },
@@ -70,7 +77,7 @@
       "Bash(cargo run --example:*)",
       "Bash(cargo run --features jud --bin jud:*)",
       "Bash(cargo run -q --features jud --bin jud:*)",
-      "Bash(.claude/skills/jud/scripts/jud.sh:*)",
+      "Bash(plugins/jud/skills/jud/scripts/jud.sh:*)",
       "Bash(mise run:*)",
       "Bash(mise tasks:*)",
       "Bash(mise ls:*)",

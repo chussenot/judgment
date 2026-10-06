@@ -98,6 +98,10 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   recording style), `refactor-scout` (dead code and duplication, ranked),
   `pr-shepherd` (open the PR, read its CI checks). Reviewers report, writers
   edit; run the reviewers on a diff before opening a pull request.
+- `plugins/jud/` is the jud plugin (the `jud` skill and the `/jud:rubric`,
+  `/jud:cases`, `/jud:check` commands), served by
+  `.claude-plugin/marketplace.json` and enabled here through
+  `.claude/settings.json`; `docs/skill.md` describes it.
 - Hooks in `.claude/hooks/`: Rust files are formatted after every edit;
   `docs/llms.txt` is regenerated after a page, the README, `llms-intro.txt`
   or `mkdocs.yml` is written; a Bash guard denies pushes to `main`,
