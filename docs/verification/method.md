@@ -32,7 +32,7 @@ A run that passes, or that finds a departure, becomes a page under `docs/verific
 TypeSafe publishes an OpenAPI document for the System One API at <https://api.typesafe.ai/openapi.json>. A copy is vendored at `tests/fixtures/typesafe-openapi.json` (OpenAPI 3.1.0, API version 0.2.0), and `tests/contract.rs` validates against it as JSON Schema 2020-12, offline and in every `cargo test`:
 
 - every request shape the builders produce (each primitive, string, object, array and null instructions, one-sided and structured Noul criteria, undescribed options, 255 options, 2 and 10 levels of every level shape), sent through each client entry point, with the method, path, content type and bearer scheme the document names, and also against a closed copy of the request components, so a renamed or misspelt field fails even where the published schema, which closes no object, would take it as an extra key;
-- every response a `Fake` builds, and all 40 committed recordings under `examples/typed-decisions/recordings`, as committed and after a decode and re-serialise;
+- every response a `Fake` builds, and all 40 committed recordings under `examples/recordings/typed_decisions`, as committed and after a decode and re-serialise;
 - the document's own examples, which decode through `Response` and read through typed handles, and its model list and validation error, through `list_models` and `Error::InvalidRequest`.
 
 Where the crate and the schema disagree the test pins the difference, each at its own path, so a refreshed document that closes one fails loudly:
