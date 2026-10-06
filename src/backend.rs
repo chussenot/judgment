@@ -411,7 +411,9 @@ pub struct Replay {
 impl Replay {
     /// Load every `*.json` (and, with the `jud` feature, `*.jud`) recording
     /// under `dir` that carries a request hash or a fingerprint; a harness's
-    /// recording keyed by case alone is skipped.
+    /// recording keyed by case alone is skipped, and so is anything that is
+    /// not a regular file (a symlink, a directory), so a directory under
+    /// replay reads nothing outside itself.
     pub fn open(dir: &Path) -> Result<Self> {
         let mut replay = Self::default();
         let entries = std::fs::read_dir(dir).map_err(|source| Error::Io {
@@ -425,6 +427,12 @@ impl Replay {
                     source,
                 })?
                 .path();
+            let regular = path
+                .symlink_metadata()
+                .is_ok_and(|m| m.file_type().is_file());
+            if !regular {
+                continue;
+            }
             let extension = path.extension().and_then(|e| e.to_str());
             let recording = match extension {
                 Some("json") => {
@@ -496,15 +504,14 @@ impl SystemOne for Replay {
         questions: &'a Questions,
     ) -> BoxFuture<'a, Result<Response>> {
         Box::pin(async move {
+            // The fingerprint first: it is the published key, and SHA-256
+            // where the hash is FNV, which a writer could collide on purpose.
+            let fingerprint = crate::eval::canonical::request_fingerprint(state, questions);
             let hash = request_hash(state, questions);
-            let index = if let Some(index) = self.by_hash.get(&hash) {
+            let index = if let Some(index) = self.by_fingerprint.get(&fingerprint) {
                 *index
             } else {
-                let fingerprint = crate::eval::canonical::request_fingerprint(state, questions);
-                *self
-                    .by_fingerprint
-                    .get(&fingerprint)
-                    .ok_or(Error::NoRecording(hash))?
+                *self.by_hash.get(&hash).ok_or(Error::NoRecording(hash))?
             };
             let response = self.responses[index].clone();
             response.verify(questions)?;

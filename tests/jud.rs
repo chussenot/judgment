@@ -1,7 +1,7 @@
 //! The `.jud` format against its own JSON Schemas and its examples: every
 //! example document validates, everything the crate writes validates, the
-//! parser and the schemas agree on what is refused, and a replay answers
-//! from `.jud` recordings by fingerprint.
+//! parser and the schemas agree on what is refused, the 1.2 reading rules
+//! hold, and a replay answers from `.jud` recordings by fingerprint.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::missing_panics_doc)]
 
@@ -242,7 +242,39 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
         // A version that does not exist.
         (
             &*RUBRIC,
-            "jud: 1.2\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+            "jud: 1.3\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+        ),
+    ]
+}
+
+/// Ids that are not names (1.2): a path, an absolute path, a blank, a
+/// space, a leading dot, on a rubric, a cases document, a case and a
+/// recording; refused by the schemas and the reader alike.
+fn refused_names() -> Vec<(&'static jsonschema::Validator, &'static str)> {
+    vec![
+        (
+            &*RUBRIC,
+            "jud: 1\nkind: rubric\nid: ../x\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "jud: 1\nkind: rubric\nid: \"\"\nquestions:\n  n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*CASES,
+            "jud: 1\nkind: cases\nid: a b\ncases:\n  - state: s\n",
+        ),
+        (
+            &*CASES,
+            "jud: 1\nkind: cases\ncases:\n  - id: /etc/passwd\n    state: s\n",
+        ),
+        (
+            &*CASES,
+            "jud: 1\nkind: cases\ncases:\n  - id: .hidden\n    state: s\n",
+        ),
+        (
+            &*RECORDING,
+            "jud: 1\nkind: recording\ncase: ../c\nresponse: {model: m, answers: {q: {type: noul, noul: 0.5}}}\nelapsed_ms: 1\n",
         ),
         // A top-level key that is neither a field nor an `x-` key.
         (
@@ -320,14 +352,106 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
 
 #[test]
 fn the_schemas_and_the_parser_refuse_the_same_documents() {
-    let refused = refused_documents();
-    for (validator, text) in refused {
+    for (validator, text) in refused_documents().into_iter().chain(refused_names()) {
         assert!(
             !validator.is_valid(&value_of(text)),
             "the schema accepts:\n{text}"
         );
         assert!(jud::parse(text).is_err(), "the parser accepts:\n{text}");
     }
+}
+
+/// 1.2: what a reviewer cannot see is refused. A tag the core schema does
+/// not define and a merge key are errors with a position; a `!!binary`
+/// scalar is its text, never what the base64 encodes, so the model reads
+/// what the reviewer read.
+#[test]
+fn what_a_reviewer_cannot_see_is_refused() {
+    let tagged = "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: !secret hidden}\n";
+    let err = jud::parse(tagged).unwrap_err();
+    assert!(
+        matches!(&err, jud::Error::Syntax(m) if m.contains("tag") && m.contains("line 5")),
+        "{err}"
+    );
+    let merged = "jud: 1.1\nkind: rubric\nid: r\nx-base: &b {type: noul, instructions: ok?}\nquestions:\n  n: {<<: *b}\n";
+    let err = jud::parse(merged).unwrap_err();
+    assert!(
+        matches!(&err, jud::Error::Syntax(m) if m.contains("merge") && m.contains("line 6")),
+        "{err}"
+    );
+    let binary = "jud: 1\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: !!binary SWdub3JlIHRoaXM=}\n";
+    let rubric = Rubric::parse(binary).unwrap();
+    let instructions = match &rubric.questions.get("n").unwrap().question {
+        judgment::Question::Noul { instructions, .. } => instructions.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        instructions,
+        json!("SWdub3JlIHRoaXM="),
+        "the text, not `Ignore this`"
+    );
+}
+
+/// 1.2: a syntax error names a line and a column and quotes nothing, because
+/// a cases document's state can be someone's data and the message lands in
+/// a log.
+#[test]
+fn a_syntax_error_quotes_no_part_of_the_document() {
+    let broken = "jud: 1\nkind: cases\ncases:\n  - state: {account: TOPSECRET-4411}\n    expect: [not a map\n";
+    let err = Cases::parse(broken).unwrap_err();
+    let shown = err.to_string();
+    assert!(shown.contains("line"), "{shown}");
+    assert!(!shown.contains("TOPSECRET"), "{shown}");
+}
+
+/// A `jud: 1.2` document reads, and is written back as the lowest version
+/// that reads it, since 1.2 adds no field.
+#[test]
+fn jud_1_2_reads_and_is_written_as_the_lowest_version() {
+    let plain = "jud: 1.2\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\n";
+    let rubric = Rubric::parse(plain).unwrap();
+    assert!(rubric.to_yaml().unwrap().starts_with("jud: 1\n"));
+    let with_feature = "jud: 1.2\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?, when: a}\n";
+    let rubric = Rubric::parse(with_feature).unwrap();
+    assert!(rubric.to_yaml().unwrap().starts_with("jud: 1.1\n"));
+    assert!(RUBRIC.is_valid(&value_of(plain)));
+}
+
+/// 1.2: the policy fingerprint is the gates alone, so a moved bar is as
+/// visible as a changed question; `tuning`, the id and the questions are
+/// not part of it, and an empty policy is the fingerprint of `{}`.
+#[test]
+fn the_policy_fingerprint_is_the_gates_alone() {
+    let rubric = Rubric::parse(&read(EXAMPLES, "triage.jud")).unwrap();
+    let pinned = rubric.policy_fingerprint();
+    assert!(pinned.starts_with("sha256:"));
+    let mut moved = rubric.clone();
+    moved.policy.gates.get_mut("actionable").unwrap().threshold = Some(0.95);
+    assert_ne!(
+        moved.policy_fingerprint(),
+        pinned,
+        "a moved threshold shows"
+    );
+    assert_eq!(
+        moved.fingerprint(),
+        rubric.fingerprint(),
+        "and the questions' fingerprint cannot show it"
+    );
+    let mut other = rubric.clone();
+    other.policy.tuning = None;
+    other.id = "renamed".to_owned();
+    assert_eq!(
+        other.policy_fingerprint(),
+        pinned,
+        "tuning and the id are not part of it"
+    );
+    let mut none = rubric.clone();
+    none.policy = jud::Policy::default();
+    assert_eq!(
+        none.policy_fingerprint(),
+        "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "the SHA-256 of the two bytes `{{}}`"
+    );
 }
 
 #[test]

@@ -119,6 +119,17 @@ pub enum Error {
         /// Where it was expected.
         path: String,
     },
+    /// A case id that is not a name ([`is_name`]), so it cannot name a file
+    /// under the directory; a path or a blank is refused before any access.
+    #[error(
+        "case id {case} is not a name (letters, digits, `.`, `_` and `-`, starting with a letter or a digit), so it cannot name a file under {dir}"
+    )]
+    NotAName {
+        /// The id, escaped and cut.
+        case: String,
+        /// The directory it would have named a file in.
+        dir: String,
+    },
 }
 
 /// Result alias.
@@ -129,8 +140,29 @@ pub fn recording_path(dir: &Path, case: &str) -> PathBuf {
     dir.join(format!("{case}.json"))
 }
 
+/// Whether `id` is a name as the `.jud` format defines one (`docs/jud.md`,
+/// Names): ASCII letters, digits, `.`, `_` and `-`, starting with a letter or
+/// a digit. A name is never a path, so a case id can name a file under a
+/// directory and nothing else; [`write_recording`] and [`read_recording`]
+/// refuse any other id.
+pub fn is_name(id: &str) -> bool {
+    let mut chars = id.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+}
+
+fn not_a_name(dir: &Path, case: &str) -> Error {
+    Error::NotAName {
+        case: format!("{:?}", crate::answer::sanitize_server_str(case)),
+        dir: dir.display().to_string(),
+    }
+}
+
 /// Write `recording` under `dir` (created if needed), pretty-printed and newline-terminated.
 pub fn write_recording(dir: &Path, recording: &Recording) -> Result<PathBuf> {
+    if !is_name(&recording.case) {
+        return Err(not_a_name(dir, &recording.case));
+    }
     std::fs::create_dir_all(dir).map_err(|source| Error::Io {
         path: dir.display().to_string(),
         source,
@@ -149,6 +181,9 @@ pub fn write_recording(dir: &Path, recording: &Recording) -> Result<PathBuf> {
 
 /// Read the recording for `case` under `dir`.
 pub fn read_recording(dir: &Path, case: &str) -> Result<Recording> {
+    if !is_name(case) {
+        return Err(not_a_name(dir, case));
+    }
     let path = recording_path(dir, case);
     let text = std::fs::read_to_string(&path).map_err(|_| Error::MissingRecording {
         case: case.to_owned(),
@@ -538,6 +573,39 @@ mod tests {
             Err(Error::MissingRecording { case, .. }) if case == "ghost"
         ));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 1.2 (decision 0017): a case id that is not a name never reaches the
+    /// file system, so a document cannot name a file outside the directory.
+    #[test]
+    fn a_case_id_that_is_a_path_is_refused_before_any_access() {
+        let dir = std::env::temp_dir().join(format!("judgment-name-{}", std::process::id()));
+        let response = Response {
+            model: "m".into(),
+            answers: BTreeMap::new(),
+            usage: Usage::default(),
+            request_id: None,
+            extra: BTreeMap::new(),
+        };
+        for bad in [
+            "../escape",
+            "/etc/passwd",
+            "a/b",
+            "",
+            ".hidden",
+            "a b",
+            "tab\t",
+        ] {
+            assert!(!is_name(bad), "{bad:?}");
+            let err = write_recording(&dir, &Recording::new(bad, response.clone(), 1)).unwrap_err();
+            assert!(matches!(err, Error::NotAName { .. }), "{bad:?}: {err}");
+            let err = read_recording(&dir, bad).unwrap_err();
+            assert!(matches!(err, Error::NotAName { .. }), "{bad:?}: {err}");
+        }
+        assert!(!dir.exists(), "nothing was created");
+        for good in ["refund-angry", "T-98423", "2c8d503947d3289b", "v1.2_final"] {
+            assert!(is_name(good), "{good}");
+        }
     }
 
     #[test]

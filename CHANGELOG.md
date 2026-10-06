@@ -6,6 +6,27 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `.jud` version 1.2 (decision 0017; `docs/jud.md`): no new field. Every
+  id is a name (letters, digits, `.`, `_`, `-`, starting with a letter or
+  a digit), so a case id never reaches the file system as a path; a merge
+  key and a tag the core schema does not define are refused with their
+  position, and a `!!binary` scalar is its text, never decoded; a syntax
+  error names a line and a column and quotes nothing. `Rubric::policy_fingerprint`
+  is the fingerprint of the gates alone, so a moved threshold is as visible
+  as a changed question. `eval::is_name` states the grammar.
+
+### Changed
+
+- The `.jud` reader applies the 1.2 rules to every version it reads: a
+  document that used a merge key, a foreign tag or a path-shaped id is
+  refused, naming the position or the field. `eval::write_recording` and
+  `eval::read_recording` refuse a case id that is not a name
+  (`eval::Error::NotAName`). `Replay::open` skips symlinks and
+  subdirectories, and a replay looks a request up by its SHA-256
+  fingerprint before the FNV request hash.
+
 ## [0.6.1] - 2026-10-06
 
 ### Changed

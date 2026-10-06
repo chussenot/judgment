@@ -33,6 +33,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Why releases are cut with cocogitto from Conventional Commits and published by CI from a tag | [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) |
 | Why the rubric, the cases and the recordings got one YAML format with content fingerprints | [Decision 0014](decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) |
 | Why the format takes minor versions, and what 1.1 adds: requests that depend on the state, bands and level gates, `x-` keys | [Decision 0016](decisions/0016-jud-takes-minor-versions.md) |
+| Why 1.2 refuses merge keys, foreign tags and path-shaped ids, keeps the document out of error messages, and gives the policy its own fingerprint | [Decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) |
 | What changed in each release | [CHANGELOG](../CHANGELOG.md) |
 | Everything, as an agent or a model reads it | [llms.txt](llms.txt), the index; [llms-full.txt](llms-full.txt), every page in one file |
 
@@ -303,7 +304,7 @@ flowchart LR
 
 **`Recorder`** verifies the inner response before writing anything, so a recording is only ever a response a replay can return; the file is keyed by `request_hash`, FNV-1a over canonical key-sorted JSON of the state and the questions, because the standard library's hasher promises no stability between Rust versions and a directory of recordings needs no adversary resistance. The same state and questions find the recording whatever order keys were inserted in and whatever model alias was asked for, and a changed question misses it instead of grading old answers under new questions. The `sha256:` RFC 8785 fingerprint is written beside it as the key other tools compute.
 
-**`Replay`** looks a request up by hash, then by fingerprint; both cover the questions, so a recording found by either was made for them. Each recording is verified against the questions of the request that found it, so one edited by hand or made by an older release fails naming the question rather than replaying an answer the client would refuse. A replayed response carries the recorded call's request id, not a new one. A recording that carries neither key, a harness's keyed by case id alone, is skipped; a later recording of the same request replaces an earlier one.
+**`Replay`** reads only the regular files of its directory, never a symlink or a subdirectory, and looks a request up by its SHA-256 fingerprint first and by the FNV hash second, because the fingerprint is the published key and FNV can be collided on purpose; both cover the questions, so a recording found by either was made for them. Each recording is verified against the questions of the request that found it, so one edited by hand or made by an older release fails naming the question rather than replaying an answer the client would refuse. A replayed response carries the recorded call's request id, not a new one. A recording that carries neither key, a harness's keyed by case id alone, is skipped; a later recording of the same request replaces an earlier one.
 
 ## Decoding tolerantly
 
@@ -371,7 +372,7 @@ flowchart LR
     T --> P["a policy: threshold, bar, bands, level<br/>written into a rubric with its provenance"]
 ```
 
-**Keys.** `request_hash` is FNV-1a 64 over a near-canonical rendering of the state and the questions, keys sorted at every level, no whitespace, numbers as `serde_json` prints them, sixteen hex digits. It names recording files, so it must not move between runs, machines or toolchains, which the standard library's hasher does not promise. It stays as it is because it names the committed recordings; the `sha256:` RFC 8785 fingerprint beside it is what a new tool computes, with the model left out so the same request answered by two models yields two recordings under one name. A recording also carries the server's base URL, because two servers speaking the same wire answer differently, and an RFC 3339 timestamp, because an alias such as `jev-latest` moves. The timestamp is computed without a date dependency, through Howard Hinnant's civil-from-days algorithm.
+**Keys.** A recording's `case` must be a name before `write_recording` or `read_recording` touches the file system, so an id from a document never joins a directory as a path. `request_hash` is FNV-1a 64 over a near-canonical rendering of the state and the questions, keys sorted at every level, no whitespace, numbers as `serde_json` prints them, sixteen hex digits. It names recording files, so it must not move between runs, machines or toolchains, which the standard library's hasher does not promise. It stays as it is because it names the committed recordings; the `sha256:` RFC 8785 fingerprint beside it is what a new tool computes, with the model left out so the same request answered by two models yields two recordings under one name. A recording also carries the server's base URL, because two servers speaking the same wire answer differently, and an RFC 3339 timestamp, because an alias such as `jev-latest` moves. The timestamp is computed without a date dependency, through Howard Hinnant's civil-from-days algorithm.
 
 **Grading.** A Noul is `yes` at a probability of 0.5 or more, with `max(p, 1 − p)` standing in for the confidence the wire does not send; a Choice is graded by its option keys and a Score by its level indices as strings, the most probable level predicted. An `Answer::Unknown` is graded as a miss rather than dropped, because dropping it would raise the accuracy of a model whose answers could not be read: it predicts `<kind>`, which no option key equals, with probability zero on the label and confidence zero, so it lowers accuracy and costs a Brier of 1.0 while its calibration pair pulls the calibration error toward zero. The case is rare and loud: only a response that bypassed `verify` can bring one. A label outside the option set adds the missing `(1 − 0)²` term to that judgment's Brier, so it hurts rather than vanishes; unlabelled judgments count in nothing.
 
@@ -395,7 +396,7 @@ flowchart LR
     C -. "fingerprint = canonical JSON of cases alone" .-> C
 ```
 
-**Reading.** YAML is read with `serde_saphyr` and `strict_booleans`, which is the one option that keeps `yes`, `no`, `on` and `off` as strings; duplicate keys are the parser's own error. Every kind is read through a raw struct whose unknown keys are collected, and the first key that does not start with `x-` is refused before any version check. The envelope is checked first: a missing `jud` is `Missing`, a string `"1"`, a `2` or a `1.2` is `Version`; the minor is `1` as an integer or `1.1` as a float, compared exactly because every spelling of the literal parses to the same `f64`. A Noul's criteria keys read through an untagged `Bool | Text` so a bare `true:` and a quoted `"true":` both land on the yes criterion. A parsed question runs through the same validation as the builder's, with a minimum of zero options when `options_from: request` and two otherwise, which is how a Choice that takes its options from the request may list fewer than two.
+**Reading.** YAML is read with `serde_saphyr` under five options: `strict_booleans`, which keeps `yes`, `no`, `on` and `off` as strings; `merge_keys = Error` and `reject_unsupported_tags`, which refuse what folds in or decodes text the reviewer did not see; `ignore_binary_tag_for_string`, which keeps a `!!binary` scalar as its text; and `with_snippet = false`, so an error names a line and a column and quotes no part of a document whose state may be someone's data. Duplicate keys are the parser's own error. Every id is checked against the name grammar (`eval::is_name`) before anything else about it is read. Every kind is read through a raw struct whose unknown keys are collected, and the first key that does not start with `x-` is refused before any version check. The envelope is checked first: a missing `jud` is `Missing`, a string `"1"`, a `2` or a `1.2` is `Version`; the minor is `1` as an integer or `1.1` as a float, compared exactly because every spelling of the literal parses to the same `f64`. A Noul's criteria keys read through an untagged `Bool | Text` so a bare `true:` and a quoted `"true":` both land on the yes criterion. A parsed question runs through the same validation as the builder's, with a minimum of zero options when `options_from: request` and two otherwise, which is how a Choice that takes its options from the request may list fewer than two.
 
 **Versions.** "A 1.1 feature counts by its presence" is one deserializer: a present key is `Some` whatever its value (`part_when: {}` and `strict: false` included), an absent one `None`, and `null` is refused with a message saying to leave the field out, read through a JSON value first because a YAML reader may otherwise take `null` for an empty map. The reader names the first 1.1 feature as a field path, in a fixed order: a top-level `x-` key, then per question `when`, `part_when`, `options_from`, then per gate `bands`, `level_at_least`, `strict`; for cases, an `x-` key, then the first case with `options`. A writer computes the same first feature over the in-memory value and writes `jud: 1.1` only when there is one, so a `jud: 1` rubric is written back as `jud: 1`; a recording is always `jud: 1`, having no 1.1 field of its own. `bands: []` is refused before any other gate check, because an empty list would read as no bands while still counting as a feature.
 
@@ -508,9 +509,11 @@ A mock encodes what the client author believed about the wire. Only a real serve
 
 A System One request is simple: a `state`, a `model` and a map of typed questions. What is hard to keep is everything around it. The questions live in code; the threshold a probability is acted on at lives in a configuration file or a constant; the labelled examples that threshold was tuned on live in a notebook; the answers the model gave last month live nowhere. When the model version moves, nobody can say which of the four changed, or whether the threshold still holds. `.jud` gives each of them a file with a stated shape, an identity and a fingerprint, so a policy can say which rubric and which cases it was tuned on, a recording can say which request and which server it answers, and two tools can exchange all three without agreeing on anything but the files.
 
-A `.jud` file is one YAML 1.2 document. JSON is valid YAML, so a JSON file with the same fields is the same document. Three kinds of document share one envelope, and nothing in the format depends on this crate: the questions are the wire's own shape, the fingerprints are a published canonicalisation, and the [JSON Schemas](../schemas/jud/) under `schemas/jud/` state each kind formally. This page is the specification of versions 1 and 1.1; `judgment::jud` (feature `jud`, off by default) is one implementation of it, and [`examples/jud/`](../examples/jud/) holds a complete set of documents of both versions with a runnable round trip.
+A `.jud` file is one YAML 1.2 document. JSON is valid YAML, so a JSON file with the same fields is the same document. Three kinds of document share one envelope, and nothing in the format depends on this crate: the questions are the wire's own shape, the fingerprints are a published canonicalisation, and the [JSON Schemas](../schemas/jud/) under `schemas/jud/` state each kind formally. This page is the specification of versions 1, 1.1 and 1.2; `judgment::jud` (feature `jud`, off by default) is one implementation of it, and [`examples/jud/`](../examples/jud/) holds a complete set of documents of both versions with a runnable round trip.
 
 Version 1.1 adds what real requests needed once the format met one: a request that depends on the state (a question asked only when the state carries what it is about, options supplied per request), gates with more than one bar and a level threshold, and `x-` keys for what a tool wants to keep beside the format. It changes nothing a `jud: 1` document means, and a 1.1 reader reads every `jud: 1` document as it always read.
+
+Version 1.2 adds no field. It states what a reviewer must be able to trust: an id is a [name](#names) and never a path; a reader refuses what hides text from the person reading the file (an explicit tag, a merge key) and does not decode a `!!binary` scalar; a syntax error names a position and quotes nothing; and a rubric's policy has a [fingerprint](#fingerprints) of its own, because the questions' fingerprint was never an integrity check of the thresholds. Every document a 1.1 reader accepts and that uses no path as an id reads the same under 1.2 ([decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md)).
 
 ## Design
 
@@ -521,7 +524,7 @@ Six choices shape the format; the decision records weigh the alternatives ([0014
 - **Identity by content.** A rubric's questions, a set of cases and a request each have a fingerprint: the SHA-256 of their canonical JSON ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)). Any implementation computes the same fingerprint for the same content, so a `tuning.cases` of `sha256:…` means one exact set of labels whichever tool wrote it, and an edited set is visibly another one.
 - **Strict reading.** A field the format does not define, a gate on a question of the wrong primitive, a label naming an option the rubric does not offer, a `from_turn` on a state that is not a conversation: each is refused with its path, never ignored or defaulted. The off-list rule the crate applies to answers applies to labels too.
 - **Minor versions add, never change.** `jud: 1.1` adds fields and meanings; every `jud: 1` document is a `jud: 1.1` document with the same meaning and the same fingerprints. A document says the lowest version that reads it, so a `jud: 1` reader reads every document it can and refuses, by version, the ones it cannot.
-- **YAML, under the 1.2 core schema.** People write and review rubrics, and comments and multi-line strings matter for that. Only `true` and `false` are booleans, so an option called `yes` is the string `yes`; a duplicate key is an error.
+- **YAML, under the 1.2 core schema.** People write and review rubrics, and comments and multi-line strings matter for that. Only `true` and `false` are booleans, so an option called `yes` is the string `yes`; a duplicate key is an error. What the person reviewing the file cannot see is refused: a merge key that folds another mapping in, a tag the core schema does not define, and a `!!binary` scalar is kept as its text, never decoded (*1.2*).
 
 What the format is not: a prompt or template language (a question is data, not a program; the one test on the state is whether a path is present), a report format (metrics are derived from cases and recordings, and any tool prints them its own way), or a container for soft labels (a case expects one answer; a distribution over answers is left for a later version, see [Extending the format](#extending-the-format)).
 
@@ -531,7 +534,7 @@ Every document starts with two fields.
 
 | Field | Value | Meaning |
 |---|---|---|
-| `jud` | `1` or `1.1` | The format version, a number. A reader that does not read this version refuses the document. |
+| `jud` | `1`, `1.1` or `1.2` | The format version, a number. A reader that does not read this version refuses the document. |
 | `kind` | `rubric`, `cases` or `recording` | Which shape follows. Any other value is refused. |
 
 The file extension is `.jud`. A reader decides what a document is by its `kind`, never by its file name, so `triage.jud`, `triage-cases.jud` and `recordings/refund.jud` are conventions, not rules.
@@ -540,10 +543,15 @@ The file extension is `.jud`. A reader decides what a document is by its `kind`,
 
 The major version is the `1`; the minor is the `.1`. A minor version only adds: new optional fields, new values where a field took a closed set, never a new meaning for a field that already existed. So:
 
-- A reader of `1.1` reads `jud: 1` and `jud: 1.1`, the first exactly as a `1` reader does. `1.0` is read as `1`. A string (`"1.1"`) is not a version.
+- A reader of `1.2` reads `jud: 1`, `jud: 1.1` and `jud: 1.2`, each exactly as a reader of that version does. `1.0` is read as `1`. A string (`"1.1"`) is not a version.
 - A document that uses a 1.1 feature says `jud: 1.1`, and a reader refuses one that says `jud: 1`, naming the feature. A `1` reader would refuse such a document anyway, field by field; the declared version tells it why before it tries. A feature is used when its key is present, whatever its value: `strict: false` and `part_when: {}` are 1.1. `null` is not a value of any 1.1 field; leave the field out instead.
 - A writer declares `1.1` only when the document uses a 1.1 feature, so every document a `1` reader can read is written as `jud: 1`.
 - The 1.1 features are: top-level `x-` keys, a question's `when`, `part_when` and `options_from`, a gate's `bands`, `level_at_least` and `strict`, and a case's `options`. Each is marked *1.1* below.
+- Version 1.2 adds no field, so no document needs to declare it and a writer never does; a document may say `jud: 1.2` to state it was written under the 1.2 rules, marked *1.2* below: [names](#names), the refusal of tags and merge keys, and the policy fingerprint. A reader applies those rules to every version it reads, because none of them gives a meaning to anything a 1 or 1.1 document could say: an id that is a path, a merge key or a tag had no defined meaning before and were defects of a reader, not features of a document.
+
+### Names *1.2*
+
+An id names a thing another document or a file name refers to: a rubric's `id`, a cases document's `id`, a case's `id` and a recording's `case`. A name is ASCII letters, digits, `.`, `_` and `-`, starting with a letter or a digit: `inbox-triage`, `refund-angry`, `T-98423`, a hex request hash. A name is never a path: it has no `/`, no `\`, no space, does not start with `.`, and is not empty. A reader refuses any other id, naming the field, and a tool that names a file after an id (a recording per case, as `recording_path` in the crate does) can join it to a directory and never leave the directory.
 
 ### Extension keys *1.1*
 
@@ -568,7 +576,7 @@ The questions a request sends, in wire shape and wire order, and the policy an a
 
 | Field | Required | Meaning |
 |---|---|---|
-| `id` | yes | A name for the rubric, stable across edits, non-empty. What a cases document's `rubric` and a recording's `rubric` may name. |
+| `id` | yes | A [name](#names) for the rubric, stable across edits. What a cases document's `rubric` and a recording's `rubric` may name. |
 | `version` | no | An edition of the rubric, free-form; a number is read as its text. The questions' fingerprint is the exact identity. |
 | `description` | no | What the rubric decides, for the person reading it. |
 | `questions` | yes | A map of question id to question, at least one, in the order the model sees them. |
@@ -699,13 +707,15 @@ Where the gates came from. Every field is optional, and a rubric written by hand
 
 A rubric's fingerprint is the [fingerprint](#fingerprints) of its `questions` map alone: the exact identity of what the model is asked, unchanged by the id, the version, the description or the policy. A recording's `rubric` or a cases document's `rubric` may name a rubric by its id, when the id is enough, or by this fingerprint, when it is not.
 
+It is therefore not an integrity check of the decision logic: a rubric whose gate moved from `level_at_least: 2` to `3` has the same fingerprint, and an application that pins only it accepts a rewritten policy. A rubric's **policy fingerprint** (*1.2*) is the fingerprint of its `policy` map alone, the gates as written, so a moved bar is as visible as a changed question. `tuning` is provenance and part of neither. An application that must notice a change to what it does with an answer pins both fingerprints; the crate computes them as `Rubric::fingerprint` and `Rubric::policy_fingerprint`.
+
 ## `cases`
 
 Labelled states a rubric is graded on and its gates are tuned on.
 
 | Field | Required | Meaning |
 |---|---|---|
-| `id` | no | A name for the set; the fingerprint is its exact identity. |
+| `id` | no | A [name](#names) for the set; the fingerprint is its exact identity. |
 | `rubric` | no | The rubric the labels are for, by id or by fingerprint. A reader binding the cases to a rubric checks the name against both. |
 | `description` | no | Where the cases came from. |
 | `cases` | yes | At least one case, in document order. |
@@ -715,7 +725,7 @@ A case:
 
 | Field | Required | Meaning |
 |---|---|---|
-| `id` | no | A name, non-empty and unique in the document; a case without one is named by its position, `#3`. |
+| `id` | no | A [name](#names), unique in the document; a case without one is named by its position, `#3`. |
 | `state` | yes | Any JSON: the state the questions are asked about. An array is a conversation, one element per turn. |
 | `expect` | no | The right answer, by question id, for the questions this case is labelled for. A question left out is asked and not graded. |
 | `options` | no | *1.1.* Options supplied for this case's request, by question id, then option key to description: what a Choice with `options_from: request` is asked over. With them, a case is a complete request: its state, its options and the rubric. |
@@ -773,7 +783,7 @@ One model response to one request, kept so a run can be replayed, graded again o
 
 | Field | Required | Meaning |
 |---|---|---|
-| `case` | yes | The case it answers, or the request hash when a recorder keyed it by content. |
+| `case` | yes | The case it answers, a [name](#names), or the request hash when a recorder keyed it by content. |
 | `response` | yes | The response as received: `model`, `answers` and `usage` in the wire's shape, plus `request_id` and any top-level field the server added. |
 | `elapsed_ms` | yes | Wall-clock time of the call. |
 | `fingerprint` | no | The [request fingerprint](#fingerprints): the identity of the state and the questions, model excluded. The key a replay finds the recording by. |
@@ -813,6 +823,7 @@ A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 of the 
 | Fingerprint of | Over |
 |---|---|
 | a rubric | its `questions` map |
+| a rubric's policy | its `policy` map (*1.2*) |
 | a cases document | its `cases` array |
 | a request | `{"questions": <the questions map>, "state": <the state>}` |
 
@@ -828,8 +839,9 @@ This crate's `Recorder` also writes its older `request_hash`, a 16-hex-digit has
 
 An implementation reads a document under these rules, and the crate's [`tests/jud.rs`](../tests/jud.rs) pins that its reader and the schemas agree on each.
 
-- YAML 1.2 core schema: `true` and `false` are the booleans; `yes`, `no`, `on`, `off` and `y` are strings; a leading-zero number is decimal. A duplicate key is an error. JSON is accepted as YAML.
-- `jud` must be present and the number 1 (or 1.0) or 1.1; `kind` must be present and one of the three. Both are checked before anything else, so a document of another version or kind is refused by name. A document that uses a 1.1 feature and says `jud: 1` is refused, naming the feature.
+- YAML 1.2 core schema: `true` and `false` are the booleans; `yes`, `no`, `on`, `off` and `y` are strings; a leading-zero number is decimal. A duplicate key is an error. JSON is accepted as YAML. A merge key (`<<`) and an explicit tag the core schema does not define are refused with their position, and a `!!binary` scalar is its text, not what it encodes (*1.2*). A syntax error names a line and a column and quotes no part of the document, whose state may be someone's data.
+- Every id is a [name](#names) (*1.2*): a rubric's and a cases document's `id`, a case's `id`, a recording's `case`.
+- `jud` must be present and the number 1 (or 1.0), 1.1 or 1.2; `kind` must be present and one of the three. Both are checked before anything else, so a document of another version or kind is refused by name. A document that uses a 1.1 feature and says `jud: 1` is refused, naming the feature.
 - A field the kind does not define is refused, with its path. The exceptions are `tuning` in a rubric and `response` in a recording, which keep what they are given, `state`, which is any JSON, and top-level `x-` keys (1.1), which are ignored.
 - Order is significant and preserved for `questions`, a Choice's `criteria`, a Score's `criteria`, `bands`, `cases`, `expect` and a case's supplied options. It is not for the parts of an instructions object, which is a JSON object like the state: an implementation may send its keys in any order (this crate sends them sorted), so the order a rubric writes them in carries no meaning.
 - A state path in `when` or `part_when` is well formed, and every `part_when` name is a key of its instructions object. `options_from` is `request`, on a Choice.
@@ -859,11 +871,11 @@ An implementation conforms when it reads all three kinds under the reading rules
 
 ## In the crate
 
-`judgment::jud`, behind the `jud` feature, is this crate's implementation of both versions: `parse` for any kind; `Rubric` with `parse`, `to_yaml`, `fingerprint`, `gate`, `lower` (the request for a state and the supplied options, a `Questions` that goes straight to any `SystemOne` backend) and `apply` (verdicts through the policy for the request asked); `RubricQuestion` for a question with its declarations; `Cases` with `parse`, `to_yaml`, `fingerprint` and `bind`, `Case::request` and `Case::per_turn`; `grade` for one case against one response; `present` for the state-path test; and `parse_recording` and `recording_to_yaml` for the third kind. `Questions::handle` gives a typed handle to a question read from a file. `Replay` reads `.jud` recordings beside its `.json` ones and finds either by fingerprint. The fingerprints are `eval::canonical`, the sweeps and tables `eval::tuning` (`threshold_sweep`, `gate_table`, `level_sweep`), and `eval::Recording` carries the recording kind's fields.
+`judgment::jud`, behind the `jud` feature, is this crate's implementation of the three versions: `parse` for any kind; `Rubric` with `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `gate`, `lower` (the request for a state and the supplied options, a `Questions` that goes straight to any `SystemOne` backend) and `apply` (verdicts through the policy for the request asked); `RubricQuestion` for a question with its declarations; `Cases` with `parse`, `to_yaml`, `fingerprint` and `bind`, `Case::request` and `Case::per_turn`; `grade` for one case against one response; `present` for the state-path test; and `parse_recording` and `recording_to_yaml` for the third kind. `Questions::handle` gives a typed handle to a question read from a file. `Replay` reads `.jud` recordings beside its `.json` ones and finds either by fingerprint. The fingerprints are `eval::canonical`, the sweeps and tables `eval::tuning` (`threshold_sweep`, `gate_table`, `level_sweep`), and `eval::Recording` carries the recording kind's fields.
 
 ## Extending the format
 
-`jud: 1.1` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later version is refused whole rather than half-read. A later version that only adds takes the next minor number (1.2); one that changes what an existing field means takes the next major number (2), which a 1.x reader refuses by version. A reader says which versions it reads. Two additions are foreseen and deliberately not in 1.1: a soft label (a distribution over options or levels, for grading calibration against a panel's disagreement rather than one annotator's pick), and a verdict kind (what an application decided, for auditing a policy's record). Both wait for a second implementation to need them.
+`jud: 1.2` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later version is refused whole rather than half-read. A later version that only adds takes the next minor number (1.3); one that changes what an existing field means takes the next major number (2), which a 1.x reader refuses by version. A reader says which versions it reads. Two additions are foreseen and deliberately not in 1.1: a soft label (a distribution over options or levels, for grading calibration against a panel's disagreement rather than one annotator's pick), and a verdict kind (what an application decided, for auditing a policy's record). Both wait for a second implementation to need them.
 
 
 <!-- source: docs/releasing.md -->
@@ -1614,12 +1626,15 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0013](0013-releases-cut-with-cocogitto-and-published-from-ci.md) | Releases cut with cocogitto and published from CI | accepted |
 | [0014](0014-a-file-format-for-rubrics-cases-and-recordings.md) | A file format for rubrics, cases and recordings | accepted |
 | [0016](0016-jud-takes-minor-versions.md) | The .jud format takes minor versions, and 1.1 makes the request depend on the state | accepted |
+| [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) | The .jud format 1.2 refuses what a reviewer cannot see, and names the policy | accepted |
 
 ## Status notes
 
 Records are not edited after acceptance; a fact that has moved since is noted here.
 
 - 0003 was written before the crate existed and moved here with its number on 2026-10-03. Its "More information" section is the one part edited since: the page it pointed to was split, and the half that belongs to an application was dropped when this documentation stopped naming applications.
+
+- 0016 says a 1.1 reader reads every `jud: 1` document as a 1 reader does. [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) makes one narrow exception: a reader refuses, in every version, a merge key, a tag the core schema does not define and an id that is not a name, none of which a conforming document ever carried.
 
 - 0014 says "a later version that adds a field takes the next number". [0016](0016-jud-takes-minor-versions.md) reads that as the next minor number for a purely additive change (1.1), and keeps the next major number for a change of meaning.
 
@@ -1920,3 +1935,89 @@ Chosen option: 1. The envelope's `jud` is `1` or `1.1`. A minor version only add
 ## More information
 
 [The .jud format](../jud.md) is the specification of both versions; the schemas under `schemas/jud/` state the 1.1 shapes. The numbers 0015 and below 0013 are taken by records outside this repository and stay unused here.
+
+
+<!-- source: docs/decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md -->
+
+
+# 0017 The .jud format 1.2 refuses what a reviewer cannot see, and names the policy
+
+## Context and problem statement
+
+A `.jud` rubric is reviewed by people and read by a program, and the format's value rests on both reading the same thing: the thresholds in the file are the decision, and a pinned fingerprint is how an application notices that the file moved. A threat model of the crate ([the STRIDE threat model](https://github.com/chussenot/judgment/pull/13), T-005, T-006, T-012, T-013 and H-013) found five places where that did not hold:
+
+- The reader accepted YAML merge keys, tags the core schema does not define, and `!!binary` scalars decoded from base64, so a question's instructions could be text the reviewer saw only as a blob or as a reference to another mapping, while [the specification](../jud.md) promised the YAML 1.2 core schema.
+- `Rubric::fingerprint` covers the questions and deliberately not the policy, so a gate moved from `level_at_least: 2` to `3` left every pinned fingerprint, log line and evaluation report unchanged.
+- A case id only had to be non-empty, so an id of `../../.config/app/settings` named a file outside the recordings directory for any tool that names a recording after its case, as the crate's `recording_path` does.
+- A syntax error carried the lines around it, so a malformed cases file printed a customer's state into whatever log recorded the error.
+- A replay followed symlinks in its directory and looked a request up by a 64-bit FNV hash before the SHA-256 fingerprint.
+
+[Decision 0016](0016-jud-takes-minor-versions.md) says a minor version only adds and a change of meaning takes a major version. None of the five is a meaning any conforming document had: a merge key, a foreign tag and a path-shaped id were accepted by a lenient reader, not defined by the format. How should the format say so, and under which version?
+
+## Decision drivers
+
+- A reviewer must see what the model will be asked; the file must not read differently from how it looks
+- An application that pins a rubric must notice a moved threshold as surely as a changed question
+- An id from a document must never reach the file system as a path
+- An error message must be safe to log, since a cases document's state can be someone's data
+- Every existing document under `examples/jud/`, and every document a 1.1 reader accepted that used none of the above, must read the same and keep its fingerprints
+
+## Considered options
+
+1. Version 1.2: no new field; the rules stated and applied to every version the reader reads; a policy fingerprint added to the specification
+2. Version 2: the same rules as a change of meaning, refused by 1.x readers
+3. Fix the reader only, leave the specification and the schemas as they were
+4. Sign documents, so a tampered policy or recording fails to verify
+
+## Decision outcome
+
+Chosen option: 1. `jud: 1.2` adds no field and no document needs to declare it; a writer still declares the lowest version that reads a document, so every document the crate wrote before is written the same. The 1.2 rules are:
+
+- **Names.** A rubric's and a cases document's `id`, a case's `id` and a recording's `case` are names: ASCII letters, digits, `.`, `_` and `-`, starting with a letter or a digit. A reader refuses any other id naming the field, the schemas carry the pattern, and the crate's `write_recording` and `read_recording` refuse an id that is not a name before touching the file system.
+- **Nothing hidden.** A merge key and a tag the core schema does not define are refused with their line and column; a `!!binary` scalar is its text, never decoded. The reader sets serde-saphyr's `merge_keys = Error`, `reject_unsupported_tags` and `ignore_binary_tag_for_string`.
+- **Nothing quoted.** A syntax error names a line and a column and no part of the document (`with_snippet = false`).
+- **A policy fingerprint.** The fingerprint of a rubric's `policy` map alone, the gates as written, as `Rubric::policy_fingerprint`; `tuning` is part of neither fingerprint. The specification says plainly that the questions' fingerprint is not an integrity check of the thresholds.
+- **In the crate's replay**, which the format does not govern: a directory under replay reads only its regular files, never a symlink or a subdirectory, and a request is looked up by its SHA-256 fingerprint before the crate's own FNV hash.
+
+The rules apply to every version the reader reads, 1 and 1.1 included. That is a departure from "a 1.1 reader reads every 1 document as a 1 reader does", taken on purpose and narrowly: the documents it refuses are ones no reader should have accepted, and refusing a whole document is the failure the format chooses over half-reading one.
+
+### Consequences
+
+- Good, because the file and the request are the same text again: what a reviewer sees is what the model is asked
+- Good, because an application pins two fingerprints and a moved bar is visible, without a signing scheme or a key to manage
+- Good, because a case id is safe to use as a file name in any tool, and an error from a cases file is safe to log
+- Good, because every document under `examples/jud/` reads unchanged with the same fingerprints, and the crate writes exactly what it wrote
+- Bad, because a document that used a merge key or an anchor-and-merge to share a question, or a path-shaped id, is now refused and must be rewritten; the shared-anchor need is served by `x-` keys with plain aliases, which 1.1 added for that
+- Bad, because a 1.2 reader is stricter than a 1 reader on 1 documents, which decision 0016 did not foresee; this record is where that exception is written down
+- Bad, because the policy fingerprint is a second value to pin and to print; a combined fingerprint over questions and policy was left out, since two values say which one moved
+
+### Confirmation
+
+`tests/jud.rs`: the schemas and the reader refuse the same path-shaped ids on all four fields and `jud: 1.3`; a tag and a merge key are refused with a line, a `!!binary` scalar reads as its text; a syntax error over a state holding a secret does not quote it; a `jud: 1.2` document reads and is written back as `jud: 1` or `1.1`; the policy fingerprint moves with a threshold, not with the id, the questions or `tuning`, and an empty policy is the SHA-256 of `{}`. `tests/backend.rs`: a replay skips a symlink and a directory, prefers the fingerprint to the hash, and `write_recording` refuses a path-shaped id. `examples/jud/` is unchanged and still validates.
+
+## Pros and cons of the options
+
+### 1. Version 1.2, rules applied to every version
+
+- Good, because nothing a conforming document could say changes, so no document, fingerprint or writer moves
+- Good, because the version number records where the rules were stated, for a second implementation to check itself against
+- Bad, because it bends the letter of decision 0016 and needs this record to say so
+
+### 2. Version 2
+
+- Good, because the stricter reading would be announced by the number
+- Bad, because every 1 and 1.1 document would be refused by version until rewritten as `jud: 2`, for rules they already obey; a major version for a change that touches no field punishes every document to catch a few malformed ones
+
+### 3. Fix the reader only
+
+- Good, because it is the smallest change
+- Bad, because the specification would still promise the core schema while saying nothing about tags and merge keys, and another implementation would keep accepting what this one refuses; the format exists so that two tools read a file the same way
+
+### 4. Sign documents
+
+- Good, because a tampered policy or recording would fail closed whoever edited it
+- Bad, because it needs keys, a signing step and a trust decision in every consumer, for a format whose files live in reviewed repositories; a fingerprint an application pins gives the detection without the ceremony, and signing can still be added above the format later
+
+## More information
+
+[The .jud format](../jud.md) states the 1.2 rules (Versions, Names, Fingerprints, Reading rules); `schemas/jud/common.schema.json` carries the `name` pattern and the `1.2` version; `src/jud/mod.rs` sets the reader's options and checks names; `src/eval/mod.rs` refuses a non-name in the recording helpers; `src/backend.rs` is the replay. The threat model that motivated the record is [pull request 13](https://github.com/chussenot/judgment/pull/13).

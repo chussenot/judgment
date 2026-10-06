@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
 use super::{
-    Error, Result, check_path, check_version, extensions, from_text, present, require_minor, some,
-    to_yaml, version_value,
+    Error, Result, check_name, check_path, check_version, extensions, from_text, present,
+    require_minor, some, to_yaml, version_value,
 };
 use crate::answer::{Choice, Confidence, FromAnswer, Noul, Probability, Response, Score};
 use crate::eval::canonical;
@@ -613,12 +613,7 @@ impl Rubric {
             return Err(Error::Kind { found: raw.kind });
         }
         let extensions = extensions(raw.rest, "rubric")?;
-        if raw.id.is_empty() {
-            return Err(Error::Invalid {
-                field: "id".to_owned(),
-                reason: "a rubric needs a non-empty id".to_owned(),
-            });
-        }
+        check_name("id", &raw.id)?;
         if raw.questions.is_empty() {
             return Err(Error::Invalid {
                 field: "questions".to_owned(),
@@ -695,6 +690,16 @@ impl Rubric {
     /// sent for one state is named by [`canonical::request_fingerprint`].
     pub fn fingerprint(&self) -> String {
         canonical::fingerprint(&serde_json::to_value(&self.questions).unwrap_or(Value::Null))
+    }
+
+    /// The fingerprint of the `policy` map alone, the gates as written
+    /// (`docs/jud.md`, Fingerprints): the identity of how the answers are
+    /// read, which [`Rubric::fingerprint`] leaves out on purpose. An
+    /// application that pins a rubric pins both, so a moved bar is as
+    /// visible as a changed question; `tuning` is provenance and part of
+    /// neither.
+    pub fn policy_fingerprint(&self) -> String {
+        canonical::fingerprint(&serde_json::to_value(&self.policy.gates).unwrap_or(Value::Null))
     }
 
     /// The request for `state` and the `supplied` options (`docs/jud.md`,

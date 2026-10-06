@@ -15,8 +15,7 @@
       "const": "rubric"
     },
     "id": {
-      "type": "string",
-      "minLength": 1
+      "$ref": "common.schema.json#/$defs/name"
     },
     "version": {
       "type": [

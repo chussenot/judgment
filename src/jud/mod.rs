@@ -1,7 +1,7 @@
 //! The `.jud` document format: a rubric with its policy, the cases it is
 //! graded on and the recordings of what a model answered, as YAML or JSON
 //! any tool can read, write and name by content. The specification is
-//! `docs/jud.md`; this module implements versions `1` and `1.1` of it:
+//! `docs/jud.md`; this module implements versions `1`, `1.1` and `1.2` of it:
 //! [`parse`] for any kind, [`Rubric`], [`Cases`], and [`parse_recording`]
 //! and [`recording_to_yaml`] for a [`crate::eval::Recording`]. Fingerprints
 //! are [`crate::eval::canonical`].
@@ -29,8 +29,8 @@ pub use rubric::{
 /// major version is refused.
 pub const VERSION: u64 = 1;
 
-/// The highest minor version this crate reads and writes: `jud: 1.1`.
-pub const MINOR: u64 = 1;
+/// The highest minor version this crate reads and writes: `jud: 1.2`.
+pub const MINOR: u64 = 2;
 
 /// The file extension of a document of any kind.
 pub const EXTENSION: &str = "jud";
@@ -55,7 +55,9 @@ pub enum Error {
     #[error("not a .jud document: {0}")]
     Syntax(String),
     /// A `jud:` version this crate does not read.
-    #[error("`jud: {found}` is not a version this crate reads; it reads `jud: 1` and `jud: 1.1`")]
+    #[error(
+        "`jud: {found}` is not a version this crate reads; it reads `jud: 1`, `jud: 1.1` and `jud: 1.2`"
+    )]
     Version {
         /// What the document said.
         found: String,
@@ -159,6 +161,7 @@ pub fn parse_recording(text: &str) -> Result<Recording> {
     }
     let extensions = extensions(doc.rest, "recording")?;
     require_minor(declared, extensions.keys().next().cloned())?;
+    check_name("case", &doc.recording.case)?;
     Ok(doc.recording)
 }
 
@@ -178,19 +181,45 @@ pub fn recording_to_yaml(recording: &Recording) -> Result<String> {
     })
 }
 
-/// YAML 1.2 core schema, as the reading rules require: an option called
-/// `yes` is a string, and a duplicate key is an error, not an overwrite.
+/// YAML 1.2 core schema, as the reading rules require (`docs/jud.md`,
+/// Reading rules): an option called `yes` is a string, a duplicate key is an
+/// error, and what a reviewer cannot see is refused: a merge key would fold
+/// another mapping's fields in, a tag the schema does not know is refused,
+/// and a `!!binary` scalar is its text, never decoded into other text. An
+/// error names its line and column and quotes nothing, because a document's
+/// state can be someone's data and the message lands in a log.
 pub(crate) fn from_text<T: DeserializeOwned>(text: &str) -> Result<T> {
     let mut options = serde_saphyr::Options::default();
     options.strict_booleans = true;
+    options.merge_keys = serde_saphyr::MergeKeyPolicy::Error;
+    options.reject_unsupported_tags = true;
+    options.ignore_binary_tag_for_string = true;
+    options.with_snippet = false;
     serde_saphyr::from_str_with_options(text, options).map_err(|e| Error::Syntax(e.to_string()))
+}
+
+/// Refuse an id that is not a name (`docs/jud.md`, Names): a rubric's or a
+/// cases document's `id`, a case's `id`, a recording's `case`. A name can
+/// name a file and a reference; a path or a blank cannot.
+pub(crate) fn check_name(field: &str, name: &str) -> Result<()> {
+    if crate::eval::is_name(name) {
+        return Ok(());
+    }
+    Err(Error::Invalid {
+        field: field.to_owned(),
+        reason: format!(
+            "{:?} is not a name: letters, digits, `.`, `_` and `-`, starting with a letter or a digit",
+            crate::answer::sanitize_server_str(name)
+        ),
+    })
 }
 
 pub(crate) fn to_yaml<T: Serialize>(value: &T) -> Result<String> {
     serde_saphyr::to_string(value).map_err(|e| Error::Syntax(e.to_string()))
 }
 
-/// The minor version declared: 0 for `jud: 1` or `1.0`, 1 for `jud: 1.1`.
+/// The minor version declared: 0 for `jud: 1` or `1.0`, 1 for `jud: 1.1`,
+/// 2 for `jud: 1.2`.
 pub(crate) fn check_version(found: Option<&Value>) -> Result<u64> {
     let Some(value) = found else {
         return Err(Error::Missing { field: "jud" });
@@ -202,6 +231,7 @@ pub(crate) fn check_version(found: Option<&Value>) -> Result<u64> {
     match value.as_f64() {
         Some(1.0) => Ok(0),
         Some(1.1) if MINOR >= 1 => Ok(1),
+        Some(1.2) if MINOR >= 2 => Ok(2),
         _ => Err(Error::Version {
             found: value.to_string(),
         }),
@@ -227,10 +257,10 @@ pub(crate) fn some<'de, D: Deserializer<'de>, T: DeserializeOwned>(
 
 /// The `jud` value a writer puts on a document that needs `minor`.
 pub(crate) fn version_value(minor: u64) -> Value {
-    if minor == 0 {
-        Value::from(VERSION)
-    } else {
-        Value::from(1.1)
+    match minor {
+        0 => Value::from(VERSION),
+        1 => Value::from(1.1),
+        _ => Value::from(1.2),
     }
 }
 
@@ -332,7 +362,7 @@ mod tests {
         assert!(matches!(err, Error::Missing { field: "jud" }), "{err}");
         let err = parse("jud: 2\nkind: rubric\n").unwrap_err();
         assert!(matches!(err, Error::Version { .. }), "{err}");
-        let err = parse("jud: 1.2\nkind: rubric\n").unwrap_err();
+        let err = parse("jud: 1.3\nkind: rubric\n").unwrap_err();
         assert!(matches!(err, Error::Version { .. }), "{err}");
         let err = parse("jud: \"1\"\nkind: rubric\n").unwrap_err();
         assert!(
@@ -348,7 +378,9 @@ mod tests {
     }
 
     #[test]
-    fn both_versions_are_read() {
+    fn every_version_is_read() {
+        assert_eq!(check_version(Some(&Value::from(1.2))).unwrap(), 2);
+        assert_eq!(version_value(2), Value::from(1.2));
         assert_eq!(check_version(Some(&Value::from(1))).unwrap(), 0);
         assert_eq!(check_version(Some(&Value::from(1.0))).unwrap(), 0);
         assert_eq!(check_version(Some(&Value::from(1.1))).unwrap(), 1);
