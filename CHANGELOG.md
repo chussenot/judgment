@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-06
+
 ### Changed
 
 - The examples' recordings live under `examples/recordings/<example>/`,
