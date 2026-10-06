@@ -11,14 +11,7 @@ use serde_json::Value;
 
 use crate::{EXIT_BACKEND, EXIT_USAGE, config};
 
-pub(crate) fn run(path: &str, rest: &[String]) -> ExitCode {
-    if let Some(extra) = rest.first() {
-        eprintln!(
-            "jud: unexpected argument `{extra}`; the state comes from stdin, not an argument"
-        );
-        eprint!("{}", crate::USAGE);
-        return ExitCode::from(EXIT_USAGE);
-    }
+pub(crate) fn run(path: &str) -> ExitCode {
     match evaluate(path) {
         Ok(verdicts) => {
             println!("{verdicts}");

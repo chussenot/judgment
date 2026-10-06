@@ -6,6 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::missing_panics_doc)]
 
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -375,5 +376,173 @@ fn a_malformed_configuration_file_is_refused_by_name() {
         stderr(&out).contains("is not a jud configuration"),
         "{}",
         stderr(&out)
+    );
+}
+
+/// The command tree as the binary itself describes it: every subcommand
+/// named by `jud --help`, and for each (the root included) every long flag
+/// its `--help` lists. Read from the help rather than written out, so a
+/// subcommand or a flag added later is covered without this test moving.
+fn command_tree(config_home: &Path) -> Vec<(Vec<String>, Vec<String>)> {
+    fn section<'a>(help: &'a str, heading: &str) -> impl Iterator<Item = &'a str> {
+        help.lines()
+            .skip_while(move |l| l.trim_end() != heading)
+            .skip(1)
+            .take_while(|l| l.starts_with("  "))
+    }
+    fn long_flags(help: &str) -> Vec<String> {
+        section(help, "Options:")
+            .filter_map(|l| l.split_whitespace().find(|w| w.starts_with("--")))
+            .map(|w| w.trim_end_matches(',').to_owned())
+            .collect()
+    }
+    let root = jud(&["--help"], "", &[], config_home);
+    assert!(root.status.success(), "{}", stderr(&root));
+    let root_help = stdout(&root);
+    let mut tree = vec![(Vec::new(), long_flags(&root_help))];
+    for line in section(&root_help, "Commands:") {
+        let name = line.split_whitespace().next().unwrap().to_owned();
+        // `jud help <sub>` rather than `jud <sub> --help`: clap's own `help`
+        // command takes no flag, and this form covers it too.
+        let out = jud(&["help", &name], "", &[], config_home);
+        assert!(out.status.success(), "`jud help {name}`: {}", stderr(&out));
+        tree.push((vec![name], long_flags(&stdout(&out))));
+    }
+    tree
+}
+
+/// The names a generated completion script offers, as opposed to the ones
+/// it merely mentions: `script.contains("check")` would pass on the word in
+/// any description. Each generator has its own structure, so each has its
+/// own reader.
+fn completion_candidates(shell: &str, script: &str) -> HashSet<String> {
+    fn ident(s: &str) -> String {
+        s.chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+            .collect()
+    }
+    let mut out = HashSet::new();
+    for line in script.lines() {
+        let line = line.trim();
+        match shell {
+            // One `opts="config check … --help --version"` per command node.
+            "bash" => {
+                if let Some(list) = line
+                    .strip_prefix("opts=\"")
+                    .and_then(|r| r.strip_suffix('"'))
+                {
+                    out.extend(list.split_whitespace().map(str::to_owned));
+                }
+            }
+            // `'check:desc'`, `'--state=[desc]'`, `'(--cases)--state-file=[desc]'`.
+            "zsh" => {
+                if let Some(rest) = line.strip_prefix('\'') {
+                    let rest = match rest.strip_prefix('(') {
+                        Some(r) => r.split_once(')').map_or(r, |(_, tail)| tail),
+                        None => rest,
+                    };
+                    let name = ident(rest.trim_start_matches('*'));
+                    if !name.is_empty() {
+                        out.insert(name);
+                    }
+                }
+            }
+            // `-a "check"` offers a subcommand, `-l state` a long flag; the
+            // description after ` -d ` is prose and is cut off first.
+            "fish" => {
+                let head = line.split_once(" -d ").map_or(line, |(h, _)| h);
+                out.extend(head.split(" -a \"").skip(1).map(ident));
+                out.extend(
+                    head.split(" -l ")
+                        .skip(1)
+                        .map(|p| format!("--{}", ident(p))),
+                );
+            }
+            // `cand check 'desc'` / `cand --state 'desc'`.
+            "elvish" => {
+                if let Some(rest) = line.strip_prefix("cand ") {
+                    out.insert(ident(rest));
+                }
+            }
+            // `[CompletionResult]::new('check', 'check', …)`.
+            "powershell" => {
+                if let Some((_, rest)) = line.split_once("::new('") {
+                    out.insert(ident(rest));
+                }
+            }
+            other => panic!("no candidate reader for {other}"),
+        }
+    }
+    out
+}
+
+const SHELLS: [&str; 5] = ["bash", "zsh", "fish", "elvish", "powershell"];
+
+/// Why `completion` is a command rather than scripts checked in: it is
+/// generated from the tree clap parses with, so it cannot drift. Asserted
+/// directly, every subcommand and every long flag offered by every shell,
+/// rather than as a snapshot that would need updating on every change.
+#[test]
+fn the_completion_script_offers_every_subcommand_and_flag_the_binary_has() {
+    let home = config_home();
+    let tree = command_tree(&home);
+    let subcommands = tree.len() - 1;
+    assert!(subcommands >= 4, "walked too little of the tree: {tree:?}");
+    for shell in SHELLS {
+        let out = jud(&["completion", shell], "", &[], &home);
+        assert!(out.status.success(), "{shell}: {}", stderr(&out));
+        let script = stdout(&out);
+        assert!(
+            script.lines().count() > 20,
+            "{shell} produced a suspiciously short script"
+        );
+        let offered = completion_candidates(shell, &script);
+        for (path, flags) in &tree {
+            for name in path.iter().chain(flags.iter()) {
+                assert!(
+                    offered.contains(name),
+                    "{shell} completion does not offer `{name}` (from `jud {}`): {offered:?}",
+                    path.join(" ")
+                );
+            }
+        }
+    }
+}
+
+/// A shell clap cannot generate for is a usage error that names the ones it
+/// can, as is no shell at all; neither is a backend failure.
+#[test]
+fn an_unknown_shell_is_a_usage_error_naming_the_known_ones() {
+    let home = config_home();
+    let out = jud(&["completion", "tcsh"], "", &[], &home);
+    assert_eq!(out.status.code(), Some(2));
+    let err = stderr(&out);
+    assert!(err.contains("tcsh"), "{err}");
+    for shell in SHELLS {
+        assert!(
+            err.contains(shell),
+            "the possible values should name {shell}: {err}"
+        );
+    }
+    assert!(stdout(&out).is_empty(), "nothing on stdout for an error");
+    let none = jud(&["completion"], "", &[], &home);
+    assert_eq!(none.status.code(), Some(2));
+    assert!(stderr(&none).contains("<SHELL>"), "{}", stderr(&none));
+}
+
+/// The script is text generation only: no key, no configuration file, no
+/// stdin and no network are consulted, so a shell profile can source it
+/// before anything is set up.
+#[test]
+fn completion_needs_no_configuration_and_reads_no_stdin() {
+    let home = config_home();
+    std::fs::write(home.join("jud/config.yaml"), "not: [valid").unwrap();
+    let out = jud(&["completion", "bash"], "", &[], &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stderr(&out).is_empty(), "{}", stderr(&out));
+    assert!(
+        stdout(&out).contains("complete -F _jud"),
+        "{}",
+        stdout(&out)
     );
 }

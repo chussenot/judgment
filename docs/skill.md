@@ -17,7 +17,7 @@ It ships as a [Claude Code plugin](https://code.claude.com/docs/en/plugins), `ju
 ```sh
 claude plugin marketplace add chussenot/judgment   # once: this repository is the marketplace
 claude plugin install jud@judgment                 # the plugin; --scope project enables it for everyone in a repository
-mise use -g github:chussenot/judgment@latest       # the `jud` command the plugin checks with (or cargo install judgment --features jud)
+mise use -g github:chussenot/judgment@latest       # the `jud` command the plugin checks with (or cargo install judgment --features cli)
 ```
 
 Or interactively: `/plugin marketplace add chussenot/judgment`, then `/plugin install jud@judgment`. The plugin has no dependency beyond the `jud` command: with none on `PATH`, its script builds one from a judgment checkout named by `JUDGMENT_DIR`, from the project when the project is this crate, or from the checkout the plugin sits in. To work on the plugin itself, add the checkout as a local marketplace (`/plugin marketplace add ./` from the repository root) and reload with `/reload-plugins` after an edit; a plugin loaded from a local marketplace is read in place, not copied. The plugin is not published with the crate (`Cargo.toml` excludes `plugins/`); the `jud` binary is.
@@ -47,10 +47,10 @@ The skill triggers on a task that touches a `.jud` file, a rubric, typed questio
 
 ## The `jud` command
 
-The checker is `src/bin/jud.rs`, a binary of this crate behind the `jud` feature. It is the crate's reader as a command, so what it accepts, the crate accepts, and what it refuses, it refuses with the same message.
+The checker is the `jud` binary (`src/bin/jud/`, feature `cli`). It is the crate's reader as a command, so what it accepts, the crate accepts, and what it refuses, it refuses with the same message.
 
 ```sh
-cargo run -q --features jud --bin jud -- check examples/jud/*.jud examples/recordings/jud_calibration/*.jud
+cargo run -q --features cli --bin jud -- check examples/jud/*.jud examples/recordings/jud_calibration/*.jud
 mise run jud:check                      # the same, over the examples
 mise run jud:check -- path/to/a.jud     # over the files given
 mise use -g github:chussenot/judgment@latest   # a `jud` on PATH, from the release tarball (docs/cli.md)
@@ -72,8 +72,8 @@ recording examples/recordings/jud_calibration/receipt.jud: case receipt, jud/v1.
 `jud lower RUBRIC` prints the request a rubric lowers to, as the questions map the wire carries, for one state (`--state JSON` or `--state-file PATH`, with `--options JSON` for a Choice whose options come with the request) or for every case of a cases document (`--cases FILE`). It is how a `when`, a `part_when` or an `options_from` is seen rather than guessed: a question missing from a case's request cannot be labelled for that case, and a part missing from the instructions was left out on purpose.
 
 ```sh
-cargo run -q --features jud --bin jud -- lower examples/jud/routing.jud --cases examples/jud/routing-cases.jud
-cargo run -q --features jud --bin jud -- lower examples/jud/routing.jud \
+cargo run -q --features cli --bin jud -- lower examples/jud/routing.jud --cases examples/jud/routing-cases.jud
+cargo run -q --features cli --bin jud -- lower examples/jud/routing.jud \
   --state '{"message": {"text": "hi"}, "customer": {"open_tickets": [{"id": "T-1"}]}}' \
   --options '{"desk": {"billing": "Invoices"}, "duplicate_of": {"T-1": "Locked out"}}'
 ```

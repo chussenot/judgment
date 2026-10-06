@@ -262,9 +262,12 @@ arm64, statically linked) and Apple-silicon macOS:
 mise use -g github:chussenot/judgment@latest
 ```
 
-Or `cargo install judgment --features jud`. [The jud command
-line](docs/cli.md) has the install by hand with checksums, the configuration
-file, the exit status and the other subcommands.
+Or `cargo install judgment --features cli`. `jud completion <shell>` prints
+a completion script for bash, zsh, fish, elvish or PowerShell, generated from
+the command tree the binary parses with. [The jud command line](docs/cli.md)
+has the install by hand with checksums, where each shell wants its
+completions, the configuration file, the exit status and the other
+subcommands.
 
 ## Why
 

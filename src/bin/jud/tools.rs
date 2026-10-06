@@ -5,6 +5,7 @@
 //! against the request it answers; `lower` prints the request one state
 //! produces, so a `when` or a `part_when` can be seen rather than guessed.
 
+use clap::ValueHint;
 use judgment::Questions;
 use judgment::eval::Recording;
 use judgment::eval::canonical;
@@ -55,10 +56,8 @@ fn load(paths: &[String]) -> (Vec<Loaded>, usize) {
     (loaded, errors)
 }
 
-pub(crate) fn check(paths: &[String]) -> Fallible<bool> {
-    if paths.is_empty() {
-        return Err("check needs at least one file".into());
-    }
+/// True when every document was read; a refusal is printed as it happens.
+pub(crate) fn check(paths: &[String]) -> bool {
     let (loaded, mut errors) = load(paths);
     let rubrics: Vec<(&str, &Rubric)> = loaded
         .iter()
@@ -94,7 +93,7 @@ pub(crate) fn check(paths: &[String]) -> Fallible<bool> {
     }
     let documents = loaded.len() + errors;
     println!("{documents} documents, {errors} refused");
-    Ok(errors == 0)
+    errors == 0
 }
 
 fn find_rubric<'a>(
@@ -212,25 +211,44 @@ fn print_recording(l: &Loaded, recording: &Recording, bound: &[(&Cases, &Rubric)
     true
 }
 
-pub(crate) fn lower(args: &[String]) -> Fallible<bool> {
-    let Some(rubric_path) = args.first() else {
-        return Err("lower needs a rubric".into());
+/// `jud lower RUBRIC`: the state is a literal, a file, or every case of a
+/// Cases document; with none, the empty object, which shows what a rubric
+/// asks before any `when` holds.
+#[derive(clap::Args)]
+pub(crate) struct Lower {
+    /// The Rubric document to lower.
+    #[arg(value_name = "RUBRIC", value_hint = ValueHint::FilePath)]
+    rubric: String,
+    /// The JSON state, inline.
+    #[arg(long, value_name = "JSON", conflicts_with_all = ["state_file", "cases"])]
+    state: Option<String>,
+    /// The JSON state, read from a file.
+    #[arg(long, value_name = "PATH", conflicts_with = "cases", value_hint = ValueHint::FilePath)]
+    state_file: Option<String>,
+    /// Supplied options for `options_from: request` questions, as a JSON
+    /// object of question key to option key to text.
+    #[arg(long, value_name = "JSON", conflicts_with = "cases")]
+    options: Option<String>,
+    /// A Cases document: lower every case it holds against the rubric.
+    #[arg(long, value_name = "FILE", value_hint = ValueHint::FilePath)]
+    cases: Option<String>,
+}
+
+pub(crate) fn lower(args: &Lower) -> Fallible<bool> {
+    let rubric = Rubric::parse(&std::fs::read_to_string(&args.rubric)?)?;
+    let state: Option<Value> = match (&args.state, &args.state_file) {
+        (Some(json), _) => Some(serde_json::from_str(json)?),
+        (None, Some(path)) => Some(serde_json::from_str(&std::fs::read_to_string(path)?)?),
+        (None, None) => None,
     };
-    let rubric = Rubric::parse(&std::fs::read_to_string(rubric_path)?)?;
-    let mut state: Option<Value> = None;
-    let mut options = Supplied::default();
-    let mut cases: Option<Cases> = None;
-    let mut rest = args[1..].iter();
-    while let Some(flag) = rest.next() {
-        let value = rest.next().ok_or_else(|| format!("{flag} needs a value"))?;
-        match flag.as_str() {
-            "--state" => state = Some(serde_json::from_str(value)?),
-            "--state-file" => state = Some(serde_json::from_str(&std::fs::read_to_string(value)?)?),
-            "--options" => options = serde_json::from_str(value)?,
-            "--cases" => cases = Some(Cases::parse(&std::fs::read_to_string(value)?)?),
-            other => return Err(format!("unknown flag {other}").into()),
-        }
-    }
+    let options: Supplied = match &args.options {
+        Some(json) => serde_json::from_str(json)?,
+        None => Supplied::default(),
+    };
+    let cases: Option<Cases> = match &args.cases {
+        Some(path) => Some(Cases::parse(&std::fs::read_to_string(path)?)?),
+        None => None,
+    };
     match (cases, state) {
         (Some(cases), _) => {
             for (i, case) in cases.cases.iter().enumerate() {
