@@ -6,8 +6,8 @@ use serde_json::Value;
 
 use super::rubric::level_index;
 use super::{
-    Error, Result, Rubric, Supplied, check_name, check_version, extensions, from_text,
-    require_minor, some, to_yaml, version_value,
+    API_VERSION, Envelope, Error, Metadata, Result, Rubric, Supplied, check_name, from_text,
+    refuse_extra, some, to_yaml,
 };
 use crate::answer::Response;
 use crate::eval::{Judgment, canonical};
@@ -17,16 +17,18 @@ use crate::question::{Question, Questions};
 /// tuned on (`docs/jud.md`, cases).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Cases {
-    /// A name for the set; [`fingerprint`](Self::fingerprint) is exact.
-    pub id: Option<String>,
-    /// The rubric the labels are for, by id or fingerprint ([`Cases::bind`]).
-    pub rubric: Option<String>,
-    /// Where the cases came from, for the person reading them.
+    /// `metadata.name`: a name for the set; [`fingerprint`](Self::fingerprint) is exact.
+    pub name: String,
+    /// `metadata.description`: where the cases came from, for the person reading them.
     pub description: Option<String>,
-    /// The cases, in document order.
+    /// `metadata.labels`, kept as read and part of no fingerprint.
+    pub labels: IndexMap<String, String>,
+    /// `metadata.annotations`, kept as read and part of no fingerprint.
+    pub annotations: IndexMap<String, String>,
+    /// `spec.rubric`: the rubric the labels are for, by name or fingerprint ([`Cases::bind`]).
+    pub rubric: Option<String>,
+    /// `spec.cases`, in document order.
     pub cases: Vec<Case>,
-    /// The top-level `x-` keys (1.1), kept as read and part of no fingerprint.
-    pub extensions: IndexMap<String, Value>,
 }
 
 /// One labelled state.
@@ -41,7 +43,7 @@ pub struct Case {
     /// The right answer, by question id; a question left out is not graded.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub expect: IndexMap<String, Expect>,
-    /// Options supplied for this case's request (1.1), as [`Rubric::lower`]
+    /// Options supplied for this case's request, as [`Rubric::lower`]
     /// takes them: with them, a case is a complete request.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub options: Supplied,
@@ -164,18 +166,22 @@ impl Case {
 
 #[derive(Deserialize)]
 struct RawCases {
-    #[serde(default)]
-    jud: Option<Value>,
-    kind: String,
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    rubric: Option<String>,
-    #[serde(default)]
-    description: Option<String>,
-    cases: Vec<RawCase>,
+    #[serde(rename = "apiVersion")]
+    _api_version: String,
+    #[serde(rename = "kind")]
+    _kind: String,
+    metadata: Metadata,
+    spec: RawCasesSpec,
     #[serde(flatten)]
     rest: IndexMap<String, Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawCasesSpec {
+    #[serde(default)]
+    rubric: Option<String>,
+    cases: Vec<RawCase>,
 }
 
 /// A case as read; `options` counts by its presence ([`some`]).
@@ -197,47 +203,43 @@ struct RawCase {
 
 #[derive(Serialize)]
 struct CasesDoc<'a> {
-    jud: Value,
+    #[serde(rename = "apiVersion")]
+    api_version: &'static str,
     kind: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    id: Option<&'a str>,
+    metadata: Metadata,
+    spec: CasesSpec<'a>,
+}
+
+#[derive(Serialize)]
+struct CasesSpec<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     rubric: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<&'a str>,
     cases: &'a [Case],
-    #[serde(flatten)]
-    extensions: &'a IndexMap<String, Value>,
 }
 
 impl Cases {
     /// Parse a `cases` document, YAML or JSON. The labels are checked by
     /// [`Cases::bind`], since the document need not name its rubric.
     pub fn parse(text: &str) -> Result<Self> {
+        from_text::<Envelope>(text)?.expect_kind("Cases")?;
         let raw: RawCases = from_text(text)?;
-        let declared = check_version(raw.jud.as_ref())?;
-        if raw.kind != "cases" {
-            return Err(Error::Kind { found: raw.kind });
-        }
-        let extensions = extensions(raw.rest, "cases")?;
-        if raw.cases.is_empty() {
+        refuse_extra(&raw.rest)?;
+        raw.metadata.refuse("version", "Cases")?;
+        check_name("metadata.name", &raw.metadata.name)?;
+        if raw.spec.cases.is_empty() {
             return Err(Error::Invalid {
-                field: "cases".to_owned(),
+                field: "spec.cases".to_owned(),
                 reason: "a cases document needs at least one case".to_owned(),
             });
         }
-        let feature = extensions.keys().next().cloned().or_else(|| {
-            raw.cases
-                .iter()
-                .position(|c| c.options.is_some())
-                .map(|i| format!("cases.{i}.options"))
-        });
-        require_minor(declared, feature)?;
         let cases = Self {
-            id: raw.id,
-            rubric: raw.rubric,
-            description: raw.description,
+            name: raw.metadata.name,
+            description: raw.metadata.description,
+            labels: raw.metadata.labels,
+            annotations: raw.metadata.annotations,
+            rubric: raw.spec.rubric,
             cases: raw
+                .spec
                 .cases
                 .into_iter()
                 .map(|c| Case {
@@ -249,14 +251,10 @@ impl Cases {
                     note: c.note,
                 })
                 .collect(),
-            extensions,
         };
-        if let Some(id) = &cases.id {
-            check_name("id", id)?;
-        }
         for (index, case) in cases.cases.iter().enumerate() {
             if let Some(id) = &case.id {
-                check_name(&format!("cases.{index}.id"), id).map_err(|e| Error::Case {
+                check_name(&format!("spec.cases.{index}.id"), id).map_err(|e| Error::Case {
                     case: format!("#{index}"),
                     reason: e.to_string(),
                 })?;
@@ -287,26 +285,22 @@ impl Cases {
         Ok(cases)
     }
 
-    /// The first 1.1 feature used, as a field path.
-    fn feature(&self) -> Option<String> {
-        self.extensions.keys().next().cloned().or_else(|| {
-            self.cases
-                .iter()
-                .position(|c| !c.options.is_empty())
-                .map(|i| format!("cases.{i}.options"))
-        })
-    }
-
-    /// The cases as YAML, declaring the lowest version that reads it.
+    /// The cases as a YAML document.
     pub fn to_yaml(&self) -> Result<String> {
         to_yaml(&CasesDoc {
-            jud: version_value(u64::from(self.feature().is_some())),
-            kind: "cases",
-            id: self.id.as_deref(),
-            rubric: self.rubric.as_deref(),
-            description: self.description.as_deref(),
-            cases: &self.cases,
-            extensions: &self.extensions,
+            api_version: API_VERSION,
+            kind: "Cases",
+            metadata: Metadata {
+                name: self.name.clone(),
+                version: None,
+                description: self.description.clone(),
+                labels: self.labels.clone(),
+                annotations: self.annotations.clone(),
+            },
+            spec: CasesSpec {
+                rubric: self.rubric.as_deref(),
+                cases: &self.cases,
+            },
         })
     }
 
@@ -321,14 +315,14 @@ impl Cases {
     /// when named, is the rubric's id or fingerprint.
     pub fn bind(&self, rubric: &Rubric) -> Result<()> {
         if let Some(named) = &self.rubric
-            && *named != rubric.id
+            && *named != rubric.name
             && *named != rubric.fingerprint()
         {
             return Err(Error::Invalid {
                 field: "rubric".to_owned(),
                 reason: format!(
                     "the cases are for `{named}`, not for `{}` ({})",
-                    rubric.id,
+                    rubric.name,
                     rubric.fingerprint()
                 ),
             });
@@ -467,58 +461,77 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::float_cmp)]
 
     use super::*;
+
+    /// A fragment written at top level, moved under `spec.cases[0]`.
+    fn under_spec(fragment: &str) -> String {
+        fragment
+            .lines()
+            .map(|l| {
+                if l.is_empty() {
+                    "\n".to_owned()
+                } else {
+                    format!("  {l}\n")
+                }
+            })
+            .collect()
+    }
+
     use crate::Fake;
     use crate::backend::SystemOne;
     const RUBRIC: &str = r"
-jud: 1
-kind: rubric
-id: triage
-questions:
-  actionable:
-    type: noul
-    instructions: Does `message` ask for something to be done?
-  owner:
-    type: choice
-    instructions: Who should handle `message`?
-    criteria: {billing: null, support: null, none_of_these: null}
-  tone:
-    type: score
-    instructions: How upset is the writer?
-    criteria: [calm, annoyed, angry]
-  handoff:
-    type: noul
-    instructions: Has the user asked for a person?
+apiVersion: jud/v1.3
+kind: Rubric
+metadata:
+  name: triage
+spec:
+  questions:
+    actionable:
+      type: noul
+      instructions: Does `message` ask for something to be done?
+    owner:
+      type: choice
+      instructions: Who should handle `message`?
+      criteria: {billing: null, support: null, none_of_these: null}
+    tone:
+      type: score
+      instructions: How upset is the writer?
+      criteria: [calm, annoyed, angry]
+    handoff:
+      type: noul
+      instructions: Has the user asked for a person?
 ";
 
     const CASES: &str = r"
-jud: 1
-kind: cases
-id: cases-2026-10
-rubric: triage
-cases:
-  - id: refund
-    state: {message: I want my money back, now.}
-    expect:
-      actionable: true
-      owner: billing
-      tone: angry
-    tags: [billing]
-  - state: {message: thanks, all good}
-    expect:
-      actionable: false
-      tone: 0
-  - id: chat
-    state:
-      - {role: user, text: hi}
-      - {role: assistant, text: hello, how can I help?}
-      - {role: user, text: get me a human}
-    expect:
-      handoff: {from_turn: 2}
-      owner: support
-  - id: never
-    state: [{role: user, text: hi}]
-    expect:
-      handoff: {from_turn: null}
+apiVersion: jud/v1.3
+kind: Cases
+metadata:
+  name: cases-2026-10
+spec:
+  rubric: triage
+  cases:
+    - id: refund
+      state: {message: I want my money back, now.}
+      expect:
+        actionable: true
+        owner: billing
+        tone: angry
+      tags: [billing]
+    - state: {message: thanks, all good}
+      expect:
+        actionable: false
+        tone: 0
+    - id: chat
+      state:
+        - {role: user, text: hi}
+        - {role: assistant, text: hello, how can I help?}
+        - {role: user, text: get me a human}
+      expect:
+        handoff: {from_turn: 2}
+        owner: support
+    - id: never
+      state: [{role: user, text: hi}]
+      expect:
+        handoff: {from_turn: null}
 ";
 
     #[test]
@@ -569,7 +582,7 @@ cases:
         ];
         for (expect, needle) in bad {
             let text = format!(
-                "jud: 1\nkind: cases\ncases:\n  - id: c\n    state: {{m: x}}\n    {expect}\n"
+                "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - id: c\n      state: {{m: x}}\n      {expect}\n"
             );
             let err = Cases::parse(&text).unwrap().bind(&rubric).unwrap_err();
             assert!(
@@ -577,20 +590,19 @@ cases:
                 "{expect}: {err}"
             );
         }
-        let text = "jud: 1\nkind: cases\ncases:\n  - id: c\n    state: [a, b]\n    expect: {handoff: {from_turn: 2}}\n";
+        let text = "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - id: c\n      state: [a, b]\n      expect: {handoff: {from_turn: 2}}\n";
         let err = Cases::parse(text).unwrap().bind(&rubric).unwrap_err();
         assert!(
             matches!(&err, Error::Case { reason, .. } if reason.contains("past the last turn")),
             "{err}"
         );
-        let text =
-            "jud: 1\nkind: cases\ncases:\n  - id: c\n    state: 1\n  - id: c\n    state: 2\n";
+        let text = "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - id: c\n      state: 1\n    - id: c\n      state: 2\n";
         let err = Cases::parse(text).unwrap_err();
         assert!(
             matches!(&err, Error::Case { reason, .. } if reason.contains("same id")),
             "{err}"
         );
-        let text = "jud: 1\nkind: cases\ncases:\n  - state: 1\n    expects: {}\n";
+        let text = "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: 1\n      expects: {}\n";
         let err = Cases::parse(text).unwrap_err();
         assert!(
             matches!(err, Error::Syntax(_)),
@@ -634,7 +646,7 @@ cases:
         let again = Cases::parse(&yaml).unwrap();
         assert_eq!(again, cases);
         let mut renamed = cases.clone();
-        renamed.id = Some("other".to_owned());
+        renamed.name = "other".to_owned();
         renamed.description = Some("x".to_owned());
         assert_eq!(renamed.fingerprint(), cases.fingerprint());
         let mut edited = cases.clone();
@@ -692,54 +704,49 @@ cases:
     }
 
     const ROUTING: &str = r"
-jud: 1.1
-kind: rubric
-id: support-routing
-questions:
-  desk:
-    type: choice
-    instructions: Which desk should take `message`?
-    criteria: {none_of_these: Not clearly any desk}
-    options_from: request
-  refund_request:
-    type: noul
-    instructions: Does `message` ask for a refund for one of `customer.recent_orders`?
-    when: customer.recent_orders
+apiVersion: jud/v1.3
+kind: Rubric
+metadata:
+  name: support-routing
+spec:
+  questions:
+    desk:
+      type: choice
+      instructions: Which desk should take `message`?
+      criteria: {none_of_these: Not clearly any desk}
+      options_from: request
+    refund_request:
+      type: noul
+      instructions: Does `message` ask for a refund for one of `customer.recent_orders`?
+      when: customer.recent_orders
 ";
 
     #[test]
     fn a_case_supplies_the_options_its_request_needs() {
         let rubric = Rubric::parse(ROUTING).unwrap();
-        let text = "jud: 1.1\nkind: cases\nx-source: {export: 2026-10-04}\ncases:\n  - id: refund\n    state: {message: {text: refund please}, customer: {recent_orders: [1042]}}\n    options:\n      desk: {billing: Invoices, technical: Errors}\n    expect: {desk: billing, refund_request: true}\n";
+        let text = "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\n  annotations: {export: \"2026-10-04\"}\nspec:\n  cases:\n    - id: refund\n      state: {message: {text: refund please}, customer: {recent_orders: [1042]}}\n      options:\n        desk: {billing: Invoices, technical: Errors}\n      expect: {desk: billing, refund_request: true}\n";
         let cases = Cases::parse(text).unwrap();
         cases.bind(&rubric).unwrap();
-        assert_eq!(cases.extensions["x-source"]["export"], "2026-10-04");
+        assert_eq!(cases.annotations["export"], "2026-10-04");
         let asked = cases.cases[0].request(&rubric).unwrap();
         let ids: Vec<&str> = asked.ids().collect();
         assert_eq!(ids, ["desk", "refund_request"]);
         let yaml = cases.to_yaml().unwrap();
-        assert!(yaml.starts_with("jud: 1.1\n"), "{yaml}");
+        assert!(
+            yaml.starts_with("apiVersion: jud/v1.3\nkind: Cases\n"),
+            "{yaml}"
+        );
         assert_eq!(Cases::parse(&yaml).unwrap(), cases);
         let mut bare = cases.clone();
-        bare.extensions.clear();
+        bare.annotations.clear();
         assert_eq!(bare.fingerprint(), cases.fingerprint());
-        let err = Cases::parse(&text.replacen("jud: 1.1", "jud: 1", 1).replacen(
-            "x-source: {export: 2026-10-04}\n",
-            "",
-            1,
-        ))
-        .unwrap_err();
-        assert!(
-            matches!(&err, Error::Invalid { field, .. } if field == "cases.0.options"),
-            "{err}"
-        );
     }
 
     #[test]
     fn a_label_must_name_a_question_the_case_asks() {
         let rubric = Rubric::parse(ROUTING).unwrap();
         let bind = |case: &str| {
-            Cases::parse(&format!("jud: 1.1\nkind: cases\ncases:\n  - id: c\n{case}"))
+            Cases::parse(&format!("apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - id: c\n{}", under_spec(case)))
                 .unwrap()
                 .bind(&rubric)
         };
@@ -771,16 +778,14 @@ questions:
     #[test]
     fn case_options_count_by_presence_and_have_the_shape_of_criteria() {
         let case = |options: &str| {
-            format!("jud: 1\nkind: cases\ncases:\n  - id: c\n    state: s\n{options}")
+            format!(
+                "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - id: c\n      state: s\n  {options}"
+            )
         };
-        let err = Cases::parse(&case("    options: {}\n")).unwrap_err();
-        assert!(
-            matches!(&err, Error::Invalid { field, .. } if field == "cases.0.options"),
-            "{err}"
-        );
+        Cases::parse(&case("    options: {}\n")).unwrap();
         let err = Cases::parse(&case("    options: null\n")).unwrap_err();
         assert!(matches!(err, Error::Syntax(_)), "{err}");
-        let v11 = |options: &str| case(options).replacen("jud: 1", "jud: 1.1", 1);
+        let v11 = |options: &str| case(options);
         for bad in [
             "    options: {desk: {billing: 3}}\n",
             "    options: {desk: {\"\": B}}\n",

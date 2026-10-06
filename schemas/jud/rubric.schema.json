@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/chussenot/judgment/schemas/jud/rubric.schema.json",
-  "title": ".jud rubric",
-  "description": "A rubric: questions in wire shape and wire order, the 1.1 declarations that make the request depend on the state, and the policy that reads the answers (docs/jud.md).",
+  "title": ".jud Rubric",
+  "description": "The questions a request sends and the policy an application reads the answers by (docs/jud.md). metadata takes name, version, description, labels and annotations.",
   "type": "object",
   "allOf": [
     {
@@ -10,186 +10,117 @@
     }
   ],
   "properties": {
-    "jud": true,
+    "apiVersion": true,
     "kind": {
-      "const": "rubric"
+      "const": "Rubric"
     },
-    "id": {
-      "$ref": "common.schema.json#/$defs/name"
+    "metadata": {
+      "$ref": "common.schema.json#/$defs/metadata"
     },
-    "version": {
-      "type": [
-        "string",
-        "integer"
-      ]
-    },
-    "description": {
-      "type": "string"
-    },
-    "questions": {
-      "type": "object",
-      "minProperties": 1,
-      "propertyNames": {
-        "minLength": 1
-      },
-      "additionalProperties": {
-        "$ref": "common.schema.json#/$defs/question"
-      }
-    },
-    "policy": {
-      "type": "object",
-      "description": "Gates by question id. Which fields fit which primitive is checked against the question: threshold for a Noul, confidence and fallback for a Choice or a Score.",
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "threshold": {
-            "$ref": "common.schema.json#/$defs/unit"
-          },
-          "confidence": {
-            "$ref": "common.schema.json#/$defs/unit"
-          },
-          "fallback": {
-            "type": "string"
-          },
-          "note": {
-            "type": "string"
-          },
-          "bands": {
-            "type": "array",
-            "minItems": 1,
-            "description": "1.1: confidence bands, highest bar first; not with confidence.",
-            "items": {
-              "type": "object",
-              "properties": {
-                "at_least": {
-                  "$ref": "common.schema.json#/$defs/unit"
-                },
-                "verdict": {
-                  "type": "string",
-                  "pattern": "\\S"
-                }
-              },
-              "required": [
-                "at_least",
-                "verdict"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "level_at_least": {
-            "description": "1.1: a Score's level threshold, by index or text.",
-            "oneOf": [
-              {
-                "type": "integer",
-                "minimum": 0
-              },
-              {
-                "type": "string",
-                "minLength": 1
-              }
-            ]
-          },
-          "strict": {
-            "type": "boolean",
-            "description": "1.1: compare with > instead of >= at every bar."
-          }
-        },
-        "additionalProperties": false,
-        "description": "One question's gate. Which fields fit which primitive is checked against the question: threshold for a Noul; confidence, bands and fallback for a Choice or a Score; level_at_least for a Score; strict for every bar. bands, level_at_least and strict are 1.1."
-      }
-    },
-    "tuning": {
+    "spec": {
       "type": "object",
       "properties": {
-        "cases": {
-          "type": "string"
+        "questions": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "$ref": "common.schema.json#/$defs/question"
+          }
         },
-        "model": {
-          "type": "string"
+        "policy": {
+          "type": "object",
+          "description": "Gates by question id. Which fields fit which primitive is checked against the question: threshold for a Noul, confidence and fallback for a Choice or a Score.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "threshold": {
+                "$ref": "common.schema.json#/$defs/unit"
+              },
+              "confidence": {
+                "$ref": "common.schema.json#/$defs/unit"
+              },
+              "fallback": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              },
+              "bands": {
+                "type": "array",
+                "minItems": 1,
+                "description": "confidence bands, highest bar first; not with confidence.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "at_least": {
+                      "$ref": "common.schema.json#/$defs/unit"
+                    },
+                    "verdict": {
+                      "type": "string",
+                      "pattern": "\\S"
+                    }
+                  },
+                  "required": [
+                    "at_least",
+                    "verdict"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "level_at_least": {
+                "description": "a Score's level threshold, by index or text.",
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                ]
+              },
+              "strict": {
+                "type": "boolean",
+                "description": "compare with > instead of >= at every bar."
+              }
+            },
+            "additionalProperties": false,
+            "description": "One question's gate. Which fields fit which primitive is checked against the question: threshold for a Noul; confidence, bands and fallback for a Choice or a Score; level_at_least for a Score; strict for every bar."
+          }
         },
-        "server": {
-          "type": "string"
-        },
-        "tuned_at": {
-          "$ref": "common.schema.json#/$defs/rfc3339"
+        "tuning": {
+          "type": "object",
+          "properties": {
+            "cases": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "server": {
+              "type": "string"
+            },
+            "tuned_at": {
+              "$ref": "common.schema.json#/$defs/rfc3339"
+            }
+          }
         }
-      }
+      },
+      "required": [
+        "questions"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
-    "jud",
+    "apiVersion",
     "kind",
-    "id",
-    "questions"
+    "metadata",
+    "spec"
   ],
-  "additionalProperties": false,
-  "patternProperties": {
-    "^x-": true
-  },
-  "if": {
-    "properties": {
-      "jud": {
-        "const": 1
-      }
-    },
-    "required": [
-      "jud"
-    ]
-  },
-  "then": {
-    "propertyNames": {
-      "not": {
-        "pattern": "^x-"
-      }
-    },
-    "properties": {
-      "questions": {
-        "additionalProperties": {
-          "not": {
-            "anyOf": [
-              {
-                "required": [
-                  "when"
-                ]
-              },
-              {
-                "required": [
-                  "part_when"
-                ]
-              },
-              {
-                "required": [
-                  "options_from"
-                ]
-              }
-            ]
-          }
-        }
-      },
-      "policy": {
-        "additionalProperties": {
-          "not": {
-            "anyOf": [
-              {
-                "required": [
-                  "bands"
-                ]
-              },
-              {
-                "required": [
-                  "level_at_least"
-                ]
-              },
-              {
-                "required": [
-                  "strict"
-                ]
-              }
-            ]
-          }
-        }
-      }
-    }
-  },
-  "$comment": "Under jud: 1 the 1.1 features (x- keys, when, part_when, options_from, bands, level_at_least, strict) are refused: a document that uses one declares jud: 1.1."
+  "additionalProperties": false
 }

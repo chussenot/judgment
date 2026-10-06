@@ -68,25 +68,27 @@ use judgment::{Fake, SystemOne};
 // The same questions as above, with the thresholds beside them, in a file
 // another tool can read (docs/jud.md). The policy is never sent to the model.
 const RUBRIC: &str = r"
-jud: 1.2
-kind: rubric
-id: inbox-triage
-questions:
-  department:
-    type: choice
-    instructions: Which team should handle `message`?
-    criteria:
-      billing: Payments, invoicing, refunds
-      technical: Bugs, outages, integrations
-  is_urgent:
-    type: noul
-    instructions: Does `message` convey urgency?
-policy:
-  department:
-    confidence: 0.7
-    fallback: technical
-  is_urgent:
-    threshold: 0.6
+apiVersion: jud/v1.3
+kind: Rubric
+metadata:
+  name: inbox-triage
+spec:
+  questions:
+    department:
+      type: choice
+      instructions: Which team should handle `message`?
+      criteria:
+        billing: Payments, invoicing, refunds
+        technical: Bugs, outages, integrations
+    is_urgent:
+      type: noul
+      instructions: Does `message` convey urgency?
+  policy:
+    department:
+      confidence: 0.7
+      fallback: technical
+    is_urgent:
+      threshold: 0.6
 ";
 
 #[tokio::main(flavor = "current_thread")]
@@ -121,10 +123,10 @@ checked as the builder checks questions, lowered to the same request, and its
 policy turns the answers into verdicts. The thresholds come from labelled cases
 rather than guesses: [the .jud format](docs/jud.md) describes the rubric, the
 cases and the recordings, and `examples/jud_calibration.rs` tunes a policy from
-them. The format is at version 1.2: every id is a name and never a path, the
-reader refuses what hides text from a reviewer (a merge key, a foreign tag), and
-a rubric's policy has a fingerprint of its own beside its questions', so a moved
-threshold is as visible as a changed question. The format is behind the `jud`
+them. Every id in a document is a name and never a path, the reader refuses
+what hides text from a reviewer (a merge key, a foreign tag), and a rubric's
+policy has a fingerprint of its own beside its questions', so a moved threshold
+is as visible as a changed question. The format is behind the `jud`
 feature, off by default. An agent writes these files with [the jud
 skill](docs/skill.md) (`.claude/skills/jud/`), which checks them with the
 crate's own reader: `cargo run --features jud --bin jud -- check a.jud`.

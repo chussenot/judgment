@@ -46,6 +46,8 @@ The model sees the questions. It never sees the policy. That line through the mi
 
 ## The three parts
 
+A rubric document is a manifest: `apiVersion: jud/v1.3`, `kind: Rubric`, a `metadata` block with the rubric's `name` (and a `version` or a `description` when the author keeps one), and a `spec` block that holds the three parts this section quotes: `questions`, `policy` and `tuning`. The envelope identifies the file; the three parts are the decision.
+
 ### Questions: what the model is asked
 
 The `questions` map is exactly what the wire carries, in the order the model sees it. There is no translation layer: a question in a rubric is the same object a request builder would send, so the API's documentation is the reference for every field, and the reader applies the same checks the builder applies before sending. A Choice with one option, a Score with eleven levels or a Noul that describes no outcome is refused when the file is read, not when the request fails.
@@ -131,7 +133,7 @@ The shape is as much about what is left out as what is in.
 
 ## Two fingerprints, and why
 
-A rubric's fingerprint is the fingerprint of its `questions` map alone, computed over canonical JSON so that any implementation gets the same bytes. It is the exact identity of what the model can be asked, unchanged by the id, the description, a comment, or the policy. A recording names the rubric it answers by it, and a cases document names the rubric its labels are for by it, when the id is not enough.
+A rubric's fingerprint is the fingerprint of its `questions` map alone, computed over canonical JSON so that any implementation gets the same bytes. It is the exact identity of what the model can be asked, unchanged by the name, the description, a label or an annotation, a comment, or the policy. A recording names the rubric it answers by it, and a cases document names the rubric its labels are for by it, when the name is not enough.
 
 That makes it deliberately not an integrity check of the decision. A rubric whose gate moved from `confidence: 0.45` to `0.30` has the same fingerprint, and an application that pins only it would accept a rewritten policy without noticing. So a rubric has a second fingerprint, the policy fingerprint, computed over the `policy` map alone. An application that must notice a change to what it does with an answer pins both. `tuning` is provenance and part of neither.
 
@@ -139,7 +141,7 @@ That makes it deliberately not an integrity check of the decision. A rubric whos
 |---|---|---|
 | A question's instructions, an option, a level | moves | unchanged |
 | A threshold, a bar, a band, a fallback, a gate's `note` | unchanged | moves |
-| The id, the description, the `tuning` block | unchanged | unchanged |
+| The name, the description, the labels and annotations, the `tuning` block | unchanged | unchanged |
 
 One thing neither sees: canonical JSON sorts keys, so reordering the questions or a Choice's options changes what the model sees without moving either fingerprint. That is a review's job, and one reason the file is meant to be read. In the crate, the two are `Rubric::fingerprint` and `Rubric::policy_fingerprint`.
 
@@ -156,7 +158,7 @@ let response = backend.answer(&state, "jev-latest", &questions).await?;
 let verdicts = rubric.apply(&questions, &response)?;
 ```
 
-The reader is strict on purpose. It refuses a field it does not know, so a document for a later version is refused whole rather than half-read. It refuses what hides text from the person reading the file: a merge key, a tag the YAML core schema does not define. It refuses an id that is not a [name](jud.md#names-12), so an id never reaches a file system as a path. What a reviewer approved is what the program runs.
+The reader is strict on purpose. It reads exactly one `apiVersion` and refuses a field it does not know, so a document for a later apiVersion is refused whole rather than half-read. It refuses what hides text from the person reading the file: a merge key, a tag the YAML core schema does not define. It refuses a name that is not a [name](jud.md#names), so a name never reaches a file system as a path. What a reviewer approved is what the program runs.
 
 ## How a rubric is written
 
@@ -183,4 +185,4 @@ A rubric is only as good as its questions, and the failure modes repeat.
 
 ## In the crate
 
-`judgment::jud` (feature `jud`, off by default) implements the rubric kind as `Rubric`: `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `lower`, `apply` and `gate`. [The .jud format](jud.md) specifies every field and reading rule; [decision 0014](decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) says why the three kinds share one format, [decision 0016](decisions/0016-jud-takes-minor-versions.md) why a request may depend on the state, and [decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) why the reader refuses what a reviewer cannot see. The README's second and third examples run a rubric against a `Fake` and against the hosted API; [`examples/jud/triage.jud`](../examples/jud/triage.jud) is the rubric this page quotes, with the cases it was tuned on beside it.
+`judgment::jud` (feature `jud`, off by default) implements the rubric kind as `Rubric`: `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `lower`, `apply` and `gate`. [The .jud format](jud.md) specifies every field and reading rule; [decision 0014](decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) says why the three kinds share one format, and [decision 0018](decisions/0018-jud-1-3-takes-the-manifest-envelope.md) why the envelope is a manifest's and the reader reads one apiVersion. The two records it supersedes hold reasoning that still stands: [decision 0016](decisions/0016-jud-takes-minor-versions.md) why a request may depend on the state, and [decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) why the reader refuses what a reviewer cannot see. The README's second and third examples run a rubric against a `Fake` and against the hosted API; [`examples/jud/triage.jud`](../examples/jud/triage.jud) is the rubric this page quotes, with the cases it was tuned on beside it.

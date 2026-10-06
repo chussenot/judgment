@@ -19,7 +19,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | The rules the code applies and why: the tolerant decoder, what the response check leaves unchecked, how an error body is read, what a per-call option replaces, how recordings are keyed, how a rubric is lowered | [How the crate is implemented](implementation.md) |
 | Which crate types carry speculative fan-out, confidence-gated routing, composite scoring and intent routing, and what the recordings teach about thresholds | [Patterns](patterns.md) and the examples under `examples/` |
 | How to test a decision with no key and no network, and grade recordings against labels | [Testing without the model](testing.md) |
-| How to keep the questions, the thresholds, the labelled cases and the recorded answers in files that name each other by content, and tune a threshold from them, including a request that depends on the state | [The .jud format](jud.md) and `examples/jud/` |
+| How to keep the questions, the thresholds, the labelled cases and the recorded answers in manifest-shaped files (`apiVersion`, `kind`, `metadata`, `spec`) that name each other by content, and tune a threshold from them, including a request that depends on the state | [The .jud format](jud.md) and `examples/jud/` |
 | Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](rubric.md) |
 | How an agent writes a `.jud` document and checks it with the crate's reader (`jud check`, `jud lower`), how the skill was tested, and how to install it in another project | [The jud skill](skill.md) and `.claude/skills/jud/` |
 | What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
@@ -32,8 +32,9 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | How a version is cut from the commits and published to crates.io, and what to set up once | [Releasing](releasing.md) |
 | Why releases are cut with cocogitto from Conventional Commits and published by CI from a tag | [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) |
 | Why the rubric, the cases and the recordings got one YAML format with content fingerprints | [Decision 0014](decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) |
-| Why the format takes minor versions, and what 1.1 adds: requests that depend on the state, bands and level gates, `x-` keys | [Decision 0016](decisions/0016-jud-takes-minor-versions.md) |
-| Why 1.2 refuses merge keys, foreign tags and path-shaped ids, keeps the document out of error messages, and gives the policy its own fingerprint | [Decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) |
+| Why a rubric's request may depend on the state (declarations, options supplied per request) and a gate may carry bands, a level threshold and strict bars; superseded by 0018, its versioning rule withdrawn | [Decision 0016](decisions/0016-jud-takes-minor-versions.md) |
+| Why the reader refuses merge keys, foreign tags and path-shaped ids, keeps the document out of error messages, and gives the policy its own fingerprint; superseded by 0018, its versioning rule withdrawn | [Decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) |
+| Why the `.jud` envelope is a Kubernetes manifest's and the reader reads exactly one `apiVersion`, and how the earlier keys map onto `metadata` and `spec` | [Decision 0018](decisions/0018-jud-1-3-takes-the-manifest-envelope.md) |
 | What changed in each release | [CHANGELOG](../CHANGELOG.md) |
 | Everything, as an agent or a model reads it | [llms.txt](llms.txt), the index; [llms-full.txt](llms-full.txt), every page in one file |
 

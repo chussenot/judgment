@@ -15,7 +15,7 @@ use judgment::jud::{self, Case, Cases, Document, Rubric, Supplied};
 use serde_json::Value;
 
 const USAGE: &str = "\
-jud: check .jud documents (docs/jud.md) and show what a rubric lowers to
+jud: check .jud documents (docs/jud.md, apiVersion jud/v1.3) and show what a rubric lowers to
 
   jud check FILE...
       Read each document as the crate reads it. A cases document is bound to
@@ -68,8 +68,9 @@ struct Loaded {
 fn declared_version(text: &str) -> String {
     serde_saphyr::from_str::<Value>(text)
         .ok()
-        .and_then(|v| v.get("jud").cloned())
-        .map_or_else(|| "?".to_owned(), |v| v.to_string())
+        .and_then(|v| v.get("apiVersion").cloned())
+        .and_then(|v| v.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "?".to_owned())
 }
 
 fn load(paths: &[String]) -> (Vec<Loaded>, usize) {
@@ -149,7 +150,7 @@ fn find_rubric<'a>(
         Some(name) => rubrics
             .iter()
             .copied()
-            .find(|(_, r)| r.id == name || r.fingerprint() == name),
+            .find(|(_, r)| r.name == name || r.fingerprint() == name),
         None if rubrics.len() == 1 => rubrics.first().copied(),
         None => None,
     }
@@ -163,9 +164,9 @@ fn print_rubric(l: &Loaded, rubric: &Rubric) {
         "untuned"
     };
     println!(
-        "rubric    {}: id {}, jud {}, {} questions, {gates} gates ({tuned})",
+        "rubric    {}: name {}, {}, {} questions, {gates} gates ({tuned})",
         l.path,
-        rubric.id,
+        rubric.name,
         l.declared,
         rubric.questions.len()
     );
@@ -188,9 +189,9 @@ fn print_cases(l: &Loaded, cases: &Cases, rubric_path: Option<&str>) {
         (None, None) => "no rubric given, labels unchecked".to_owned(),
     };
     println!(
-        "cases     {}: id {}, jud {}, {} cases, {bound_to}",
+        "cases     {}: name {}, {}, {} cases, {bound_to}",
         l.path,
-        cases.id.as_deref().unwrap_or("(none)"),
+        cases.name,
         l.declared,
         cases.cases.len()
     );
@@ -224,7 +225,7 @@ fn request_of(case: &Case, rubric: &Rubric) -> Fallible<(Value, Questions)> {
 /// Print one recording; false when it fails against the request it answers.
 fn print_recording(l: &Loaded, recording: &Recording, bound: &[(&Cases, &Rubric)]) -> bool {
     let mut line = format!(
-        "recording {}: case {}, jud {}, model {}",
+        "recording {}: case {}, {}, model {}",
         l.path, recording.case, l.declared, recording.response.model
     );
     let Some(found) = find_request(bound, &recording.case) else {

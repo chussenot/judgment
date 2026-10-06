@@ -15,25 +15,27 @@ use judgment::{Fake, SystemOne};
 // The same questions as above, with the thresholds beside them, in a file
 // another tool can read (docs/jud.md). The policy is never sent to the model.
 const RUBRIC: &str = r"
-jud: 1.2
-kind: rubric
-id: inbox-triage
-questions:
-  department:
-    type: choice
-    instructions: Which team should handle `message`?
-    criteria:
-      billing: Payments, invoicing, refunds
-      technical: Bugs, outages, integrations
-  is_urgent:
-    type: noul
-    instructions: Does `message` convey urgency?
-policy:
-  department:
-    confidence: 0.7
-    fallback: technical
-  is_urgent:
-    threshold: 0.6
+apiVersion: jud/v1.3
+kind: Rubric
+metadata:
+  name: inbox-triage
+spec:
+  questions:
+    department:
+      type: choice
+      instructions: Which team should handle `message`?
+      criteria:
+        billing: Payments, invoicing, refunds
+        technical: Bugs, outages, integrations
+    is_urgent:
+      type: noul
+      instructions: Does `message` convey urgency?
+  policy:
+    department:
+      confidence: 0.7
+      fallback: technical
+    is_urgent:
+      threshold: 0.6
 ";
 
 #[tokio::main(flavor = "current_thread")]

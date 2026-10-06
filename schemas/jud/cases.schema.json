@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/chussenot/judgment/schemas/jud/cases.schema.json",
-  "title": ".jud cases",
-  "description": "Labelled states a rubric is graded on (docs/jud.md).",
+  "title": ".jud Cases",
+  "description": "Labelled states a rubric is graded on (docs/jud.md). metadata takes name, description, labels and annotations; spec.rubric names the rubric by its metadata.name or by fingerprint.",
   "type": "object",
   "allOf": [
     {
@@ -10,137 +10,121 @@
     }
   ],
   "properties": {
-    "jud": true,
+    "apiVersion": true,
     "kind": {
-      "const": "cases"
+      "const": "Cases"
     },
-    "id": {
-      "$ref": "common.schema.json#/$defs/name"
-    },
-    "rubric": {
-      "type": "string",
-      "description": "The rubric the labels are for, by id or by fingerprint."
-    },
-    "description": {
-      "type": "string"
-    },
-    "cases": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "common.schema.json#/$defs/name"
-          },
-          "state": {
-            "description": "Any JSON; an array is a conversation, one element per turn."
-          },
-          "expect": {
-            "type": "object",
-            "description": "By question id: true or false for a Noul (or {from_turn} over a conversation), an option key for a Choice, a level index or a level's text for a Score.",
-            "additionalProperties": {
-              "oneOf": [
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "from_turn": {
-                      "type": [
-                        "integer",
-                        "null"
-                      ],
-                      "minimum": 0
-                    }
-                  },
-                  "required": [
-                    "from_turn"
-                  ],
-                  "additionalProperties": false
-                }
-              ]
-            }
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "note": {
-            "type": "string"
-          },
-          "options": {
-            "type": "object",
-            "description": "1.1: options supplied for this case's request, by question id, then option key to description.",
-            "additionalProperties": {
-              "type": "object",
-              "propertyNames": {
-                "minLength": 1
-              },
-              "additionalProperties": {
-                "type": [
-                  "string",
-                  "object",
-                  "array",
-                  "null"
-                ]
-              }
-            }
+    "metadata": {
+      "$ref": "common.schema.json#/$defs/metadata",
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "version"
+            ]
           }
-        },
-        "required": [
-          "state"
-        ],
-        "additionalProperties": false
+        ]
       }
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "rubric": {
+          "type": "string",
+          "description": "The rubric the labels are for, by name or by fingerprint."
+        },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "common.schema.json#/$defs/name"
+              },
+              "state": {
+                "description": "Any JSON; an array is a conversation, one element per turn."
+              },
+              "expect": {
+                "type": "object",
+                "description": "By question id: true or false for a Noul (or {from_turn} over a conversation), an option key for a Choice, a level index or a level's text for a Score.",
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "from_turn": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "from_turn"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "note": {
+                "type": "string"
+              },
+              "options": {
+                "type": "object",
+                "description": "options supplied for this case's request, by question id, then option key to description.",
+                "additionalProperties": {
+                  "type": "object",
+                  "propertyNames": {
+                    "minLength": 1
+                  },
+                  "additionalProperties": {
+                    "type": [
+                      "string",
+                      "object",
+                      "array",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "required": [
+              "state"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "cases"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
-    "jud",
+    "apiVersion",
     "kind",
-    "cases"
+    "metadata",
+    "spec"
   ],
-  "additionalProperties": false,
-  "patternProperties": {
-    "^x-": true
-  },
-  "if": {
-    "properties": {
-      "jud": {
-        "const": 1
-      }
-    },
-    "required": [
-      "jud"
-    ]
-  },
-  "then": {
-    "propertyNames": {
-      "not": {
-        "pattern": "^x-"
-      }
-    },
-    "properties": {
-      "cases": {
-        "items": {
-          "not": {
-            "required": [
-              "options"
-            ]
-          }
-        }
-      }
-    }
-  },
-  "$comment": "Under jud: 1 the 1.1 features (x- keys, a case's options) are refused."
+  "additionalProperties": false
 }

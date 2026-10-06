@@ -17,8 +17,9 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0003](0003-typed-handles-between-questions-and-answers.md) | Typed handles between questions and answers | accepted |
 | [0013](0013-releases-cut-with-cocogitto-and-published-from-ci.md) | Releases cut with cocogitto and published from CI | accepted |
 | [0014](0014-a-file-format-for-rubrics-cases-and-recordings.md) | A file format for rubrics, cases and recordings | accepted |
-| [0016](0016-jud-takes-minor-versions.md) | The .jud format takes minor versions, and 1.1 makes the request depend on the state | accepted |
-| [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) | The .jud format 1.2 refuses what a reviewer cannot see, and names the policy | accepted |
+| [0016](0016-jud-takes-minor-versions.md) | The .jud format takes minor versions, and 1.1 makes the request depend on the state | superseded by 0018 |
+| [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) | The .jud format 1.2 refuses what a reviewer cannot see, and names the policy | superseded by 0018 |
+| [0018](0018-jud-1-3-takes-the-manifest-envelope.md) | The .jud format 1.3 takes the manifest envelope and reads one apiVersion | accepted |
 
 ## Status notes
 
@@ -28,7 +29,10 @@ Records are not edited after acceptance; a fact that has moved since is noted he
 
 - 0016 says a 1.1 reader reads every `jud: 1` document as a 1 reader does. [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) makes one narrow exception: a reader refuses, in every version, a merge key, a tag the core schema does not define and an id that is not a name, none of which a conforming document ever carried.
 
-- 0014 says "a later version that adds a field takes the next number". [0016](0016-jud-takes-minor-versions.md) reads that as the next minor number for a purely additive change (1.1), and keeps the next major number for a change of meaning.
+- 0014 describes the envelope as `jud: 1` and `kind`; since [0018](0018-jud-1-3-takes-the-manifest-envelope.md) the envelope is a manifest's and the version is `apiVersion`. 0014's reasons for one format with content fingerprints stand.
+- 0014 says "a later version that adds a field takes the next number". [0016](0016-jud-takes-minor-versions.md) read that as the next minor number for a purely additive change (1.1), and kept the next major number for a change of meaning.
+
+- 0016 and 0017 are superseded by [0018](0018-jud-1-3-takes-the-manifest-envelope.md) on 2026-10-06: the envelope is a manifest's, a reader reads exactly one `apiVersion` and any change of the format takes a new one, so the compatibility rule of 0016 and the exception 0017 made to it are both withdrawn. What the two records added to the format (declarations, bands and level gates, names, the refusal of what a reviewer cannot see, the policy fingerprint) stands as rules of the format, and 0018 is the one page that maps the earlier keys onto the new envelope.
 
 ## Writing a record
 

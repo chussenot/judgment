@@ -1,39 +1,41 @@
 # Recorded answer for case `how-to-export`; found by fingerprint.
-jud: 1.2
-kind: recording
-case: how-to-export
-response:
-  model: jev-1.13.0
-  answers:
-    actionable:
-      type: noul
-      noul: 0.88
-    desk:
-      type: choice
-      choice: technical
-      probabilities:
-        account: 0.33
-        billing: 0.02
-        none_of_these: 0.05
-        technical: 0.6
-      confidence: 0.47
-    tone:
-      type: score
-      score: 0.12
-      legend:
-        "0": calm
-        "1": annoyed
-        "2": angry
-      probabilities:
-        "0": 0.9
-        "1": 0.08
-        "2": 0.02
-      confidence: 0.87
-  usage:
-    input_tokens: 0
-    output_tokens: 0
-elapsed_ms: 140
-fingerprint: sha256:79761562616d78188be2503fb8d3c43c95c7935175dad91380d348c73b8bec35
-rubric: inbox-triage
-server: https://api.typesafe.ai
-recorded_at: "2026-10-04T11:58:00Z"
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: how-to-export
+spec:
+  response:
+    model: jev-1.13.0
+    answers:
+      actionable:
+        type: noul
+        noul: 0.88
+      desk:
+        type: choice
+        choice: technical
+        probabilities:
+          account: 0.33
+          billing: 0.02
+          none_of_these: 0.05
+          technical: 0.6
+        confidence: 0.47
+      tone:
+        type: score
+        score: 0.12
+        legend:
+          "0": calm
+          "1": annoyed
+          "2": angry
+        probabilities:
+          "0": 0.9
+          "1": 0.08
+          "2": 0.02
+        confidence: 0.87
+    usage:
+      input_tokens: 0
+      output_tokens: 0
+  elapsed_ms: 140
+  fingerprint: sha256:79761562616d78188be2503fb8d3c43c95c7935175dad91380d348c73b8bec35
+  rubric: inbox-triage
+  server: https://api.typesafe.ai
+  recorded_at: "2026-10-04T11:58:00Z"

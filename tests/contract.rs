@@ -1039,10 +1039,16 @@ fn every_committed_recording_is_a_system_one_response() {
             let text = std::fs::read_to_string(&path).unwrap();
             // A `.json` recording is this crate's own; a `.jud` one is the
             // format's (`docs/jud.md`), YAML, the recording's fields under
-            // the `jud`/`kind` envelope, read here without the feature.
+            // `spec` with the case as `metadata.name`, read here without the
+            // feature.
             let raw: Value = match path.extension().and_then(|e| e.to_str()) {
                 Some("json") => serde_json::from_str(&text).unwrap(),
-                Some("jud") => serde_saphyr::from_str(&text).unwrap(),
+                Some("jud") => {
+                    let doc: Value = serde_saphyr::from_str(&text).unwrap();
+                    let mut spec = doc["spec"].clone();
+                    spec["case"] = doc["metadata"]["name"].clone();
+                    spec
+                }
                 _ => continue,
             };
             assert_conforms(&schema, &raw["response"], &format!("{what} as committed"));
