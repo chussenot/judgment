@@ -283,3 +283,54 @@ Kubernetes object model (the envelope, decision 0018), Brier 1950, Naeini
 et al. 2015 and Wilson 1927 (`src/eval/metrics.rs`), BCP 14 (the spec's
 keywords), Diátaxis (`project/contributing.md`). RFC 6901 is cited only to
 say the state-path syntax is not it.
+
+## 6. Results
+
+### Discrepancies fixed
+
+Every claim in section 2 marked stale or wrong is corrected on its new page;
+no code changed for any of them. In one line each:
+
+- `docs/tour.md` said the `jud` module reads "versions 1 and 1.1": the reader reads `jud/v1.3` only (`reference/crate.md`, `concepts/how-judgment-works.md`).
+- `docs/testing.md` said a recording is keyed by a 64-bit hash that `eval::fingerprint` exposes: `Replay` looks up the SHA-256 request fingerprint first, then the FNV `request_hash`; `eval::fingerprint` is the SHA-256 (`guides/record-replay-and-test.md`).
+- `docs/skill.md` showed `jud check` printing `id inbox-triage` and exiting 1 on a refusal: it prints `name …` and exits 2 (`reference/cli.md`, held by `tests/docs_examples.rs`).
+- `docs/stability.md` pinned `judgment = "0.9"`, the README's comparison row said 0.10.0, `docs/cli.md` installed `v0.9.0`: the pin is the current minor, held by a test; install examples name `v0.10.4` and say they are examples.
+- `src/bin/jud/main.rs` pointed the completion help at `docs/cli.md`: it now points at `docs/start/install.md`, the only change to a string the binary prints.
+- State paths were nowhere said to be or not be JSON Pointers: `reference/jud-format.md` states the syntax is not RFC 6901 and names the one rule borrowed.
+
+### Beads issues opened
+
+- `judgment-rxl` (P3): the `jud` command reads no `TYPESAFE_MODEL` while every example does; decide whether it should.
+- `judgment-0uf` (P2, bug): `jud` panics with "failed printing to stdout: Broken pipe" when its stdout is closed early (`jud lower … | head`), exit 101, where a pipeline tool should exit quietly. Found by the cold read below.
+
+Both live in the local beads database of the session that wrote this; the
+remote carries no Dolt ref to sync to, so they are listed here to be
+re-created by `bd create` if that database is not reachable.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --all-targets --all-features`, warnings denied | clean |
+| `cargo check --no-default-features --all-targets` | clean |
+| `cargo test --all-features` | every target green, 3 documentation tests from the guides included |
+| `cargo doc --no-deps --document-private-items --all-features`, warnings denied | clean |
+| `scripts/check-frontmatter.sh docs` | ok |
+| `scripts/gen-llms-txt.sh --check`, `gen-cli-reference.sh --check`, `gen-plugin-format.sh --check` | up to date |
+| `jud check examples/jud/*.jud examples/recordings/jud_calibration/*.jud` | 21 documents, 0 refused |
+| `mkdocs build --strict` (mkdocs 1.6.1, techdocs-core 1.7.1) | 0 warnings |
+| `lychee --offline --config lychee.toml README.md docs plugins`, anchors checked | 391 links OK, 0 errors, 122 excluded (the illustrative and rate-limited hosts) |
+| Cold read, `start/first-decision-cli.md` | A container imported from a tarball holding only `/bin/sh`, `cat`, `echo`, the `jud` binary and libc (no base image could be pulled from this sandbox), the checkout mounted read-only in place of the `git clone`, a fresh `HOME`, no `TYPESAFE_*` variable: `jud --version`, `jud check`, the replayed verdicts (byte for byte the page's), the unrecorded state (status 1, the page's message), `jud lower`, `jud config` (`api_key: missing`) and the run without a key (status 2, the page's message) all did what the page says. Step 5 needs a key and was not run. |
+| Cold read, `start/first-decision-rust.md` | `cargo new` in a scratch directory, the page's `Cargo.toml` lines, `judgment` 0.10.4 from crates.io: step 2 and step 3 printed `page billing on-call: true`; step 4 built and, without a key, failed with `MissingApiKey` as the page says it needs one. |
+
+`mise run check` itself could not run in the sandbox (mise fails offline on
+the pinned `ollama` tool); each task's command was run directly.
+
+### Not done, and why
+
+- The two research pages on the Rust clients are not merged (section 3).
+- Released `CHANGELOG` entries keep their links to the old pages, as the task asked; `lychee.toml` excludes the file, and the Unreleased entry describes the move.
+- `mise run docs:build` (`mkdocs build --strict`) is not in `mise run check`: mkdocs is a Python tool mise does not manage here. CI runs it in its own job.
+- The container image was not re-verified against a registry: pulls are blocked from this sandbox. The facts on `reference/container-image.md` are the ones checked on 2026-10-07 against 0.10.4 before the rebuild, carried over unchanged.
+- No ADR was edited or decided; 0020 stays proposed and `reference/stability.md` documents today's behaviour.
