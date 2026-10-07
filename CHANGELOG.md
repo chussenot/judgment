@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-07
+
 ### Added
 
 - `jud --replay DIR RUBRIC`, or `JUD_REPLAY=DIR`, answers from the recordings
