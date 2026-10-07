@@ -54,6 +54,11 @@ class Jud < Formula
   version "$version"
   license "MIT"
 
+  livecheck do
+    url :stable
+    strategy :github_latest
+  end
+
   # Intel macOS has no release tarball (no native runner builds one); it
   # installs from crates.io: cargo install judgment --features cli
   on_macos do
@@ -74,11 +79,6 @@ class Jud < Formula
       url "$base/jud-v$version-x86_64-unknown-linux-musl.tar.gz"
       sha256 "$linux_x86"
     end
-  end
-
-  livecheck do
-    url :stable
-    strategy :github_latest
   end
 
   def install
