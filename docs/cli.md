@@ -1,8 +1,8 @@
 ---
 title: The jud command line
-description: The jud binary evaluates JSON input from stdin against a .jud Rubric and prints the verdicts, so a decision written as a file composes with jq, yq, cat and curl; what it does, how to install it with mise or by hand, shell completion, how the backend is configured with TypeSafe as the default, how a run replays recordings with no server, the exit status, and the other subcommands.
+description: The jud binary evaluates JSON input from stdin against a .jud Rubric and prints the verdicts, so a decision written as a file composes with jq, yq, cat and curl; what it does, how to install it with mise, Homebrew or by hand, shell completion, how the backend is configured with TypeSafe as the default, how a run replays recordings with no server, the exit status, and the other subcommands.
 status: current
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-07
 tags: [judgment, jud, cli, mise, release, configuration]
 ---
 
@@ -62,6 +62,14 @@ jud --version
 ```
 
 Pin a version with `@0.9.0`; `mise ls-remote github:chussenot/judgment` lists what exists. The tool is named after the repository and the executable is `jud`; mise finds it inside the tarball.
+
+With Homebrew, on Apple silicon or Linux:
+
+```sh
+brew install chussenot/tap/jud
+```
+
+The formula, in [chussenot/homebrew-tap](https://github.com/chussenot/homebrew-tap), installs the same tarballs by their checksums and generates the shell completions from the binary; nothing is compiled. It is rendered from each release's `SHA256SUMS` by `scripts/homebrew-formula.sh` and committed to the tap by the release workflow, so the tap's version is the release's. Since Homebrew 6.0 a third-party tap is not trusted until you say so: the fully qualified name above trusts that one formula and nothing else, which is the recommended form (`brew trust` lists what is trusted). Intel macOS has no tarball and the formula says so; it installs from crates.io, below.
 
 By hand, with the checksum verified first:
 
