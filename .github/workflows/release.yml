@@ -7,8 +7,10 @@ name: Release
 # the version in Cargo.toml; `cargo publish --dry-run` must pass; the binary is
 # built, checked and packaged on every platform it ships for; then the publish,
 # and a GitHub release whose notes are the CHANGELOG's section for the version
-# and whose assets are the tarballs and their checksums. Only GitHub-owned
-# actions and the runner's own tools (rustup, cargo, curl, jq, gh) are used.
+# and whose assets are the tarballs and their checksums; last, the Homebrew
+# formula is rendered from those checksums and committed to the tap. Only
+# GitHub-owned actions and the runner's own tools (rustup, cargo, curl, jq, gh,
+# git) are used.
 #
 # The binary legs follow github.com/chussenot/pact's release workflow: native
 # runners only (no cross-compilation, so every leg runs the binary it built),
@@ -17,8 +19,9 @@ name: Release
 # a `SHA256SUMS` over the set, and a build-provenance attestation.
 #
 # A `workflow_dispatch` is a dry run: it builds and packages every leg from the
-# ref it runs on and publishes nothing, so the pipeline can be exercised
-# without cutting a tag. The publish job runs on a tag push only.
+# ref it runs on, renders the formula and publishes nothing, so the pipeline
+# can be exercised without cutting a tag. The publish job and the commit to
+# the tap run on a tag push only.
 #
 # Credential, in this order:
 # - the CARGO_REGISTRY_TOKEN secret, when set: needed for the first release,
@@ -260,3 +263,63 @@ jobs:
             --notes-file "$RUNNER_TEMP/release-notes.md" \
             --verify-tag \
             dist/*.tar.gz dist/SHA256SUMS
+
+  homebrew:
+    name: the formula into the tap
+    needs: [build, publish]
+    # After a publish on a tag; on a dry run the formula is rendered from the
+    # dry-run tarballs and printed, and nothing is committed.
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # The same bytes the release carries (checked there): the formula's
+      # checksums are computed here from them, not copied.
+      - name: Render Formula/jud.rb from the tarballs
+        id: render
+        run: |
+          set -eu
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "judgment") | .version')
+          (cd dist && sha256sum -- *.tar.gz > SHA256SUMS && cat SHA256SUMS)
+          scripts/homebrew-formula.sh "$version" dist/SHA256SUMS > "$RUNNER_TEMP/jud.rb"
+          ruby -c "$RUNNER_TEMP/jud.rb"
+          cat "$RUNNER_TEMP/jud.rb"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # One commit on the tap's main, "jud X.Y.Z" as Homebrew names a version
+      # bump, pushed with HOMEBREW_TAP_TOKEN: a fine-grained token whose only
+      # permission is contents read and write on chussenot/homebrew-tap
+      # (docs/releasing.md, one-time setup). The tap's own CI then audits,
+      # installs and tests the formula from the published tarballs.
+      - name: Commit to chussenot/homebrew-tap
+        if: github.event_name == 'push'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.render.outputs.version }}
+        run: |
+          set -eu
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "::error::no HOMEBREW_TAP_TOKEN secret: the release is published but the tap was not updated; add the token (docs/releasing.md) and re-run this job"
+            exit 1
+          fi
+          git clone --quiet --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/chussenot/homebrew-tap.git" "$RUNNER_TEMP/tap"
+          cd "$RUNNER_TEMP/tap"
+          mkdir -p Formula
+          cp "$RUNNER_TEMP/jud.rb" Formula/jud.rb
+          git add Formula/jud.rb
+          if git diff --cached --quiet; then
+            echo "the tap already carries jud $VERSION; nothing to commit"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "jud $VERSION" \
+              -m "Rendered by scripts/homebrew-formula.sh from the checksums of ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME} (run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})."
+          git push --quiet origin HEAD
+          echo "pushed jud $VERSION to chussenot/homebrew-tap"

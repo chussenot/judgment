@@ -6,6 +6,16 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A Homebrew formula for `jud`: `brew install chussenot/tap/jud` on Apple
+  silicon and Linux, from [chussenot/homebrew-tap](https://github.com/chussenot/homebrew-tap).
+  The formula installs the release tarballs by their checksums and generates
+  the shell completions from the binary. It is rendered from each release's
+  `SHA256SUMS` by `scripts/homebrew-formula.sh` and committed to the tap by
+  the release workflow's new `homebrew` job, so the tap's version is the
+  release's ([The jud command line](docs/cli.md), [Releasing](docs/releasing.md)).
+
 ## [0.10.2] - 2026-10-07
 
 ### Changed
