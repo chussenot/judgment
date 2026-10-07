@@ -122,6 +122,8 @@ timeout_secs: 30
 # api_key: ...   # prefer TYPESAFE_API_KEY, which no file on disk holds
 ```
 
+`examples/jud/config-tev1.yaml` is the same file written for a local Ollama serving `tev1:0.8b`, where the key is a placeholder and may sit in the file ([Open-weight models without an account](open-weights.md)).
+
 `jud config` prints what a run would use and where each value came from, with the key reported as `environment`, `config_file` or `missing` and never shown:
 
 ```sh

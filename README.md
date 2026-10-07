@@ -363,6 +363,7 @@ default.
 | [How the crate is implemented](docs/implementation.md) | The rules the code applies and why: the decoder, the response check, the error bodies, the per-call options, the retry loop's edges, the recordings, the metrics and the .jud reader |
 | [Patterns](docs/patterns.md) | TypeSafe's four patterns on the crate's types, one runnable example each, and what the recordings teach about thresholds |
 | [Testing without the model](docs/testing.md) | The fake, the recordings and the metrics |
+| [Open-weight models without an account](docs/open-weights.md) | The crate, its examples and the `jud` binary against tev1 or Clef-flash on Ollama, with no key, and what a local server does differently |
 | [The .jud format](docs/jud.md) | The specification of the rubric, cases and recording documents, their fingerprints and reading rules, and the loop from labelled cases to a tuned policy |
 | [What a rubric is](docs/jud/rubric.md), [what cases are](docs/jud/cases.md), [what a recording is](docs/jud/recording.md) | The reasoning behind each kind of `.jud` document: the decision, the labelled examples it is graded on, and what the model answered |
 | [The jud command line](docs/cli.md) | `cat input.json \| jud rubric.jud`: the binary that evaluates JSON input against a Rubric and prints the verdicts, how to install it with mise, its configuration and exit status |

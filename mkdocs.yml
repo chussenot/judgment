@@ -16,6 +16,7 @@ nav:
   - How the crate is implemented: implementation.md
   - Patterns: patterns.md
   - Testing without the model: testing.md
+  - Open-weight models without an account: open-weights.md
   - The .jud format:
       - Specification: jud.md
       - What a rubric is: jud/rubric.md

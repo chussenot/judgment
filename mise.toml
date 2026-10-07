@@ -16,6 +16,10 @@ prek = "latest"
 # which fails behind some proxies, and a tool that runs in every git hook
 # should not move under `latest`.
 "github:gastownhall/beads" = "1.3.1"
+# Ollama, for the open-weight decision models (docs/open-weights.md, `mise run
+# live:ollama`); 0.35.1 is the least that serves Clef, 0.40.0 what the page
+# was checked with.
+ollama = "0.40.0"
 
 [env]
 RUST_BACKTRACE = "1"

@@ -1,0 +1,25 @@
+# A `jud` configuration for tev1 on a local Ollama (docs/open-weights.md).
+# Copy it to ~/.config/jud/config.yaml (or $XDG_CONFIG_HOME/jud/config.yaml):
+#
+#   mkdir -p ~/.config/jud && cp examples/jud/config-tev1.yaml ~/.config/jud/config.yaml
+#   ollama pull tev1:0.8b
+#   echo '{"message": "My payouts have been failing for 3 days."}' | jud examples/jud/triage.jud
+#
+# Every field is optional; the environment (TYPESAFE_BASE_URL, TYPESAFE_API_KEY)
+# overrides the file, and `jud config` prints what a run will use.
+
+# Ollama's default address; `/v1/systemone` is appended by the client.
+base_url: http://127.0.0.1:11434
+
+# The name `ollama list` shows. There is no environment variable for the
+# model, so the file is where a local model is named. `clef-flash` is the
+# step up on a machine that holds it.
+model: tev1:0.8b
+
+# Ollama ignores the bearer, but the client refuses to build without one.
+# Any word will do; it is not a secret, so the file may hold it.
+api_key: unused
+
+# A model on a CPU answers in seconds, the first call of a session in more
+# (it loads the model). The default is 30.
+timeout_secs: 60
