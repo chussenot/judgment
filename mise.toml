@@ -214,3 +214,11 @@ run = "bd ready"
 [tasks."bd:export"]
 description = "Write every issue to .beads/issues.jsonl, the passive export reviewers read in a pull request"
 run = "bd export --all -o .beads/issues.jsonl"
+
+[tasks.image]
+description = "Build the container image from this checkout's own build (scripts/image-context.sh --local, then docker buildx) as ghcr.io/chussenot/jud:dev; a release image is pushed by the release workflow (docs/cli.md)"
+run = [
+  "scripts/image-context.sh --local",
+  "docker buildx build --load -t ghcr.io/chussenot/jud:dev .",
+  "docker run --rm ghcr.io/chussenot/jud:dev --version",
+]

@@ -1,6 +1,6 @@
 ---
 title: The jud command line
-description: The jud binary evaluates JSON input from stdin against a .jud Rubric and prints the verdicts, so a decision written as a file composes with jq, yq, cat and curl; what it does, how to install it with mise, Homebrew or by hand, shell completion, how the backend is configured with TypeSafe as the default, how a run replays recordings with no server, the exit status, and the other subcommands.
+description: The jud binary evaluates JSON input from stdin against a .jud Rubric and prints the verdicts, so a decision written as a file composes with jq, yq, cat and curl; what it does, how to install it with mise, Homebrew, as a container image or by hand, shell completion, how the backend is configured with TypeSafe as the default, how a run replays recordings with no server, the exit status, and the other subcommands.
 status: current
 last_reviewed: 2026-10-07
 tags: [judgment, jud, cli, mise, release, configuration]
@@ -71,6 +71,14 @@ brew install chussenot/tap/jud
 
 The formula, in [chussenot/homebrew-tap](https://github.com/chussenot/homebrew-tap), installs the same tarballs by their checksums and generates the shell completions from the binary; nothing is compiled. It is rendered from each release's `SHA256SUMS` by `scripts/homebrew-formula.sh` and committed to the tap by the release workflow, so the tap's version is the release's. Since Homebrew 6.0 a third-party tap is not trusted until you say so: the fully qualified name above trusts that one formula and nothing else, which is the recommended form (`brew trust` lists what is trusted). Intel macOS has no tarball and the formula says so; it installs from crates.io, below.
 
+As a container, in a pipeline that installs nothing:
+
+```sh
+cat event.json | docker run -i --rm -v "$PWD:/work" ghcr.io/chussenot/jud triage.jud
+```
+
+`ghcr.io/chussenot/jud` is `FROM scratch`: the statically linked binary, a CA bundle for the client's TLS and a non-root user (uid 65532), about 10 MB, no shell and no base image to patch. Tagged `X.Y.Z`, `X.Y` and `latest`, one manifest for `linux/amd64` and `linux/arm64`. The binary inside is the release tarball's, copied in by the release workflow rather than compiled again, and the image carries a build-provenance attestation: `gh attestation verify oci://ghcr.io/chussenot/jud:X.Y.Z --repo chussenot/judgment`. The container's working directory is `/work`, so a mount there puts the rubric, the state and a recordings directory in reach; `-e TYPESAFE_API_KEY` passes the key, `-e TYPESAFE_BASE_URL` another server, and a configuration file is mounted at `/home/jud/.config/jud/config.yaml`. The `Dockerfile` is in the repository, and `scripts/image-context.sh --release vX.Y.Z` fills its build context from a release for a local build.
+
 By hand, with the checksum verified first:
 
 ```sh
@@ -104,8 +112,8 @@ Regenerate it after upgrading: a script written by an older binary completes tha
 
 | Target | Runs on |
 |---|---|
-| `x86_64-unknown-linux-musl` | any x86-64 Linux, statically linked, `FROM scratch` included |
-| `aarch64-unknown-linux-musl` | any arm64 Linux |
+| `x86_64-unknown-linux-musl` | any x86-64 Linux, statically linked; `ghcr.io/chussenot/jud` for `linux/amd64` |
+| `aarch64-unknown-linux-musl` | any arm64 Linux; `ghcr.io/chussenot/jud` for `linux/arm64` |
 | `aarch64-apple-darwin` | Apple-silicon macOS |
 
 Every leg is built on a native runner and the binary is run before it is packaged, so no platform ships a binary nothing executed. Intel macOS has no native runner and is not cross-compiled; it installs from crates.io. There is no Windows build; the configuration directory and the pipeline model assume a Unix shell.
@@ -191,4 +199,4 @@ Nothing writes a file. A `.jud` document is written by a person or an agent, wit
 
 ## In the repository
 
-The binary is `src/bin/jud/` behind the `cli` feature (`jud` and `http`, plus `clap` and `clap_complete`, which a library build never compiles): `main.rs` holds the command tree, from which clap derives the help, the usage errors and the completions, and sets the exit status, `run.rs` is the evaluation path, `config.rs` the resolution above, `tools.rs` the reader subcommands. `tests/jud_cli.rs` runs it as a subprocess against a wiremock server standing in for any backend, through the environment and through the configuration file, with no key and no network. `.github/workflows/release.yml` builds, checks and packages it on every platform above when a version tag is pushed, and attaches the tarballs and `SHA256SUMS` to the release the crate's publish already creates ([Releasing](releasing.md)). [Decision 0019](decisions/0019-a-command-line-for-the-format.md) says why the command, the configuration file and the release shape are what they are.
+The binary is `src/bin/jud/` behind the `cli` feature (`jud` and `http`, plus `clap` and `clap_complete`, which a library build never compiles): `main.rs` holds the command tree, from which clap derives the help, the usage errors and the completions, and sets the exit status, `run.rs` is the evaluation path, `config.rs` the resolution above, `tools.rs` the reader subcommands. `tests/jud_cli.rs` runs it as a subprocess against a wiremock server standing in for any backend, through the environment and through the configuration file, with no key and no network. `.github/workflows/release.yml` builds, checks and packages it on every platform above when a version tag is pushed, attaches the tarballs and `SHA256SUMS` to the release the crate's publish already creates, then renders the Homebrew formula into the tap and builds the container image from the Linux tarballs (`Dockerfile`, `scripts/image-context.sh`) and pushes it to ghcr.io ([Releasing](releasing.md)). [Decision 0019](decisions/0019-a-command-line-for-the-format.md) says why the command, the configuration file and the release shape are what they are.

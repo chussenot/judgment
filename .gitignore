@@ -20,3 +20,8 @@ mise.local.toml
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# The container image's build context, filled by scripts/image-context.sh
+# from the release tarballs or a local build (Dockerfile).
+/bin/
+/image/
