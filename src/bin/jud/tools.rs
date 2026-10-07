@@ -37,7 +37,9 @@ pub(crate) fn hint(e: &jud::Error) -> &'static str {
         jud::Error::Missing {
             field: "apiVersion" | "kind",
         }
-        | jud::Error::Version { .. } => " (not a jud/v1.3 document; docs/jud.md has the envelope)",
+        | jud::Error::Version { .. } => {
+            " (not a jud/v1.3 document; docs/reference/jud-format.md has the envelope)"
+        }
         _ => "",
     }
 }

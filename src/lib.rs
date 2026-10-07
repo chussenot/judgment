@@ -62,10 +62,10 @@
 //!   transport.
 //! * `openapi`: `contract`, the vendored TypeSafe OpenAPI document as text.
 //! * `jud`: `jud`, the `.jud` format for rubrics, cases and recordings
-//!   (`docs/jud.md`).
+//!   (`docs/reference/jud-format.md`).
 //!
 //! The runnable examples under `examples/` cover the four patterns TypeSafe
-//! documents (<https://docs.typesafe.ai/patterns>); `docs/patterns.md` says
+//! documents (<https://docs.typesafe.ai/patterns>); `docs/guides/patterns.md` says
 //! how they are run and re-recorded.
 
 pub mod answer;
@@ -94,3 +94,14 @@ pub use client::{
 pub use error::{Error, Result, ValidationIssue};
 pub use observer::Observer;
 pub use question::{Handle, NoulCriteria, Options, Question, Questions};
+
+// The guides' Rust fragments compile as documentation tests, so a page cannot
+// show code the crate does not accept (docs/project/contributing.md). A
+// tutorial's whole programs are `examples/` files held by
+// `tests/docs_examples.rs` instead.
+#[cfg(all(doctest, feature = "http"))]
+#[doc = include_str!("../docs/guides/record-replay-and-test.md")]
+pub struct DocsRecordReplayAndTest;
+#[cfg(all(doctest, feature = "http"))]
+#[doc = include_str!("../docs/guides/configure-a-backend.md")]
+pub struct DocsConfigureABackend;

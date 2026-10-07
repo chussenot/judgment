@@ -1,6 +1,6 @@
 //! Questions: the three System One primitives, a request builder, and the
 //! typed handles that tie each question to the shape of its answer
-//! (`docs/design.md` draws the mechanism).
+//! (`docs/concepts/how-judgment-works.md` draws the mechanism).
 //!
 //! # Ids are for code, not for the model
 //!
@@ -24,7 +24,7 @@
 //! nothing. The upper bounds are the hosted server's own (a 400 past
 //! them); the lower ones are this crate's, as the server answers one
 //! option or one level with probability 1
-//! (`docs/verification/hosted-typesafe.md`). An empty id is refused as the
+//! (`docs/project/verification/hosted-typesafe.md`). An empty id is refused as the
 //! server refuses it, an empty option key because the server can choose
 //! it, an answer the caller cannot name. Refusing before sending costs no
 //! round trip; `tests/contract.rs` pins the limits against the schema.

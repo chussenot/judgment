@@ -6,7 +6,7 @@
 # else, no shell, no libc, no package manager, so there is no base image to
 # patch and nothing to escalate into. The binary is not built here: it is
 # the one the release workflow built on a native runner, ran, checked and
-# packaged into the release tarball (docs/cli.md, Platforms), copied in from
+# packaged into the release tarball (docs/reference/cli.md, Platforms), copied in from
 # a build context the workflow fills from those tarballs, one binary per
 # platform under bin/<TARGETOS>/<TARGETARCH>/jud. So the image carries, byte
 # for byte, the binary the tarball and the Homebrew formula carry, and a

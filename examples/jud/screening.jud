@@ -1,0 +1,40 @@
+# The rubric built step by step in docs/guides/write-a-rubric.md: whether a
+# support message asks for money back, why, and how upset the writer is.
+# Hand-written, so it carries no tuning block: the bars are stated guesses.
+apiVersion: jud/v1.3
+kind: Rubric
+metadata:
+  name: refund-screening
+  description: Screen a support message for a refund request before a person reads it.
+spec:
+  questions:
+    refund_request:
+      type: noul
+      instructions: Does `message` ask for money back?
+      criteria:
+        true: a refund, a chargeback, a credit, a cancelled charge
+        false: a question about a charge, a complaint with no money asked for, anything else
+    reason:
+      type: choice
+      instructions: Why does the writer of `message` want money back?
+      criteria:
+        duplicate_charge: Charged twice, or charged after cancelling
+        unhappy: The product or the service did not do what was expected
+        cancelled: The writer cancelled and wants the remaining time refunded
+        none_of_these: No refund asked for, or a reason not listed
+      when: message
+    tone:
+      type: score
+      instructions: How upset is the writer of `message`?
+      criteria: [calm, annoyed, angry]
+  policy:
+    refund_request:
+      threshold: 0.6
+      note: a guess; a false positive costs a person a minute, a miss costs a customer
+    reason:
+      confidence: 0.5
+      fallback: none_of_these
+      note: a guess; below it a person reads the message
+    tone:
+      level_at_least: angry
+      note: angry messages are read first

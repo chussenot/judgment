@@ -27,8 +27,8 @@ Read the live documents before judging; never rely on memory of the API.
   `cargo test --test openapi_drift -- --ignored` to see whether the copy is
   stale; never accept a hand edit of the fixture, and never a change to the
   document that does not come with the drift test's canonical rewrite.
-- Compatible servers: `docs/verification/hosted-typesafe.md` and
-  `docs/verification/laya-typed-decisions.md` record what the hosted API and
+- Compatible servers: `docs/project/verification/hosted-typesafe.md` and
+  `docs/project/verification/laya-typed-decisions.md` record what the hosted API and
   `laya-serve` actually did with the live tests, release by release. A
   change that fits the document but contradicts a recorded observation
   needs a re-run or an explanation.

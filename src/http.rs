@@ -4,7 +4,7 @@
 //! Public so that another client in the same application retries the same
 //! way and reports to the same [`crate::Observer`]. The loop names no
 //! vendor's header or status and returns the last response, headers
-//! included, for each client to classify. `docs/design.md` ("Retries")
+//! included, for each client to classify. `docs/concepts/how-judgment-works.md` ("Retries")
 //! draws it.
 
 use std::collections::BTreeSet;
@@ -300,7 +300,7 @@ pub enum Exhausted {
 }
 
 /// Send `make()` until it yields a response the policy does not retry, or
-/// the policy stops (`docs/design.md`, "Retries", draws the loop).
+/// the policy stops (`docs/concepts/how-judgment-works.md`, "Retries", draws the loop).
 ///
 /// A status the policy does not retry, or the last retried one when it
 /// stops, is `Ok(Completed)`; the last transport failure, or a body over
@@ -734,7 +734,7 @@ mod tests {
 }
 
 /// Bounded proofs, run with `cargo kani`; the bounds and their reasons are
-/// in `docs/testing.md`, "Bounded proofs".
+/// in `docs/guides/record-replay-and-test.md`, "Bounded proofs".
 #[cfg(kani)]
 mod kani_proofs {
     use super::*;

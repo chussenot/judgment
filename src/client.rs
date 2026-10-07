@@ -180,7 +180,7 @@ pub struct ModelInfo {
     pub description: String,
     /// Release date, `YYYY-MM-DD` per the OpenAPI document, kept as the
     /// string sent because the hosted API sends an RFC 3339 timestamp
-    /// instead (`docs/verification/hosted-typesafe.md`).
+    /// instead (`docs/project/verification/hosted-typesafe.md`).
     pub release_date: String,
 }
 
@@ -1088,7 +1088,7 @@ mod tests {
 
     #[test]
     fn error_detail_reads_the_hosted_api_s_three_400_shapes() {
-        // Bodies as the hosted API sent them (docs/verification/hosted-typesafe.md),
+        // Bodies as the hosted API sent them (docs/project/verification/hosted-typesafe.md),
         // none in the OpenAPI document, which describes the 422 list only.
 
         let body = r#"{"detail":"Too many choices. Must have at most 255 choices."}"#;

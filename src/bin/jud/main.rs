@@ -92,7 +92,7 @@ enum Command {
     /// Print a shell completion script for jud's commands and flags.
     ///
     /// Generated from the same command tree clap parses, so it cannot drift
-    /// from the binary. Writes to stdout; docs/cli.md says where each shell
+    /// from the binary. Writes to stdout; docs/start/install.md says where each shell
     /// wants it.
     Completion {
         /// The shell whose syntax to emit.

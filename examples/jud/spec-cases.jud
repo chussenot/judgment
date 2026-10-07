@@ -1,0 +1,22 @@
+apiVersion: jud/v1.3
+kind: Cases
+metadata:
+  name: inbox-triage-cases
+  description: Seven messages, labelled by the support lead.
+spec:
+  rubric: inbox-triage
+  cases:
+    - id: refund-angry
+      state:
+        message: >-
+          This is the third time I'm writing. I was charged twice last month and
+          nobody has refunded me. Fix it today or I cancel.
+      expect: {actionable: true, desk: billing, tone: angry}
+      tags: [billing]
+    - id: receipt
+      state:
+        message: >-
+          Your payment of 12.00 EUR was received. This is an automated message,
+          please do not reply.
+      expect: {actionable: false, desk: none_of_these}      # tone left unlabelled: asked, not graded
+      note: the hard one; about billing, but asks nothing

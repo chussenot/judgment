@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/chussenot/judgment/schemas/jud/recording.schema.json",
   "title": ".jud Recording",
-  "description": "One model response to one request, with the request's fingerprint, the server and the time (docs/jud.md). metadata.name is the case it answers (or the request hash); metadata takes name, labels and annotations.",
+  "description": "One model response to one request, with the request's fingerprint, the server and the time (docs/reference/jud-format.md). metadata.name is the case it answers (or the request hash); metadata takes name, labels and annotations.",
   "type": "object",
   "allOf": [
     {

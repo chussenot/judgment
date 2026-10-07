@@ -13,7 +13,7 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   claim an issue before code. Git's hooks live in `.beads/hooks` (`bd init`
   set `core.hooksPath`); `scripts/setup-hooks.sh` puts the prek block before
   the beads section in each, so `prek install` is never run directly.
-- `docs/index.md` maps the documentation; `docs/decisions/` holds the records
+- `docs/index.md` maps the documentation; `docs/project/decisions/` holds the records
   that govern the API; `CHANGELOG.md` is Keep a Changelog, and 0.x means a
   minor release may break.
 
@@ -47,43 +47,57 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   `TYPESAFE_API_KEY` in `.env`, `mise run live:clef` with `CLOUDFLARE_ACCOUNT_ID`
   and `CLOUDFLARE_API_TOKEN` in `.env` through `tools/systemone/serve.py`,
   `mise run live:laya` and `mise run live:ollama` against a local server;
-  `docs/verification/` records what real servers did), and
+  `docs/project/verification/` records what real servers did), and
   `tests/openapi_drift.rs`, ignored, network only, no key.
 - A change to what the crate sends or accepts on the wire is a contract
   change: `tests/contract.rs`, the CHANGELOG and the README's guarantees move
   together, and the recordings under `examples/recordings/*/` must still
   replay (`cargo test` runs them).
-- The `.jud` format (`docs/jud.md`, `src/jud/`, feature `jud`) is a
+- The `.jud` format (`docs/reference/jud-format.md`, `src/jud/`, feature `jud`) is a
   specification other tools implement. Its envelope is a manifest's
   (`apiVersion`, `kind`, `metadata`, `spec`), and the reader reads exactly
   one apiVersion, `jud/v1.3` (`jud::API_VERSION`), refusing any other by
   name. A change to what a document may hold or how it is read takes a new
-  apiVersion (decision 0018) and moves `docs/jud.md`, `schemas/jud/`,
+  apiVersion (decision 0018) and moves `docs/reference/jud-format.md`, `schemas/jud/`,
   `tests/jud.rs` and the documents under `examples/jud/` together. The
   questions in a rubric are the wire's shape, never a translation of it, and
   fingerprints are RFC 8785 canonical JSON (`src/eval/canonical.rs`) over
   values inside `spec`, so the envelope moves none of them; they are checked
   against the known vector on the page. `Questions` and a Choice's options
   keep insertion order: it is the order the model sees.
-- Documentation: every page under `docs/` carries frontmatter (`title`,
-  `description`, `status`, `last_reviewed`, `tags`); the README does not
-  (crates.io renders it). `docs/llms.txt` and `docs/llms-full.txt` are
-  generated from `mkdocs.yml`, `docs/llms-intro.txt` and that frontmatter:
-  never edit them; run `mise run docs:llms` after adding a page (add it to
-  the nav too) or changing a title or description. Paths in sources and pages
-  are relative to the crate. A link to another repository's documentation is
-  an absolute URL on its default branch. Nothing about the application the
-  crate was extracted from is named anywhere in the repository.
+- Documentation: `docs/` follows Diátaxis (`docs/project/contributing.md`):
+  tutorials under `start/`, how-to guides under `guides/`, reference under
+  `reference/`, explanation under `concepts/`, and what is about the
+  repository under `project/`; a page holds one kind and a fact has one
+  page. Every page carries frontmatter (`title`, `description`, `status`,
+  `last_reviewed`, `tags`); the README does not (crates.io renders it).
+  Generated, never edited by hand: `docs/reference/cli.md`
+  (`scripts/gen-cli-reference.sh`, from the binary's help),
+  `plugins/jud/skills/jud/references/format.md`
+  (`scripts/gen-plugin-format.sh`, from `docs/reference/jud-format.md`),
+  `docs/llms.txt` and `docs/llms-full.txt` (`scripts/gen-llms-txt.sh`, from
+  `mkdocs.yml`, `docs/llms-intro.txt` and the frontmatter); `mise run
+  docs:check` checks all three and the links. A new page goes in the nav.
+  Code on a page is held to the code (`tests/docs_examples.rs`): a
+  tutorial's Rust block is an `examples/` file between `README:BEGIN` and
+  `README:END` markers, a guide's Rust block is a doctest (`src/lib.rs`
+  includes the page), a whole `.jud` document or configuration file is a
+  file under `examples/` named in a `<!-- file: PATH -->` comment before the
+  fence, and a transcript is marked `<!-- transcript: LABEL -->` and
+  reproduced from the binary. Paths in sources and pages are relative to
+  the crate. A link to another repository's documentation is an absolute
+  URL on its default branch. Nothing about the application the crate was
+  extracted from is named anywhere in the repository.
 - Decision records are numbered in one sequence and a number is never reused
   or renumbered: 0003 kept its number when it moved here, the numbers up to
   0012 and 0015 are taken outside this repository and left unused, and a
   new record takes the number after the highest in use in either place
-  (`docs/decisions/README.md` says which are skipped).
+  (`docs/project/decisions/README.md` says which are skipped).
 - Commits are Conventional Commits (`cog verify` runs on every commit
   message through prek; CI checks a pull request's commits). A release is
   `cog bump --auto` on `main` and never a hand-edited version: `cog.toml`
   and `scripts/release-bump.sh` say what a bump touches, and
-  `docs/releasing.md` is the runbook. `.github/workflows/release.yml`
+  `docs/project/releasing.md` is the runbook. `.github/workflows/release.yml`
   publishes to crates.io from a pushed `v*` tag, so the Bash guard denies
   `cargo publish` (the dry run is allowed) and pushing a tag; both are the
   release owner's decision.
@@ -101,7 +115,7 @@ The README says why; `docs/` says how; the rustdoc is the reference.
 - `plugins/jud/` is the jud plugin (the `jud` skill and the `/jud:rubric`,
   `/jud:cases`, `/jud:check` commands), served by
   `.claude-plugin/marketplace.json` and enabled here through
-  `.claude/settings.json`; `docs/skill.md` describes it.
+  `.claude/settings.json`; `docs/guides/use-the-claude-code-plugin.md` describes it.
 - Hooks in `.claude/hooks/`: Rust files are formatted after every edit;
   `docs/llms.txt` is regenerated after a page, the README, `llms-intro.txt`
   or `mkdocs.yml` is written; a Bash guard denies pushes to `main`,

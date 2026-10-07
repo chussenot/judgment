@@ -1,7 +1,7 @@
 name: Release
 
 # Publishes the crate to crates.io and the `jud` binaries to a GitHub release
-# from a pushed `v*` tag, which `cog bump` creates (cog.toml; docs/releasing.md
+# from a pushed `v*` tag, which `cog bump` creates (cog.toml; docs/project/releasing.md
 # is the runbook, decision 0013 the why, decision 0019 the binary). The gate
 # runs first, through the CI workflow, on the tagged commit; the tag must name
 # the version in Cargo.toml; `cargo publish --dry-run` must pass; the binary is
@@ -203,7 +203,7 @@ jobs:
           manifest_version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "judgment") | .version')
           echo "tag v$tag_version, Cargo.toml $manifest_version"
           if [ "$tag_version" != "$manifest_version" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not name the manifest version $manifest_version; cut releases with cog bump (docs/releasing.md)"
+            echo "::error::tag $GITHUB_REF_NAME does not name the manifest version $manifest_version; cut releases with cog bump (docs/project/releasing.md)"
             exit 1
           fi
           echo "version=$tag_version" >> "$GITHUB_OUTPUT"
@@ -328,7 +328,7 @@ jobs:
       # One commit on the tap's main, "jud X.Y.Z" as Homebrew names a version
       # bump, pushed with HOMEBREW_TAP_TOKEN: a fine-grained token whose only
       # permission is contents read and write on chussenot/homebrew-tap
-      # (docs/releasing.md, one-time setup). The tap's own CI then audits,
+      # (docs/project/releasing.md, one-time setup). The tap's own CI then audits,
       # installs and tests the formula from the published tarballs.
       - name: Commit to chussenot/homebrew-tap
         if: github.event_name == 'push'
@@ -338,7 +338,7 @@ jobs:
         run: |
           set -eu
           if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
-            echo "::error::no HOMEBREW_TAP_TOKEN secret: the release is published but the tap was not updated; add the token (docs/releasing.md) and re-run this job"
+            echo "::error::no HOMEBREW_TAP_TOKEN secret: the release is published but the tap was not updated; add the token (docs/project/releasing.md) and re-run this job"
             exit 1
           fi
           git clone --quiet --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/chussenot/homebrew-tap.git" "$RUNNER_TEMP/tap"

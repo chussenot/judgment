@@ -6,6 +6,19 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The documentation is rebuilt in Diátaxis form under `docs/`: tutorials
+  (`start/`), guides (`guides/`), reference (`reference/`), concepts
+  (`concepts/`) and the project's own pages (`project/`, where the
+  decision, verification and research records moved unchanged). The `.jud`
+  specification is `docs/reference/jud-format.md`, in BCP 14 wording, and
+  the plugin's `references/format.md` is generated from it; the command
+  line's reference is generated from the binary's help; the README is a
+  front door. Every Rust block, `.jud` document and transcript on a page is
+  held to the code by a test, and every internal link is checked
+  (`mise run docs:links`). No behaviour, API or format rule changed.
+
 ## [0.10.4] - 2026-10-07
 
 ### Added

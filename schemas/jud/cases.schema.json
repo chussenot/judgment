@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/chussenot/judgment/schemas/jud/cases.schema.json",
   "title": ".jud Cases",
-  "description": "Labelled states a rubric is graded on (docs/jud.md). metadata takes name, description, labels and annotations; spec.rubric names the rubric by its metadata.name or by fingerprint.",
+  "description": "Labelled states a rubric is graded on (docs/reference/jud-format.md). metadata takes name, description, labels and annotations; spec.rubric names the rubric by its metadata.name or by fingerprint.",
   "type": "object",
   "allOf": [
     {

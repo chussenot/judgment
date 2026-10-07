@@ -15,8 +15,8 @@ both need to know why a thing is the way it is before they change it.
 
 This set is about the crate: how it works, what it guarantees, its API and
 errors, its retry policy, what real servers did with it
-(`docs/verification/`), research about clients and SDKs, the patterns it
-supports, and the decisions about its design (`docs/decisions/`). What an
+(`docs/project/verification/`), research about clients and SDKs, the patterns it
+supports, and the decisions about its design (`docs/project/decisions/`). What an
 application does with the crate belongs to that application's own
 documentation, and this set does not name the application the crate was
 extracted from. A page that mixes the two is split: the mechanism stays
@@ -52,7 +52,7 @@ was chosen and what the reader would need to observe to choose the other.
   `scripts/check-frontmatter.sh docs`.
 - Links inside this set are relative. Links to another repository are
   absolute URLs on its default branch. Paths in sources and pages are
-  relative to the crate (`docs/design.md`, `tests/live.rs`).
+  relative to the crate (`docs/concepts/how-judgment-works.md`, `tests/live.rs`).
 - `docs/llms.txt` and `docs/llms-full.txt` are generated from `mkdocs.yml`,
   `docs/llms-intro.txt` and the frontmatter by `scripts/gen-llms-txt.sh`
   (`mise run docs:llms`). Never edit them. A new page goes in the nav; a page
@@ -63,7 +63,7 @@ was chosen and what the reader would need to observe to choose the other.
   how to depend on it, and points to `docs/`. `docs/index.md` and the README
   table list every page.
 - A decision record takes the number after the highest in
-  `docs/decisions/README.md`; a number is never reused or renumbered, and
+  `docs/project/decisions/README.md`; a number is never reused or renumbered, and
   the numbers up to 0012 stay unused.
 - Verification records say which server, which release and which date, and
   separate what was asserted from what was observed.

@@ -1,7 +1,7 @@
 //! The `.jud` document format: a rubric with its policy, the cases it is
 //! graded on and the recordings of what a model answered, as YAML or JSON
 //! any tool can read, write and name by content. The specification is
-//! `docs/jud.md`; this module reads and writes one version of it,
+//! `docs/reference/jud-format.md`; this module reads and writes one version of it,
 //! [`API_VERSION`]: [`parse`] for any kind, [`Rubric`], [`Cases`], and [`parse_recording`]
 //! and [`recording_to_yaml`] for a [`crate::eval::Recording`]. Fingerprints
 //! are [`crate::eval::canonical`].
@@ -301,7 +301,7 @@ pub fn recording_to_yaml(recording: &Recording) -> Result<String> {
     })
 }
 
-/// YAML 1.2 core schema, as the reading rules require (`docs/jud.md`,
+/// YAML 1.2 core schema, as the reading rules require (`docs/reference/jud-format.md`,
 /// Reading rules): an option called `yes` is a string, a duplicate key is an
 /// error, and what a reviewer cannot see is refused: a merge key would fold
 /// another mapping's fields in, a tag the schema does not know is refused,
@@ -318,7 +318,7 @@ pub(crate) fn from_text<T: DeserializeOwned>(text: &str) -> Result<T> {
     serde_saphyr::from_str_with_options(text, options).map_err(|e| Error::Syntax(e.to_string()))
 }
 
-/// Refuse an id that is not a name (`docs/jud.md`, Names): every
+/// Refuse an id that is not a name (`docs/reference/jud-format.md`, Names): every
 /// `metadata.name`, a case's `id`. A name can name a file and a reference;
 /// a path or a blank cannot.
 pub(crate) fn check_name(field: &str, name: &str) -> Result<()> {
@@ -356,7 +356,7 @@ pub(crate) fn some<'de, D: Deserializer<'de>, T: DeserializeOwned>(
 }
 
 /// Whether `path` is present in `state`: the one test `when` and `part_when`
-/// make (`docs/jud.md`, State paths). Dot-separated keys, a canonical decimal
+/// make (`docs/reference/jud-format.md`, State paths). Dot-separated keys, a canonical decimal
 /// indexing an array (`turns.0.text`); present is not `null` and not an empty
 /// string, array or object, so `false` and `0` are present.
 pub fn present(state: &Value, path: &str) -> bool {

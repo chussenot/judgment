@@ -1,66 +1,35 @@
 ---
 title: judgment documentation
-description: Map of the judgment crate's documentation, what each page answers, and where the crate's documentation ends and an application's begins.
+description: Typed, calibrated judgments from System One models as a Rust crate and a command line; where to start by what you want to do.
 status: current
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-07
 tags: [judgment, index]
 ---
 
-# judgment documentation
+# judgment
 
-The [README](../README.md) says what the crate is for, what it guarantees and how to depend on it, and maps TypeSafe's four patterns onto its types. These pages say how it works, what has been verified against real servers, and why it is shaped the way it is. The rustdoc (`cargo doc -p judgment --open`) is the reference for every type, error and default.
+A decision written as a file, answered by a calibrated model, verified before it is read, and testable with no key. `judgment` is a Rust crate and a command line, `jud`, for [TypeSafe](https://docs.typesafe.ai) System One models and every server that speaks the same wire. The questions, the thresholds, the labelled cases and the recorded answers live in `.jud` files that name each other by content.
 
-## By question
+Thirty seconds of the command line, recorded from the examples with no key: [`demo.cast`](demo.cast), played with `asciinema play docs/demo.cast`.
 
-| You want to know | Read |
-|---|---|
-| How a question's handle ties it to its answer, how a response is checked, how the retry loop decides | [How judgment works](design.md) |
-| What each module is for and what it promises, before opening the rustdoc | [What is in the crate](tour.md) |
-| The rules the code applies and why: the tolerant decoder, what the response check leaves unchecked, how an error body is read, what a per-call option replaces, how recordings are keyed, how a rubric is lowered | [How the crate is implemented](implementation.md) |
-| Which crate types carry speculative fan-out, confidence-gated routing, composite scoring and intent routing, and what the recordings teach about thresholds | [Patterns](patterns.md) and the examples under `examples/` |
-| How to test a decision with no key and no network, and grade recordings against labels | [Testing without the model](testing.md) |
-| How to run the crate, its examples and the `jud` binary with no TypeSafe account, against tev1 or Clef-flash on Ollama, and what the local server does differently | [Open-weight models without an account](open-weights.md) |
-| How to keep the questions, the thresholds, the labelled cases and the recorded answers in manifest-shaped files (`apiVersion`, `kind`, `metadata`, `spec`) that name each other by content, and tune a threshold from them, including a request that depends on the state | [The .jud format](jud.md) and `examples/jud/` |
-| Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](jud/rubric.md) |
-| Why the labelled examples are a document of their own, what a label means for each primitive, how cases are bound and graded, and how to write cases a threshold can rest on | [What cases are](jud/cases.md) |
-| Why one model response is kept as a document, what its fingerprint leaves out, how a replay finds and verifies one, and when one is written by hand | [What a recording is](jud/recording.md) |
-| What stays the same across versions and for how long: `jud/v1` stable, a minor only adds, every `v1` document read for at least twelve months after a later minor, fingerprints outside the envelope and fixed for a `spec`, the crate's 0.x rule | [Stability](stability.md) |
-| How to evaluate JSON input against a Rubric from a shell (`cat input.json \| jud rubric.jud`), install the binary with mise, configure its backend, and read its exit status | [The jud command line](cli.md) |
-| How to run the binary as `ghcr.io/chussenot/jud` with nothing installed: what is inside the image, tags and digests, how files and a backend (a key, another server, the host's Ollama, a replay directory) reach it, what a non-root image without a shell changes, and how to use it in CI | [The jud container image](container.md) |
-| How an agent writes a `.jud` document and checks it with the crate's reader (`jud check`, `jud lower`), the `/jud:rubric`, `/jud:cases` and `/jud:check` commands, how to install the plugin, and how it was tested | [The jud plugin](skill.md) and `plugins/jud/` |
-| What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
-| What the hosted TypeSafe API does with what the crate sends, and with what it refuses to send | [Against the hosted TypeSafe API](verification/hosted-typesafe.md) |
-| Whether the crate works against a second implementation of the wire, what the benchmark measured, and what each `laya-serve` release changed on the wire | [Against Laya typed-decisions](verification/laya-typed-decisions.md) |
-| What the other Rust clients and the official SDKs do, and which of it the crate adopted | [System One client libraries](research/system-one-client-libraries.md) |
-| Which servers and models speak the wire, how close the open ones are to Jev on the Decision Index, and what each one's limits mean for a consumer | [Compatible servers and models](research/compatible-servers-and-models.md) |
-| How judgment compares, feature by feature and with evidence, with the most-downloaded Rust crates for the same wire, and what it should take from them | [Compared with the other Rust clients](research/client-comparison.md) |
-| How a System One model is reached on Google Cloud (Cloud Run, a Vertex AI endpoint, a gateway), what the client does for each path and where it stops, and how a caller sends request labels in a header with the client as it is | [System One models on Google Cloud](research/system-one-on-google-cloud.md) |
-| Why an answer is read through a typed handle rather than a string key | [Decision 0003](decisions/0003-typed-handles-between-questions-and-answers.md) |
-| How a version is cut from the commits and published to crates.io, and what to set up once | [Releasing](releasing.md) |
-| Why releases are cut with cocogitto from Conventional Commits and published by CI from a tag | [Decision 0013](decisions/0013-releases-cut-with-cocogitto-and-published-from-ci.md) |
-| Why the rubric, the cases and the recordings got one YAML format with content fingerprints | [Decision 0014](decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) |
-| Why a rubric's request may depend on the state (declarations, options supplied per request) and a gate may carry bands, a level threshold and strict bars; superseded by 0018, its versioning rule withdrawn | [Decision 0016](decisions/0016-jud-takes-minor-versions.md) |
-| Why the reader refuses merge keys, foreign tags and path-shaped ids, keeps the document out of error messages, and gives the policy its own fingerprint; superseded by 0018, its versioning rule withdrawn | [Decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) |
-| Why the `.jud` envelope is a Kubernetes manifest's and the reader reads exactly one `apiVersion`, and how the earlier keys map onto `metadata` and `spec` | [Decision 0018](decisions/0018-jud-1-3-takes-the-manifest-envelope.md) |
-| Why the jud binary evaluates stdin against a Rubric file, keeps TypeSafe as the default and a base URL as the only backend switch, reads a configuration file, and is released as one tarball per platform | [Decision 0019](decisions/0019-a-command-line-for-the-format.md) |
-| Whether a `v1` minor of the format stays in the `apiVersion` string or moves to a `minor` field, each option priced; proposed, not applied | [Decision 0020](decisions/0020-how-a-v1-minor-is-spelled.md) |
-| What changed in each release | [CHANGELOG](../CHANGELOG.md) |
-| Everything, as an agent or a model reads it | [llms.txt](llms.txt), the index; [llms-full.txt](llms-full.txt), every page in one file |
+Not affiliated with TypeSafe AI.
 
-## Verification
+## Pick your path
 
-A mock encodes what the client author believed about the wire; only a real server can contradict that belief. [How the crate is checked](verification/method.md) describes the three checks; two records say what real servers did:
+| You are | Start with | Then |
+|---|---|---|
+| Evaluating whether this fits | [System One](concepts/system-one.md), [How judgment works](concepts/how-judgment-works.md) | [Stability](reference/stability.md), [Compared with the other Rust clients](project/research/client-comparison.md) |
+| Using `jud` from a shell, no Rust | [Install](start/install.md), [Your first decision from the command line](start/first-decision-cli.md) | [Configure a backend](guides/configure-a-backend.md), [Run in CI](guides/run-in-ci.md), [The jud command line](reference/cli.md) |
+| Writing `.jud` documents | [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [Write a rubric](guides/write-a-rubric.md) | [Label cases](guides/label-cases.md), [Tune thresholds](guides/tune-thresholds.md), [The .jud format](reference/jud-format.md) |
+| Using the crate from Rust | [Your first decision in Rust](start/first-decision-rust.md) | [Record, replay and test](guides/record-replay-and-test.md), [Patterns](guides/patterns.md), [The crate](reference/crate.md) and the [rustdoc](https://docs.rs/judgment) |
+| Contributing | [Contributing](project/contributing.md) | [Internals](project/internals.md), [How the crate is checked](project/verification/method.md), [Decisions](project/decisions/README.md) |
 
-- [Against the hosted TypeSafe API](verification/hosted-typesafe.md): the live tests (`tests/live.rs`) and about fifty probes past the builder's limits, against `jev-1.13.0`.
-- [Against Laya typed-decisions](verification/laya-typed-decisions.md): the same tests against an open-weights server, `laya-serve` 0.3.20 and then 0.3.24, and the 400-case benchmark replayed through the crate.
+## The documentation
 
-## What is not here
+- **Start**: [Install](start/install.md), [first decision from the command line](start/first-decision-cli.md), [first decision in Rust](start/first-decision-rust.md).
+- **Guides**: [Configure a backend](guides/configure-a-backend.md), [Write a rubric](guides/write-a-rubric.md), [Label cases](guides/label-cases.md), [Record, replay and test](guides/record-replay-and-test.md), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [Run in a container](guides/run-in-a-container.md), [Use the Claude Code plugin](guides/use-the-claude-code-plugin.md), [Patterns](guides/patterns.md).
+- **Reference**: [The jud command line](reference/cli.md), [Configuration](reference/configuration.md), [The .jud format](reference/jud-format.md), [The crate](reference/crate.md), [The container image](reference/container-image.md), [Stability](reference/stability.md), [Glossary](reference/glossary.md); the [rustdoc](https://docs.rs/judgment) for every type.
+- **Concepts**: [System One](concepts/system-one.md), [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [How judgment works](concepts/how-judgment-works.md).
+- **Project**: [Contributing](project/contributing.md), [Internals](project/internals.md), [Releasing](project/releasing.md), [verification](project/verification/method.md) against real servers, [research](project/research/compatible-servers-and-models.md), [decisions](project/decisions/README.md), the [CHANGELOG](../CHANGELOG.md); [llms.txt](llms.txt) and [llms-full.txt](llms-full.txt) for an agent.
 
-The crate began as the client layer of an alert-triage application and moved to this repository with its history on 2026-10-03. How any one application uses the crate, its questions, its thresholds, its evaluation harness and its choice of model provider belong to that application's own documentation, and this set does not name the application it came from. A page belongs here when it would still be true, and still be needed, if no particular application existed.
-
-## Conventions
-
-- Every page starts with YAML frontmatter: `title`, `description`, `status`, `last_reviewed`, `tags`.
-- `llms.txt` and `llms-full.txt` are generated from [`mkdocs.yml`](../mkdocs.yml) and the frontmatter by `scripts/gen-llms-txt.sh`; never edit them. A new page goes in the nav.
-- Links inside this documentation are relative, so they work on GitHub, in a TechDocs build and in a packaged crate. A link to another repository's page is an absolute URL, because it leaves the crate.
-- Paths in the crate's sources and docs are relative to the crate: `docs/design.md`, `tests/live.rs`.
+The crate began as the client layer of another application and moved here with its history; how any one application uses it belongs to that application's documentation. A page belongs here when it would still be true, and still be needed, if no particular application existed.

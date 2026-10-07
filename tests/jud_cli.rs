@@ -223,7 +223,7 @@ fn lower_and_check_name_the_file_and_what_was_expected() {
     let out = jud(&["check", plain.to_str().unwrap()], "", &[], &home);
     assert_eq!(out.status.code(), Some(2));
     let text = stdout(&out);
-    assert!(text.contains("the document has no `apiVersion` (not a jud/v1.3 document; docs/jud.md has the envelope)"), "{text}");
+    assert!(text.contains("the document has no `apiVersion` (not a jud/v1.3 document; docs/reference/jud-format.md has the envelope)"), "{text}");
     assert!(text.contains("1 documents, 1 refused"), "{text}");
 }
 

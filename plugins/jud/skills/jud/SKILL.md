@@ -11,8 +11,9 @@ state, and the thresholds at which its answers become actions. Three kinds
 share one YAML envelope, a manifest's (`apiVersion`, `kind`, `metadata`,
 `spec`): a **Rubric** (questions + policy), **Cases** (labelled states the
 rubric is graded on) and a **Recording** (what a model answered once).
-`docs/jud.md` in the judgment repository is the specification;
-`docs/jud/rubric.md`, `docs/jud/cases.md` and `docs/jud/recording.md` are the reasoning behind each kind. This skill is the working guide.
+`docs/reference/jud-format.md` in the judgment repository is the specification,
+shipped in this plugin as `references/format.md`;
+`docs/concepts/rubrics-cases-recordings.md` is the reasoning behind the three kinds. This skill is the working guide.
 
 What makes a document good is not the syntax, which `jud check` enforces, but
 two things the checker cannot see: the questions are narrow and atomic, with
@@ -31,10 +32,10 @@ plugin's directory, so the checker is
 1. **Decide the kind.** A decision needs a rubric. Thresholds need cases to
    be tuned on, so a rubric usually comes with a cases document. A recording
    is written by hand only for a test fixture.
-2. **Read `references/format.md`** before writing: the envelope, every field
-   per kind, the gate fields per primitive, the label shapes, and the
-   checklist of what the reader refuses. It is 300 lines and saves a round of
-   refusals.
+2. **Read `references/format.md`** before writing: the specification itself,
+   with the envelope, every field per kind, the gate fields per primitive,
+   the label shapes, and the reading rules the reader refuses by. It is 400
+   lines and saves a round of refusals.
 3. **Write the document** with the envelope first: `apiVersion: jud/v1.3`,
    `kind`, `metadata` with its `name`, then everything the kind holds under
    `spec`:

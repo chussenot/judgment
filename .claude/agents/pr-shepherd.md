@@ -20,7 +20,7 @@ jobs, `fmt, clippy, test, doc, docs` (the steps of `mise run check`, plus
 `conventional commits (cog check)` over the commits it adds (a red one is a
 commit message to reword, not code to fix). A pushed `v*` tag runs
 `.github/workflows/release.yml` instead, which calls the same gate and then
-publishes (docs/releasing.md). A pull request whose checks are green needs
+publishes (docs/project/releasing.md). A pull request whose checks are green needs
 no comment from you.
 
 ## Before opening

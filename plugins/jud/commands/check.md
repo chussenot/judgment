@@ -17,7 +17,7 @@ uses a `jud` on PATH, else builds it from a judgment checkout (the project, or
 Then report, in this order: the summary line; every `error` line with the
 file, the field and, in one sentence each, what the reader refuses and why
 (`${CLAUDE_PLUGIN_ROOT}/skills/jud/references/format.md` has the rules and
-the checklist of refusals); every cases document that could not be bound
+the reading rules it refuses by); every cases document that could not be bound
 because its rubric was not among the files; and the names and fingerprints
 of what passed. A document the reader refuses by its envelope is in an old
 shape: say so and point at the skill's "Moving an old document forward"

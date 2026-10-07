@@ -1,4 +1,4 @@
-# A `jud` configuration for tev1 on a local Ollama (docs/open-weights.md).
+# A `jud` configuration for tev1 on a local Ollama (docs/guides/configure-a-backend.md).
 # Copy it to ~/.config/jud/config.yaml (or $XDG_CONFIG_HOME/jud/config.yaml):
 #
 #   mkdir -p ~/.config/jud && cp examples/jud/config-tev1.yaml ~/.config/jud/config.yaml
