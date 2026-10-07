@@ -1,0 +1,24 @@
+# Link checking for the documentation (mise run docs:links, CI's docs gate,
+# the weekly online run in .github/workflows/links.yml). Internal links are
+# checked offline on every change; external ones on the schedule.
+include_fragments = "anchor-only"
+exclude_path = [
+  # Generated from the pages, with raw-content URLs on the default branch.
+  "docs/llms.txt",
+  "docs/llms-full.txt",
+  # Released entries keep the links of their day (Keep a Changelog); only
+  # the Unreleased section is written now.
+  "CHANGELOG.md",
+  # Generated from the specification, with absolute URLs on the default
+  # branch that exist once the branch is merged.
+  "plugins/jud/skills/jud/references/format.md",
+]
+exclude = [
+  # Illustrative hosts in the pages.
+  "https://example.test",
+  # Both answer a bare request with a status lychee reads as a failure.
+  "https://crates.io/crates/judgment",
+  "https://api.typesafe.ai",
+]
+accept = ["200..=299", "403", "429"]
+max_retries = 2

@@ -11,12 +11,15 @@ prek = "latest"
 # Conventional commits and the release bump (cog.toml, docs/project/releasing.md);
 # built from crates.io, the same way CI installs it.
 "cargo:cocogitto" = "7.0.0"
+# lychee, the link checker behind `mise run docs:links` and the docs gate;
+# from crates.io like cocogitto, pinned so a rule change does not land unseen.
+"cargo:lychee" = "0.24.2"
 # bd (beads), the issue tracker (AGENTS.md, `bd prime`), from the GitHub release
 # binary and pinned: the npm package downloads a binary in a postinstall step,
 # which fails behind some proxies, and a tool that runs in every git hook
 # should not move under `latest`.
 "github:gastownhall/beads" = "1.3.1"
-# Ollama, for the open-weight decision models (docs/open-weights.md, `mise run
+# Ollama, for the open-weight decision models (docs/guides/configure-a-backend.md, `mise run
 # live:ollama`); 0.35.1 is the least that serves Clef, 0.40.0 what the page
 # was checked with.
 ollama = "0.40.0"
@@ -60,7 +63,7 @@ description = "The crate and its tests build without the http feature (the no-tr
 run = "cargo check --no-default-features --all-targets"
 
 [tasks.kani]
-description = "The bounded Kani proofs (docs/testing.md, \"Bounded proofs\"); needs `cargo install --locked kani-verifier && cargo kani setup` once"
+description = "The bounded Kani proofs (docs/guides/record-replay-and-test.md, \"Bounded proofs\"); needs `cargo install --locked kani-verifier && cargo kani setup` once"
 run = '''
 set -eu
 cargo kani --no-default-features --harness nearest_index_is_a_level_of_the_scale
@@ -76,16 +79,43 @@ env = { RUSTDOCFLAGS = "-D warnings" }
 run = "cargo doc --no-deps --document-private-items --all-features"
 
 [tasks."docs:check"]
-description = "Frontmatter on every page under docs/, and llms.txt matches the nav and frontmatter"
+description = "The documentation gate: frontmatter on every page, the generated pages (llms.txt, the CLI reference, the plugin's format reference) match their sources, every .jud document the pages show is read, and every internal link resolves"
 run = """
 set -eu
 scripts/check-frontmatter.sh docs
 scripts/gen-llms-txt.sh --check
+scripts/gen-cli-reference.sh --check
+scripts/gen-plugin-format.sh --check
+mise run jud:check
+mise run docs:links
 """
 
 [tasks."docs:llms"]
 description = "Regenerate docs/llms.txt and docs/llms-full.txt from mkdocs.yml and the page frontmatter"
 run = "scripts/gen-llms-txt.sh"
+
+[tasks."docs:cli"]
+description = "Regenerate docs/reference/cli.md from the jud binary's --help text"
+run = "scripts/gen-cli-reference.sh"
+
+[tasks."docs:plugin"]
+description = "Regenerate the jud plugin's references/format.md from docs/reference/jud-format.md"
+run = "scripts/gen-plugin-format.sh"
+
+[tasks."docs:links"]
+description = "Check the documentation's links with lychee (lychee.toml): internal links offline by default; `mise run docs:links -- --online` also fetches the external ones, as the weekly workflow does"
+run = """
+set -eu
+if [ "${1:-}" = "--online" ]; then
+  lychee --config lychee.toml README.md docs plugins
+else
+  lychee --config lychee.toml --offline README.md docs plugins
+fi
+"""
+
+[tasks."docs:build"]
+description = "Build the documentation site as TechDocs does, every warning an error (pip install mkdocs mkdocs-techdocs-core once)"
+run = "mkdocs build --strict --site-dir target/site"
 
 [tasks.check]
 alias = "ci"
@@ -182,7 +212,7 @@ JUDGMENT_LIVE_BASE_URL="${LAYA_URL:-http://127.0.0.1:8000}" JUDGMENT_LIVE_MODEL=
 # ---------------------------------------------------------------------------
 
 [tasks.install]
-description = "Install the jud command line from this checkout (cargo install --path . --features cli) and refresh the completion scripts a shell already has; a release binary is `mise use -g github:chussenot/judgment@latest` (docs/cli.md)"
+description = "Install the jud command line from this checkout (cargo install --path . --features cli) and refresh the completion scripts a shell already has; a release binary is `mise use -g github:chussenot/judgment@latest` (docs/reference/cli.md)"
 run = [
   "cargo install --path . --features cli --force",
   """
@@ -216,7 +246,7 @@ description = "Write every issue to .beads/issues.jsonl, the passive export revi
 run = "bd export --all -o .beads/issues.jsonl"
 
 [tasks.image]
-description = "Build the container image from this checkout's own build (scripts/image-context.sh --local, then docker buildx) as ghcr.io/chussenot/jud:dev; a release image is pushed by the release workflow (docs/cli.md)"
+description = "Build the container image from this checkout's own build (scripts/image-context.sh --local, then docker buildx) as ghcr.io/chussenot/jud:dev; a release image is pushed by the release workflow (docs/reference/cli.md)"
 run = [
   "scripts/image-context.sh --local",
   "docker buildx build --load -t ghcr.io/chussenot/jud:dev .",

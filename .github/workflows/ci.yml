@@ -57,8 +57,18 @@ jobs:
       - run: cargo doc --no-deps --document-private-items --all-features
         env:
           RUSTDOCFLAGS: -D warnings
+      # The documentation gate (docs/project/contributing.md): frontmatter,
+      # the generated pages against their sources, the .jud documents the
+      # pages show, and every internal link.
       - run: scripts/check-frontmatter.sh docs
       - run: scripts/gen-llms-txt.sh --check
+      - run: scripts/gen-cli-reference.sh --check
+      - run: scripts/gen-plugin-format.sh --check
+      - run: cargo run -q --features cli --bin jud -- check examples/jud/*.jud examples/recordings/jud_calibration/*.jud
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          args: --config lychee.toml --offline README.md docs plugins
+          fail: true
       # What a publish would ship, so tooling creeping into the package is seen.
       - run: cargo package --list --allow-dirty
 
@@ -113,3 +123,14 @@ jobs:
         run: |
           cog --version
           cog check --ignore-merge-commits "origin/$BASE..HEAD"
+
+  docs:
+    name: mkdocs build --strict
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install mkdocs mkdocs-techdocs-core
+      - run: mkdocs build --strict --site-dir target/site

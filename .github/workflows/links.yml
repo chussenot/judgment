@@ -1,0 +1,24 @@
+# The documentation's external links, once a week and on demand. The internal
+# links are checked on every change by the ci workflow (lychee --offline);
+# this run fetches the external ones, which can go stale without a change
+# here, and opens nothing: a failure is read on the run.
+name: links
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external:
+    name: lychee, online
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          args: --config lychee.toml README.md docs plugins
+          fail: true
