@@ -12,7 +12,8 @@ Not affiliated with TypeSafe AI.
 ## The command line
 
 ```sh
-mise use -g github:chussenot/judgment@latest   # Linux x86-64 and arm64, Apple silicon; or cargo install judgment --features cli
+mise use -g github:chussenot/judgment@latest   # Linux x86-64 and arm64, Apple silicon
+brew install chussenot/tap/jud                 # the same tarballs, through Homebrew; or cargo install judgment --features cli
 ```
 
 A rubric is the decision as a file: the questions a model is asked about a
