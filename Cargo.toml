@@ -42,6 +42,15 @@ exclude = [
     "clippy.toml",
 ]
 
+# `cargo binstall judgment`: the `jud` tarball from the GitHub release the
+# version was published with (release.yml names them jud-<tag>-<triple>.tar.gz,
+# one directory inside), so a Rust user gets the checked binary with no build.
+# The crate is `judgment` and the binary `jud`, hence the literal name.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/jud-v{ version }-{ target }.tar.gz"
+bin-dir = "jud-v{ version }-{ target }/{ bin }"
+pkg-fmt = "tgz"
+
 [features]
 default = ["http"]
 # The HTTP client and the retry loop. Without it the crate is the question

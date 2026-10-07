@@ -78,7 +78,7 @@ install -m755 "jud-$TAG-$TARGET/jud" /usr/local/bin/
 
 Each tarball carries a build-provenance attestation: `gh attestation verify jud-$TAG-$TARGET.tar.gz --repo chussenot/judgment` says which workflow, commit and run produced it.
 
-From source, with a Rust toolchain: `cargo install judgment --features cli` from crates.io, or `mise run install` in a checkout.
+With a Rust toolchain and [cargo-binstall](https://github.com/cargo-bins/cargo-binstall): `cargo binstall judgment` downloads the release tarball for the machine, named by the crate's `[package.metadata.binstall]` templates, instead of compiling; the release workflow checks that the templates name the tarball it packages. From source: `cargo install judgment --features cli` from crates.io, or `mise run install` in a checkout.
 
 ### Shell completion
 

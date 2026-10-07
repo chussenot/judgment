@@ -132,6 +132,36 @@ jobs:
           echo "name=$name" >> "$GITHUB_OUTPUT"
           ls -l "dist/$name.tar.gz"
 
+      # `cargo binstall judgment` downloads the tarball the crate's
+      # [package.metadata.binstall] templates name (Cargo.toml); rendered
+      # here the way binstall renders them, they must name this very tarball
+      # and the binary's path inside it, or a published version would send
+      # binstall to a 404 and a source build.
+      - name: The binstall metadata names this tarball
+        run: |
+          set -eu
+          meta=$(cargo metadata --no-deps --format-version 1 | jq -c '.packages[] | select(.name == "judgment") | {version, repository, binstall: .metadata.binstall}')
+          version=$(jq -r .version <<<"$meta")
+          render() {
+            jq -r "$1" <<<"$meta" \
+              | sed -e "s|{ repo }|$(jq -r .repository <<<"$meta")|g" \
+                    -e "s|{ version }|$version|g" \
+                    -e "s|{ target }|${{ matrix.target.triple }}|g" \
+                    -e "s|{ bin }|jud|g"
+          }
+          url=$(render .binstall\[\"pkg-url\"\])
+          bin=$(render .binstall\[\"bin-dir\"\])
+          fmt=$(jq -r '.binstall["pkg-fmt"]' <<<"$meta")
+          echo "pkg-url  $url"; echo "bin-dir  $bin"; echo "pkg-fmt  $fmt"
+          expected="jud-v$version-${{ matrix.target.triple }}"
+          [ "$url" = "https://github.com/chussenot/judgment/releases/download/v$version/$expected.tar.gz" ] || { echo "::error::pkg-url renders to '$url', not the release asset $expected.tar.gz"; exit 1; }
+          [ "$bin" = "$expected/jud" ] || { echo "::error::bin-dir renders to '$bin', not $expected/jud"; exit 1; }
+          [ "$fmt" = tgz ] || { echo "::error::pkg-fmt is '$fmt', the tarball is .tar.gz"; exit 1; }
+          # On a tag the packaged tarball is the asset itself: the path must be in it.
+          case "$GITHUB_REF_NAME" in
+            v*) tar -tzf "dist/${{ steps.package.outputs.name }}.tar.gz" | grep -qx "$bin" || { echo "::error::$bin is not in the tarball"; exit 1; } ;;
+          esac
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.name }}
