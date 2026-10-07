@@ -45,7 +45,7 @@ Three readings for a consumer of this crate:
 
 ## Servers on the wire
 
-What a consumer can point the crate at, as of 2026-10-06. "Verified" means this crate's ignored live tests (`tests/live.rs`) have passed against it and a page under `docs/verification/` records the run.
+What a consumer can point the crate at, as of 2026-10-06. "Verified" means this crate's ignored live tests (`tests/live.rs`) have passed against it and a page under `docs/project/verification/` records the run.
 
 | Server | Where it runs | Models | Limits and departures from the hosted API | Verified |
 |---|---|---|---|---|
@@ -71,7 +71,7 @@ Two small models without a server yet are worth knowing: openJev-verdict 2.0 (15
 
 ## What this means for the crate
 
-- **Verify against a third server, and keep doing it on every release.** The live tests passed against two independent implementations; Ollama's endpoint is the cheapest third (`tev1:0.8b` runs on CPU) and exercises a runtime many consumers already have. `mise run live:ollama` runs them; a run that passes, or that finds a departure, becomes a page under `docs/verification/`.
+- **Verify against a third server, and keep doing it on every release.** The live tests passed against two independent implementations; Ollama's endpoint is the cheapest third (`tev1:0.8b` runs on CPU) and exercises a runtime many consumers already have. `mise run live:ollama` runs them; a run that passes, or that finds a departure, becomes a page under `docs/project/verification/`.
 - **Expose backend limits as data.** Maximum options, maximum levels and a context budget on the backend, with the hosted API's 255 and 10 as the default, would let a caller shortlist before the wire and let a harness report a refusal as a gap rather than an error. Every server in the table above has different numbers; the crate's are constants today.
 - **Keep the answer's probability a first-class accessor.** The index, the typed-decisions leaderboard and every open model grade on the probability of the chosen option; `Choice::confidence_from_probabilities` and `Score::expected_value` exist, and a method for the chosen option's own probability would make the calibration numbers above comparable from inside the crate.
 - **Expect `GET /v1/models` to differ.** The hosted API serves TypeSafe's shape, Laya nothing, Ollama the OpenAI shape. `list_models` is the one call on the wire that is not standard; a consumer that lists models should treat a decode failure there as "this server does not say", not as a broken server.

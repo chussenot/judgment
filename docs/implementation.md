@@ -8,7 +8,7 @@ tags: [judgment, implementation, design, typesafe, decoding, errors, retries, ev
 
 # How the crate is implemented
 
-[How judgment works](design.md) draws the two mechanisms a reader must know before using the crate, the typed handles and the retry loop, and [What is in the crate](tour.md) says what each module promises. This page is the layer under both: the rules the code applies and the reason for each, so a comment in the source can say why in one line and point here for the rest. Where a rule was learnt from a real server, the [verification pages](verification/method.md) record the run; where it mirrors or departs from the official SDKs, the [client libraries survey](research/system-one-client-libraries.md) has the comparison.
+[How judgment works](design.md) draws the two mechanisms a reader must know before using the crate, the typed handles and the retry loop, and [What is in the crate](tour.md) says what each module promises. This page is the layer under both: the rules the code applies and the reason for each, so a comment in the source can say why in one line and point here for the rest. Where a rule was learnt from a real server, the [verification pages](project/verification/method.md) record the run; where it mirrors or departs from the official SDKs, the [client libraries survey](project/research/system-one-client-libraries.md) has the comparison.
 
 ## One call, module by module
 
@@ -38,7 +38,7 @@ Every backend behind the `SystemOne` trait ends in the same `verify` step: `Clie
 
 ## Building the request
 
-The builder refuses before sending what the HTTP API reference page says the server refuses: more than 255 options on a Choice, fewer than 2 or more than 10 levels on a Score, an empty or duplicate question id, an empty option key, a `null` level. Those bounds are stricter than the OpenAPI document, which bounds neither above; the [hosted API record](verification/hosted-typesafe.md) says which bound is the server's and which the crate's own. Questions and a Choice's options keep insertion order because it is the order the model sees, and a sorted map would send them alphabetically.
+The builder refuses before sending what the HTTP API reference page says the server refuses: more than 255 options on a Choice, fewer than 2 or more than 10 levels on a Score, an empty or duplicate question id, an empty option key, a `null` level. Those bounds are stricter than the OpenAPI document, which bounds neither above; the [hosted API record](project/verification/hosted-typesafe.md) says which bound is the server's and which the crate's own. Questions and a Choice's options keep insertion order because it is the order the model sees, and a sorted map would send them alphabetically.
 
 ## The client
 
@@ -63,7 +63,7 @@ The builder refuses before sending what the HTTP API reference page says the ser
 | 2xx that does not decode | `Decode`, reported as `decode` | never | the loop counted the 2xx as a success, so the client must report the failure itself |
 | 2xx that fails `verify` | an answer-fit error, reported as `unfit` | never | the call was billed, so its usage is reported first |
 
-**Reading a 400, 403 or 422 body** follows the Python SDK's order: the message is the first non-empty string of `error`, `error.message`, `message`, `detail` as a string, `detail.message`; then the issues of a `detail` list joined as `path: msg; …`; then the code; then the raw body, truncated to 2,000 bytes. The code is the first non-empty string of `detail.error_type`, `error.type`, `error_type`, `type`, and is kept as `InvalidRequest::kind` because the hosted API sometimes sends a code and nothing else (`max_tokens_exceeded`). The three shapes the hosted API uses, none of them in the OpenAPI document, are in the [hosted API record](verification/hosted-typesafe.md). Where the crate departs from the SDK on purpose: an empty string does not win over the next field; only a leading `body` location segment is dropped, since dropping every one would hide a question whose id is `body`; a non-JSON body is quoted truncated rather than kept whole. A validation issue's `input` and `ctx` are never read because `input` can echo a piece of the state.
+**Reading a 400, 403 or 422 body** follows the Python SDK's order: the message is the first non-empty string of `error`, `error.message`, `message`, `detail` as a string, `detail.message`; then the issues of a `detail` list joined as `path: msg; …`; then the code; then the raw body, truncated to 2,000 bytes. The code is the first non-empty string of `detail.error_type`, `error.type`, `error_type`, `type`, and is kept as `InvalidRequest::kind` because the hosted API sometimes sends a code and nothing else (`max_tokens_exceeded`). The three shapes the hosted API uses, none of them in the OpenAPI document, are in the [hosted API record](project/verification/hosted-typesafe.md). Where the crate departs from the SDK on purpose: an empty string does not win over the next field; only a leading `body` location segment is dropped, since dropping every one would hide a question whose id is `body`; a non-JSON body is quoted truncated rather than kept whole. A validation issue's `input` and `ctx` are never read because `input` can echo a piece of the state.
 
 **The request id** (`x-typesafe-request-id`) is read in the client, not in the shared loop, so the loop carries no vendor's header name. It is the last attempt's, there is none after a transport failure, and a value that is empty, not printable ASCII or longer than 256 bytes is ignored, so what reaches a span or an error message is bounded. The body's `request_id` key, if a server sends one, is overwritten by the header: the field means the header.
 
@@ -164,7 +164,7 @@ Token usage goes to the client's own observer when one was set on the builder an
 
 ## The contract document
 
-`contract::OPENAPI_DOCUMENT` (feature `openapi`) is the vendored TypeSafe OpenAPI 3.1.0 document, API version 0.2.0, about 25 KB, written canonically (sorted keys, final newline) by `tests/openapi_drift.rs` so a refresh diffs cleanly. It sits behind a feature because a client has no run-time use for the text; `tests/contract.rs` checks the crate against it on every run ([How the crate is checked](verification/method.md)).
+`contract::OPENAPI_DOCUMENT` (feature `openapi`) is the vendored TypeSafe OpenAPI 3.1.0 document, API version 0.2.0, about 25 KB, written canonically (sorted keys, final newline) by `tests/openapi_drift.rs` so a refresh diffs cleanly. It sits behind a feature because a client has no run-time use for the text; `tests/contract.rs` checks the crate against it on every run ([How the crate is checked](project/verification/method.md)).
 
 ## Recordings and evaluation
 

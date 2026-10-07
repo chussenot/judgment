@@ -18,7 +18,7 @@ Superseded by [0018](0018-jud-1-3-takes-the-manifest-envelope.md) on 2026-10-06:
 
 A `.jud` rubric is reviewed by people and read by a program, and the format's value rests on both reading the same thing: the thresholds in the file are the decision, and a pinned fingerprint is how an application notices that the file moved. A threat model of the crate ([the STRIDE threat model](https://github.com/chussenot/judgment/pull/13), T-005, T-006, T-012, T-013 and H-013) found five places where that did not hold:
 
-- The reader accepted YAML merge keys, tags the core schema does not define, and `!!binary` scalars decoded from base64, so a question's instructions could be text the reviewer saw only as a blob or as a reference to another mapping, while [the specification](../jud.md) promised the YAML 1.2 core schema.
+- The reader accepted YAML merge keys, tags the core schema does not define, and `!!binary` scalars decoded from base64, so a question's instructions could be text the reviewer saw only as a blob or as a reference to another mapping, while [the specification](../../reference/jud-format.md) promised the YAML 1.2 core schema.
 - `Rubric::fingerprint` covers the questions and deliberately not the policy, so a gate moved from `level_at_least: 2` to `3` left every pinned fingerprint, log line and evaluation report unchanged.
 - A case id only had to be non-empty, so an id of `../../.config/app/settings` named a file outside the recordings directory for any tool that names a recording after its case, as the crate's `recording_path` does.
 - A syntax error carried the lines around it, so a malformed cases file printed a customer's state into whatever log recorded the error.
@@ -92,4 +92,4 @@ The rules apply to every version the reader reads, 1 and 1.1 included. That is a
 
 ## More information
 
-[The .jud format](../jud.md) states the 1.2 rules (Versions, Names, Fingerprints, Reading rules); `schemas/jud/common.schema.json` carries the `name` pattern and the `1.2` version; `src/jud/mod.rs` sets the reader's options and checks names; `src/eval/mod.rs` refuses a non-name in the recording helpers; `src/backend.rs` is the replay. The threat model that motivated the record is [pull request 13](https://github.com/chussenot/judgment/pull/13).
+[The .jud format](../../reference/jud-format.md) states the 1.2 rules (Versions, Names, Fingerprints, Reading rules); `schemas/jud/common.schema.json` carries the `name` pattern and the `1.2` version; `src/jud/mod.rs` sets the reader's options and checks names; `src/eval/mod.rs` refuses a non-name in the recording helpers; `src/backend.rs` is the replay. The threat model that motivated the record is [pull request 13](https://github.com/chussenot/judgment/pull/13).

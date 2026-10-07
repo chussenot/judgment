@@ -12,7 +12,7 @@ A System One model answers typed questions about a state, and an application act
 
 ## Typed handles
 
-On the wire, questions and answers are two maps keyed by the same ids, and nothing ties a Noul question to a Noul answer. The crate closes that gap at compile time ([decision 0003](decisions/0003-typed-handles-between-questions-and-answers.md)). Adding a question returns a handle that fixes the answer's type. Reading through the handle yields a Rust enum, a probability or a score, or an error naming what did not fit. The error table and the `options!` macro are in the rustdoc.
+On the wire, questions and answers are two maps keyed by the same ids, and nothing ties a Noul question to a Noul answer. The crate closes that gap at compile time ([decision 0003](project/decisions/0003-typed-handles-between-questions-and-answers.md)). Adding a question returns a handle that fixes the answer's type. Reading through the handle yields a Rust enum, a probability or a score, or an error naming what did not fit. The error table and the `options!` macro are in the rustdoc.
 
 ```mermaid
 sequenceDiagram
@@ -84,7 +84,7 @@ TypeSafe identifies a call by an `x-typesafe-request-id` response header, which 
 | `Response::request_id` | every successful response |
 | the `request_id` field of the `typesafe.evaluate` and `typesafe.list_models` spans | every call |
 
-Quote it to TypeSafe support when a call fails or an answer looks wrong. It is the last attempt's id when the call was retried, and there is none after a transport failure. It is optional everywhere, because the published OpenAPI document lists no response headers and a compatible server may not send one ([Laya does not](verification/laya-typed-decisions.md#what-the-two-servers-do-differently)). The hosted API sends it on every 2xx and 4xx ([hosted API](verification/hosted-typesafe.md)).
+Quote it to TypeSafe support when a call fails or an answer looks wrong. It is the last attempt's id when the call was retried, and there is none after a transport failure. It is optional everywhere, because the published OpenAPI document lists no response headers and a compatible server may not send one ([Laya does not](project/verification/laya-typed-decisions.md#what-the-two-servers-do-differently)). The hosted API sends it on every 2xx and 4xx ([hosted API](project/verification/hosted-typesafe.md)).
 
 ## What the crate does not do
 

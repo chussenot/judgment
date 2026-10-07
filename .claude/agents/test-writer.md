@@ -35,7 +35,7 @@ network, or that passes without asserting the shape, is worse than none.
 - `tests/live.rs` is all `#[ignore]` and runs by hand against a real server;
   a live test asserts what the contract guarantees and prints what it only
   observes, so the printed line is the record and the assertion does not
-  pin one server's choice. What a run showed goes into `docs/verification/`.
+  pin one server's choice. What a run showed goes into `docs/project/verification/`.
 - The pattern examples under `examples/` carry a test that replays their
   recordings; a changed question needs re-recorded answers, never an edited
   recording.

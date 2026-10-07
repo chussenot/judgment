@@ -61,7 +61,7 @@
 //! A structured level (an object or an array) may be echoed as itself or as
 //! a string that parses to it: servers differ (the hosted API echoes the
 //! value, `laya-serve` the JSON text it showed the model; see
-//! `docs/verification/`) and the contract allows either. The comparison is
+//! `docs/project/verification/`) and the contract allows either. The comparison is
 //! on the parsed value, so spacing and key order do not matter. A string
 //! level must come back as that exact string and is never parsed, or a
 //! structured echo could pass for it. Either way [`Score::levels`] labels a
@@ -637,7 +637,7 @@ impl<K: Eq + Hash> Choice<K> {
     /// `probabilities`: `(p_max − 1/n) / (1 − 1/n)` for `n` options, so an
     /// even split reads 0 and all on one option reads 1; one option is 1.
     /// The hosted API agrees to its two decimals
-    /// (`docs/verification/hosted-typesafe.md`); a compatible server may
+    /// (`docs/project/verification/hosted-typesafe.md`); a compatible server may
     /// define confidence otherwise (Laya: one minus the normalised entropy),
     /// which comparing the two shows. [`Response::verify`] does not check
     /// it: the formula is documentation, not the schema.
@@ -877,7 +877,7 @@ mod tests {
     #[test]
     fn the_documented_formulas_reproduce_the_wire_s_confidence_and_score() {
         // Wire values of one hosted Choice and Score
-        // (`docs/verification/hosted-typesafe.md`), so the formulas are
+        // (`docs/project/verification/hosted-typesafe.md`), so the formulas are
         // checked against the server, not against themselves.
         let p = |v: f64| Probability::new(v).unwrap();
         let choice = Choice {

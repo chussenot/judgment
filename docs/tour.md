@@ -12,9 +12,9 @@ The rustdoc documents every type; this page says what each module is for and wha
 
 ## `question`: the builder and the handles
 
-`Questions` collects the typed questions of one request. Adding one returns a `Handle<A>` that fixes the answer type `A`: `noul` for a yes or no probability, `choice::<T>` for one option out of a closed set `T`, `score` for a position on ordered levels, and `dynamic_choice` for an option set known only at runtime, which reads as `Choice<String>` so the boundary is visible in the type ([decision 0003](decisions/0003-typed-handles-between-questions-and-answers.md)). The `options!` macro writes an enum and its wire keys and descriptions together, so the request criteria and the parser derive from one definition and cannot disagree.
+`Questions` collects the typed questions of one request. Adding one returns a `Handle<A>` that fixes the answer type `A`: `noul` for a yes or no probability, `choice::<T>` for one option out of a closed set `T`, `score` for a position on ordered levels, and `dynamic_choice` for an option set known only at runtime, which reads as `Choice<String>` so the boundary is visible in the type ([decision 0003](project/decisions/0003-typed-handles-between-questions-and-answers.md)). The `options!` macro writes an enum and its wire keys and descriptions together, so the request criteria and the parser derive from one definition and cannot disagree.
 
-The builder checks the HTTP API reference page's limits before anything is sent: 255 options at most, 2 to 10 levels, non-empty and unique question ids, non-empty option keys, no `null` level. They are stricter than the OpenAPI document in places, and the rustdoc of the module says why each bound is the server's or the crate's own ([hosted API record](verification/hosted-typesafe.md)). A request that would be refused upstream fails here, before it costs a call.
+The builder checks the HTTP API reference page's limits before anything is sent: 255 options at most, 2 to 10 levels, non-empty and unique question ids, non-empty option keys, no `null` level. They are stricter than the OpenAPI document in places, and the rustdoc of the module says why each bound is the server's or the crate's own ([hosted API record](project/verification/hosted-typesafe.md)). A request that would be refused upstream fails here, before it costs a call.
 
 ## `answer`: typed reading, tolerant decoding
 
@@ -48,7 +48,7 @@ Behind the `jud` feature, off by default: the reader and writer for [the .jud fo
 
 ## `observer` and `contract`
 
-`Observer` is the seam an application uses to count tokens and failed attempts in its own metrics; the crate emits `tracing` spans and nothing else, so no telemetry stack is forced on a consumer. `contract::OPENAPI_DOCUMENT` (feature `openapi`, off by default) is the vendored TypeSafe OpenAPI document as text, for an application that validates its own traffic against the contract the crate is tested against ([how the crate is checked](verification/method.md)).
+`Observer` is the seam an application uses to count tokens and failed attempts in its own metrics; the crate emits `tracing` spans and nothing else, so no telemetry stack is forced on a consumer. `contract::OPENAPI_DOCUMENT` (feature `openapi`, off by default) is the vendored TypeSafe OpenAPI document as text, for an application that validates its own traffic against the contract the crate is tested against ([how the crate is checked](project/verification/method.md)).
 
 ## Without the `http` feature
 

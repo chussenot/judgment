@@ -13,7 +13,7 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   claim an issue before code. Git's hooks live in `.beads/hooks` (`bd init`
   set `core.hooksPath`); `scripts/setup-hooks.sh` puts the prek block before
   the beads section in each, so `prek install` is never run directly.
-- `docs/index.md` maps the documentation; `docs/decisions/` holds the records
+- `docs/index.md` maps the documentation; `docs/project/decisions/` holds the records
   that govern the API; `CHANGELOG.md` is Keep a Changelog, and 0.x means a
   minor release may break.
 
@@ -47,7 +47,7 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   `TYPESAFE_API_KEY` in `.env`, `mise run live:clef` with `CLOUDFLARE_ACCOUNT_ID`
   and `CLOUDFLARE_API_TOKEN` in `.env` through `tools/systemone/serve.py`,
   `mise run live:laya` and `mise run live:ollama` against a local server;
-  `docs/verification/` records what real servers did), and
+  `docs/project/verification/` records what real servers did), and
   `tests/openapi_drift.rs`, ignored, network only, no key.
 - A change to what the crate sends or accepts on the wire is a contract
   change: `tests/contract.rs`, the CHANGELOG and the README's guarantees move
@@ -78,12 +78,12 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   or renumbered: 0003 kept its number when it moved here, the numbers up to
   0012 and 0015 are taken outside this repository and left unused, and a
   new record takes the number after the highest in use in either place
-  (`docs/decisions/README.md` says which are skipped).
+  (`docs/project/decisions/README.md` says which are skipped).
 - Commits are Conventional Commits (`cog verify` runs on every commit
   message through prek; CI checks a pull request's commits). A release is
   `cog bump --auto` on `main` and never a hand-edited version: `cog.toml`
   and `scripts/release-bump.sh` say what a bump touches, and
-  `docs/releasing.md` is the runbook. `.github/workflows/release.yml`
+  `docs/project/releasing.md` is the runbook. `.github/workflows/release.yml`
   publishes to crates.io from a pushed `v*` tag, so the Bash guard denies
   `cargo publish` (the dry run is allowed) and pushing a tag; both are the
   release owner's decision.

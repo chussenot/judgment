@@ -29,7 +29,7 @@ why-gap in a module's `//!` doc counts as a why-gap.
 problem this exists to solve, the decision taken, the alternative rejected
 and the cost accepted? A page that only enumerates mechanics gets a finding
 naming the section and the question a reader would be left with. Decision
-records (`docs/decisions/`) are the canonical why; a page that repeats a
+records (`docs/project/decisions/`) are the canonical why; a page that repeats a
 decision's reasoning at length instead of linking it is a finding of the
 opposite kind.
 

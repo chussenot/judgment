@@ -64,4 +64,4 @@ Each harness carries `kani::cover!` statements, and Kani reports all of them sat
 
 ## What this does not replace
 
-A mock encodes what the client author believed about the wire. Only a real server can contradict that belief, which is what the ignored live tests and the verification records are for ([How the crate is checked](verification/method.md)).
+A mock encodes what the client author believed about the wire. Only a real server can contradict that belief, which is what the ignored live tests and the verification records are for ([How the crate is checked](project/verification/method.md)).

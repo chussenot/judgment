@@ -23,7 +23,7 @@ Each example replays its committed recordings (`examples/recordings/<name>/`, `j
 
 Three things the pattern pages say that the examples make concrete.
 
-- **Thresholds are starting points, not constants.** The hosted model's probabilities are not deterministic, and the spread grows with ambiguity: identical requests moved by up to 0.05 on a clear-cut input and by 0.19 in probability (0.28 in confidence) on an ambiguous one, the decision holding every time ([hosted API record](verification/hosted-typesafe.md)). A recording is one draw, and a threshold needs its margin most where the input is least clear.
+- **Thresholds are starting points, not constants.** The hosted model's probabilities are not deterministic, and the spread grows with ambiguity: identical requests moved by up to 0.05 on a clear-cut input and by 0.19 in probability (0.28 in confidence) on an ambiguous one, the decision holding every time ([hosted API record](project/verification/hosted-typesafe.md)). A recording is one draw, and a threshold needs its margin most where the input is least clear.
 - **A Noul has no confidence.** It is thresholded on its probability, where a Choice or a Score has both. The routing example gates on `Confidence`, the fan-out example on `Probability`, and the types keep the two from being compared.
 - **A Score's confidence falls fast when probability splits between neighbouring levels.** A 60/40 split on three levels is a confidence of 0.40, so the intent example's second gate, a 0.5 floor on the complexity's confidence, sends mild complaints to a person on `jev-1.13.0`. That floor, or the number of levels, is the first thing to tune.
 

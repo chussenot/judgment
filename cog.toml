@@ -1,5 +1,5 @@
 # Cocogitto (https://docs.cocogitto.io): the commit convention and the release
-# bump. Decision 0013 says why; docs/releasing.md is the runbook.
+# bump. Decision 0013 says why; docs/project/releasing.md is the runbook.
 #
 # Commits are Conventional Commits. `cog verify` checks every commit message
 # through the prek commit-msg hook, and CI checks a pull request's commits with
@@ -42,5 +42,5 @@ pre_bump_hooks = [
 ]
 
 post_bump_hooks = [
-    "echo 'Bumped to {{version_tag}}. Open a pull request for this commit, merge it with a merge commit, then push the tag: git push origin {{version_tag}} (docs/releasing.md).'",
+    "echo 'Bumped to {{version_tag}}. Open a pull request for this commit, merge it with a merge commit, then push the tag: git push origin {{version_tag}} (docs/project/releasing.md).'",
 ]

@@ -6,7 +6,7 @@ readme = "README.md"
 keywords = ["typesafe", "system-one", "jev", "classification", "calibration"]
 categories = ["api-bindings", "web-programming::http-client"]
 # Published to crates.io by CI from a pushed `v*` tag, and only from there
-# (.github/workflows/release.yml, docs/releasing.md); the version is written
+# (.github/workflows/release.yml, docs/project/releasing.md); the version is written
 # by `cog bump`, never by hand (cog.toml, decision 0013).
 edition = "2024"
 rust-version = "1.91"
@@ -33,7 +33,7 @@ exclude = [
     "cog.toml",
     ".pre-commit-config.yaml",
     "scripts/",
-    # The System One shim and the benchmark export (Python, docs/verification).
+    # The System One shim and the benchmark export (Python, docs/project/verification).
     "tools/",
     ".env.example",
     # The container image (docs/cli.md): built by the release workflow from

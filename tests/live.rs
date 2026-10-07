@@ -15,7 +15,7 @@
 //! when they are unset.
 //!
 //! What was learned running these against Laya is written up in
-//! `docs/verification/laya-typed-decisions.md`.
+//! `docs/project/verification/laya-typed-decisions.md`.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stderr)]
 
 use std::time::Duration;
@@ -460,7 +460,7 @@ async fn a_wrong_bearer_token_is_unauthorized_and_the_right_one_is_not() {
 // ---------------------------------------------------------------------------
 // Past the builder: what the hosted API does with what the crate refuses, and
 // what repeats and formulas show. Added after the 2026-10-03 probe run
-// (docs/verification/hosted-typesafe.md, "Beyond the test file"). Where the hosted
+// (docs/project/verification/hosted-typesafe.md, "Beyond the test file"). Where the hosted
 // API's behaviour is pinned, the pin applies when the requested or answering
 // model is a Jev; another server's behaviour is printed, not asserted.
 // ---------------------------------------------------------------------------

@@ -64,4 +64,4 @@ Chosen option: "Typed handles". `Questions::noul`, `choice`, `score` and `dynami
 
 ## More information
 
-[How judgment works](../design.md#typed-handles).
+[How judgment works](../../concepts/how-judgment-works.md#typed-handles).

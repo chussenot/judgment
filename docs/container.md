@@ -18,7 +18,7 @@ That line is the whole model: `-i` carries stdin into the container, `-v "$PWD:/
 
 ## What is inside
 
-The image is `FROM scratch`: the statically linked `jud` binary at `/usr/local/bin/jud`, a CA bundle at `/etc/ssl/certs/ca-certificates.crt` so the client can verify a TLS backend, and a `passwd` and `group` declaring one user. Nothing else: no shell, no libc, no package manager, 10 MB. The binary is not compiled for the image; it is the one the release workflow built on a native runner, ran, checked and packaged into the release tarball, copied in byte for byte, so the image, the tarball, the Homebrew formula and `cargo binstall` all carry the same `jud` ([Releasing](releasing.md)). The `Dockerfile` in the repository says why each line is there.
+The image is `FROM scratch`: the statically linked `jud` binary at `/usr/local/bin/jud`, a CA bundle at `/etc/ssl/certs/ca-certificates.crt` so the client can verify a TLS backend, and a `passwd` and `group` declaring one user. Nothing else: no shell, no libc, no package manager, 10 MB. The binary is not compiled for the image; it is the one the release workflow built on a native runner, ran, checked and packaged into the release tarball, copied in byte for byte, so the image, the tarball, the Homebrew formula and `cargo binstall` all carry the same `jud` ([Releasing](project/releasing.md)). The `Dockerfile` in the repository says why each line is there.
 
 | | |
 |---|---|
@@ -131,7 +131,7 @@ scripts/image-context.sh --dist dist/            # a directory of those tarballs
 docker buildx build --load -t ghcr.io/chussenot/jud:local .
 ```
 
-`--local` builds one platform, the machine's, for trying a change to the `Dockerfile`; the release workflow builds both from the tarballs it just checked and pushes nothing on a dry run, so a broken context is found before a tag is cut. A release image is only ever pushed by that workflow ([Releasing](releasing.md)).
+`--local` builds one platform, the machine's, for trying a change to the `Dockerfile`; the release workflow builds both from the tarballs it just checked and pushes nothing on a dry run, so a broken context is found before a tag is cut. A release image is only ever pushed by that workflow ([Releasing](project/releasing.md)).
 
 ## What was checked
 

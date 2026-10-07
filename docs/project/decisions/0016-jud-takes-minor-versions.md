@@ -88,4 +88,4 @@ Chosen option: 1. The envelope's `jud` is `1` or `1.1`. A minor version only add
 
 ## More information
 
-[The .jud format](../jud.md) is the specification of both versions; the schemas under `schemas/jud/` state the 1.1 shapes. The numbers 0015 and below 0013 are taken by records outside this repository and stay unused here.
+[The .jud format](../../reference/jud-format.md) is the specification of both versions; the schemas under `schemas/jud/` state the 1.1 shapes. The numbers 0015 and below 0013 are taken by records outside this repository and stay unused here.

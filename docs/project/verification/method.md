@@ -21,7 +21,7 @@ The unit and integration tests never leave the process: wiremock for the client,
 | `mise run live:ollama` | Ollama's `/v1/systemone` on `OLLAMA_URL` (default `http://127.0.0.1:11434`) with `tev1:0.8b`, or `OLLAMA_MODEL=clef` or `clef-flash` for Cloudflare's models | Ollama 0.35 or later and `ollama pull tev1:0.8b`; that model runs on a CPU, Clef wants a GPU (0.35.1 for `ollama pull clef`) |
 | `mise run live:clef` | Cloudflare's Clef on Workers AI through `tools/systemone/serve.py`, `clef` by default and `CLEF_MODEL=clef-flash` for the 9B | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`; spends a handful of model calls |
 
-A run that passes, or that finds a departure, becomes a page under `docs/verification/` naming the server, its release and the date. None of these runs in CI: the gate stays offline, and a key in CI would be a secret the repository does not need.
+A run that passes, or that finds a departure, becomes a page under `docs/project/verification/` naming the server, its release and the date. None of these runs in CI: the gate stays offline, and a key in CI would be a secret the repository does not need.
 
 ## Does it hold at scale?
 
@@ -59,4 +59,4 @@ A refreshed document is a contract change: `tests/contract.rs`, the CHANGELOG an
 
 ## What each check cannot establish
 
-The live tests show that one server, on one day, accepted and answered what the crate sends; they say nothing about accuracy on your data. The benchmark shows the decoder and the metrics on real answers; it is one checkpoint on the task it was tuned for. The contract test checks the published schema, not a live account: a server can accept or refuse what its schema does not say, which is what the live tests are for. What all three leave open is calibration on your own questions, which only labelled history replayed through `judgment::eval` can measure ([Testing without the model](../testing.md)).
+The live tests show that one server, on one day, accepted and answered what the crate sends; they say nothing about accuracy on your data. The benchmark shows the decoder and the metrics on real answers; it is one checkpoint on the task it was tuned for. The contract test checks the published schema, not a live account: a server can accept or refuse what its schema does not say, which is what the live tests are for. What all three leave open is calibration on your own questions, which only labelled history replayed through `judgment::eval` can measure ([Testing without the model](../../guides/record-replay-and-test.md)).

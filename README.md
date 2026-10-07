@@ -350,7 +350,7 @@ About thirty Rust crates speak this wire. One table, the four properties where
 they differ most, for the most downloaded crates on crates.io on 2026-10-04 and
 `typesafe-client`, the one closest in architecture; each cell is read from the
 published source of the version named. ✓ present, ◐ partial, ✗ absent.
-[Compared with the other Rust clients](docs/research/client-comparison.md) has
+[Compared with the other Rust clients](docs/project/research/client-comparison.md) has
 the full grids for all ten crates (wire limits, retries, footprint and more),
 a file and line for every cell, and what other crates have that judgment does
 not.
@@ -383,13 +383,13 @@ default.
 | [The jud command line](docs/cli.md) | `cat input.json \| jud rubric.jud`: the binary that evaluates JSON input against a Rubric and prints the verdicts, how to install it with mise, its configuration and exit status |
 | [The jud container image](docs/container.md) | The binary as `ghcr.io/chussenot/jud`: what is inside, how files and a backend reach it, the host's Ollama through `--network host`, replay without a key, and CI |
 | [The jud plugin](docs/skill.md) | A Claude Code plugin, a skill and three commands, that writes and checks `.jud` documents with the crate's own reader (`jud check`), and how to install it |
-| [How the crate is checked](docs/verification/method.md) | The live tests, the benchmark replay and the contract test, and how to run them against the hosted API, Laya, Ollama or Clef on Workers AI |
-| [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md), [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | What real servers did with the live tests, and what the crate changed for it |
-| [Compatible servers and models](docs/research/compatible-servers-and-models.md) | Which servers speak the wire and how the open models compare with Jev |
-| [Compared with the other Rust clients](docs/research/client-comparison.md) | The full comparison grids, with a file and line for every cell |
+| [How the crate is checked](docs/project/verification/method.md) | The live tests, the benchmark replay and the contract test, and how to run them against the hosted API, Laya, Ollama or Clef on Workers AI |
+| [Against the hosted TypeSafe API](docs/project/verification/hosted-typesafe.md), [Against Laya typed-decisions](docs/project/verification/laya-typed-decisions.md) | What real servers did with the live tests, and what the crate changed for it |
+| [Compatible servers and models](docs/project/research/compatible-servers-and-models.md) | Which servers speak the wire and how the open models compare with Jev |
+| [Compared with the other Rust clients](docs/project/research/client-comparison.md) | The full comparison grids, with a file and line for every cell |
 | [Stability](docs/stability.md) | What stays the same across versions and for how long: `jud/v1` stable, a minor only adds, every `v1` document read for at least twelve months after a later minor, fingerprints fixed for a `spec` |
-| [Decisions](docs/decisions/README.md) | Why the API is shaped as it is, and why releases are cut the way they are |
-| [Releasing](docs/releasing.md) | How a version is cut and published |
+| [Decisions](docs/project/decisions/README.md) | Why the API is shaped as it is, and why releases are cut the way they are |
+| [Releasing](docs/project/releasing.md) | How a version is cut and published |
 | [llms.txt](docs/llms.txt) | The index for agents and models; [llms-full.txt](docs/llms-full.txt) is every page in one file |
 
 ## Status

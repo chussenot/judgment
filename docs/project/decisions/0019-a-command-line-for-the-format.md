@@ -75,7 +75,7 @@ Options 1, 5, 7 and the hand-written matrix of 8.
 
 ## More information
 
-- [The jud command line](../cli.md), the user's page.
+- [The jud command line](../../reference/cli.md), the user's page.
 - [Releasing](../releasing.md), the runbook with the binary legs.
 - [Decision 0013](0013-releases-cut-with-cocogitto-and-published-from-ci.md), the crate's release process the binary joins.
 - [pact's release workflow](https://github.com/chussenot/pact/blob/main/.github/workflows/release.yml) and [install page](https://github.com/chussenot/pact/blob/main/docs/install.md), the shape taken.

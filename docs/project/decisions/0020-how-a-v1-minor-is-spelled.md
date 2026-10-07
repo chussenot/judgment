@@ -16,7 +16,7 @@ tags: [decisions, jud, format, versioning, apiVersion, stability]
 
 ## Context and problem statement
 
-[Decision 0018](0018-jud-1-3-takes-the-manifest-envelope.md) gave the format a manifest's envelope and one rule for versions: the whole version is in the `apiVersion` string, a reader reads exactly one, and any change, additive or not, takes a new string. That was the right cut for 1.3, which broke on purpose. [Stability](../stability.md) now promises more than 0018 does: `jud/v1` is stable, a minor only adds, and a reader accepts every `v1` document for at least twelve months after a later minor is published. The first additive change (a field under `spec`, a value a gate may take) will have to be spelled somehow, and the spelling decides what a reader must do to keep that promise and what every tool that keys on `apiVersion` sees.
+[Decision 0018](0018-jud-1-3-takes-the-manifest-envelope.md) gave the format a manifest's envelope and one rule for versions: the whole version is in the `apiVersion` string, a reader reads exactly one, and any change, additive or not, takes a new string. That was the right cut for 1.3, which broke on purpose. [Stability](../../reference/stability.md) now promises more than 0018 does: `jud/v1` is stable, a minor only adds, and a reader accepts every `v1` document for at least twelve months after a later minor is published. The first additive change (a field under `spec`, a value a gate may take) will have to be spelled somehow, and the spelling decides what a reader must do to keep that promise and what every tool that keys on `apiVersion` sees.
 
 Two spellings are on the table, and a third that keeps the question open. The question is which one makes the twelve-month promise cheapest to keep, for this reader and for another implementation, without giving back what 0018 bought: a document recognisable to the tools that read manifests, and a reader with no feature-to-version table.
 
@@ -98,8 +98,8 @@ When applied: `tests/jud.rs` reads a document of every published minor and refus
 
 ## More information
 
-- [Stability](../stability.md): the promises this record has to make cheap to keep.
+- [Stability](../../reference/stability.md): the promises this record has to make cheap to keep.
 - [Decision 0018](0018-jud-1-3-takes-the-manifest-envelope.md): the envelope and the one-`apiVersion` rule this record narrows.
 - [Decision 0016](0016-jud-takes-minor-versions.md), superseded: the earlier minor-version rule and what it cost, the table option 1 would bring back.
-- [The .jud format](../jud.md), "Extending the format": what a minor may add.
+- [The .jud format](../../reference/jud-format.md), "Extending the format": what a minor may add.
 - `src/jud/mod.rs` (`API_VERSION`, `Envelope::check`), `schemas/jud/`, `tests/jud.rs`: where the accepted option lands.

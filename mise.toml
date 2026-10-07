@@ -8,7 +8,7 @@ wrappers = { cargo = { command = "mbx", env = { MBX_CARGO_SHIM_MODE = "1" } } }
 rust = { version = "1.94.1", components = "rustfmt,clippy" }
 mr-boxington = "latest"
 prek = "latest"
-# Conventional commits and the release bump (cog.toml, docs/releasing.md);
+# Conventional commits and the release bump (cog.toml, docs/project/releasing.md);
 # built from crates.io, the same way CI installs it.
 "cargo:cocogitto" = "7.0.0"
 # bd (beads), the issue tracker (AGENTS.md, `bd prime`), from the GitHub release
@@ -105,7 +105,7 @@ description = "Everything cargo publish checks, without publishing; the release 
 run = "cargo publish --dry-run"
 
 # ---------------------------------------------------------------------------
-# Commits and releases (cog.toml, docs/releasing.md)
+# Commits and releases (cog.toml, docs/project/releasing.md)
 # ---------------------------------------------------------------------------
 
 [tasks."commits:check"]
@@ -117,7 +117,7 @@ description = "The version the commits since the latest tag call for, and nothin
 run = "cog bump --auto --dry-run"
 
 [tasks.release]
-description = "Cut a release on an up-to-date main: version into Cargo.toml, Cargo.lock and the CHANGELOG, the gate, a bump commit and a tag; then open the pull request and push the tag by hand (docs/releasing.md)"
+description = "Cut a release on an up-to-date main: version into Cargo.toml, Cargo.lock and the CHANGELOG, the gate, a bump commit and a tag; then open the pull request and push the tag by hand (docs/project/releasing.md)"
 run = "cog bump --auto"
 
 [tasks.clean]
@@ -170,7 +170,7 @@ JUDGMENT_LIVE_AUTH_BASE_URL=http://127.0.0.1:8098 JUDGMENT_LIVE_AUTH_API_KEY=sec
 '''
 
 [tasks."live:laya"]
-description = "The ignored live tests against a System One-compatible server on LAYA_URL (default http://127.0.0.1:8000, laya-serve); docs/verification/laya-typed-decisions.md says how to start one"
+description = "The ignored live tests against a System One-compatible server on LAYA_URL (default http://127.0.0.1:8000, laya-serve); docs/project/verification/laya-typed-decisions.md says how to start one"
 run = '''
 set -eu
 JUDGMENT_LIVE_BASE_URL="${LAYA_URL:-http://127.0.0.1:8000}" JUDGMENT_LIVE_MODEL="${LAYA_MODEL:-typed-decisions}" \
