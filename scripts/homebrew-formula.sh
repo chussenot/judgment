@@ -8,7 +8,8 @@
 # `<sha256>  jud-<tag>-<triple>.tar.gz`. The formula installs the release's
 # tarballs, one per platform the workflow builds (docs/cli.md, Platforms), and
 # nothing is compiled: Apple silicon from the darwin tarball, Linux x86-64 and
-# arm64 from the musl ones. Intel macOS has no tarball and no formula branch;
+# arm64 from the musl ones. The version is the one Homebrew reads from the
+# tarball's name (an explicit `version` is an audit failure, "redundant"). Intel macOS has no tarball and no formula branch;
 # it installs from crates.io, as the page says.
 #
 # The release workflow runs this and commits the result to the tap
@@ -51,7 +52,6 @@ cat <<EOF
 class Jud < Formula
   desc "Evaluate JSON against a .jud rubric with a calibrated System One model"
   homepage "https://github.com/chussenot/judgment"
-  version "$version"
   license "MIT"
 
   livecheck do
