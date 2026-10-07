@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-10-07
+
 ### Added
 
 - A container image, `ghcr.io/chussenot/jud`, for `linux/amd64` and
