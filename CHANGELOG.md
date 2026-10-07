@@ -8,6 +8,11 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `cargo binstall judgment` installs the release's `jud` tarball instead of
+  compiling: `[package.metadata.binstall]` in `Cargo.toml` names the asset
+  and the binary's path inside it, and the release workflow checks, on every
+  platform it packages, that the templates name the tarball it just built
+  ([The jud command line](docs/cli.md)).
 - A Homebrew formula for `jud`: `brew install chussenot/tap/jud` on Apple
   silicon and Linux, from [chussenot/homebrew-tap](https://github.com/chussenot/homebrew-tap).
   The formula installs the release tarballs by their checksums and generates
