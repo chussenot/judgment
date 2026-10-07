@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-10-07
+
 ### Changed
 
 - A kind's reader (`Rubric::parse`, `Cases::parse`, `jud::parse_recording`)

@@ -15,7 +15,7 @@
 [1.480, "o", "o"]
 [1.520, "o", "n"]
 [1.820, "o", "\r\n"]
-[1.840, "o", "jud 0.10.1\r\n"]
+[1.840, "o", "jud 0.10.2\r\n"]
 [2.440, "o", "\u001b[2m# the state is JSON on stdin; the rubric holds the questions and the policy\u001b[0m\r\n"]
 [2.840, "o", "\u001b[1;32m$\u001b[0m "]
 [2.880, "o", "c"]
