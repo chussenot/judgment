@@ -381,6 +381,7 @@ default.
 | [The .jud format](docs/jud.md) | The specification of the rubric, cases and recording documents, their fingerprints and reading rules, and the loop from labelled cases to a tuned policy |
 | [What a rubric is](docs/jud/rubric.md), [what cases are](docs/jud/cases.md), [what a recording is](docs/jud/recording.md) | The reasoning behind each kind of `.jud` document: the decision, the labelled examples it is graded on, and what the model answered |
 | [The jud command line](docs/cli.md) | `cat input.json \| jud rubric.jud`: the binary that evaluates JSON input against a Rubric and prints the verdicts, how to install it with mise, its configuration and exit status |
+| [The jud container image](docs/container.md) | The binary as `ghcr.io/chussenot/jud`: what is inside, how files and a backend reach it, the host's Ollama through `--network host`, replay without a key, and CI |
 | [The jud plugin](docs/skill.md) | A Claude Code plugin, a skill and three commands, that writes and checks `.jud` documents with the crate's own reader (`jud check`), and how to install it |
 | [How the crate is checked](docs/verification/method.md) | The live tests, the benchmark replay and the contract test, and how to run them against the hosted API, Laya, Ollama or Clef on Workers AI |
 | [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md), [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | What real servers did with the live tests, and what the crate changed for it |

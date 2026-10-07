@@ -23,6 +23,7 @@ nav:
       - What cases are: jud/cases.md
       - What a recording is: jud/recording.md
   - The jud command line: cli.md
+  - The jud container image: container.md
   - The jud plugin: skill.md
   - Stability: stability.md
   - Releasing: releasing.md
