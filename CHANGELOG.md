@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-10-07
+
 ### Added
 
 - `cargo binstall judgment` installs the release's `jud` tarball instead of
