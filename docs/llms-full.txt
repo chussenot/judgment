@@ -2180,7 +2180,7 @@ The image carries a build-provenance attestation signed by GitHub for the workfl
 gh attestation verify oci://ghcr.io/chussenot/jud:0.10.4 --repo chussenot/judgment
 ```
 
-exits 0 when the image was produced by this repository's release workflow and 1 otherwise. The tarballs carry the same attestation ([Install](../start/install.md#release-tarballs)).
+exits 0 when the image was produced by this repository's release workflow and 1 otherwise. The tarballs carry the same attestation ([Install](../start/install.md#from-a-release-tarball)).
 
 ## Build
 
