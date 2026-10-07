@@ -160,10 +160,71 @@ fn an_invalid_rubric_is_refused_before_any_call() {
         stderr(&out)
     );
     assert!(stdout(&out).is_empty());
-    // A document of another kind is named as such.
+    // A document of another kind is named as such, never as an unknown kind.
     let out = jud(&[CASES], STATE, &[("TYPESAFE_API_KEY", "test-key")], &home);
     assert_eq!(out.status.code(), Some(2));
-    assert!(stderr(&out).contains("kind: Cases"), "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(
+        err.contains("is not a valid Rubric: a Cases document, not a Rubric"),
+        "{err}"
+    );
+    assert!(!err.contains("not a document kind"), "{err}");
+}
+
+/// `jud lower` and `jud check` read files a person is still writing, so a
+/// refusal names the file, what was expected of it and, for a file that is
+/// not a `.jud` document at all, where the envelope is described.
+#[test]
+fn lower_and_check_name_the_file_and_what_was_expected() {
+    let home = config_home();
+    let out = jud(&["lower", CASES], "", &[], &home);
+    assert_eq!(out.status.code(), Some(2));
+    let err = stderr(&out);
+    assert!(err.contains(CASES), "{err}");
+    assert!(
+        err.contains("is not a valid Rubric: a Cases document, not a Rubric"),
+        "{err}"
+    );
+    assert!(!err.contains("not a document kind"), "{err}");
+
+    let out = jud(&["lower", "/nonexistent/rubric.jud"], "", &[], &home);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        stderr(&out).contains("cannot read rubric /nonexistent/rubric.jud"),
+        "{}",
+        stderr(&out)
+    );
+
+    // `--cases` given a rubric: the same refusal, the other way round.
+    let out = jud(&["lower", RUBRIC, "--cases", RUBRIC], "", &[], &home);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        stderr(&out).contains("is not a valid Cases: a Rubric document, not a Cases"),
+        "{}",
+        stderr(&out)
+    );
+
+    let out = jud(&["lower", RUBRIC, "--state", "{not json"], "", &[], &home);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        stderr(&out).contains("--state is not JSON"),
+        "{}",
+        stderr(&out)
+    );
+
+    // A YAML file that is not a document at all: `check` says so with the
+    // pointer, and counts it as refused.
+    let plain = home.join("config.yaml");
+    std::fs::write(
+        &plain,
+        "base_url: http://127.0.0.1:11434\nmodel: tev1:0.8b\n",
+    )
+    .unwrap();
+    let out = jud(&["check", plain.to_str().unwrap()], "", &[], &home);
+    assert_eq!(out.status.code(), Some(2));
+    let text = stdout(&out);
+    assert!(text.contains("the document has no `apiVersion` (not a jud/v1.3 document; docs/jud.md has the envelope)"), "{text}");
+    assert!(text.contains("1 documents, 1 refused"), "{text}");
 }
 
 #[test]

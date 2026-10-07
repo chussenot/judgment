@@ -29,6 +29,33 @@ fn declared_version(text: &str) -> String {
         .unwrap_or_else(|| "?".to_owned())
 }
 
+/// What to add to a reader's refusal for someone who handed `jud` a file
+/// that is not a `.jud` document at all: the reader names the missing field,
+/// the hint says where the envelope is described.
+pub(crate) fn hint(e: &jud::Error) -> &'static str {
+    match e {
+        jud::Error::Missing {
+            field: "apiVersion" | "kind",
+        }
+        | jud::Error::Version { .. } => " (not a jud/v1.3 document; docs/jud.md has the envelope)",
+        _ => "",
+    }
+}
+
+/// Read and parse one document for a subcommand, every failure naming the
+/// path and what was expected of it: `cannot read Rubric PATH: ...` when the
+/// file cannot be read, `PATH is not a valid Rubric: ...` when the reader
+/// refuses it, with [`hint`] appended.
+pub(crate) fn read_document<T>(
+    path: &str,
+    what: &'static str,
+    parse: fn(&str) -> jud::Result<T>,
+) -> Result<T, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read {} {path}: {e}", what.to_ascii_lowercase()))?;
+    parse(&text).map_err(|e| format!("{path} is not a valid {what}: {e}{}", hint(&e)))
+}
+
 fn load(paths: &[String]) -> (Vec<Loaded>, usize) {
     let mut loaded = Vec::new();
     let mut errors = 0;
@@ -48,7 +75,7 @@ fn load(paths: &[String]) -> (Vec<Loaded>, usize) {
                 document,
             }),
             Err(e) => {
-                println!("error     {path}: {e}");
+                println!("error     {path}: {e}{}", hint(&e));
                 errors += 1;
             }
         }
@@ -235,18 +262,26 @@ pub(crate) struct Lower {
 }
 
 pub(crate) fn lower(args: &Lower) -> Fallible<bool> {
-    let rubric = Rubric::parse(&std::fs::read_to_string(&args.rubric)?)?;
+    let rubric = read_document(&args.rubric, "Rubric", Rubric::parse)?;
     let state: Option<Value> = match (&args.state, &args.state_file) {
-        (Some(json), _) => Some(serde_json::from_str(json)?),
-        (None, Some(path)) => Some(serde_json::from_str(&std::fs::read_to_string(path)?)?),
+        (Some(json), _) => {
+            Some(serde_json::from_str(json).map_err(|e| format!("--state is not JSON: {e}"))?)
+        }
+        (None, Some(path)) => {
+            let text = std::fs::read_to_string(path)
+                .map_err(|e| format!("cannot read state file {path}: {e}"))?;
+            Some(serde_json::from_str(&text).map_err(|e| format!("{path} is not JSON: {e}"))?)
+        }
         (None, None) => None,
     };
     let options: Supplied = match &args.options {
-        Some(json) => serde_json::from_str(json)?,
+        Some(json) => serde_json::from_str(json).map_err(|e| {
+            format!("--options is not a JSON object of question key to option key to text: {e}")
+        })?,
         None => Supplied::default(),
     };
     let cases: Option<Cases> = match &args.cases {
-        Some(path) => Some(Cases::parse(&std::fs::read_to_string(path)?)?),
+        Some(path) => Some(read_document(path, "Cases", Cases::parse)?),
         None => None,
     };
     match (cases, state) {

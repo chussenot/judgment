@@ -73,6 +73,15 @@ pub enum Error {
         /// What the document said.
         found: String,
     },
+    /// A kind this crate knows, read where another was expected: a Cases
+    /// document handed to [`Rubric::parse`], say.
+    #[error("a {found} document, not a {expected}; this reads `kind: {expected}`")]
+    OtherKind {
+        /// What the document said.
+        found: String,
+        /// The kind the reader takes.
+        expected: &'static str,
+    },
     /// A required field is absent.
     #[error("the document has no `{field}`")]
     Missing {
@@ -170,13 +179,16 @@ impl Envelope {
         }
     }
 
-    /// Refuse a kind other than `expected`, after the envelope's own checks.
-    pub(crate) fn expect_kind(&self, expected: &str) -> Result<()> {
+    /// Refuse a kind other than `expected`, after the envelope's own checks
+    /// (so an unknown kind is [`Error::Kind`] and a known other kind is
+    /// [`Error::OtherKind`], which names both).
+    pub(crate) fn expect_kind(&self, expected: &'static str) -> Result<()> {
         self.check()?;
         match self.kind.as_deref() {
             Some(kind) if kind == expected => Ok(()),
-            Some(other) => Err(Error::Kind {
+            Some(other) => Err(Error::OtherKind {
                 found: other.to_owned(),
+                expected,
             }),
             None => Err(Error::Missing { field: "kind" }),
         }
@@ -452,17 +464,28 @@ mod tests {
         assert!(matches!(err, Error::Syntax(_)), "{err}");
     }
 
-    /// A kind's reader refuses the other kinds by name too.
+    /// A kind's reader refuses the other kinds by name too, and says which
+    /// kind it reads, so the message never calls a known kind unknown.
     #[test]
     fn a_kind_reader_refuses_another_kind() {
         let err = Cases::parse(RUBRIC).unwrap_err();
         assert!(
-            matches!(&err, Error::Kind { found } if found == "Rubric"),
+            matches!(&err, Error::OtherKind { found, expected: "Cases" } if found == "Rubric"),
             "{err}"
+        );
+        assert_eq!(
+            err.to_string(),
+            "a Rubric document, not a Cases; this reads `kind: Cases`"
         );
         let err = parse_recording(RUBRIC).unwrap_err();
         assert!(
-            matches!(&err, Error::Kind { found } if found == "Rubric"),
+            matches!(&err, Error::OtherKind { found, expected: "Recording" } if found == "Rubric"),
+            "{err}"
+        );
+        // An unknown kind is still the other error, through the same path.
+        let err = Rubric::parse("apiVersion: jud/v1.3\nkind: verdicts\n").unwrap_err();
+        assert!(
+            matches!(&err, Error::Kind { found } if found == "verdicts"),
             "{err}"
         );
     }

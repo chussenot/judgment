@@ -6,6 +6,24 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A kind's reader (`Rubric::parse`, `Cases::parse`, `jud::parse_recording`)
+  handed a document of another known kind refuses it with
+  `jud::Error::OtherKind { found, expected }`, "a Cases document, not a
+  Rubric; this reads `kind: Rubric`", instead of `Error::Kind`, which said
+  the kind was not a document kind at all. `Error::Kind` still names a kind
+  the crate does not know.
+
+### Fixed
+
+- `jud lower` and `jud check` name the file in every refusal and say what
+  was expected of it: `cannot read rubric PATH`, `PATH is not a valid
+  Rubric: ...`, `--state is not JSON`, and, for a file that is not a `.jud`
+  document at all, the pointer to the envelope that `jud RUBRIC` already
+  gave. `jud lower examples/jud/triage-cases.jud` used to print "`kind:
+  Cases` is not a document kind" with no path.
+
 ## [0.10.1] - 2026-10-07
 
 ### Added

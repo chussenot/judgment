@@ -7,11 +7,11 @@ use std::io::Read;
 use std::path::Path;
 use std::process::ExitCode;
 
-use judgment::jud::{Error as JudError, Rubric, Supplied};
+use judgment::jud::{Rubric, Supplied};
 use judgment::{Replay, SystemOne};
 use serde_json::Value;
 
-use crate::{EXIT_BACKEND, EXIT_USAGE, config};
+use crate::{EXIT_BACKEND, EXIT_USAGE, config, tools};
 
 pub(crate) fn run(path: &str, replay: Option<&Path>) -> ExitCode {
     match evaluate(path, replay) {
@@ -38,18 +38,7 @@ enum Failure {
 }
 
 fn read_rubric(path: &str) -> Result<Rubric, Failure> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| Failure::Usage(format!("cannot read rubric {path}: {e}")))?;
-    Rubric::parse(&text).map_err(|e| {
-        let hint = match &e {
-            JudError::Kind { .. } => " (jud evaluates a Rubric)".to_owned(),
-            JudError::Missing { .. } | JudError::Version { .. } => {
-                " (not a jud/v1.3 document; docs/jud.md has the envelope)".to_owned()
-            }
-            _ => String::new(),
-        };
-        Failure::Usage(format!("{path} is not a valid Rubric: {e}{hint}"))
-    })
+    tools::read_document(path, "Rubric", Rubric::parse).map_err(Failure::Usage)
 }
 
 fn read_state() -> Result<Value, Failure> {
