@@ -19,6 +19,6 @@ mise use -g github:chussenot/judgment@latest   # the `jud` command the plugin ch
 | Write the cases a rubric is tuned on | `/jud:cases <rubric path> [brief]` |
 | Check documents and explain every refusal | `/jud:check [files]` |
 
-[docs/skill.md](https://github.com/chussenot/judgment/blob/main/docs/skill.md)
-says how it works and how it was tested; [docs/jud.md](https://github.com/chussenot/judgment/blob/main/docs/jud.md)
+[docs/guides/use-the-claude-code-plugin.md](https://github.com/chussenot/judgment/blob/main/docs/guides/use-the-claude-code-plugin.md)
+says how it works and how it was tested; [docs/reference/jud-format.md](https://github.com/chussenot/judgment/blob/main/docs/reference/jud-format.md)
 is the format's specification.

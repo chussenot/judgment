@@ -14,7 +14,7 @@ use crate::eval::{Judgment, canonical};
 use crate::question::{Question, Questions};
 
 /// Labelled states a rubric is graded on ([`grade`]) and its gates are
-/// tuned on (`docs/jud.md`, cases).
+/// tuned on (`docs/reference/jud-format.md`, cases).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Cases {
     /// `metadata.name`: a name for the set; [`fingerprint`](Self::fingerprint) is exact.
@@ -56,7 +56,7 @@ pub struct Case {
 }
 
 /// What a case expects of one question; which form fits which primitive is
-/// `docs/jud.md`, cases, checked by [`Cases::bind`] and [`grade`].
+/// `docs/reference/jud-format.md`, cases, checked by [`Cases::bind`] and [`grade`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Expect {
@@ -124,7 +124,7 @@ impl Case {
         self.id.clone().unwrap_or_else(|| format!("#{index}"))
     }
 
-    /// A conversation case at each of its turns (`docs/jud.md`,
+    /// A conversation case at each of its turns (`docs/reference/jud-format.md`,
     /// Conversations); empty when the state is not a conversation.
     pub fn per_turn(&self) -> Vec<Turn> {
         let Some(all) = turns(&self.state) else {
@@ -311,7 +311,7 @@ impl Cases {
 
     /// Check every case against `rubric`: its request lowers
     /// ([`Case::request`]) and every label names a question that request
-    /// asks and fits it (`docs/jud.md`, cases); the document's `rubric`,
+    /// asks and fits it (`docs/reference/jud-format.md`, cases); the document's `rubric`,
     /// when named, is the rubric's id or fingerprint.
     pub fn bind(&self, rubric: &Rubric) -> Result<()> {
         if let Some(named) = &self.rubric

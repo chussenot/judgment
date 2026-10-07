@@ -4,7 +4,7 @@
 //! A threshold depends on the model, the questions and the data together, so it is read off a
 //! table ([`threshold_sweep`], [`gate_table`], [`level_sweep`]) rather than guessed, and
 //! [`best_threshold`], [`lowest_bar`] and [`best_level`] pick by a stated rule that is printed
-//! with the result (`docs/testing.md`). Whether to apply a bar is the application's choice; a
+//! with the result (`docs/guides/record-replay-and-test.md`). Whether to apply a bar is the application's choice; a
 //! `.jud` rubric's policy carries the numbers.
 
 // Counts are small; the casts to f64 are exact in practice.

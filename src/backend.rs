@@ -8,7 +8,7 @@
 //! `Serialize` so the trait can be a trait object;
 //! [`SystemOne::answer_typed`] converts. Every backend returns only a
 //! response that answers the questions it was given ([`Response::verify`]);
-//! `docs/testing.md` shows the backends in use.
+//! `docs/guides/record-replay-and-test.md` shows the backends in use.
 
 use std::collections::BTreeMap;
 use std::future::Future;

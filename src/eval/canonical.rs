@@ -3,7 +3,7 @@
 //!
 //! Byte-hashing fails as soon as two clients order keys differently or print
 //! `1.0` and `1` apart, so the hash is over the
-//! [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) rendering; `docs/jud.md`
+//! [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) rendering; `docs/reference/jud-format.md`
 //! states the rules and a known vector. The older [`crate::eval::fingerprint`]
 //! (FNV-1a over a near-canonical form) still names the committed recordings;
 //! a new tool should use this module.
@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn a_known_vector() {
-        // The vector `docs/jud.md` publishes: `printf '{"a":1,"b":"x"}' | sha256sum`.
+        // The vector `docs/reference/jud-format.md` publishes: `printf '{"a":1,"b":"x"}' | sha256sum`.
         let v = json!({"b": "x", "a": 1});
         assert_eq!(to_string(&v), r#"{"a":1,"b":"x"}"#);
         assert_eq!(

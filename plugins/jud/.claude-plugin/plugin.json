@@ -7,7 +7,7 @@
     "name": "Clément Hussenot",
     "url": "https://github.com/chussenot"
   },
-  "homepage": "https://github.com/chussenot/judgment/blob/main/docs/skill.md",
+  "homepage": "https://github.com/chussenot/judgment/blob/main/docs/guides/use-the-claude-code-plugin.md",
   "repository": "https://github.com/chussenot/judgment",
   "license": "MIT",
   "keywords": ["jud", "rubric", "judgment", "typesafe", "system-one", "calibration"]

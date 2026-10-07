@@ -405,7 +405,7 @@ pub struct Response {
     pub usage: Usage,
     /// TypeSafe's request id for this call, from the `x-typesafe-request-id`
     /// response header, the one link to TypeSafe's own logs
-    /// (`docs/design.md`); the client sets it after decoding, over any body
+    /// (`docs/concepts/how-judgment-works.md`); the client sets it after decoding, over any body
     /// `request_id`. `None` from a [`crate::Fake`] or a server without the
     /// header; serialised only when present, so a recording keeps it. A body
     /// `request_id` that is not a string reads as `None` rather than failing
@@ -1907,7 +1907,7 @@ mod tests {
 }
 
 /// Bounded proof of the level index a Score resolves to, run with
-/// `cargo kani` (docs/testing.md, "Bounded proofs").
+/// `cargo kani` (docs/guides/record-replay-and-test.md, "Bounded proofs").
 #[cfg(kani)]
 mod kani_proofs {
     use super::*;

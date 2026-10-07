@@ -52,7 +52,7 @@ was chosen and what the reader would need to observe to choose the other.
   `scripts/check-frontmatter.sh docs`.
 - Links inside this set are relative. Links to another repository are
   absolute URLs on its default branch. Paths in sources and pages are
-  relative to the crate (`docs/design.md`, `tests/live.rs`).
+  relative to the crate (`docs/concepts/how-judgment-works.md`, `tests/live.rs`).
 - `docs/llms.txt` and `docs/llms-full.txt` are generated from `mkdocs.yml`,
   `docs/llms-intro.txt` and the frontmatter by `scripts/gen-llms-txt.sh`
   (`mise run docs:llms`). Never edit them. A new page goes in the nav; a page

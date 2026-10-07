@@ -1,6 +1,6 @@
 //! Measuring judgments: recordings for replay, one graded [`Judgment`] per
 //! answer and label, and per-question metrics for accuracy and calibration
-//! (`docs/testing.md` says what the module is for and what it leaves to the
+//! (`docs/guides/record-replay-and-test.md` says what the module is for and what it leaves to the
 //! application). A response recorded once is graded again under every
 //! candidate policy without a model call; [`Recording`] is the file format.
 
@@ -140,7 +140,7 @@ pub fn recording_path(dir: &Path, case: &str) -> PathBuf {
     dir.join(format!("{case}.json"))
 }
 
-/// Whether `id` is a name as the `.jud` format defines one (`docs/jud.md`,
+/// Whether `id` is a name as the `.jud` format defines one (`docs/reference/jud-format.md`,
 /// Names): ASCII letters, digits, `.`, `_` and `-`, starting with a letter or
 /// a digit. A name is never a path, so a case id can name a file under a
 /// directory and nothing else; [`write_recording`] and [`read_recording`]

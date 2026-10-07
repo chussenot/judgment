@@ -13,7 +13,8 @@ use judgment::jud::{Rubric, Supplied, Verdict};
 use judgment::{Fake, SystemOne};
 
 // The same questions as above, with the thresholds beside them, in a file
-// another tool can read (docs/jud.md). The policy is never sent to the model.
+// another tool can read (docs/reference/jud-format.md). The policy is never
+// sent to the model.
 const RUBRIC: &str = r"
 apiVersion: jud/v1.3
 kind: Rubric

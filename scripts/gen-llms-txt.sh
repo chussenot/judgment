@@ -25,9 +25,9 @@
 # has none (a crate README is rendered by crates.io, so it carries none).
 #
 # A page opts out of both files with `llms: false` in its frontmatter (the
-# decision-record template does). Fails loudly on anything unexpected: a nav
-# entry without a file, a page under docs_dir that the nav does not list, or
-# a page missing its frontmatter. POSIX sh and awk only (dash and mawk are
+# decision-record template does), and is then exempt from the nav. Fails
+# loudly on anything unexpected: a nav entry without a file, a page under
+# docs_dir that the nav does not list, or a page missing its frontmatter. POSIX sh and awk only (dash and mawk are
 # enough), like the other scripts.
 set -eu
 
@@ -84,7 +84,8 @@ opted_out() {
 
 # The nav of a mkdocs.yml as "section<TAB>path" lines: the "Pages" section
 # first (top-level leaves, in nav order), then each group in nav order with
-# its leaves.
+# its leaves. A group may hold one level of groups; a leaf of a nested group
+# is listed under "Parent: Child".
 nav_entries() {
   awk '
     function lastsep(s,    i, p) { p = 0; for (i = 1; i <= length(s) - 1; i++) if (substr(s, i, 2) == ": ") p = i; return p }
@@ -96,16 +97,18 @@ nav_entries() {
       sub(/^ *- /, "", line)
       sub(/ *$/, "", line)
       if (line ~ /:$/) {
-        if (indent != 2) { print "gen-llms-txt: nested nav groups are not supported: " $0 > "/dev/stderr"; bad = 1; exit 1 }
-        group = substr(line, 1, length(line) - 1)
-        groups[++ngroups] = group
+        name = substr(line, 1, length(line) - 1)
+        if (indent == 2) { group = name; sub_ = ""; groups[++ngroups] = group }
+        else if (group != "" && (sub_ == "" || indent == si)) { sub_ = name; si = indent; groups[++ngroups] = group ": " sub_ }
+        else { print "gen-llms-txt: nav groups nest at most one level: " $0 > "/dev/stderr"; bad = 1; exit 1 }
         next
       }
       p = lastsep(line)
       if (p == 0) { print "gen-llms-txt: cannot parse nav line: " $0 > "/dev/stderr"; bad = 1; exit 1 }
       path = substr(line, p + 2)
       if (indent == 2) { pages[++npages] = path }
-      else if (indent > 2 && ngroups > 0) { members[group] = members[group] "\n" path }
+      else if (sub_ != "" && indent > si) { members[group ": " sub_] = members[group ": " sub_] "\n" path }
+      else if (group != "" && indent > 2) { sub_ = ""; members[group] = members[group] "\n" path }
       else { print "gen-llms-txt: unexpected nav indentation: " $0 > "/dev/stderr"; bad = 1; exit 1 }
     }
     END {
@@ -158,8 +161,10 @@ build_site() {
 
   # Every page under the docs directory must be in the nav, or the index
   # silently omits it.
+  # A page that opts out with `llms: false` need not be in the nav either.
   for f in $(find "$docs" -type f -name '*.md' | sort); do
     rel=${f#"$docs"/}
+    opted_out "$f" && continue
     printf '%s\n' "$entries" | awk -F '\t' -v p="$rel" '$2 == p { found = 1 } END { exit !found }' \
       || die "$f is not in the $nav nav; add it (or move it out of $docs)"
   done

@@ -1038,7 +1038,7 @@ fn every_committed_recording_is_a_system_one_response() {
             let what = path.file_name().unwrap().to_string_lossy().into_owned();
             let text = std::fs::read_to_string(&path).unwrap();
             // A `.json` recording is this crate's own; a `.jud` one is the
-            // format's (`docs/jud.md`), YAML, the recording's fields under
+            // format's (`docs/reference/jud-format.md`), YAML, the recording's fields under
             // `spec` with the case as `metadata.name`, read here without the
             // feature.
             let raw: Value = match path.extension().and_then(|e| e.to_str()) {

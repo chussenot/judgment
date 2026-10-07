@@ -6,7 +6,7 @@
 # VERSION is the release's version (0.10.2, no v) and SHA256SUMS the file the
 # release workflow attaches to the GitHub release: one line per tarball,
 # `<sha256>  jud-<tag>-<triple>.tar.gz`. The formula installs the release's
-# tarballs, one per platform the workflow builds (docs/cli.md, Platforms), and
+# tarballs, one per platform the workflow builds (docs/reference/cli.md, Platforms), and
 # nothing is compiled: Apple silicon from the darwin tarball, Linux x86-64 and
 # arm64 from the musl ones. The version is the one Homebrew reads from the
 # tarball's name (an explicit `version` is an audit failure, "redundant"). Intel macOS has no tarball and no formula branch;
@@ -47,7 +47,7 @@ cat <<EOF
 # Rendered by scripts/homebrew-formula.sh in github.com/chussenot/judgment on
 # each release; edit that script, not this file. The tarballs are the GitHub
 # release's, built on native runners and checked before they were packaged
-# (docs/cli.md); each has a build-provenance attestation:
+# (docs/reference/cli.md); each has a build-provenance attestation:
 #   gh attestation verify jud-v$version-<triple>.tar.gz --repo chussenot/judgment
 class Jud < Formula
   desc "Evaluate JSON against a .jud rubric with a calibrated System One model"

@@ -1,6 +1,6 @@
 # A rubric: the questions a request sends, in the order the model sees them,
 # and the policy that reads the answers. The policy is never sent. The
-# envelope is a manifest's: apiVersion, kind, metadata, spec (docs/jud.md).
+# envelope is a manifest's: apiVersion, kind, metadata, spec (docs/reference/jud-format.md).
 apiVersion: jud/v1.3
 kind: Rubric
 metadata:

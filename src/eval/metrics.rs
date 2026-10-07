@@ -163,7 +163,7 @@ mod tests {
     }
 }
 
-/// Bounded proofs of the indexing, run with `cargo kani` (docs/testing.md, "Bounded proofs").
+/// Bounded proofs of the indexing, run with `cargo kani` (docs/guides/record-replay-and-test.md, "Bounded proofs").
 #[cfg(kani)]
 mod kani_proofs {
     use super::*;

@@ -51,7 +51,7 @@ run "cat event.json"
 run "cat event.json | jud triage.jud"
 say "the documents are checked the way the library reads them"
 run "jud check triage.jud triage-cases.jud"
-say "docs/cli.md: install, configuration, every subcommand"
+say "docs/reference/cli.md: install, configuration, every subcommand"
 
 # The cast: header, then [time, "o", text] events. Keystrokes are typed at
 # 40 ms, a line of output takes 20 ms, a comment holds for a second.

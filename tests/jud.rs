@@ -116,9 +116,12 @@ fn every_example_document_validates_against_its_schema_and_parses() {
         );
         *kinds.entry(kind).or_default() += 1;
     }
-    assert_eq!(kinds["Rubric"], 3);
-    assert_eq!(kinds["Cases"], 3);
-    assert!(kinds["Recording"] >= 10, "{kinds:?}");
+    // triage, routing, handoff, and the guide's screening rubric.
+    assert_eq!(kinds["Rubric"], 4);
+    // Their cases, and the specification's example cases document.
+    assert_eq!(kinds["Cases"], 5);
+    // The calibration recordings, and the specification's example recording.
+    assert!(kinds["Recording"] >= 11, "{kinds:?}");
 }
 
 #[test]
@@ -483,11 +486,12 @@ fn yes_is_a_string_not_a_boolean() {
 #[tokio::test]
 async fn a_replay_answers_from_jud_recordings_by_fingerprint() {
     let replay = Replay::open(Path::new(RECORDINGS)).unwrap();
-    assert_eq!(
-        replay.len(),
-        example_files("jud").len() - 6,
-        "one recording per file"
-    );
+    let recordings = std::fs::read_dir(Path::new(RECORDINGS))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|e| e == "jud"))
+        .count();
+    assert_eq!(replay.len(), recordings, "one recording per file");
     let rubric = Rubric::parse(&read(EXAMPLES, "triage.jud")).unwrap();
     let cases = Cases::parse(&read(EXAMPLES, "triage-cases.jud")).unwrap();
     for case in &cases.cases {

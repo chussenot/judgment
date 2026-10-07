@@ -17,7 +17,7 @@ use crate::question::{NoulCriteria, Question, Questions, validate_with};
 /// description: what a Choice with `options_from: request` is asked over.
 pub type Supplied = IndexMap<String, IndexMap<String, Value>>;
 
-/// A rubric (`docs/jud.md`): the questions a request sends, in wire shape
+/// A rubric (`docs/reference/jud-format.md`): the questions a request sends, in wire shape
 /// and wire order, with the policy that reads the answers. [`Rubric::lower`]
 /// builds the request for one state, [`Rubric::apply`] reads a response.
 #[derive(Debug, Clone, PartialEq)]
@@ -109,7 +109,7 @@ pub struct Policy {
 }
 
 /// Where one question's answer becomes an action; which field fits which
-/// primitive is `docs/jud.md`, Policy, checked by [`Rubric::parse`] and [`Rubric::gate`].
+/// primitive is `docs/reference/jud-format.md`, Policy, checked by [`Rubric::parse`] and [`Rubric::gate`].
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Gate {
@@ -185,7 +185,7 @@ fn meets(value: f64, bar: f64, strict: bool) -> bool {
     if strict { value > bar } else { value >= bar }
 }
 
-/// Where the gates came from (`docs/jud.md`, Tuning); every field optional.
+/// Where the gates came from (`docs/reference/jud-format.md`, Tuning); every field optional.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Tuning {
     /// The cases document, by id or by fingerprint (`sha256:…`).
@@ -566,7 +566,7 @@ impl Rubric {
     }
 
     /// Parse a `Rubric` document, YAML or JSON, under the reading rules of
-    /// `docs/jud.md`: the builder's checks on each question
+    /// `docs/reference/jud-format.md`: the builder's checks on each question
     /// ([`Error::Question`]), each gate against its question ([`Error::Policy`]).
     pub fn parse(text: &str) -> Result<Self> {
         from_text::<Envelope>(text)?.expect_kind("Rubric")?;
@@ -643,7 +643,7 @@ impl Rubric {
     }
 
     /// The fingerprint of the `policy` map alone, the gates as written
-    /// (`docs/jud.md`, Fingerprints): the identity of how the answers are
+    /// (`docs/reference/jud-format.md`, Fingerprints): the identity of how the answers are
     /// read, which [`Rubric::fingerprint`] leaves out on purpose. An
     /// application that pins a rubric pins both, so a moved bar is as
     /// visible as a changed question; `tuning` is provenance and part of
@@ -652,7 +652,7 @@ impl Rubric {
         canonical::fingerprint(&serde_json::to_value(&self.policy.gates).unwrap_or(Value::Null))
     }
 
-    /// The request for `state` and the `supplied` options (`docs/jud.md`,
+    /// The request for `state` and the `supplied` options (`docs/reference/jud-format.md`,
     /// Declarations), through the [`Questions`] builder: a Choice left with
     /// fewer than two options is [`Error::Question`]; options for a question
     /// that takes none, or under a key it offers, are [`Error::Invalid`].
@@ -724,7 +724,7 @@ impl Rubric {
     }
 
     /// Read a response to `asked`, a request [`Rubric::lower`] built, through
-    /// the policy (`docs/jud.md`, Policy): one [`Verdict`] per question asked,
+    /// the policy (`docs/reference/jud-format.md`, Policy): one [`Verdict`] per question asked,
     /// in wire order, after [`Response::verify`] ([`Error::Response`]).
     /// Without a gate a Noul's threshold is 0.5 and nothing is deferred.
     pub fn apply(

@@ -5,7 +5,7 @@
 //! A System One request is simple; what is hard to keep is everything
 //! around it: which questions, which threshold, tuned on which cases,
 //! against which model. The `.jud` format gives each a file with a stated
-//! shape and a fingerprint (`docs/jud.md`). This example reads
+//! shape and a fingerprint (`docs/reference/jud-format.md`). This example reads
 //! `examples/jud/triage.jud` (a rubric: three questions and their policy)
 //! and `examples/jud/triage-cases.jud` (seven labelled messages), answers
 //! each case from the `.jud` recordings under `examples/recordings/jud_calibration/`

@@ -18,7 +18,7 @@ repository = "https://github.com/chussenot/judgment"
 exclude = [
     ".github/",
     ".claude/",
-    # The jud plugin and the marketplace that serves it (docs/skill.md).
+    # The jud plugin and the marketplace that serves it (docs/guides/use-the-claude-code-plugin.md).
     ".claude-plugin/",
     "plugins/",
     "CLAUDE.md",
@@ -36,7 +36,7 @@ exclude = [
     # The System One shim and the benchmark export (Python, docs/project/verification).
     "tools/",
     ".env.example",
-    # The container image (docs/cli.md): built by the release workflow from
+    # The container image (docs/reference/cli.md): built by the release workflow from
     # the release tarballs, never from the package.
     "Dockerfile",
     ".dockerignore",
@@ -150,12 +150,17 @@ required-features = ["http"]
 name = "jud_cli"
 required-features = ["cli"]
 
+# The documentation's code held to the code (docs/project/contributing.md).
+[[test]]
+name = "docs_examples"
+required-features = ["cli"]
+
 # The `.jud` format against its JSON Schemas and its example documents.
 [[test]]
 name = "jud"
 required-features = ["jud"]
 
-# The jud command line (docs/cli.md): `jud RUBRIC` evaluates the JSON state on
+# The jud command line (docs/reference/cli.md): `jud RUBRIC` evaluates the JSON state on
 # stdin through the client, `jud check` and `jud lower` read documents as the
 # crate does. Released as a binary per platform (release.yml).
 [[bin]]
@@ -195,7 +200,7 @@ name = "intent_routing"
 required-features = ["http"]
 test = true
 
-# The `.jud` round trip (docs/jud.md): rubric and cases from files, answers
+# The `.jud` round trip (docs/reference/jud-format.md): rubric and cases from files, answers
 # replayed from `.jud` recordings, gates tuned and written back. Needs the
 # format, not the client.
 [[example]]
@@ -221,7 +226,7 @@ required-features = ["jud", "http"]
 unsafe_code = "forbid"
 missing_docs = "warn"
 # `cfg(kani)` gates the bounded proofs (`#[kani::proof]` harnesses beside the
-# code they prove, run with `cargo kani`; docs/testing.md).
+# code they prove, run with `cargo kani`; docs/guides/record-replay-and-test.md).
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 [lints.clippy]

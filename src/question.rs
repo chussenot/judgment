@@ -1,6 +1,6 @@
 //! Questions: the three System One primitives, a request builder, and the
 //! typed handles that tie each question to the shape of its answer
-//! (`docs/design.md` draws the mechanism).
+//! (`docs/concepts/how-judgment-works.md` draws the mechanism).
 //!
 //! # Ids are for code, not for the model
 //!
