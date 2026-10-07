@@ -546,3 +546,82 @@ fn completion_needs_no_configuration_and_reads_no_stdin() {
         stdout(&out)
     );
 }
+
+/// `--replay DIR` (or `JUD_REPLAY`) answers from the crate's recordings
+/// instead of a server: the example rubric and a recorded case produce the
+/// verdicts of the recorded answer with no key, no configuration and no
+/// network; a state nobody recorded is a backend failure (1), not a guess,
+/// and a directory that does not exist is a usage error (2).
+#[test]
+fn replay_answers_from_recordings_without_a_server() {
+    let home = config_home();
+    let root = env!("CARGO_MANIFEST_DIR");
+    let rubric = format!("{root}/examples/jud/triage.jud");
+    let recordings = format!("{root}/examples/recordings/jud_calibration");
+    let recorded = r#"{"message": "This is the third time I'm writing. I was charged twice last month and nobody has refunded me. Fix it today or I cancel."}"#;
+
+    let out = jud(&["--replay", &recordings, &rubric], recorded, &[], &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let verdicts: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(verdicts["desk"]["key"], "billing");
+    assert_eq!(verdicts["tone"]["label"], "angry");
+    assert_eq!(verdicts["actionable"]["verdict"], "yes");
+
+    let by_env = jud(&[&rubric], recorded, &[("JUD_REPLAY", &recordings)], &home);
+    assert_eq!(stdout(&by_env), stdout(&out), "{}", stderr(&by_env));
+
+    let unrecorded = jud(
+        &["--replay", &recordings, &rubric],
+        r#"{"message": "hi"}"#,
+        &[],
+        &home,
+    );
+    assert_eq!(unrecorded.status.code(), Some(1));
+    assert!(
+        stderr(&unrecorded).contains("no recording"),
+        "{}",
+        stderr(&unrecorded)
+    );
+
+    let missing = jud(
+        &["--replay", "/nonexistent/recordings", &rubric],
+        recorded,
+        &[],
+        &home,
+    );
+    assert_eq!(missing.status.code(), Some(2));
+    assert!(
+        stderr(&missing).contains("cannot replay from"),
+        "{}",
+        stderr(&missing)
+    );
+}
+
+/// The README's command-line example is a transcript of the binary: the
+/// state after `$ cat event.json` piped into `jud triage.jud` prints exactly
+/// the verdicts the README shows, replayed from the example recordings.
+#[test]
+fn the_readme_shows_what_the_binary_prints() {
+    let readme = include_str!("../README.md");
+    let block = readme
+        .split("```sh\n$ cat event.json\n")
+        .nth(1)
+        .expect("README.md has the `$ cat event.json` transcript")
+        .split("\n```")
+        .next()
+        .unwrap();
+    let (state, rest) = block
+        .split_once("\n$ cat event.json | jud triage.jud\n")
+        .expect("the transcript pipes event.json into `jud triage.jud`");
+    let home = config_home();
+    let root = env!("CARGO_MANIFEST_DIR");
+    let rubric = format!("{root}/examples/jud/triage.jud");
+    let recordings = format!("{root}/examples/recordings/jud_calibration");
+    let out = jud(&["--replay", &recordings, &rubric], state, &[], &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(
+        stdout(&out).trim_end(),
+        rest.trim_end(),
+        "README.md's transcript must be what `jud` prints for that state; regenerate it from the binary"
+    );
+}

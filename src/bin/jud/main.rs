@@ -12,6 +12,7 @@
 //! fixable before any call is made.
 
 use std::io::{ErrorKind, Write};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueHint};
@@ -56,6 +57,14 @@ struct Cli {
     /// The Rubric document to evaluate; the state comes on stdin.
     #[arg(value_name = "RUBRIC", value_hint = ValueHint::FilePath)]
     rubric: Option<String>,
+    /// Answer from the recordings in this directory instead of a server.
+    ///
+    /// The crate's Replay backend: a recording whose request fingerprint
+    /// matches this state and rubric answers, verified against the
+    /// questions as a server's response would be; no key, no network.
+    /// A state nobody recorded is an error, never a guess.
+    #[arg(long, env = "JUD_REPLAY", value_name = "DIR", value_hint = ValueHint::DirPath)]
+    replay: Option<PathBuf>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -93,12 +102,13 @@ enum Command {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let replay = cli.replay;
     match (cli.command, cli.rubric) {
         (Some(Command::Config), _) => report(config::show(), EXIT_USAGE),
         (Some(Command::Check { files }), _) => report(Ok(tools::check(&files)), EXIT_USAGE),
         (Some(Command::Lower(args)), _) => report(tools::lower(&args), EXIT_USAGE),
         (Some(Command::Completion { shell }), _) => report(completion(shell), EXIT_USAGE),
-        (None, Some(path)) => run::run(&path),
+        (None, Some(path)) => run::run(&path, replay.as_deref()),
         // `arg_required_else_help` has already printed the help and exited.
         (None, None) => ExitCode::from(EXIT_USAGE),
     }

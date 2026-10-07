@@ -26,6 +26,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](jud/rubric.md) |
 | Why the labelled examples are a document of their own, what a label means for each primitive, how cases are bound and graded, and how to write cases a threshold can rest on | [What cases are](jud/cases.md) |
 | Why one model response is kept as a document, what its fingerprint leaves out, how a replay finds and verifies one, and when one is written by hand | [What a recording is](jud/recording.md) |
+| What stays the same across versions and for how long: `jud/v1` stable, a minor only adds, every `v1` document read for at least twelve months after a later minor, fingerprints outside the envelope and fixed for a `spec`, the crate's 0.x rule | [Stability](stability.md) |
 | How to evaluate JSON input against a Rubric from a shell (`cat input.json \| jud rubric.jud`), install the binary with mise, configure its backend, and read its exit status | [The jud command line](cli.md) |
 | How an agent writes a `.jud` document and checks it with the crate's reader (`jud check`, `jud lower`), the `/jud:rubric`, `/jud:cases` and `/jud:check` commands, how to install the plugin, and how it was tested | [The jud plugin](skill.md) and `plugins/jud/` |
 | What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
@@ -43,6 +44,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Why the reader refuses merge keys, foreign tags and path-shaped ids, keeps the document out of error messages, and gives the policy its own fingerprint; superseded by 0018, its versioning rule withdrawn | [Decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) |
 | Why the `.jud` envelope is a Kubernetes manifest's and the reader reads exactly one `apiVersion`, and how the earlier keys map onto `metadata` and `spec` | [Decision 0018](decisions/0018-jud-1-3-takes-the-manifest-envelope.md) |
 | Why the jud binary evaluates stdin against a Rubric file, keeps TypeSafe as the default and a base URL as the only backend switch, reads a configuration file, and is released as one tarball per platform | [Decision 0019](decisions/0019-a-command-line-for-the-format.md) |
+| Whether a `v1` minor of the format stays in the `apiVersion` string or moves to a `minor` field, each option priced; proposed, not applied | [Decision 0020](decisions/0020-how-a-v1-minor-is-spelled.md) |
 | What changed in each release | [CHANGELOG](../CHANGELOG.md) |
 | Everything, as an agent or a model reads it | [llms.txt](llms.txt), the index; [llms-full.txt](llms-full.txt), every page in one file |
 
@@ -771,6 +773,14 @@ $ jud config
 }
 ```
 
+### Without a server
+
+`--replay DIR`, or `JUD_REPLAY=DIR`, answers from the recordings under a directory instead of a server: the crate's `Replay` backend, which finds the recording whose request fingerprint matches this state and rubric and verifies it against the questions as a server's response would be. No key, no configuration file and no network are consulted. A state nobody recorded is a backend failure (status 1, "no recording"), never a guess, and a directory that does not exist is a usage error (2). The README's transcript and `scripts/record_demo.sh`, which records the demo as an asciinema cast (`docs/demo.cast`, `mise run demo`), both run this way over [`examples/recordings/jud_calibration`](../examples/recordings/jud_calibration), the answers `jev-1.13.0` gave to the example cases; [What a recording is](jud/recording.md) says how one is written.
+
+```sh
+cat event.json | jud --replay examples/recordings/jud_calibration examples/jud/triage.jud
+```
+
 ### Credentials
 
 A key for the hosted API comes from `TYPESAFE_API_KEY`. A run with no key is refused before any call, naming the variable and the file. A key in the configuration file is accepted for a machine where the environment is awkward to set, with the usual caution about a secret on disk.
@@ -784,7 +794,7 @@ TypeSafe is the default, not the only backend. The crate talks to any server tha
 | Status | Meaning |
 |---|---|
 | 0 | Verdicts printed on stdout. |
-| 1 | The backend was asked and the call failed: a transport error after the retries, an HTTP error, or a response that does not fit the rubric. The message names the backend. |
+| 1 | The backend was asked and the call failed: a transport error after the retries, an HTTP error, a response that does not fit the rubric, or no recording for the state under `--replay`. The message names the backend. |
 | 2 | Something fixable before any call: no rubric argument, a file that cannot be read, a document that is not a valid Rubric, stdin that is empty or not one JSON value, a missing API key, a malformed configuration file. |
 
 Every error goes to stderr, prefixed `jud:`; stdout carries verdicts and nothing else, so a pipeline never reads an error as a result.
@@ -798,6 +808,7 @@ Every error goes to stderr, prefixed `jud:`; stdout carries verdicts and nothing
 | `jud check FILE...` | Reads documents as the crate does, binds cases to the rubric they name among the files, verifies recordings against the request they answer, prints names and fingerprints; status 2 when any document is refused. |
 | `jud lower RUBRIC --state JSON` / `--state-file PATH` / `--cases FILE` | Prints the request a rubric lowers to for a state or for every case, so a `when` or a `part_when` is seen rather than guessed. |
 | `jud config` | The resolved backend, as above. |
+| `jud --replay DIR RUBRIC` | The run above answered from recordings ([without a server](#without-a-server)). |
 | `jud completion SHELL` | A completion script for the shell, generated from the command tree ([above](#shell-completion)). |
 | `jud --version` | The version, the manifest's. |
 
@@ -908,6 +919,57 @@ The skill and its eval set were carried over to the manifest envelope after the 
 Every document written with the skill passed every assertion (49 of 49); without it, 48 of 49, the miss being a document declared under an older version than the one wanted. The difference the skill makes is mostly in cost and method: in the first round, 14% fewer tokens and 24% less wall-clock on average, ten tool calls per task against fifteen, and no agent with the skill built a throwaway crate to validate its documents, which two baselines did. The second round changed the guide in two places: Score levels are written as plain strings, because an object level's text is its JSON and a `level_at_least` or a label would have to repeat it; and a section on turning questions written in code into a rubric, so parity is proved with `jud lower` rather than a probe crate. The eval set stays in the skill, its prompts and assertions now in the 1.3 format, so a later change to the format or the guide can be run against the same tasks.
 
 
+<!-- source: docs/stability.md -->
+
+
+# Stability
+
+A `.jud` document is written once and read for years: a rubric in a repository, a cases document a threshold rests on, a recording of what a model answered in a given month. The format's value is that each of those still reads, and still names the same content, after the tools around them have moved. This page states what is promised, what is not, and for how long, for the format, its fingerprints, the wire and the crate. The [decision records](decisions/README.md) say why each rule is as it is; this page is the one to cite.
+
+## The format: `jud/v1` is stable
+
+The `.jud` format is at `apiVersion: jud/v1.3`, and the `v1` line is stable. Stable means:
+
+- **A valid document stays valid.** A document that a `jud/v1` reader accepts today is accepted by every later `jud/v1` reader. Nothing is removed, renamed or given a new meaning inside the `v1` line: not a field of the envelope, not a field of `spec`, not a kind, not a rule of reading (names, the core schema, what a reviewer must be able to see).
+- **A minor version only adds.** A later minor (`1.4`, `1.5`) may add an optional field, a value a field may take, or a kind. It may not make an optional field required, narrow what a field accepts, or change what an existing field means. A document that uses nothing a later minor added is, byte for byte, a document of the earlier minor.
+- **Readers accept every `v1` document for at least twelve months.** When a later minor is published, every reader of the format that this repository ships (the crate's `judgment::jud`, the `jud` command, the plugin's checks) accepts documents of each earlier `v1` minor for at least twelve months from that publication. The date is the release date of the crate version that first reads the new minor, recorded in the `CHANGELOG`. A reader may go on reading an earlier minor after that; the promise is the floor.
+- **A change of meaning is `jud/v2`.** Anything a minor may not do takes a new major version, with its own `apiVersion`, its own schemas and a page that maps `v1` onto it, as [decision 0018](decisions/0018-jud-1-3-takes-the-manifest-envelope.md) did for the envelope. A `v2` reader is not required to read `v1`; a `v1` document is moved by rewriting it.
+
+Today the one `v1` minor published is `1.3`, so the crate's reader, which reads exactly `apiVersion: jud/v1.3`, meets every line above. How the next minor is spelled, and how a reader of it also reads `1.3`, is [decision 0020](decisions/0020-how-a-v1-minor-is-spelled.md), proposed and not applied: it weighs keeping the minor in the `apiVersion` string against `apiVersion: jud/v1` with the minor in a field of its own. Whichever is accepted, the promises on this page hold; the record decides the spelling, not the guarantee.
+
+What a minor may add is listed on the specification's page, [Extending the format](jud.md#extending-the-format). What the format is not (a template language, a report format, a container for soft labels) stays what it is not, in `v1`.
+
+## Fingerprints exclude the envelope and never change
+
+A rubric's questions, a rubric's policy, a cases document's cases and a request each have a fingerprint: `sha256:` over the [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical JSON of a value inside `spec`. The promises:
+
+- **The envelope contributes nothing.** `apiVersion`, `kind` and the whole of `metadata` (`name`, `version`, `description`, `labels`, `annotations`) are outside every fingerprint. Renaming a document, labelling it, annotating it, or moving it to a later `apiVersion` leaves each fingerprint as it was. This is why [decision 0018](decisions/0018-jud-1-3-takes-the-manifest-envelope.md) could move the envelope without touching one recorded `tuning.cases` or one recording's `fingerprint`.
+- **A document's `spec` has one fingerprint, for good.** The value fingerprinted and the canonicalisation are fixed for `v1`: the same `questions` give the same `sha256:` today, under a later minor, and from any implementation of the format. A minor may add a field to `spec`; a document that does not use it fingerprints as it did, and a document that does has, by its content, another fingerprint. A change to what is fingerprinted or how would be a change of meaning, so it is `v2` by the rule above.
+- **The known vector holds.** The specification carries a worked fingerprint ([Fingerprints](jud.md#fingerprints)); `tests/jud.rs` checks the crate against it, and another implementation can check itself the same way. A canonicalisation that disagrees with the vector is a bug in the implementation, never a new version of the format.
+
+## The wire
+
+What the crate sends and accepts on `POST /v1/systemone` follows the TypeSafe HTTP API reference, vendored as `tests/fixtures/typesafe-openapi.json` and checked by `tests/contract.rs`. A change there is a contract change: the test, the `CHANGELOG` and the README's guarantees move together, and the recordings under `examples/recordings/` must still replay. The tolerant decoder keeps an unknown answer kind readable as `Answer::Unknown` rather than failing the response, so a server adding a primitive does not break a consumer that did not ask for it; the rules are on [How the crate is implemented](implementation.md).
+
+## The crate and the command
+
+The crate is 0.x on crates.io: a minor release may break, a patch release does not, so a consumer pins the minor (`judgment = "0.9"`). Every release lists its breaking changes under its own heading in [`CHANGELOG.md`](../CHANGELOG.md), in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) form, and a breaking change arrives in a minor bump never a patch ([Releasing](releasing.md)).
+
+The `jud` command follows the crate's version, and its contract is three things: the exit status (0 verdicts, 1 the backend call failed, 2 something was wrong before any call), the verdict JSON on stdout (one object per question, tagged by `verdict`, as [The jud command line](cli.md) lists it), and the configuration it reads (`TYPESAFE_API_KEY`, `TYPESAFE_BASE_URL`, `JUD_REPLAY`, `~/.config/jud/config.yaml`). A change to any of them is listed as breaking.
+
+## In one table
+
+| What | Promise | Since |
+|---|---|---|
+| A `jud/v1` document | Valid today, valid under every later `v1` minor | `jud/v1.3`, crate 0.8.0 |
+| A `v1` minor | Adds only; never removes, renames, narrows or changes meaning | this page |
+| Readers of an earlier `v1` minor | Accepted for at least twelve months after a later minor is published | this page |
+| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good | `jud/v1.3`, decision 0018 |
+| The wire | The vendored OpenAPI document; a change moves the contract test, the CHANGELOG and the README together | crate 0.3.0 |
+| The crate | 0.x: a minor may break and says so; a patch does not | crate 0.3.0 |
+| The `jud` command | Exit status, verdict JSON and configuration change only in a minor, listed as breaking | crate 0.9.0 |
+
+
 <!-- source: docs/releasing.md -->
 
 
@@ -922,6 +984,7 @@ A release has to be the same every time: the version follows from what changed, 
 | Conventional Commits | every commit; `cog verify` in the prek `commit-msg` hook, `cog check` in the `commits` job of CI | Gives cocogitto the facts it derives a version from, and refuses a commit message it cannot read |
 | `cog bump --auto` | `cog.toml`, run as `mise run release` | Computes the next version from the commits since the last tag, runs the pre-bump hooks, commits `chore(version): vX.Y.Z` and tags it |
 | `scripts/release-bump.sh` | the first pre-bump hook | Writes the version into `Cargo.toml` and `Cargo.lock` and its major.minor into the README's install snippet, turns the CHANGELOG's Unreleased section into the release's dated section, and refuses an empty one |
+| `scripts/record_demo.sh` | the second pre-bump hook | Records the command-line demo again as `docs/demo.cast`, from the example recordings with no network, so the version the cast shows is the one being released |
 | The gate | the remaining pre-bump hooks, then CI on the pull request and on the tag | Formatting, clippy, the no-`http` build, the tests, rustdoc, the documentation checks and what the package would ship |
 | `.github/workflows/release.yml` | on a pushed `v*` tag | Runs the CI gate on the tagged commit, builds, checks and packages the `jud` binary for each platform ([The jud command line](cli.md)), checks the tag against `Cargo.toml`, runs `cargo publish --dry-run`, publishes, and creates a GitHub release with the CHANGELOG section as notes and the tarballs with `SHA256SUMS` as assets. A `workflow_dispatch` is a dry run that builds every leg and publishes nothing |
 
@@ -2596,6 +2659,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) | The .jud format 1.2 refuses what a reviewer cannot see, and names the policy | superseded by 0018 |
 | [0018](0018-jud-1-3-takes-the-manifest-envelope.md) | The .jud format 1.3 takes the manifest envelope and reads one apiVersion | accepted |
 | [0019](0019-a-command-line-for-the-format.md) | A command line for the format, released as a binary | accepted |
+| [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | proposed |
 
 ## Status notes
 
@@ -2609,6 +2673,8 @@ Records are not edited after acceptance; a fact that has moved since is noted he
 - 0014 says "a later version that adds a field takes the next number". [0016](0016-jud-takes-minor-versions.md) read that as the next minor number for a purely additive change (1.1), and kept the next major number for a change of meaning.
 
 - 0016 and 0017 are superseded by [0018](0018-jud-1-3-takes-the-manifest-envelope.md) on 2026-10-06: the envelope is a manifest's, a reader reads exactly one `apiVersion` and any change of the format takes a new one, so the compatibility rule of 0016 and the exception 0017 made to it are both withdrawn. What the two records added to the format (declarations, bands and level gates, names, the refusal of what a reviewer cannot see, the policy fingerprint) stands as rules of the format, and 0018 is the one page that maps the earlier keys onto the new envelope.
+
+- 0018 says any change of the format, additive or not, takes a new `apiVersion` that a reader of the earlier one refuses. [Stability](../stability.md), on 2026-10-06, promises that a `v1` minor only adds and that readers accept every `v1` document for at least twelve months after a later minor is published; a reader of a later minor therefore reads earlier `v1` documents, and only a change of meaning takes a new major. How the minor is spelled is [0020](0020-how-a-v1-minor-is-spelled.md), proposed. Nothing moves in the code until it is accepted: one minor exists and the reader reads it exactly.
 
 ## Writing a record
 
@@ -3171,3 +3237,101 @@ Options 1, 5, 7 and the hand-written matrix of 8.
 - [Releasing](../releasing.md), the runbook with the binary legs.
 - [Decision 0013](0013-releases-cut-with-cocogitto-and-published-from-ci.md), the crate's release process the binary joins.
 - [pact's release workflow](https://github.com/chussenot/pact/blob/main/.github/workflows/release.yml) and [install page](https://github.com/chussenot/pact/blob/main/docs/install.md), the shape taken.
+
+
+<!-- source: docs/decisions/0020-how-a-v1-minor-is-spelled.md -->
+
+
+# 0020 How a v1 minor of the `.jud` format is spelled
+
+**Status: proposed.** Nothing in the code, the schemas or the documents moves until this record is accepted; the reader reads `apiVersion: jud/v1.3` exactly, as [decision 0018](0018-jud-1-3-takes-the-manifest-envelope.md) decided.
+
+## Context and problem statement
+
+[Decision 0018](0018-jud-1-3-takes-the-manifest-envelope.md) gave the format a manifest's envelope and one rule for versions: the whole version is in the `apiVersion` string, a reader reads exactly one, and any change, additive or not, takes a new string. That was the right cut for 1.3, which broke on purpose. [Stability](../stability.md) now promises more than 0018 does: `jud/v1` is stable, a minor only adds, and a reader accepts every `v1` document for at least twelve months after a later minor is published. The first additive change (a field under `spec`, a value a gate may take) will have to be spelled somehow, and the spelling decides what a reader must do to keep that promise and what every tool that keys on `apiVersion` sees.
+
+Two spellings are on the table, and a third that keeps the question open. The question is which one makes the twelve-month promise cheapest to keep, for this reader and for another implementation, without giving back what 0018 bought: a document recognisable to the tools that read manifests, and a reader with no feature-to-version table.
+
+## Decision drivers
+
+- The stability promise must be mechanical: a reader given a `v1` document of an earlier minor reads it, and a reader given a later minor than it knows says so by name, never half-reads it.
+- Tools that key on `apiVersion` (an editor's schema association, a catalog, a policy engine, `kind`-and-`apiVersion` selectors) should see one line, `jud/v1`, for one stable format, as they see `v1` for a Kubernetes Deployment across years of additive change.
+- No fingerprint moves, whatever is chosen: every fingerprint is over a value inside `spec`, and a version field, wherever it sits, stays outside them.
+- The envelope stays four fields; a manifest has no fifth top-level key, and the reader refuses one by name.
+- A minor's cost should fall on the reader that adds it, once, and not on every document ever written.
+
+## Considered options
+
+1. **Keep the minor in the string: `apiVersion: jud/v1.3`, then `jud/v1.4`.** A reader keeps the list of `v1` minors it reads and refuses any other string by name. A writer writes the minor it implements.
+2. **`apiVersion: jud/v1` with a `minor` field of its own** (`metadata.minor: 3`, an integer; the name is the question's, the place is this record's). A reader accepts `jud/v1` and any `minor` at or below the one it implements, refusing a higher one by number. A writer writes the lowest minor whose fields the document uses, or simply the one it implements.
+3. **`apiVersion: jud/v1` and no minor anywhere.** A document is a `v1` document; what it uses is what it uses. A reader of an earlier revision refuses an unknown field by its path, as the strict reader already does; the specification is dated, not numbered.
+
+## Proposed outcome
+
+Option 2, `apiVersion: jud/v1` with `metadata.minor`, when the first additive change is ready, and not before: the rewrite it costs is paid once and should carry a change worth it. Until then 1.3 stays as it is and the stability promise holds trivially, with one minor published.
+
+Why 2 over 1: option 1 keeps the minor where a manifest reader looks for the major, so each minor is a new `apiVersion` to every tool outside this repository: a new schema association, a new selector, a new entry in a catalog's list of kinds it knows, for a change that by the stability promise cannot break them. The reader's list of accepted strings is 0018's feature-to-version table in another form. Option 2 gives those tools one line for the life of `v1`, and the reader one integer comparison.
+
+Why 2 over 3: option 3 keeps the promise by accident. A 1.3 reader given a 1.5 document fails on the first field it does not know, with that field's path, which is the right refusal but the wrong message: nothing in the document says the reader is out of date rather than the document wrong, and nothing lets a writer state the revision a document needs. The twelve-month clock on the stability page needs a number to run against. The cost of option 2 over 3 is one integer per document and the rule for choosing it.
+
+### Priced
+
+Costs are counted on this repository at 0.9.0 and on the day the first minor ships. "Rewrite" means every document under `examples/jud/`, `examples/recordings/`, `tests/`, `plugins/jud/skills/jud/evals/` and the inline documents in `src/jud/*.rs`, `tests/jud.rs`, `README.md` and `docs/`: about 20 files of documents, 13 recordings and some 60 inline documents, done once by a script, with no fingerprint moving.
+
+| Cost | 1. `jud/v1.3`, `jud/v1.4` | 2. `jud/v1` + `metadata.minor` | 3. `jud/v1`, no minor |
+|---|---|---|---|
+| Now (before any minor) | none | none, if deferred to the first minor; the rewrite otherwise | same as 2 |
+| The first minor, documents | none: 1.3 documents stay `jud/v1.3` and the reader reads both | the rewrite, once: `apiVersion: jud/v1` and `minor: 3` on every existing document | the rewrite, once: `apiVersion: jud/v1` |
+| The first minor, reader | a list of accepted strings and a per-minor rule for which fields each admits; the 0016 table again | one integer, one comparison, one error ("needs minor 4, this reader reads 3"); fields admitted by the schema, not by minor | no version logic; an unknown field is refused by path, which it is already |
+| Each later minor | a new string, a new schema set, and every tool keying on `apiVersion` updated | a new integer in the schema's enum and the reader's constant; tools see no change | a dated schema revision; tools see no change |
+| Tools outside the repository | a new `apiVersion` per minor to associate, select and list | one for the life of `v1` | one for the life of `v1` |
+| Another implementation keeping the twelve months | must read every string in the list and know what each admits | must read every `minor` up to its own; one number to compare | must read every field it has ever known; cannot tell a stale reader from a wrong document |
+| What a document can state | the minor it was written for, in the string | the minor it needs, in a field | nothing |
+| `jud check` and the plugin | print and teach a per-minor string | print `jud/v1` and the minor | print `jud/v1` |
+| Schemas | one set per minor (`schemas/jud/1.3/`, `1.4/`) | one set, `minor` an enum that grows | one set, revised |
+
+The one cost option 2 has that 1 does not is the rewrite, and it is the cost 0018 already paid once for a better envelope: a script over the documents, no fingerprint touched, every recording still replaying. The one cost option 1 avoids is that rewrite; what it buys is a reader and a tool landscape that treat every minor as a new format, which is what the stability page says a minor is not.
+
+### Consequences
+
+If accepted:
+
+- The envelope stays four fields. `metadata.minor` is an integer, required on every kind from the first minor on, outside every fingerprint like the rest of `metadata`.
+- `jud::API_VERSION` becomes `"jud/v1"`, with a `MINOR` constant beside it; the reader refuses an `apiVersion` other than `jud/v1` by name and a `minor` above its own by number; `jud check` prints both.
+- The stability page's twelve-month clock starts at the release that first reads minor 4, and the `CHANGELOG` names it.
+- [Decision 0018](0018-jud-1-3-takes-the-manifest-envelope.md)'s rule that a reader reads exactly one `apiVersion` stands for the string; its rule that any change takes a new string is narrowed to a change of meaning, which the stability page already states. A status note on 0018 records that.
+
+### Confirmation
+
+When applied: `tests/jud.rs` reads a document of every published minor and refuses one with a `minor` above the reader's, naming the number; the known fingerprint vector on the specification page does not move; `examples/recordings/` replay unchanged; `jud check` over `examples/jud/` prints `jud/v1` and the minor for every document.
+
+## Pros and cons of the options
+
+### 1. Keep the minor in the string
+
+- Good, because nothing changes until something changes; the first minor costs no rewrite.
+- Good, because a document names its exact version where everything else in a manifest names a version.
+- Bad, because every minor is a new `apiVersion` to tools that cannot tell it is additive, and the stability promise has to be explained to each of them.
+- Bad, because the reader carries a list of strings and what each admits, the table 0018 removed.
+
+### 2. `jud/v1` with a `minor` field
+
+- Good, because `apiVersion` says what is stable and `minor` says what was added, each in the place a reader of either kind looks.
+- Good, because keeping the twelve-month promise is one integer comparison, for this reader and for any other.
+- Bad, because of the one-time rewrite, and because `minor` is a field a manifest reader has not seen before; it sits in `metadata`, where a manifest keeps what the format does not define.
+- Bad, because a writer must choose the minor to write: the rule has to be stated (the one it implements, unless told to write the lowest that reads the document).
+
+### 3. `jud/v1` and no minor
+
+- Good, because it is the least machinery: the strict reader already refuses what it does not know.
+- Good, because tools see one `apiVersion` for the life of `v1`.
+- Bad, because a document cannot say what it needs and a reader cannot say it is out of date rather than the document wrong.
+- Bad, because the twelve-month promise has no number to run against: "every `v1` document" becomes "every document using fields published before a date", which nobody can check from the document.
+
+## More information
+
+- [Stability](../stability.md): the promises this record has to make cheap to keep.
+- [Decision 0018](0018-jud-1-3-takes-the-manifest-envelope.md): the envelope and the one-`apiVersion` rule this record narrows.
+- [Decision 0016](0016-jud-takes-minor-versions.md), superseded: the earlier minor-version rule and what it cost, the table option 1 would bring back.
+- [The .jud format](../jud.md), "Extending the format": what a minor may add.
+- `src/jud/mod.rs` (`API_VERSION`, `Envelope::check`), `schemas/jud/`, `tests/jud.rs`: where the accepted option lands.

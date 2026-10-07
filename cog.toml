@@ -29,6 +29,8 @@ pre_bump_hooks = [
     # install snippet, the Unreleased section into the release's section;
     # refuses an empty Unreleased section.
     "scripts/release-bump.sh {{version}} {{latest}}",
+    # The demo cast shows `jud --version`; recorded again so it shows this one.
+    "scripts/record_demo.sh",
     # The gate, on exactly what the bump commit will contain.
     "cargo fmt --all --check",
     "cargo clippy --all-targets --all-features -- -D warnings",

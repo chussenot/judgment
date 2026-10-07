@@ -2,7 +2,76 @@
 
 [![crates.io](https://img.shields.io/crates/v/judgment.svg)](https://crates.io/crates/judgment)
 
-judgment turns TypeSafe System One answers into verified, testable Rust types.
+A decision written as a file, answered by a calibrated model, verified before
+it is read, and testable with no key: typed judgments from TypeSafe System One
+models and every server that speaks the same wire, as a Rust crate and a
+command line.
+
+Not affiliated with TypeSafe AI.
+
+## The command line
+
+```sh
+mise use -g github:chussenot/judgment@latest   # Linux x86-64 and arm64, Apple silicon; or cargo install judgment --features cli
+```
+
+A rubric is the decision as a file: the questions a model is asked about a
+JSON state, and the policy that turns its answers into verdicts. Pipe the
+state in, the verdicts come out, one per question:
+
+```sh
+$ cat event.json
+{"message": "This is the third time I'm writing. I was charged twice last month and nobody has refunded me. Fix it today or I cancel."}
+$ cat event.json | jud triage.jud
+{
+  "actionable": {
+    "verdict": "yes",
+    "probability": 0.97
+  },
+  "desk": {
+    "verdict": "option",
+    "key": "billing",
+    "confidence": 0.87
+  },
+  "tone": {
+    "verdict": "level",
+    "index": 2,
+    "label": "angry",
+    "value": 1.86,
+    "confidence": 0.84
+  }
+}
+```
+
+`triage.jud` is [`examples/jud/triage.jud`](examples/jud/triage.jud): three
+questions about a support message and a policy whose gates were tuned on the
+labelled cases beside it. The transcript above is what the binary prints
+(`tests/jud_cli.rs` holds it to that), answered from a recording of
+`jev-1.13.0` under [`examples/recordings/`](examples/recordings/jud_calibration)
+with `JUD_REPLAY` set, so it ran with no key and no network;
+`scripts/record_demo.sh` records the same session as an asciinema cast. With
+`TYPESAFE_API_KEY` set the model answers; `TYPESAFE_BASE_URL`, or
+`~/.config/jud/config.yaml`, points the same command at any other server that
+speaks the wire, and `jud config` shows what a run would use. Errors go to
+stderr with a non-zero status: 1 when the backend call failed, 2 when
+something is wrong before any call (the file, the input, the configuration).
+[The jud command line](docs/cli.md) has the install by hand with checksums,
+shell completion, the configuration file and the other subcommands. An agent
+writes and checks these files with [the jud plugin](docs/skill.md).
+
+## The Rust API
+
+```toml
+[dependencies]
+judgment = "0.10"
+# What the first example uses besides the crate.
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt"] }
+```
+
+The same decision in code: typed questions, a handle per question that fixes
+its answer's type, and a backend that checks every answer against the
+question before it is read.
 
 ```rust
 use judgment::{Fake, Questions, SystemOne, options};
@@ -48,14 +117,6 @@ have given. To ask the real model, build a `Client` (`Client::from_env()?`
 reads `TYPESAFE_API_KEY`) and pass it where the fake is: both implement
 `SystemOne`. The crate works with [TypeSafe](https://docs.typesafe.ai) System
 One models (Jev) and with any server that speaks the same wire.
-
-```toml
-[dependencies]
-judgment = "0.10"
-# What the example above uses besides the crate.
-serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt"] }
-```
 
 The same decision again, with the questions and the thresholds that read
 their answers in one `.jud` document instead of in code, so another tool, or a
@@ -177,21 +238,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-```bash
-# chussenot @ me in ~/judgment py:3.14 nd:24.19 go:1.27 rs:1.94 load:1 on git:main ✓
+```sh
 $ cargo run --example jud_live --features jud
-✓ Built in 1.27s · saved ~0s compiler work
-0 hits · 0 misses · 0 bypassed · 215 fresh · 1 not looked up
-Savings estimate sums compiler work, not wall-clock time.
-
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.21s
-     Running `mbx-launch target/debug/examples/jud_live`
-mbx[cache]: 0 hits, 0 misses, 1 not looked up; 0 B downloaded, 0 B uploaded, 80.5 MiB stored locally
 actionable: {"verdict":"yes","probability":0.98}
 desk: {"verdict":"option","key":"billing","confidence":0.7}
 tone: {"verdict":"level","index":1,"label":"annoyed","value":1.02,"confidence":0.9}
 answered by jev-1.13.0
-mbx[savings]: 805 compilations, each compiled once and served warm ever since
 ```
 
 
@@ -231,43 +283,6 @@ each replaying recorded answers so it runs with no key and no network
 
 [Patterns](docs/patterns.md) says which type carries each shape and what the
 recordings teach about the thresholds.
-
-## The command line
-
-`jud` evaluates JSON input against a `.jud` Rubric and returns the resulting
-verdicts. The rubric file is the decision; stdin is the state; the output is
-one verdict per question, as JSON, so the whole thing composes with `jq`,
-`yq`, `cat` and `curl`:
-
-```sh
-cat input.json | jud rubric.jud
-jq '.customer' customer.json | jud customer.jud
-yq -o=json '.spec' resource.yaml | jud resource.jud
-```
-
-The rubric defines the questions and the policy. `jud` asks the configured
-System One backend, the policy turns the model's answers into verdicts, and
-the verdicts are written to stdout; errors go to stderr with a non-zero
-status (1 when the backend call failed, 2 when something is wrong before any
-call: the file, the input, the configuration). TypeSafe is the default
-backend, read from `TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL` as the crate
-does; `~/.config/jud/config.yaml` holds a base URL, a model and a timeout for
-good, and any other server that speaks the wire is a base URL away.
-`jud config` shows what a run would use.
-
-Install a release binary without a Rust toolchain, for Linux (x86-64 and
-arm64, statically linked) and Apple-silicon macOS:
-
-```sh
-mise use -g github:chussenot/judgment@latest
-```
-
-Or `cargo install judgment --features cli`. `jud completion <shell>` prints
-a completion script for bash, zsh, fish, elvish or PowerShell, generated from
-the command tree the binary parses with. [The jud command line](docs/cli.md)
-has the install by hand with checksums, where each shell wants its
-completions, the configuration file, the exit status and the other
-subcommands.
 
 ## Why
 
@@ -329,23 +344,20 @@ and the metrics for a project with its own transport.
 
 ## Compared with the other Rust clients
 
-About thirty Rust crates speak this wire. The table sets judgment against the
-nine most downloaded on crates.io on 2026-10-04 and `typesafe-client`, on the
-four properties where they differ most, each read from the published source of
-the version named. ✓ present, ◐ partial, ✗ absent.
+About thirty Rust crates speak this wire. One table, the four properties where
+they differ most, for the most downloaded crates on crates.io on 2026-10-04 and
+`typesafe-client`, the one closest in architecture; each cell is read from the
+published source of the version named. ✓ present, ◐ partial, ✗ absent.
 [Compared with the other Rust clients](docs/research/client-comparison.md) has
-the full grids (wire limits, retries, footprint and more), a file and line for
-every cell, and what other crates have that judgment does not.
+the full grids for all ten crates (wire limits, retries, footprint and more),
+a file and line for every cell, and what other crates have that judgment does
+not.
 
 | Crate | Typed handle per question | Response verified against the questions | Validated probability types | Testing without a key |
 |---|---|---|---|---|
-| judgment 0.3.0 | ✓ | ✓ every backend, legend included | ✓ | ✓ fake that refuses unfit answers, record and replay |
+| judgment 0.10.0 | ✓ | ✓ every backend, legend included | ✓ | ✓ fake that refuses unfit answers, record and replay |
 | kunobi-decision 0.3.0 | ✓ | ✗ | ✗ | ◐ fake, no replay |
 | typesafe-sdk 0.2.0 | ✗ | ✗ | ✗ | ✗ |
-| typesafeai-sdk 0.4.1 | ✗ | ✗ | ✗ | ✗ |
-| typesafe-sdk-* 0.6.2 | ✗ | ✗ | ✗ | ◐ mock, answers unchecked |
-| jev-client 0.2.0 | ✗ | ✗ | ✗ | ◐ trait only |
-| jev 0.1.2 | ✗ | ✗ | ✗ | ✗ |
 | typesafe-ai-sdk 0.5.0 | ◐ derive | ✗ | ✗ | ◐ replay (SHA-256 cassettes), no fake |
 | typesafeai-sdk-community 0.5.0 | ◐ derive | ✗ | ✗ | ◐ mock, answers unchecked; replay in order |
 | typesafe-client 0.1.0 | ✓ | ◐ legend not compared | ✗ | ◐ fake that refuses unfit answers, no replay |
@@ -372,6 +384,7 @@ default.
 | [Against the hosted TypeSafe API](docs/verification/hosted-typesafe.md), [Against Laya typed-decisions](docs/verification/laya-typed-decisions.md) | What real servers did with the live tests, and what the crate changed for it |
 | [Compatible servers and models](docs/research/compatible-servers-and-models.md) | Which servers speak the wire and how the open models compare with Jev |
 | [Compared with the other Rust clients](docs/research/client-comparison.md) | The full comparison grids, with a file and line for every cell |
+| [Stability](docs/stability.md) | What stays the same across versions and for how long: `jud/v1` stable, a minor only adds, every `v1` document read for at least twelve months after a later minor, fingerprints fixed for a `spec` |
 | [Decisions](docs/decisions/README.md) | Why the API is shaped as it is, and why releases are cut the way they are |
 | [Releasing](docs/releasing.md) | How a version is cut and published |
 | [llms.txt](docs/llms.txt) | The index for agents and models; [llms-full.txt](docs/llms-full.txt) is every page in one file |
@@ -379,7 +392,8 @@ default.
 ## Status
 
 On [crates.io](https://crates.io/crates/judgment) since 0.3.0; 0.x means a
-minor release may break, so pin the minor. What changed in each release,
+minor release may break, so pin the minor; [Stability](docs/stability.md)
+says what holds across versions, the `.jud` format first. What changed in each release,
 breaking changes listed, is in [CHANGELOG.md](CHANGELOG.md). Live behaviour has
 been verified against the hosted API and against Laya's server; the vendored
 OpenAPI document and the wiremock tests are the contract in this repository.

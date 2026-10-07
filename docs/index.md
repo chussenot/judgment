@@ -24,6 +24,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Why a decision is written as a rubric, what its questions, policy and tuning each hold, what it leaves out, and how to write questions that hold up | [What a rubric is](jud/rubric.md) |
 | Why the labelled examples are a document of their own, what a label means for each primitive, how cases are bound and graded, and how to write cases a threshold can rest on | [What cases are](jud/cases.md) |
 | Why one model response is kept as a document, what its fingerprint leaves out, how a replay finds and verifies one, and when one is written by hand | [What a recording is](jud/recording.md) |
+| What stays the same across versions and for how long: `jud/v1` stable, a minor only adds, every `v1` document read for at least twelve months after a later minor, fingerprints outside the envelope and fixed for a `spec`, the crate's 0.x rule | [Stability](stability.md) |
 | How to evaluate JSON input against a Rubric from a shell (`cat input.json \| jud rubric.jud`), install the binary with mise, configure its backend, and read its exit status | [The jud command line](cli.md) |
 | How an agent writes a `.jud` document and checks it with the crate's reader (`jud check`, `jud lower`), the `/jud:rubric`, `/jud:cases` and `/jud:check` commands, how to install the plugin, and how it was tested | [The jud plugin](skill.md) and `plugins/jud/` |
 | What stands between the mocks and a real server, and how to run the live tests, the benchmark and the contract test | [How the crate is checked](verification/method.md) |
@@ -41,6 +42,7 @@ The [README](../README.md) says what the crate is for, what it guarantees and ho
 | Why the reader refuses merge keys, foreign tags and path-shaped ids, keeps the document out of error messages, and gives the policy its own fingerprint; superseded by 0018, its versioning rule withdrawn | [Decision 0017](decisions/0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) |
 | Why the `.jud` envelope is a Kubernetes manifest's and the reader reads exactly one `apiVersion`, and how the earlier keys map onto `metadata` and `spec` | [Decision 0018](decisions/0018-jud-1-3-takes-the-manifest-envelope.md) |
 | Why the jud binary evaluates stdin against a Rubric file, keeps TypeSafe as the default and a base URL as the only backend switch, reads a configuration file, and is released as one tarball per platform | [Decision 0019](decisions/0019-a-command-line-for-the-format.md) |
+| Whether a `v1` minor of the format stays in the `apiVersion` string or moves to a `minor` field, each option priced; proposed, not applied | [Decision 0020](decisions/0020-how-a-v1-minor-is-spelled.md) |
 | What changed in each release | [CHANGELOG](../CHANGELOG.md) |
 | Everything, as an agent or a model reads it | [llms.txt](llms.txt), the index; [llms-full.txt](llms-full.txt), every page in one file |
 
