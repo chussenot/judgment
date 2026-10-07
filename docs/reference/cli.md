@@ -35,9 +35,9 @@ Arguments:
 Options:
       --replay <DIR>
           Answer from the recordings in this directory instead of a server.
-          
+
           The crate's Replay backend: a recording whose request fingerprint matches this state and rubric answers, verified against the questions as a server's response would be; no key, no network. A state nobody recorded is an error, never a guess.
-          
+
           [env: JUD_REPLAY=]
 
   -h, --help
@@ -161,7 +161,7 @@ Usage: jud completion <SHELL>
 Arguments:
   <SHELL>
           The shell whose syntax to emit
-          
+
           [possible values: bash, elvish, fish, powershell, zsh]
 
 Options:

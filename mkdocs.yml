@@ -62,6 +62,17 @@ nav:
           - 0019 A command line for the format, released as a binary: project/decisions/0019-a-command-line-for-the-format.md
           - 0020 How a v1 minor of the .jud format is spelled: project/decisions/0020-how-a-v1-minor-is-spelled.md
 
+# Pages link to files outside docs/ (the examples, the README, the CHANGELOG)
+# by relative path, the repository's convention, which GitHub and crates.io
+# render; a TechDocs site does not carry those files. mkdocs would refuse the
+# build for them in strict mode, so the check is informational here and
+# `mise run docs:links` (lychee, offline) is what holds every link, anchors
+# included, to a file that exists.
+validation:
+  links:
+    not_found: info
+    unrecognized_links: info
+
 plugins:
   - techdocs-core
 

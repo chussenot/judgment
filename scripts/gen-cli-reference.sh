@@ -36,7 +36,9 @@ help_of() {
   # subcommand words and --help.
   set -- $1
   shift
-  "$JUD" "$@" --help
+  # clap pads the blank lines inside a long help with spaces; the hooks
+  # refuse trailing whitespace, so it is dropped here.
+  "$JUD" "$@" --help | sed 's/[[:space:]]*$//'
 }
 
 tmp=$(mktemp -d)
