@@ -14,6 +14,7 @@ Not affiliated with TypeSafe AI.
 ```sh
 mise use -g github:chussenot/judgment@latest   # Linux x86-64 and arm64, Apple silicon
 brew install chussenot/tap/jud                 # the same tarballs, through Homebrew; or cargo install judgment --features cli
+docker run -i --rm -v "$PWD:/work" ghcr.io/chussenot/jud triage.jud < event.json   # in a pipeline, no install
 ```
 
 A rubric is the decision as a file: the questions a model is asked about a

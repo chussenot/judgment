@@ -6,6 +6,18 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A container image, `ghcr.io/chussenot/jud`, for `linux/amd64` and
+  `linux/arm64`: `cat event.json | docker run -i --rm -v "$PWD:/work"
+  ghcr.io/chussenot/jud triage.jud`. `FROM scratch` with the release
+  tarball's binary, a CA bundle for the client's TLS and a non-root user,
+  about 10 MB; tagged `X.Y.Z`, `X.Y` and `latest`, with a build-provenance
+  attestation. The release workflow's new `image` job fills the build
+  context from the tarballs it just built (`scripts/image-context.sh`),
+  runs the image on the runner and pushes it after the publish
+  ([The jud command line](docs/cli.md), [Releasing](docs/releasing.md)).
+
 ## [0.10.3] - 2026-10-07
 
 ### Added

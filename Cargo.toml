@@ -36,6 +36,10 @@ exclude = [
     # The System One shim and the benchmark export (Python, docs/verification).
     "tools/",
     ".env.example",
+    # The container image (docs/cli.md): built by the release workflow from
+    # the release tarballs, never from the package.
+    "Dockerfile",
+    ".dockerignore",
     ".gitattributes",
     "rust-toolchain.toml",
     "rustfmt.toml",
