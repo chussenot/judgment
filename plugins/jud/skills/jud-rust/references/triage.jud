@@ -1,0 +1,56 @@
+# A rubric: the questions a request sends, in the order the model sees them,
+# and the policy that reads the answers. The policy is never sent. The
+# envelope is a manifest's: apiVersion, kind, metadata, spec (docs/reference/jud-format.md).
+apiVersion: jud/v1.3
+kind: Rubric
+metadata:
+  name: inbox-triage
+  version: 2
+  description: >-
+    Sort an incoming support message: whether it asks for anything, which desk
+    takes it, and how upset the writer is.
+spec:
+  questions:
+    actionable:
+      type: noul
+      instructions: Does `message` ask for something to be done, or report something that is broken?
+      criteria:
+        true: a request, a question that needs an answer, a report of a fault
+        false: thanks, an acknowledgement, small talk, an automated receipt
+    desk:
+      type: choice
+      instructions: Which desk should take `message`?
+      criteria:
+        billing: Invoices, payments, refunds, subscription changes
+        technical: Errors, outages, anything about using the product
+        account: Sign-in, passwords, personal details, closing an account
+        none_of_these: Not clearly any desk, or not a request at all
+    tone:
+      type: score
+      instructions: How upset is the writer of `message`?
+      criteria:
+        - calm
+        - annoyed
+        - angry
+
+  # Gates: where an answer becomes an action. A Noul acts on its probability
+  # of yes, a Choice or a Score on its confidence, with a fallback below it.
+  policy:
+    actionable:
+      threshold: 0.55
+      note: best F1 on the labelled cases; 0.5 lets the automated receipt through
+    desk:
+      confidence: 0.45
+      fallback: none_of_these
+      note: lowest bar at 95% accuracy; covers 6 of 7 labelled cases
+    tone:
+      confidence: 0.3
+
+  # Where the gates came from. The cases are named by fingerprint, so an
+  # edited case set is visibly a different one.
+  tuning:
+    cases: sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
+    model: jev-1.13.0
+    server: https://api.typesafe.ai
+    tuned_at: 2026-10-04T12:00:00Z
+    labelled: 7
