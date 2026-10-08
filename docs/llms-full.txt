@@ -1572,6 +1572,8 @@ Add the checkout as a local marketplace (`/plugin marketplace add ./` from the r
 
 ## How it was tested
 
+### The authoring skill
+
 The skill was run against six tasks of the kind a user would give, each once with the skill and once without it, by independent agents in the same checkout; a script ran `jud check` on the outputs and checked every assertion in `evals/evals.json` against the parsed documents. The baseline agents could read the specification, the examples and the `jud` command; what they lacked was the guide.
 
 1. A rubric and six labelled cases for triaging GitHub issues, from a one-paragraph brief.
@@ -1582,6 +1584,44 @@ The skill was run against six tasks of the kind a user would give, each once wit
 6. A brief with traps: a name with spaces, a threshold asked for in the instructions, a twelve-level scale, a one-option Choice and a request to invent a `tuning` block.
 
 Every document written with the skill passed every assertion (49 of 49); without it, 48 of 49. The difference the skill makes is mostly in cost and method: in the first round, 14 % fewer tokens and 24 % less wall-clock on average, ten tool calls per task against fifteen, and no agent with the skill built a throwaway crate to validate its documents, which two baselines did. The test was run before the manifest envelope; the skill and its eval set were carried over to it afterwards, so a later change to the format or the guide can be run against the same tasks.
+
+### The tuning commands
+
+`/jud:record`, `/jud:eval` and `/jud:tune` were battle-tested as a user runs them: each scenario is one prompt through `claude -p --plugin-dir plugins/jud` in a fresh git workspace. The allow-list is what a user of the plugin would grant: the plugin's script, `jud`, file edits and a few read-only commands.
+
+The backend is `skills/jud-tune/evals/mock_system_one.py`, a System One test double that knows the cases' labels. It answers right with a set accuracy, wrong at a middling confidence, deterministically, and can force an answer so that a scenario plants a wrong label or a confusion. Every run's base URL is the mock or a closed port, so no scenario can reach a real API.
+
+The fixture under `skills/jud-tune/evals/files/support/` is a three-question rubric with 48 labelled tickets. Two labels are wrong on purpose and three tickets straddle billing and account. On it, `jud tune` proposes raising the queue bar to 0.80, which would cover 15 of 48 cases: the right answer is to refuse that bar and fix its causes.
+
+The 14 scenarios cover:
+
+- recording from scratch, resuming, over stale recordings, with no key, and over a conversation;
+- grading, with and without `--min-accuracy`, and over recordings a question edit made stale;
+- proposing, applying, holding out and a relabel what-if;
+- a plain-language request ("fix the thresholds") that names no command.
+
+Each run is held to two kinds of check:
+
+- **Scripted checks** (`run.py`): which files changed, `jud check`, the questions fingerprint, the comments, the YAML values, the number of calls the mock saw, stray files and any `jud` command the permission rules denied.
+- **Graded expectations**: an independent reader grades each scenario's expectations from the reply and the transcript, lists every claim the `jud` output contradicts, and names the page whose wording led the run astray.
+
+The pages were rewritten between rounds from what the graders found:
+
+| Round | Scenarios | Expectations met | Claims the output contradicts | What the round changed |
+|---|---|---|---|---|
+| 1 | 11 | 36 of 41 | not counted | `/jud:record` says the cost in a message before the call; one `jud` command per call, nothing written into the project; a Noul gate decides rather than defers |
+| 2 | 14 | 46 of 50 | 20 | `--min-accuracy` explained as a CI gate no bar can raise; what-ifs measured, per target; counts that add up to `labelled` |
+| 3 | 14 | 50 of 50 | 10 | hold out by default at 40 cases; every question in every reply; the stale recordings named in the announcement |
+
+Scripted checks passed in every round once the round-1 harness errors were fixed. The runs used Sonnet 5.5 at about $0.15 to $0.70 per scenario. What remains is mostly arithmetic done by hand on label counts, which `jud eval --json` does not yet report per outcome.
+
+To run them again, with `claude` logged in and `jud` built:
+
+```sh
+JUD=target/debug/jud python3 plugins/jud/skills/jud-tune/evals/run.py --out /tmp/jud-tune-evals --jobs 6
+```
+
+`--only ID ...` runs some, and `--model` picks the model. Each scenario's `reply.md`, `transcript.jsonl` and `checks.json` land under `--out`. Grading the prose expectations is left to a reader.
 
 ## Next
 
