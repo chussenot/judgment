@@ -222,6 +222,9 @@ def run_one(ev, out_dir, model):
         proc.kill()
 
     reply, cost, turns, denials, skills, tools = "", None, None, [], [], []
+    # The text written before the first `jud record` call, to check that the
+    # cost was announced before it was spent.
+    said_before_record, recorded = [], False
     with open(os.path.join(base, "transcript.jsonl"), encoding="utf-8") as t:
         for line in t:
             try:
@@ -234,6 +237,10 @@ def run_one(ev, out_dir, model):
                 denials = msg.get("permission_denials", [])
             if msg.get("type") == "assistant":
                 for block in msg.get("message", {}).get("content", []):
+                    if block.get("type") == "text" and not recorded:
+                        said_before_record.append(block.get("text", ""))
+                    if block.get("type") == "tool_use" and re.search(r"jud(\.sh)?\s+record\b", str(block.get("input", {}).get("command", ""))):
+                        recorded = True
                     if block.get("type") == "tool_use":
                         tools.append({"name": block["name"], "input": block.get("input")})
                         if block["name"] == "Skill":
@@ -313,6 +320,9 @@ def run_one(ev, out_dir, model):
     if "mock_requests" in spec:
         n = count_lines(mock_log)
         check(f"mock requests == {spec['mock_requests']}", n == spec["mock_requests"], f"made {n}")
+    if spec.get("announce_before_record"):
+        announced = any(re.search(r"Recording \d+ request", t) for t in said_before_record)
+        check("cost announced before record", recorded and announced, "" if recorded else "record never ran")
     if "skill_loaded" in spec:
         check(f"skill {spec['skill_loaded']} loaded", any(s and spec["skill_loaded"] in s for s in skills), ", ".join(map(str, skills)))
     # A denied `jud` command means a command page taught a form the user's

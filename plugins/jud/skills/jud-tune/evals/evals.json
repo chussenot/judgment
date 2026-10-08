@@ -1,6 +1,6 @@
 {
   "skill_name": "jud-tune",
-  "about": "Each eval runs one prompt through `claude -p --plugin-dir plugins/jud` in a fresh workspace (run.py). `setup` builds the workspace: files copied from the repository, recordings made beforehand against the mock server, edits applied after recording. `mock` starts mock_system_one.py for the run; without it the base URL points at a closed port, so no eval can reach a real API. `checks` are verified by run.py; `expectations` are graded by a reader of the reply and the transcript. `new_files` lists the files a run may create; any other new file in the workspace fails the run.",
+  "about": "Each eval runs one prompt through `claude -p --plugin-dir plugins/jud` in a fresh workspace (run.py). `setup` builds the workspace: files copied from the repository, recordings made beforehand against the mock server, edits applied after recording. `mock` starts mock_system_one.py for the run; without it the base URL points at a closed port, so no eval can reach a real API. `checks` are verified by run.py; `expectations` are graded by a reader of the reply and the transcript. `new_files` lists the files a run may create; any other new file in the workspace fails the run. `announce_before_record` fails a run whose transcript has no `Recording N requests` line before its first `jud record` call.",
   "evals": [
     {
       "id": "eval-triage-replay",
@@ -121,7 +121,8 @@
         "mock_requests": 48,
         "new_files": [
           "recordings/support-triage/*"
-        ]
+        ],
+        "announce_before_record": true
       },
       "expectations": [
         "Says before recording that the run will make 48 requests, to which backend and with which model",
@@ -166,7 +167,8 @@
         "mock_requests": 18,
         "new_files": [
           "recordings/support-triage/*"
-        ]
+        ],
+        "announce_before_record": true
       },
       "expectations": [
         "Notices that 30 recordings already exist and says only about 18 requests are new",
@@ -428,7 +430,8 @@
         "mock_requests": 6,
         "new_files": [
           "recordings/handoff/*"
-        ]
+        ],
+        "announce_before_record": true
       },
       "expectations": [
         "Says before recording that the 2 conversation cases are recorded once per turn, 6 requests in all",
@@ -573,7 +576,8 @@
           }
         ],
         "mock_requests": 48,
-        "new_files": []
+        "new_files": [],
+        "announce_before_record": true
       },
       "expectations": [
         "Finds that the 48 recordings already in the directory are stale (fingerprint differs) and announces 48 new requests, not 0, before recording",
