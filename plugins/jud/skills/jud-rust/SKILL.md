@@ -96,14 +96,32 @@ in the copy.
    The default `http` feature gives `judgment::Client`. A program that only
    replays or uses `Fake` can turn it off. Add `mod <module>;` to `main.rs` or
    `lib.rs` only when asked; otherwise show the line.
-7. **Verify.** In the user's crate, run `cargo check`, then `cargo test
-   <module>::tests` and `cargo clippy --all-targets`. Every check must pass,
-   and the test must pass, not just compile. Outside a crate, make a
-   throwaway one in a temporary directory outside the project (a
-   `Cargo.toml` with the dependencies above and a `src/main.rs` with `mod
-   <module>;` and an empty `main`), and run the same checks there. Then
-   delete it. Fix every error in the module; never add an `allow` to get past
-   a lint other than the module's own `dead_code`.
+7. **Verify** in a throwaway crate that mounts the module where you wrote
+   it. A module that no `mod` line names is not compiled by `cargo check` in
+   the user's crate, and the user's `main.rs` is not yours to edit. So:
+   - Pick a directory of its own outside the project: the session's
+     scratchpad or temporary directory if the system names one, else
+     `/tmp/jud-rust-check-<module>/`.
+   - With the Write tool (no `mkdir`, `cp`, `sed` or `cd`), write
+     `<dir>/Cargo.toml`. It holds `[package] name = "jud-rust-check"`,
+     `edition = "2021"` (the user's edition when there is a crate), and the
+     dependencies of step 6. When the user's crate already names `judgment`,
+     copy that line as it is and add `"jud"` to its features. Add
+     `[lints.clippy] all = { level = "warn", priority = -1 }` and
+     `pedantic = { level = "warn", priority = -1 }`.
+   - Write `<dir>/src/lib.rs` as one line,
+     `#[path = "<absolute path of the module>"] mod <module>;`.
+   - Run, one per Bash call, each with `--manifest-path <dir>/Cargo.toml`
+     (and `--target-dir <the user's crate>/target` when there is one, so
+     nothing is built twice):
+     - `cargo test`, which must run and pass `<module>::tests::the_module_matches_the_rubric`;
+     - `cargo clippy --all-targets -- -D warnings`.
+   - When the user's crate already has the `mod` line, also run `cargo
+     check` there.
+
+   Fix every error in the module. Never add an `allow` to get past a lint,
+   other than the module's own `dead_code`. Leave the throwaway crate out of
+   the project.
 8. **Reply** with the file written, the `include_str!` path, the dependencies
    to add, the `mod` line, a five-line usage example with the real type and
    field names (as in the module's header), and the checks that passed.

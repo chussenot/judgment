@@ -26,11 +26,12 @@ written out in full, one command per Bash call, with nothing chained to it.
 3. Name, map and write the module exactly as the skill says. Overwrite an
    existing module only if its header says it was generated from this rubric.
    Otherwise stop and ask.
-4. Verify as the skill says: `cargo check`, `cargo test <module>::tests` and
-   `cargo clippy --all-targets` in the user's crate, or in a throwaway crate
-   in a temporary directory outside the project, deleted afterwards. Fix the
-   module until all three pass. Change no other file in the project unless
-   asked: the `Cargo.toml` lines and the `mod` line go in the reply.
+4. Verify as the skill says: in a throwaway crate outside the project,
+   written with the Write tool, that mounts the module with `#[path = ...]`.
+   Run `cargo test` and `cargo clippy --all-targets -- -D warnings` with
+   `--manifest-path`, one command per Bash call, and fix the module until
+   both pass. Change no other file in the project unless asked: the
+   `Cargo.toml` lines and the `mod` line go in the reply.
 5. Reply with:
    - the file written and the `include_str!` path;
    - every name you had to change, and why;
