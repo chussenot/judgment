@@ -24,7 +24,10 @@ pub(crate) fn run(path: &str, replay: Option<&Path>) -> ExitCode {
 }
 
 fn read_rubric(path: &str) -> Result<Rubric, Failure> {
-    tools::read_document(path, "Rubric", Rubric::parse).map_err(Failure::Usage)
+    tools::read_document(path, "Rubric", Rubric::parse).map_err(|message| {
+        // `jud evaluate` is a mistyped subcommand that reads as a rubric path.
+        Failure::Usage(format!("{message}{}", crate::not_a_subcommand_either(path)))
+    })
 }
 
 fn read_state() -> Result<Value, Failure> {

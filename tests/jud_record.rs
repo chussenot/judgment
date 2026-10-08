@@ -11,15 +11,16 @@
 mod support;
 
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Output, Stdio};
 use std::time::Duration;
 
 use judgment::jud::Cases;
 use serde_json::{Value, json};
 use support::{
-    HANDOFF, HANDOFF_CASES, TRIAGE, TRIAGE_CASES, code, copy_dir, jud, scratch, stderr, stdout,
+    HANDOFF, HANDOFF_CASES, TRIAGE, TRIAGE_CASES, code, copy_dir, jud, scratch, server, stderr,
+    stdout, triage_answers,
 };
-use wiremock::matchers::{header, method, path};
+use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// The seven case ids of `examples/jud/triage-cases.jud`, in document order,
@@ -34,24 +35,6 @@ const TRIAGE_IDS: [&str; 7] = [
     "invoice-vat",
 ];
 
-/// The triage rubric's three answers, as a server sends them.
-fn triage_answers() -> Value {
-    json!({
-        "model": "jev-1.13.0",
-        "answers": {
-            "actionable": { "type": "noul", "noul": 0.91 },
-            "desk": { "type": "choice", "choice": "billing",
-                      "probabilities": { "billing": 0.85, "technical": 0.05, "account": 0.05, "none_of_these": 0.05 },
-                      "confidence": 0.8 },
-            "tone": { "type": "score", "score": 1.9,
-                      "legend": { "0": "calm", "1": "annoyed", "2": "angry" },
-                      "probabilities": { "0": 0.05, "1": 0.0, "2": 0.95 },
-                      "confidence": 0.9 }
-        },
-        "usage": { "input_tokens": 300, "output_tokens": 30 }
-    })
-}
-
 /// The handoff rubric's one answer.
 fn handoff_answers() -> Value {
     json!({
@@ -59,20 +42,6 @@ fn handoff_answers() -> Value {
         "answers": { "wants_human": { "type": "noul", "noul": 0.9 } },
         "usage": { "input_tokens": 100, "output_tokens": 10 }
     })
-}
-
-/// A server that answers `calls` requests with `body` and fails the test, when
-/// it is dropped, if it was asked any other number of times.
-async fn server(body: Value, calls: u64) -> MockServer {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/v1/systemone"))
-        .and(header("authorization", "Bearer test-key"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(body))
-        .expect(calls)
-        .mount(&server)
-        .await;
-    server
 }
 
 /// `jud record RUBRIC CASES --out OUT [EXTRA]` against `server`.
@@ -1166,12 +1135,8 @@ async fn a_stderr_nobody_reads_does_not_stop_the_run() {
         .mount(&server)
         .await;
     let out = scratch("record").join("recordings");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_jud"))
-        .current_dir(support::ROOT)
-        .args(["record", TRIAGE, TRIAGE_CASES, "--out"])
+    let mut child = support::command(&["record", TRIAGE, TRIAGE_CASES, "--out"])
         .arg(&out)
-        .env_remove("JUD_REPLAY")
-        .env("XDG_CONFIG_HOME", support::config_home())
         .env("TYPESAFE_API_KEY", "test-key")
         .env("TYPESAFE_BASE_URL", server.uri())
         .stdin(Stdio::null())

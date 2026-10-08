@@ -11,15 +11,15 @@ mod support;
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Output, Stdio};
 
 use judgment::jud::{Cases, Rubric};
 use serde_json::{Value, json};
 use support::{
-    HANDOFF, HANDOFF_CASES, RECORDINGS, TRIAGE, TRIAGE_CASES, code, copy_dir, jud, scratch, stderr,
-    stdout,
+    HANDOFF, HANDOFF_CASES, RECORDINGS, TRIAGE, TRIAGE_CASES, cases_without_labels, code, copy_dir,
+    jud, scratch, server, stderr, stdout, triage_answers,
 };
-use wiremock::matchers::{any, header, method, path};
+use wiremock::matchers::{any, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// `jud eval RUBRIC CASES --replay RECORDINGS EXTRA...`
@@ -426,14 +426,7 @@ fn a_question_without_a_gate_has_no_gate_in_the_report() {
 
 #[test]
 fn a_question_nobody_labelled_is_listed_as_not_labelled_without_metrics() {
-    let cases = write(
-        "cases.jud",
-        &read(TRIAGE_CASES)
-            .lines()
-            .filter(|line| !line.starts_with("        tone:"))
-            .collect::<Vec<_>>()
-            .join("\n"),
-    );
+    let cases = write("cases.jud", &cases_without_labels("tone"));
     let out = eval(TRIAGE, &cases, &["--json"]);
     assert_eq!(code(&out), 0, "{}", stderr(&out));
     let report = report(&out);
@@ -553,14 +546,7 @@ fn six_sevenths_never_rounds_into_a_pass() {
 
 #[test]
 fn a_question_with_no_labelled_case_does_not_meet_a_bar_on_it() {
-    let cases = write(
-        "cases.jud",
-        &read(TRIAGE_CASES)
-            .lines()
-            .filter(|line| !line.starts_with("        tone:"))
-            .collect::<Vec<_>>()
-            .join("\n"),
-    );
+    let cases = write("cases.jud", &cases_without_labels("tone"));
     let out = eval(TRIAGE, &cases, &["--min-accuracy", "tone=0"]);
     assert_eq!(code(&out), 3, "{}", stderr(&out));
     assert_eq!(
@@ -915,35 +901,9 @@ fn eval_is_read_only_and_ignores_stdin() {
     assert_eq!(snapshot(&dir), before, "eval wrote to a file");
 }
 
-/// The triage rubric's answers, as a server sends them: the same for every
-/// case, so what the report says follows from the labels alone.
-fn server_answers() -> Value {
-    json!({
-        "model": "jev-1.13.0",
-        "answers": {
-            "actionable": { "type": "noul", "noul": 0.91 },
-            "desk": { "type": "choice", "choice": "billing",
-                      "probabilities": { "billing": 0.85, "technical": 0.05, "account": 0.05, "none_of_these": 0.05 },
-                      "confidence": 0.8 },
-            "tone": { "type": "score", "score": 1.9,
-                      "legend": { "0": "calm", "1": "annoyed", "2": "angry" },
-                      "probabilities": { "0": 0.05, "1": 0.0, "2": 0.95 },
-                      "confidence": 0.9 }
-        },
-        "usage": { "input_tokens": 300, "output_tokens": 30 }
-    })
-}
-
 #[tokio::test]
 async fn without_recordings_it_asks_the_server_once_per_case() {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/v1/systemone"))
-        .and(header("authorization", "Bearer test-key"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(server_answers()))
-        .expect(7)
-        .mount(&server)
-        .await;
+    let server = server(triage_answers(), 7).await;
     let out = jud(
         &[
             "eval",
@@ -980,13 +940,7 @@ async fn without_recordings_it_asks_the_server_once_per_case() {
     assert_eq!(report["min_accuracy"][0]["met"], true);
 
     // A bar the same answers do not reach is status 3, from a server too.
-    let second = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/v1/systemone"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(server_answers()))
-        .expect(7)
-        .mount(&second)
-        .await;
+    let second = self::server(triage_answers(), 7).await;
     let unmet = jud(
         &["eval", TRIAGE, TRIAGE_CASES, "--min-accuracy", "desk=0.5"],
         "",
@@ -1299,13 +1253,7 @@ fn a_case_without_an_id_is_named_by_its_position() {
 /// so this can never fail for being early; it fails when a closed reader
 /// changes what the command exits with.
 fn run_with_stdout_closed(args: &[&str]) -> (Option<i32>, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_jud"))
-        .current_dir(support::ROOT)
-        .args(args)
-        .env_remove("TYPESAFE_API_KEY")
-        .env_remove("TYPESAFE_BASE_URL")
-        .env_remove("JUD_REPLAY")
-        .env("XDG_CONFIG_HOME", support::config_home())
+    let mut child = support::command(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1351,7 +1299,7 @@ async fn a_server_that_fails_midway_names_the_case_and_its_place_in_the_run() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/systemone"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(server_answers()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(triage_answers()))
         .up_to_n_times(2)
         .mount(&server)
         .await;

@@ -10,14 +10,14 @@ mod support;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Output, Stdio};
 
 use judgment::eval::{request_hash, write_recording};
 use judgment::jud::{Cases, Rubric, parse_recording};
 use serde_json::{Value, json};
 use support::{
-    HANDOFF, HANDOFF_CASES, RECORDINGS, TRIAGE, TRIAGE_CASES, code, copy_dir, jud, scratch, stderr,
-    stdout,
+    HANDOFF, HANDOFF_CASES, RECORDINGS, TRIAGE, TRIAGE_CASES, cases_without_labels, code, copy_dir,
+    jud, scratch, stderr, stdout,
 };
 
 /// `jud tune RUBRIC CASES --replay RECORDINGS` and `extra`.
@@ -60,17 +60,6 @@ fn indented(text: &str, prefix: &str) -> String {
     text.lines()
         .map(|line| [prefix, line, "\n"].concat())
         .collect()
-}
-
-/// The triage cases with every `tone` label taken out, so `tone` is asked
-/// and never graded.
-fn cases_without_tone_labels() -> String {
-    let text = std::fs::read_to_string(TRIAGE_CASES).unwrap();
-    let kept: Vec<&str> = text
-        .lines()
-        .filter(|line| !line.trim_start().starts_with("tone:"))
-        .collect();
-    indented(&kept.join("\n"), "")
 }
 
 /// The last component of a directory, as text.
@@ -894,7 +883,7 @@ fn a_question_without_a_gate_or_without_labels_is_skipped_with_a_note() {
 ",
         ),
     );
-    let unlabelled = cases_without_tone_labels();
+    let unlabelled = cases_without_labels("tone");
     let cases = write(&dir, "cases.jud", &unlabelled);
     let out = tune(path_str(&rubric), path_str(&cases), RECORDINGS, &[]);
     assert_eq!(code(&out), 0, "{}", stderr(&out));
@@ -923,7 +912,7 @@ fn when_nothing_can_be_proposed_there_is_no_tuning_block_and_no_file() {
         "rubric.jud",
         &triage_with_policy("    tone:\n      confidence: 0.9\n"),
     );
-    let unlabelled = cases_without_tone_labels();
+    let unlabelled = cases_without_labels("tone");
     let cases = write(&dir, "cases.jud", &unlabelled);
     let out_path = dir.join("tuned.jud");
     let before = snapshot(&dir);
@@ -1513,13 +1502,7 @@ fn two_recordings_of_one_request_are_warned_about_and_change_nothing() {
 fn tune_with_closed(stdout_closed: bool, stderr_closed: bool, extra: &[&str]) -> Output {
     let mut args = vec!["tune", TRIAGE, TRIAGE_CASES, "--replay", RECORDINGS];
     args.extend_from_slice(extra);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_jud"))
-        .current_dir(support::ROOT)
-        .args(&args)
-        .env_remove("TYPESAFE_API_KEY")
-        .env_remove("TYPESAFE_BASE_URL")
-        .env_remove("JUD_REPLAY")
-        .env("XDG_CONFIG_HOME", support::config_home())
+    let mut child = support::command(&args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
