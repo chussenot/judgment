@@ -26,13 +26,16 @@ beside the rubric.
    `recordings/<rubric metadata.name>/` beside the cases document when it
    exists. With no recordings, say so and offer `/jud:record`: `tune` never
    calls a model.
-2. **Hold out** when the arguments say `holdout`, or when the user wants to
-   know how the bars will do and the cases document has 40 or more cases.
-   Count before splitting: 48 gives 36 to tune and 12 held out.
+2. **Hold out** whenever the cases document has 40 or more cases (count
+   before splitting: 48 gives 36 to tune and 12 held out). Skip it only
+   for a what-if question about one bar, and then say the numbers are
+   tuned on all cases.
    - Split as the skill says. Name the files after the cases file:
      `support-cases.jud` gives `support-cases-tune.jud` and
-     `support-cases-holdout.jud`, beside it. Their `metadata.name` is the
-     cases document's name plus `-tune` and `-holdout`.
+     `support-cases-holdout.jud`; their `metadata.name` is the cases
+     document's name plus `-tune` and `-holdout`. With `holdout` in the
+     arguments, write them beside the cases file; without it, in
+     `$TMPDIR/jud-holdout/` (else `/tmp/jud-holdout/`).
    - Check both with the rubric. Then `eval --replay` both, so that a
      state copied wrong shows up as `no recording answers`.
    - Tune on the tuning set.
@@ -69,7 +72,8 @@ beside the rubric.
    - Edit the rubric in place as "Applying a proposal" says. Change the
      values of the gates whose value moves. A gate proposed at its current
      value keeps its value and its note, except a part the run makes stale
-     ("a guess"), which becomes what `tune` printed. Give kept gates a reason prepended to their note. Add the
+     ("a guess"), which becomes what `tune` printed. Only a gate whose
+     proposal you declined gets a `kept at ...:` reason before its note. Give kept gates a reason prepended to their note. Add the
      `tuning` block exactly as `tune` printed it. Keep every comment.
    - `jud.sh check <rubric> <cases>` must say `0 refused`, with the same
      questions fingerprint as before.

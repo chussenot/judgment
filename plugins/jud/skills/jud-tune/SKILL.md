@@ -180,7 +180,7 @@ the confidence. Then put it in exactly one row:
 | What you see | Cause | What to do |
 |---|---|---|
 | The state plainly supports the model's answer, or the case's own `note` argues for it | **The label is wrong** | Propose the corrected label to the user, with the reason. Never change a label just because the model disagreed: the model being confident is not evidence, and a low-confidence miss on a label the criteria plainly support is not a label problem. |
-| A Choice or Score answer at or under the gate's `confidence` bar | **The bar's job** | Nothing: the gate defers it to its `fallback`. Say so. |
+| A Choice or Score answer at or under the gate's `confidence` bar | **The bar's job** | Nothing for the gate: it defers this to its `fallback`. Say so. It is still a wrong answer: it counts in `accuracy` and against any `--min-accuracy` floor, and only a sharper question or another model removes it. |
 | A Noul whose probability falls on the label's side of `threshold` (0.52 under a 0.55 threshold, labelled no) | **The bar's job** | Nothing: a threshold never defers, it decides, and here it decides the label. Say so. |
 | Confidence is high, the label is right, and the criteria could be read the model's way | **The question is ambiguous** | Propose a sharper criterion: name the deciding detail. This changes the request, so re-record after. |
 | Confidence is high, the label is right, and the deciding fact is not in the state | **The question asks what the model cannot see** | The fact belongs in the state, computed by the caller, or the question should not be asked (`when`). |
@@ -380,8 +380,11 @@ the misses left are the model's own and the bars rest on enough cases.
 
 ## What the reply contains
 
-A reply that ran `eval` or `tune` has items 2 to 6, always: one triage row
-per line under `model misses`, and counts for every question. Items 1, 6
+A reply that ran `eval` or `tune` has items 2 to 6, always, for every
+question in the rubric, even when the user asked about one gate: answer
+their question first, then give the items. One triage row per line under
+`model misses` (with more than 10, group the rows by cause, but name every
+case), and counts for every question. Items 1, 6
 (for `eval` alone) and 7 depend on what was done. In this order:
 
 1. The cost, before anything was spent (`record`), and what was spent.
@@ -403,5 +406,9 @@ per line under `model misses`, and counts for every question. Items 1, 6
 
 Before sending it, check every number against the output it came from: a
 count adds up to its total, a width is `high - low` from the JSON, and a
-statement of what a change would do names the run that measured it, or
-says it is unmeasured.
+statement of what a change would do names the run that measured it and the
+target it ran at ("at 0.95: still 0.80"), and for every other target you
+discussed, gives the measured bar or says "unmeasured at 0.90". Never write
+that a change "won't move any bar" unless the copy ran at every target you
+weighed. An announced number repeated in the reply is the number that was
+announced.

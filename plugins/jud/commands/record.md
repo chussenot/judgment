@@ -53,9 +53,12 @@ tool.
    server that ignores it. Then re-run the command. Never
    ask for the key here.
 7. **Announce, then record.** Before the `record` call, send the user this
-   line as a message of its own: `Recording <new> requests (<kept> already
-   in <dir>) to <base_url>, model <model>.` Add `, one per turn for <n>
-   conversations` when that applies. Invoking this command is the user
+   line as a message of its own: `Recording <new> requests (<kept> kept,
+   <stale> stale and replaced, in <dir>) to <base_url>, model <model>.`
+   Leave out the parts that are zero, and add `, one per turn for <n>
+   conversations` when that applies. When any are stale, follow it with the
+   change step 4 found: `Stale because the queue question's account
+   criterion now says plan changes and trials.` Invoking this command is the user
    asking for the run, so then run `jud.sh record <rubric> <cases> --out
    <dir>`, with `--refresh` only when asked. If it fails part way, say what
    failed: what was written is kept, and the same command resumes.
