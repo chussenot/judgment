@@ -2,7 +2,7 @@
 title: Decisions
 description: The architecture decision records that govern the judgment crate's design, how they are numbered, how a record is written, and what has moved since each was accepted.
 status: current
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-08
 tags: [judgment, decisions, adr, madr]
 ---
 
@@ -22,6 +22,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0018](0018-jud-1-3-takes-the-manifest-envelope.md) | The .jud format 1.3 takes the manifest envelope and reads one apiVersion | accepted |
 | [0019](0019-a-command-line-for-the-format.md) | A command line for the format, released as a binary | accepted |
 | [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | proposed |
+| [0021](0021-record-eval-and-tune-from-the-command-line.md) | Record, evaluate and tune from the command line | proposed |
 
 ## Status notes
 
