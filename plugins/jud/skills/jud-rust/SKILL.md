@@ -34,9 +34,12 @@ Both compile against the crate and run in its test suite
   file, parsed once, and the request is `Rubric::lower`. So the module sends
   exactly what `jud lower` and `jud record` send, and recordings made with the
   CLI replay against it.
-- **Bars are not compiled in.** The policy is read from the file at run time.
-  A retune (`jud tune`, `/jud:tune`) changes the bars with no regeneration.
-  Only a change to the questions needs a new module.
+- **Bars are data, not code.** `include_str!` compiles the file's text in
+  and the module parses it at run time, so no Rust code holds a bar. A
+  retune (`jud tune`, `/jud:tune`) takes a rebuild and no regeneration;
+  only a change to the questions needs a new module. For the same reason no
+  doc comment quotes a bar, a band or a fallback: it would go stale on the
+  first retune.
 - **Drift fails a test, not production.** `QUESTIONS_FINGERPRINT` and the
   enums are checked against the parsed rubric by the module's own
   `#[cfg(test)]` test. Edit a question and `cargo test` says to regenerate.
@@ -49,9 +52,21 @@ Both compile against the crate and run in its test suite
 
 When the program must not read the `.jud` file at build time (the file lives
 outside the package, or the program ships without it), embed the YAML
-instead: `pub const SOURCE: &str = r#"..."#;` with the file's text. Say in the
-module's header that a retune then needs regeneration, because the bars are
-in the copy.
+instead: `pub const SOURCE: &str = r"...";` with the file's text, or
+`r#"..."#` only when the text contains a `"`. Say in the module's header that
+a retune then needs regeneration, because the bars are in the copy. When the
+`.jud` file is reachable from the module, also add a test that holds the copy
+to it (`assert_eq!(SOURCE, include_str!("../rubrics/triage.jud"))`), so a
+retune that forgets the module fails a test.
+
+## How to run commands
+
+- One command per Bash call, written out in full: no `&&`, `;`, `|`, `cd`
+  or `$(...)`. A chained command is denied where a plain one is allowed.
+- Create and change files only with the Write and Edit tools, never with
+  `mkdir`, `cp`, `sed`, `cat >` or `echo >`. Write creates the directories.
+- The user's `main.rs`, `lib.rs` and `Cargo.toml` are theirs: change them
+  only when asked. The lines they need go in the reply.
 
 ## Workflow
 
@@ -63,7 +78,8 @@ in the copy.
    primitive, a Choice's static option keys with their descriptions, whether
    it has `options_from: request`, a Score's levels, its `when`, and its gate
    (threshold, `strict`, confidence, bands, fallback, `level_at_least`). The
-   gate goes only into doc comments.
+   gate shapes nothing in the module: it is read from the rubric at run
+   time and quoted nowhere.
 3. **Decide the names** with the rules below, before writing any code.
 4. **Write the module**, starting from the template that covers the
    rubric's features: `triage.rs` when every Choice is static and nothing has
@@ -77,7 +93,15 @@ in the copy.
 
    Write one enum per Choice and per Score, one field per question in
    `Decision` (in rubric order), and an `Offered` struct only when some
-   Choice has `options_from: request`.
+   Choice has `options_from: request`. Leave out what the rubric does not
+   use: `Gated`, `or_fallback` and `gated` when it has no Choice or Score,
+   `YesNo` and `yes_no` when it has no Noul.
+
+   The header names the rubric by its path, says what a retune and a
+   question change each take (as the templates do), and carries a complete
+   usage example with the module's real names: the `mod` line, a `main`
+   that builds the backend and the state, calls `decide`, and matches on
+   every variant of one enum.
 5. **Place it.** Put the module where the program's modules live
    (`src/<module>.rs`), or beside the rubric. The `include_str!` path is
    relative to the `.rs` file: `include_str!("../rubrics/triage.jud")` from
@@ -122,9 +146,24 @@ in the copy.
    Fix every error in the module. Never add an `allow` to get past a lint,
    other than the module's own `dead_code`. Leave the throwaway crate out of
    the project.
-8. **Reply** with the file written, the `include_str!` path, the dependencies
-   to add, the `mod` line, a five-line usage example with the real type and
-   field names (as in the module's header), and the checks that passed.
+8. **Reply** with:
+   - the file written and the `include_str!` path (or that the YAML is
+     embedded, and that a retune then needs regeneration);
+   - every name you had to change, and why;
+   - the dependencies to add and the `mod` line;
+   - a short usage example with the real type and field names (as in the
+     module's header);
+   - what the caller owes: with `Offered`, which options it must supply on
+     every request and how many at least; which fields are `Option`, and
+     the state path that makes each one `Some`; for a conversation, that
+     `decide` takes the turns so far, once per turn;
+   - the checks that passed.
+
+   On a regeneration, also say which questions changed, what now fails to
+   compile for callers (a new or removed variant in a `match`), what
+   changes with no compile error (an instruction or a description), and
+   that recordings made before the change no longer replay and the bars
+   want re-tuning (`/jud:record`, then `/jud:tune`).
 
 ## Names
 
@@ -158,9 +197,10 @@ and list in the reply every name you had to change.
     and its index (`Level2` for the third level).
 - The wire key or level text stays exactly as written, in `key()` or
   `label()`. Never "clean" it there: the response names it byte for byte.
-- A doc comment on each variant gives the option's description or the
-  level's text, and the doc comment on each field gives the question's
-  instructions. Shorten a long instruction to its first sentence.
+- A doc comment on each variant starts with the wire key or the level
+  (``/// `billing`: Invoices, charges, refunds.``, ``/// `calm` (level 0)``),
+  then the option's description. The doc comment on each field gives the
+  question's instructions, shortened to the first sentence when long.
 
 ## Mapping
 
@@ -172,7 +212,7 @@ and list in the reply every name you had to change.
 | a Score | an enum with a variant per level, lowest first, deriving `PartialOrd, Ord` so `>=` compares levels, plus `ALL`, `label()` and `from_index(&str)`; field `Gated<Enum>`. |
 | `when: <path>` | the field is `Option<...>`, read with `verdicts.get(id).map(...).transpose()?`. Say in its doc comment which path decides. |
 | `part_when` | nothing in the types: the part is sent or not by `lower`. |
-| a gate's bars, bands, fallback, `level_at_least` | doc comments only (band names and bars on the field). They are read from the rubric at run time, so `Gated::Act { band, reached, .. }` and `Gated::Defer { fallback, .. }` carry them. |
+| a gate's bars, bands, fallback, `level_at_least` | nothing, not even a doc comment. They are read from the rubric at run time, and `Gated::Act { band, reached, .. }` and `Gated::Defer { fallback, .. }` carry what they decided. |
 | a question with no gate | the default gate: a Noul at 0.5, a Choice or Score that never defers. Same field types. |
 | a conversation (the state is an array of turns) | nothing different. The program calls `decide` with the turns so far, once per turn. Say so in the module's header. |
 
