@@ -20,12 +20,15 @@ two things the checker cannot see: the questions are narrow and atomic, with
 criteria that mean the same thing to every reader and to the model; and the
 policy is honest about where its numbers come from.
 
-This skill is part of the `jud` plugin, which also carries three commands:
+This skill is part of the `jud` plugin, which also carries commands:
 `/jud:rubric <brief>` writes a rubric, `/jud:cases <rubric> [brief]` writes
 the cases it is tuned on, `/jud:check [files]` runs the reader and explains
 every refusal. Each follows this guide; `${CLAUDE_PLUGIN_ROOT}` is the
 plugin's directory, so the checker is
-`${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh` from anywhere.
+`${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh` from anywhere. Measuring
+and tuning a rubric once it is written is the `jud-tune` skill's
+(`${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/SKILL.md`), with `/jud:record`,
+`/jud:eval` and `/jud:tune`.
 
 ## Workflow
 
@@ -80,28 +83,11 @@ plugin's directory, so the checker is
    A question that is missing from a case's request cannot be labelled for
    that case; a part that is missing was left out by `part_when`.
 6. **Grade and tune, only when asked.** A rubric's bars are measured on its
-   cases by three commands. The first calls a model, so the skill runs it
-   only when the user asks:
-
-   ```sh
-   ${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh record path/to/rubric.jud path/to/cases.jud --out recordings/
-   ${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh eval path/to/rubric.jud path/to/cases.jud --replay recordings/
-   ${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh tune path/to/rubric.jud path/to/cases.jud --replay recordings/
-   ```
-
-   `record` asks the configured backend once per case (once per turn for a
-   conversation labelled with `from_turn`), keeps what the directory already
-   answers and writes the answers as recordings; it needs a backend and an API
-   key, any non-blank word for a server that ignores it. `eval` grades the
-   recorded answers against the labels, and `--min-accuracy 0.9` makes it exit
-   with status 3 when the model's accuracy on a question falls short. `tune`
-   proposes each gate's bar. With `--replay` both read recordings only, so
-   they need no key. `tune` prints its tables and warnings on stderr and the
-   proposed `policy` and `tuning` blocks on stdout, at column 0. The user
-   pastes them under `spec:`, indented two spaces, and `jud check` reads the
-   result; `--out PATH` writes the whole rubric to another file instead,
-   without its comments. A file already at `PATH` is replaced; the rubric,
-   the cases and a file among the recordings are refused.
+   cases by `jud record` (which calls a model, so it runs only when the user
+   asks), `jud eval` and `jud tune`. Reading what they print, triaging the
+   misses and applying a proposal belong to the `jud-tune` skill: read
+   `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/SKILL.md`, or offer `/jud:record`,
+   `/jud:eval` and `/jud:tune`.
 7. **Report** the files written and the `jud check` summary line, with the
    fingerprints when the rubric will be pinned or the cases named by `tuning`.
 

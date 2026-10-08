@@ -9,7 +9,7 @@
     {
       "name": "jud",
       "source": "./plugins/jud",
-      "description": "Write, review and fix .jud documents (Rubric, Cases, Recording) and check them with the judgment crate's reader: the jud skill and the /jud:rubric, /jud:cases and /jud:check commands."
+      "description": "Write, review, fix, measure and tune .jud documents (Rubric, Cases, Recording) with the judgment crate's reader and jud command: the jud and jud-tune skills and the /jud:rubric, /jud:cases, /jud:check, /jud:record, /jud:eval and /jud:tune commands."
     }
   ]
 }

@@ -1,0 +1,47 @@
+# Support inbox triage: does a ticket need a reply, which queue takes it,
+# and how urgent it is. The bars below are hand-written guesses; tune them
+# on support-cases.jud.
+apiVersion: jud/v1.3
+kind: Rubric
+metadata:
+  name: support-triage
+  version: "1"
+  description: Route an incoming support ticket and say how urgent it is.
+spec:
+  questions:
+    needs_reply:
+      type: noul
+      instructions: Does the ticket in `subject` and `body` need a reply from support?
+      criteria:
+        true: a question, a request, or a report of something not working
+        false: a thank-you, an automatic notification, an out-of-office, or spam
+    queue:
+      type: choice
+      instructions: Which support queue should take the ticket in `subject` and `body`?
+      criteria:
+        billing: charges, invoices, refunds, payment methods, plan prices
+        technical: errors, outages, bugs, integrations, the product not working
+        account: login, passwords, users and seats, plan changes, closing the account
+        none_of_these: not a support request for any queue
+    urgency:
+      type: score
+      instructions: How urgent is the ticket in `subject` and `body` for the customer?
+      criteria:
+        - low
+        - normal
+        - high
+        - critical
+  policy:
+    # A ticket that may need a reply is kept: a missed customer costs more
+    # than a wasted look.
+    needs_reply:
+      threshold: 0.5
+      note: a guess; no run behind it
+    queue:
+      confidence: 0.6
+      fallback: none_of_these
+      note: a guess; below it the ticket goes to the shared inbox
+    urgency:
+      confidence: 0.5
+      level_at_least: high
+      note: a guess; high and critical page the on-call agent
