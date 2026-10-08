@@ -167,7 +167,7 @@ mod tests {
         ));
         assert_eq!(
             d.duplicate_of.and_then(|g| g.or_fallback()),
-            Some(routing::DuplicateOf::None),
+            Some(routing::DuplicateOf::NoneOption),
             "0.5 is under the 0.75 bar: the fallback"
         );
         assert_eq!(

@@ -53,16 +53,30 @@ Both compile against the crate and run in its test suite
 When the program must not read the `.jud` file at build time (the file lives
 outside the package, or the program ships without it), embed the YAML
 instead: `pub const SOURCE: &str = r"...";` with the file's text, or
-`r#"..."#` only when the text contains a `"`. Say in the module's header that
-a retune then needs regeneration, because the bars are in the copy. When the
-`.jud` file is reachable from the module, also add a test that holds the copy
-to it (`assert_eq!(SOURCE, include_str!("../rubrics/triage.jud"))`), so a
-retune that forgets the module fails a test.
+`r#"..."#` only when the text contains a `"`. Three things then change from
+the template:
+
+- The header says the YAML is embedded, so a retune needs a regeneration
+  (the bars are in the copy), and that only `cargo test` reads the file.
+- When the `.jud` file is reachable from the module, a second test holds
+  the copy to it, so a retune that forgets the module fails a test:
+
+  ```rust
+  /// Fails when the rubric file changed and this copy did not: regenerate.
+  #[test]
+  fn the_embedded_copy_is_the_file() {
+      assert_eq!(SOURCE, include_str!("../rubrics/triage.jud"), "{RUBRIC} changed: regenerate this module");
+  }
+  ```
+- The doc on `the_module_matches_the_rubric` says it holds the enums to
+  the embedded copy; the copy test is the one that sees the file.
 
 ## How to run commands
 
 - One command per Bash call, written out in full: no `&&`, `;`, `|`, `cd`
   or `$(...)`. A chained command is denied where a plain one is allowed.
+- cargo's own flags (`--manifest-path`, `--target-dir`, `--all-targets`)
+  go before `--`; only what clippy reads (`-D warnings`) goes after it.
 - Create and change files only with the Write and Edit tools, never with
   `mkdir`, `cp`, `sed`, `cat >` or `echo >`. Write creates the directories.
 - The user's `main.rs`, `lib.rs` and `Cargo.toml` are theirs: change them
@@ -81,10 +95,15 @@ retune that forgets the module fails a test.
    gate shapes nothing in the module: it is read from the rubric at run
    time and quoted nowhere.
 3. **Decide the names** with the rules below, before writing any code.
-4. **Write the module**, starting from the template that covers the
-   rubric's features: `triage.rs` when every Choice is static and nothing has
-   `when`, otherwise `routing.rs`. Keep, verbatim, everything that does not
-   depend on the rubric:
+4. **Write the module**, taking each part from the template that shows
+   it. The templates are per feature, not per file: a static Choice (its
+   `Copy` enum, `ALL`, fallible `from_key` and its `matches!` assertion)
+   and `or_fallback` over `T: Copy` come from `triage.rs`; `Offered`,
+   `Supplied(String)` variants, `or_fallback` over `T: Clone` and the
+   `Option` field of a `when` question come from `routing.rs`. Start from
+   `routing.rs` when some Choice has `options_from: request`, else from
+   `triage.rs`. Keep, verbatim, everything that does not depend on the
+   rubric:
    - `rubric()`;
    - `YesNo`, `Gated` and `or_fallback`;
    - `yes_no` and `gated`;
@@ -97,17 +116,28 @@ retune that forgets the module fails a test.
    use: `Gated`, `or_fallback` and `gated` when it has no Choice or Score,
    `YesNo` and `yes_no` when it has no Noul.
 
-   The header names the rubric by its path, says what a retune and a
-   question change each take (as the templates do), and carries a complete
-   usage example with the module's real names: the `mod` line, a `main`
-   that builds the backend and the state, calls `decide`, and matches on
-   every variant of one enum.
+   Name the rubric by its path from the crate root (from the project root
+   with no crate), as `rubrics/triage.jud`, in the header's first two
+   sentences and in `RUBRIC`, which the errors and the test messages use.
+   The header says what a retune and a question change each take (as the
+   templates do), and carries a complete usage example with the module's
+   real names: the `mod` line, a `main` that builds the backend and the
+   state, calls `decide`, and matches on every variant of one enum (with
+   no Choice or Score, branches on a Noul's `yes`). Every name the example
+   binds is used, so it compiles under `-D warnings` when pasted.
+
+   On a regeneration, write the module afresh from the template with Write
+   rather than patching the old one, then compare the two and report any
+   hand edit the new one drops.
 5. **Place it.** Put the module where the program's modules live
    (`src/<module>.rs`), or beside the rubric. The `include_str!` path is
    relative to the `.rs` file: `include_str!("../rubrics/triage.jud")` from
    `src/triage.rs` for a rubric in `rubrics/`. If the rubric is outside the
    crate's package directory, say that `cargo package` will not include it,
-   and offer the embedded form.
+   and offer the embedded form. With no crate, the module goes beside the
+   rubric; say how a crate made later mounts it: `#[path =
+   "../handoff.rs"] mod handoff;` from `src/main.rs`, or move it to `src/`
+   and change the `include_str!` path to the rubric's path from there.
 6. **Wire it.** The program needs, in `Cargo.toml`:
 
    ```toml
@@ -130,18 +160,22 @@ retune that forgets the module fails a test.
      `<dir>/Cargo.toml`. It holds `[package] name = "jud-rust-check"`,
      `edition = "2021"` (the user's edition when there is a crate), and the
      dependencies of step 6. When the user's crate already names `judgment`,
-     copy that line as it is and add `"jud"` to its features. Add
-     `[lints.clippy] all = { level = "warn", priority = -1 }` and
-     `pedantic = { level = "warn", priority = -1 }`.
+     copy that line as it is and add `"jud"` to its features. Copy the
+     user's `[lints]` tables as they are; with none, add `[lints.clippy]`
+     with `all = { level = "warn", priority = -1 }`,
+     `pedantic = { level = "warn", priority = -1 }`, `unwrap_used = "warn"`
+     and `expect_used = "warn"`. End it with an empty `[workspace]` table,
+     so a workspace above the directory does not claim it.
    - Write `<dir>/src/lib.rs` as one line,
      `#[path = "<absolute path of the module>"] mod <module>;`.
-   - Run, one per Bash call, each with `--manifest-path <dir>/Cargo.toml`
-     (and `--target-dir <the user's crate>/target` when there is one, so
-     nothing is built twice):
-     - `cargo test`, which must run and pass `<module>::tests::the_module_matches_the_rubric`;
-     - `cargo clippy --all-targets -- -D warnings`.
-   - When the user's crate already has the `mod` line, also run `cargo
-     check` there.
+   - Run these two, one per Bash call, exactly in this shape. Add
+     `--target-dir <the user's crate>/target` only when that directory
+     already exists (it saves a rebuild); never create one in the project.
+     - `cargo test --manifest-path <dir>/Cargo.toml`, which must run and
+       pass `<module>::tests::the_module_matches_the_rubric`;
+     - `cargo clippy --manifest-path <dir>/Cargo.toml --all-targets -- -D warnings`.
+   - When the user's crate already has the `mod` line, also run
+     `cargo test --manifest-path <the user's Cargo.toml>`.
 
    Fix every error in the module. Never add an `allow` to get past a lint,
    other than the module's own `dead_code`. Leave the throwaway crate out of
@@ -150,20 +184,37 @@ retune that forgets the module fails a test.
    - the file written and the `include_str!` path (or that the YAML is
      embedded, and that a retune then needs regeneration);
    - every name you had to change, and why;
-   - the dependencies to add and the `mod` line;
-   - a short usage example with the real type and field names (as in the
-     module's header);
-   - what the caller owes: with `Offered`, which options it must supply on
-     every request and how many at least; which fields are `Option`, and
-     the state path that makes each one `Some`; for a conversation, that
-     `decide` takes the turns so far, once per turn;
-   - the checks that passed.
+   - the `Cargo.toml` lines still missing (or that none are) and the `mod`
+     line;
+   - the whole `main` from the module's header, with its runtime
+     attribute, `async` and `Result` return; when the program's `main` is
+     sync or returns `()`, say which of its lines change;
+   - what the caller owes:
+     - with `Offered`, which options it must supply on every request, how
+       many at least, and that no supplied key may be one of the
+       question's own keys (name them), which `lower` refuses;
+     - which fields are `Option`, and the state path that makes each one
+       `Some`: present and not null, `""`, `[]` or `{}`;
+     - the state fields the instructions refer to, and that nothing checks
+       them: a state without them is sent as is;
+     - for a conversation, that `decide` takes the turns so far, once per
+       turn;
+   - the checks that passed, and that once the `mod` line is in,
+     `cargo test` in their crate runs the module's drift test.
 
-   On a regeneration, also say which questions changed, what now fails to
-   compile for callers (a new or removed variant in a `match`), what
-   changes with no compile error (an instruction or a description), and
-   that recordings made before the change no longer replay and the bars
-   want re-tuning (`/jud:record`, then `/jud:tune`).
+   On a regeneration, also say:
+   - which questions changed;
+   - what now fails to compile: a `match` that lists every variant with no
+     wildcard, on an enum that gained or lost one;
+   - what changes with no compile error: a `_` arm, a `matches!` or an
+     `if let` that now takes a new variant; answers that move to a new
+     option or level because the model now sees it, or away from a removed
+     one; an edited instruction or description;
+   - that recordings made before the change no longer replay, and the bars
+     want re-tuning (`/jud:record`, then `/jud:tune`). When an option or
+     level was added, the labelled cases need examples of it first
+     (`/jud:cases`), and until then the rubric's `tuning` block and its
+     gate notes describe the old questions.
 
 ## Names
 
@@ -181,7 +232,7 @@ and list in the reply every name you had to change.
   digit gets a `q_` prefix.
 - **Enum names:** the question id in `PascalCase`, by the variant rule
   below (`duplicate_of` gives `DuplicateOf`, `support-level.v2` gives
-  `SupportLevelV2`, `2fa` gives `N2fa`). If that clashes with a name the module defines (`Decision`,
+  `SupportLevelV2`, `2fa` gives `Q2fa`, to match its field `q_2fa`). If that clashes with a name the module defines (`Decision`,
   `Error`, `Gated`, `YesNo`, `Offered`, `Rubric`), append the primitive:
   `ErrorChoice`, `DecisionLevel`.
 - **Variant names:** the option key, or the level's text, in `PascalCase`.
@@ -190,11 +241,14 @@ and list in the reply every name you had to change.
   `none_of_these`, `none-of-these` and `none of these` all give
   `NoneOfThese`, `very high!` gives `VeryHigh`, and `a-b` gives `AB`.
   - A leading digit gets an `N` prefix (`3d` gives `N3d`).
-  - `Self` is reserved, so `self` becomes `SelfOption`.
-  - If two keys give the same variant, number the later ones in rubric
-    order (`a-b` gives `AB`, then `a_b` gives `AB2`).
+  - `Self` is reserved, and `None`, `Some`, `Ok` and `Err` would read as
+    the prelude's, so these take an `Option` suffix: `self` gives
+    `SelfOption`, `none` gives `NoneOption`.
   - A Score level whose text gives nothing usable (`!!!`) becomes `Level`
     and its index (`Level2` for the third level).
+  - If two keys give the same variant, number the later ones in rubric
+    order (`a-b` gives `AB`, then `a_b` gives `AB2`). Keep counting until
+    the name is unused: `a-b`, `a_b`, `a-b-2` give `AB`, `AB2`, `AB3`.
 - The wire key or level text stays exactly as written, in `key()` or
   `label()`. Never "clean" it there: the response names it byte for byte.
 - A doc comment on each variant starts with the wire key or the level
@@ -210,7 +264,7 @@ and list in the reply every name you had to change.
 | a Choice, static options | `#[derive(Copy, Eq, Hash)] enum` with a variant per key in rubric order, `ALL`, `key()`, and a `from_key` that returns `Error::Unexpected` for a key it does not know; field `Gated<Enum>`. |
 | a Choice, `options_from: request` | an enum with a variant per static key and `Supplied(String)` (not `Copy`). `from_key` returns `Self`: any key the response names was offered (`Response::verify`). There is a `Vec<(String, String)>` field for it in `Offered`, a `match` arm for it in `Offered::supplied`, and an `offered` parameter on `questions` and `decide`. |
 | a Score | an enum with a variant per level, lowest first, deriving `PartialOrd, Ord` so `>=` compares levels, plus `ALL`, `label()` and `from_index(&str)`; field `Gated<Enum>`. |
-| `when: <path>` | the field is `Option<...>`, read with `verdicts.get(id).map(...).transpose()?`. Say in its doc comment which path decides. |
+| `when: <path>` | the field is `Option<...>`, read with `verdicts.get(id).map(...).transpose()?`. Its doc comment says it is `None` when the path is absent, null or empty. |
 | `part_when` | nothing in the types: the part is sent or not by `lower`. |
 | a gate's bars, bands, fallback, `level_at_least` | nothing, not even a doc comment. They are read from the rubric at run time, and `Gated::Act { band, reached, .. }` and `Gated::Defer { fallback, .. }` carry what they decided. |
 | a question with no gate | the default gate: a Noul at 0.5, a Choice or Score that never defers. Same field types. |

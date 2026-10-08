@@ -21,20 +21,19 @@ written out in full, one command per Bash call, with nothing chained to it.
    crate (a `Cargo.toml` above the rubric or in the working directory), use
    `src/<module>.rs` of that crate; else write `<module>.rs` beside the
    rubric. The `include_str!` path is relative to the `.rs` file. With
-   `embed` in the arguments, embed the YAML instead of `include_str!`, and
-   say what that costs.
+   `embed` in the arguments, embed the YAML instead of `include_str!`, as
+   the skill's embedded form says (a retune then needs a regeneration, and
+   a test holds the copy to the file).
 3. Name, map and write the module exactly as the skill says. Overwrite an
-   existing module only if its header says it was generated from this rubric.
-   Otherwise stop and ask.
+   existing module only if its header says it was generated from this
+   rubric (the same path, and the same `include_str!` target). Otherwise
+   stop and ask. A regeneration writes the module afresh, not by patching.
 4. Verify as the skill says: in a throwaway crate outside the project,
    written with the Write tool, that mounts the module with `#[path = ...]`.
-   Run `cargo test` and `cargo clippy --all-targets -- -D warnings` with
-   `--manifest-path`, one command per Bash call, and fix the module until
-   both pass. Change no other file in the project unless asked: the
-   `Cargo.toml` lines and the `mod` line go in the reply.
-5. Reply with:
-   - the file written and the `include_str!` path;
-   - every name you had to change, and why;
-   - the `Cargo.toml` lines and the `mod` line;
-   - a usage example with the module's real names;
-   - the checks that passed.
+   Run, one per Bash call, `cargo test --manifest-path <dir>/Cargo.toml`
+   and `cargo clippy --manifest-path <dir>/Cargo.toml --all-targets -- -D warnings`
+   (cargo's flags before `--`), and fix the module until both pass. Change
+   no other file in the project unless asked: the `Cargo.toml` lines and
+   the `mod` line go in the reply.
+5. Reply as the skill's step 8 says, including what the caller owes and,
+   when an existing module was replaced, what the regeneration changes.

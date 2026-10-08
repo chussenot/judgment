@@ -214,6 +214,8 @@ def run_one(ev, out_dir, model, reference):
         check(f"changed {path}", before.get(path) != after.get(path))
     stray = [f for f in sorted(set(after) - set(before)) if not any(fnmatch.fnmatch(f, g) for g in spec.get("new_files", []))]
     check("no stray files", not stray, ", ".join(stray[:8]))
+    built = [d for d in ("target", "Cargo.lock") if os.path.exists(os.path.join(ws, d))]
+    check("no build output left in the project", not built, ", ".join(built))
 
     if os.path.exists(module_file):
         with open(module_file, encoding="utf-8") as f:
