@@ -45,6 +45,7 @@ ALLOWED = [
     f"Bash({JUD_SH}:*)", "Bash(jud:*)",
     "Bash(ls:*)", "Bash(cp:*)", "Bash(mkdir:*)", "Bash(diff:*)", "Bash(wc:*)",
     "Bash(cat:*)", "Bash(head:*)", "Bash(grep:*)", "Bash(sort:*)", "Bash(uniq:*)",
+    "Bash(git diff:*)", "Bash(git log:*)", "Bash(git status:*)", "Bash(git show:*)",
 ]
 
 
@@ -87,7 +88,7 @@ def start_mock(ws, cases, profile, log, extra=None):
 def snapshot(ws):
     out = {}
     for root, _, files in os.walk(ws):
-        if "/.config" in root or "/.claude" in root:
+        if "/.config" in root or "/.claude" in root or "/.git" in root:
             continue
         for name in files:
             path = os.path.join(root, name)
@@ -160,6 +161,12 @@ def setup_workspace(spec, ws, env, logdir):
                            cwd=ws, env=run_env, capture_output=True, text=True)
         finally:
             proc.kill()
+    # A real project is a repository: commit what the user had before the
+    # edits, so `git diff` shows what changed since.
+    git = ["git", "-c", "user.name=eval", "-c", "user.email=eval@example.com"]
+    subprocess.run(["git", "init", "-q"], cwd=ws, check=True)
+    subprocess.run(git + ["add", "-A"], cwd=ws, check=True)
+    subprocess.run(git + ["commit", "-q", "-m", "before the session"], cwd=ws, check=True)
     for edit in spec.get("edit", []):
         path = os.path.join(ws, edit["file"])
         with open(path, encoding="utf-8") as f:
@@ -181,6 +188,9 @@ def run_one(ev, out_dir, model):
     env["TYPESAFE_API_KEY"] = "mock-key"
     env["TYPESAFE_BASE_URL"] = "http://127.0.0.1:9"  # closed: nothing reaches a real API
     env.pop("JUD_REPLAY", None)
+    tmp = os.path.join(base, "tmp")
+    os.makedirs(tmp)
+    env["TMPDIR"] = tmp
     env["PATH"] = os.path.dirname(jud_bin()) + os.pathsep + env["PATH"]
     setup_workspace(ev.get("setup", {}), ws, env, base)
 
@@ -201,7 +211,7 @@ def run_one(ev, out_dir, model):
         q_before = fingerprints(ws, [f], env)
 
     cmd = ["claude", "-p", ev["prompt"], "--plugin-dir", PLUGIN, "--permission-mode", "acceptEdits",
-           "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--allowedTools", *ALLOWED]
+           "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--add-dir", tmp, "--allowedTools", *ALLOWED]
     if model:
         cmd += ["--model", model]
     started = time.time()

@@ -12,16 +12,28 @@ the measurement; this guide is about reading what they print and deciding
 what to change, which they do not do.
 
 The commands run through the plugin's script, so they work wherever `jud` is
-on PATH or a judgment checkout is at hand. Below, `$JUD` stands for
-`${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh`; when you run a command,
-write the path out rather than setting a variable, so a permission rule for
-the script matches it:
+on PATH or a judgment checkout is at hand:
 
 ```sh
-$JUD record RUBRIC CASES --out DIR        # spends one call per request; keeps the answers
-$JUD eval   RUBRIC CASES --replay DIR     # grades the kept answers; no key, no network
-$JUD tune   RUBRIC CASES --replay DIR     # proposes each gate's bar; never calls anything
+${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh record RUBRIC CASES --out DIR     # spends one call per request; keeps the answers
+${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh eval RUBRIC CASES --replay DIR    # grades the kept answers; no key, no network
+${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh tune RUBRIC CASES --replay DIR    # proposes each gate's bar; never calls anything
 ```
+
+How to run them, because a user's permission rules match the command as
+written:
+
+- Write the script's path out in full every time. Do not set a shell
+  variable or `cd` first. Below, `jud.sh` is short for that path.
+- Run one `jud` command per Bash call, with nothing chained before or after
+  it (`;`, `&&`, `|`, `echo $?`) and no redirection into a file. The tool
+  result shows stdout, stderr and a non-zero exit status.
+- Read files with the Read tool and edit them with the Edit tool.
+- Write nothing into the user's project that the task did not ask for: no
+  copy of the rubric, no saved output. A what-if copy (a cases document with
+  one label changed, to measure what the change would do) goes in a
+  temporary directory outside the project (`$TMPDIR`, else `/tmp`), and the
+  reply says it was a copy.
 
 The format and how to write a rubric or cases are the `jud` skill's
 (`${CLAUDE_PLUGIN_ROOT}/skills/jud/SKILL.md`); read it before changing a
@@ -43,7 +55,7 @@ A recording is keyed by the request's fingerprint (the state and the
 questions sent). When the questions change, `eval --replay` exits with
 status 1 and `no recording answers N cases: ...; record them first`. That
 message means the rubric and the recordings no longer match, not that
-something is broken. `$JUD check RUBRIC CASES DIR/*.jud` shows which:
+something is broken. `jud.sh check RUBRIC CASES DIR/*.jud` shows which:
 every recording whose request changed says `fingerprint differs`. All of
 them means a question changed; one means that case's state or options
 did. Never edit a recording to make it fit, and never revert a question
@@ -59,25 +71,37 @@ So fix labels and bars freely; batch question changes, then re-record once.
 
 - **How many requests.** One per case, except a conversation (an array
   state) whose cases label a Noul with `{from_turn: ...}`. Such a
-  conversation is recorded once per turn, `len(state)` requests. Requests
-  already in `--out DIR` are kept and not asked again, so a resumed or
-  repeated run costs only what is new. `--refresh` asks everything again.
-- **Which backend and model.** Run `$JUD config` and read `base_url` and
-  `model`. It never prints a key; it says whether one is set.
+  conversation is recorded once per entry of the array, `len(state)`
+  requests, assistant entries included.
+- **How many are new.** A recording in `--out DIR` that still answers its
+  request is kept and not asked again; a stale one (its request changed) is
+  asked again and its file replaced. `jud.sh check RUBRIC CASES DIR/*.jud`
+  tells them apart (`fingerprint matches` or `differs`). The cost is the
+  requests minus the matching recordings, or all of them with `--refresh`.
+- **Which backend and model.** Run `jud.sh config` and read `base_url`,
+  `model` and `model_from`. `model_from: default` means nothing chose the
+  model; `jev-latest` is an alias, and the recordings will name the version
+  that answered. `config` never prints a key, and does not contact the
+  backend.
 - **Whether a key is set.** `TYPESAFE_API_KEY` or `api_key` in the
   configuration file; any non-blank word for a local server that ignores it.
-  Never print or ask for the key's value.
+  The user sets it outside the conversation (their shell, a gitignored
+  `.env`, the configuration file). Never print it or ask for it.
 
-If the user asked for this run in so many words, run it after saying the
-count. Otherwise, stop at the count and ask. A run that fails part way keeps
-what it wrote, so running the same command again resumes.
+Say the cost to the user in a message of its own before the `record` call,
+for example `Recording 18 requests (30 already in recordings/support) to
+https://api.typesafe.ai, model jev-latest.` A final reply after the run is
+too late. If the user asked for this run in so many words (`/jud:record`
+does), run it after that message; otherwise stop at the count and ask. A
+run that fails part way keeps what it wrote, so the same command resumes.
 
 ## Reading `jud eval`
 
 Prefer `--replay DIR`: the same numbers, free and repeatable. Without it,
 `eval` asks the backend for every case and keeps nothing, which spends the
-calls a `record` would have kept. Add `--json` when you need the numbers
-rather than the text.
+calls a `record` would have kept. Quote numbers from `--json`, not from the
+rounded text, and only numbers the output gives: a count, a width or a
+prediction you worked out is labelled as yours.
 
 Per question:
 
@@ -94,7 +118,13 @@ Per question:
   | 400 | 0.87 to 0.93 | telling two close bars apart |
 
   `jud tune` warns when the interval is wider than 0.2, which is below
-  about 35 cases at 90 %. Pass that warning on; do not soften it.
+  about 35 cases at 90 %. Judge the width from `accuracy_interval95` in the
+  JSON; a width that rounds to 0.20 may not trigger it. Pass the warning on
+  when `tune` prints it; do not soften it, and do not predict it.
+
+  Say what each question is short of: about 35 labelled cases for a first
+  bar and 100 for a pinned one, minus those it has. Then name the outcomes
+  the new cases should label, from the coverage count.
 - **`brier`, `calibration error`, `confidence when right, when wrong`.** Read
   these as one question: does the model's confidence separate its right
   answers from its wrong ones? A bar can only defer what it can tell apart.
@@ -110,7 +140,9 @@ Per question:
   Which side matters is the user's call: a refund sent wrongly costs more
   than a ticket routed to a human.
 - **`model misses`.** Every case where the model's answer differs from the
-  label, with its confidence. Triage every one (next section).
+  label, with its confidence. A Noul's is the probability of its answer; a
+  Score's levels are printed as indices, 0 being the first level in
+  `criteria`, so map them to names first. Triage every one (next section).
 
 `--min-accuracy 0.9` (or `desk=0.95`) makes `eval` exit with status 3 when a
 question's accuracy falls short. That is how a rubric is held in CI against
@@ -125,8 +157,9 @@ the confidence. Then put it in exactly one row:
 
 | What you see | Cause | What to do |
 |---|---|---|
-| The state plainly supports the model's answer, or the case's own `note` argues for it | **The label is wrong** | Propose the corrected label to the user, with the reason. Never change a label just because the model disagreed: the model being confident is not evidence. |
-| Confidence is low, at or under the gate's bar | **The bar's job** | Nothing. The gate defers it, which is what the bar is for. Say so. |
+| The state plainly supports the model's answer, or the case's own `note` argues for it | **The label is wrong** | Propose the corrected label to the user, with the reason. Never change a label just because the model disagreed: the model being confident is not evidence, and a low-confidence miss on a label the criteria plainly support is not a label problem. |
+| A Choice or Score answer at or under the gate's `confidence` bar | **The bar's job** | Nothing: the gate defers it to its `fallback`. Say so. |
+| A Noul whose probability falls on the label's side of `threshold` (0.52 under a 0.55 threshold, labelled no) | **The bar's job** | Nothing: a threshold never defers, it decides, and here it decides the label. Say so. |
 | Confidence is high, the label is right, and the criteria could be read the model's way | **The question is ambiguous** | Propose a sharper criterion: name the deciding detail. This changes the request, so re-record after. |
 | Confidence is high, the label is right, and the deciding fact is not in the state | **The question asks what the model cannot see** | The fact belongs in the state, computed by the caller, or the question should not be asked (`when`). |
 | Several misses swap the same two options or adjacent levels | **The outcomes overlap** | Sharpen both criteria against each other, merge the options, or use fewer levels. Re-record. |
@@ -138,11 +171,18 @@ confidence, cause, proposed action). Propose; do not apply. A label or a
 question is the user's to change, and a question change costs a
 re-recording.
 
+What a proposed fix would do to a bar is measured, never guessed. A
+relabel costs nothing to try: copy the cases document into a temporary directory outside the project,
+change the label there, and run `tune` on the copy against the same
+recordings. Report the bar it gives.
+
 ## Coverage
 
 `jud eval` does not count labels per outcome; count them from the cases
 document. For each question, list how many cases label each option, each
-level, `true` and `false` (or each `from_turn`). Flag:
+level, `true` and `false` (or each `from_turn`). Name the cases behind every
+count of 3 or fewer (`none_of_these 2: thanks, receipt`). Say nothing about
+what an outcome's cases are like that the named cases do not show. Flag:
 
 - an outcome no case labels, so the model is never tested on it;
 - a Noul with no `false` cases, so its threshold can never learn to say no;
@@ -174,14 +214,22 @@ Decide per gate, and say which you decided:
   table above), the proposal moves in a direction the misses explain, and
   coverage stays acceptable to the user.
 - **Keep the written bar** when the proposal is `0` ("the gate would defer
-  nothing") on few cases, when the proposal sits on a single case's
-  confidence, or when the cases are too few to trust. Give the kept gate a
-  `note` that says so, for example `kept at 0.30: tune proposed 0.00 on 6
-  cases, too few to drop the bar`.
-- **Re-run with another `--target-accuracy`** when the proposed bar covers
-  too few cases to be useful (say 2 of 40). Each run is free. Show the
-  trade-off: at 0.95 the gate covers 12 of 40, at 0.90 it covers 31.
-- **Pass on** the strict-gate note (an answer exactly at the bar is read the
+  nothing") on few cases, when it sits on a single case's confidence, when
+  the cases are too few to trust, when it was set by misses you triaged as
+  wrong labels or overlapping outcomes, or when it waits on a label the user
+  has not confirmed. Prepend the reason to the gate's note, for example
+  `kept at 0.30: tune proposed 0.00 on 6 cases, too few to drop the bar;`
+  followed by what the note said before.
+- **Re-run with another `--target-accuracy`** whenever the proposed bar
+  covers less than about half the labelled cases, or you would call it too
+  aggressive. Each run is free. Show the trade-off in one line: at 0.95 the
+  bar is 0.80 and covers 15 of 48; at 0.90 it is 0.55 and covers 45.
+- **Say what set a bar only after checking.** A Choice or Score bar is the
+  lowest row of the table that reaches the target. A miss moved it only if
+  the next lower row reaches the target once that case counts as right;
+  read the row, or measure with a what-if copy.
+- **Pass on** the warnings `tune` printed, and only those: `jud: warning:`
+  lines, the bar of 0, the strict-gate note (an answer exactly at the bar is read the
   other way) and the Score note (the table reads the most probable level,
   the policy the level nearest the weighted score). Both say the table may
   differ slightly from what the policy will do. The before and after `eval`
@@ -192,26 +240,36 @@ dozen cases has learned those cases.
 
 ## Applying a proposal
 
+Apply when the user asked for the bars to be changed: `/jud:tune ...
+apply`, or in so many words ("fix the thresholds", "tune it"). Apply every
+gate you accept, keep the others with a reason, and show the before and
+after. A label or a question is never applied with the bars; propose it
+separately. When the user only asked what the bars should be, show the edit
+as a unified diff and offer to apply it.
+
 Edit the rubric in place. `--out` writes a new file but serialises it
 again, so every comment and the layout are lost. Use it only when the user
 wants a separate file.
 
 1. For each accepted gate whose value moves, change only the tuned value
-   (`threshold`, `confidence`, `level_at_least`) and its `note`. Keep
-   `fallback`, `bands`, `strict` and every comment as they are. A gate whose
-   proposal equals what is written (`propose 0.55 (now 0.55)`) stays exactly
-   as written, its note included: the person who wrote that note knew
-   something the generated one does not say.
+   (`threshold`, `confidence`, `level_at_least`) and its `note`. In the
+   note, replace what the run makes stale ("a guess", "no run behind it")
+   with what `tune` printed, and keep what says what the gate does or whom
+   it affects: `lowest bar at 95% accuracy; covers 29 of 36 labelled cases;
+   high and critical page the on-call agent`. Keep `fallback`, `bands`,
+   `strict` and every comment as they are. A gate whose proposal equals
+   what is written (`propose 0.55 (now 0.55)`) stays exactly as written,
+   its note included.
 2. Replace or add `spec.tuning` with the block `tune` printed, indented two
    spaces under `spec:`, values unchanged. `cases`, `model`, `server`,
    `tuned_at` and `labelled` describe the run and are never written by hand.
    If you kept some gates, the block stays: it records the run the other
    gates came from.
-3. Check: `$JUD check RUBRIC CASES` must say `0 refused`. The questions
+3. Check: `jud.sh check RUBRIC CASES` must say `0 refused`. The questions
    fingerprint must be the one it was before your edit: you changed only
    the policy.
-4. Show before and after: run `$JUD eval RUBRIC CASES --replay DIR` before
-   the edit and again after it. Keep the outputs in the conversation; write
+4. Show before and after: run `jud.sh eval RUBRIC CASES --replay DIR`
+   before the edit and again after it. Keep the outputs in the conversation; write
    no copy of the rubric and no output file into the user's project. Compare
    each gate's acts, defers and accuracy when acted. The model's accuracy
    does not move, since only the policy changed; say so if someone expects
@@ -224,22 +282,29 @@ the old one, say that the bars now rest on different cases.
 ## Do not grade on what you tuned on
 
 A bar tuned on the same cases it is graded on looks better than it will do.
-With about 40 labelled cases or more per question, hold some out:
+Count the labelled cases before splitting. At 40 or more, hold some out:
+48 gives 36 to tune on and 12 held out.
 
 1. Split the cases into two documents: a tuning set and a held-out set,
    every outcome in both. Take every fourth case into the held-out set
    unless the user has a better split. Give each document its own
    `metadata.name`, and name the files after the cases file
    (`support-cases.jud` gives `support-cases-tune.jud` and
-   `support-cases-holdout.jud`). The states are unchanged, so the recordings already in
-   DIR answer both: nothing is re-recorded.
+   `support-cases-holdout.jud`). `jud` has no split command: copy each case
+   block verbatim. Then check that the two counts add up to the original,
+   `jud.sh check` each with the rubric, and `eval --replay` each. The
+   states are unchanged, so the recordings already in DIR answer both and
+   nothing is re-recorded; a state copied wrong shows as `no recording
+   answers`.
 2. Tune on the tuning set and apply.
 3. Grade the tuned rubric on the held-out set with
-   `eval --replay DIR`. Its gate numbers are the honest ones; report those
-   as the expected performance.
+   `eval --replay DIR`. Its gate numbers are the honest ones: put them
+   first, one sentence per gate ("expect about 10 of 12 acted, 2 deferred,
+   1.00 when acted, on 12 held-out cases"), and label the tuning-set numbers
+   as optimistic.
 
-Below about 40, say that there are too few to hold any out, and that the
-numbers are optimistic.
+Below 40, say that there are too few to hold any out, and that the numbers
+are optimistic.
 
 ## Iterating
 
@@ -256,10 +321,32 @@ the misses left are the model's own and the bars rest on enough cases.
   what a model said.
 - Change a label to match the model without the user agreeing that the
   label was wrong.
-- Spend calls without saying how many first: `record`, `eval` without
-  `--replay`, or `record --refresh`.
+- Spend calls without saying how many first, in a message before the call:
+  `record`, `eval` without `--replay`, or `record --refresh`.
 - Mix two models' recordings in one directory. `tune` refuses them (`the
   recordings come from more than one model`); record each model into its own
   directory and compare the two `eval` reports.
 - Present a bar read off a handful of cases as anything but a guess with a
   number on it.
+
+## What the reply contains
+
+Whatever the request, a reply that measured or tuned anything has, in this
+order, what applies:
+
+1. The cost, before anything was spent (`record`), and what was spent.
+2. One line per question: accuracy with its interval, whether confidence
+   separates right from wrong, what the gate does (acts, defers, accuracy
+   when acted).
+3. Whether the labelled count supports a bar, and how many more cases each
+   question needs, for which outcomes.
+4. The triage table, a row for every miss.
+5. Coverage: the thin outcomes, with the cases behind them.
+6. For `tune`: the decision table (gate, primitive, now, proposed,
+   decision, reason) and the warnings `tune` printed, in plain words, apart
+   from your own observations.
+7. What changed: the before and after per gate, held-out first; or the
+   exact edit as a unified diff when nothing was applied. If no file
+   changed, say so.
+8. The next steps, ranked, each with its cost: free (labels, bars),
+   calls for new cases, or a full re-recording (questions).

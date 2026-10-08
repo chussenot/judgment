@@ -472,6 +472,114 @@
         "Explains that the wrong-queue tickets come from a wrong label (refund-request) and the billing/account overlap, which a bar cannot fix, and proposes the label fix and a sharper criterion",
         "If it changes a bar, it changes only the policy (and the tuning block as tune printed it), keeps comments, and shows before and after; it does not change any label or question without asking"
       ]
+    },
+    {
+      "id": "eval-min-accuracy",
+      "prompt": "/jud:eval support.jud support-cases.jud recordings/support-triage --min-accuracy 0.9",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/support-triage",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud",
+          "recordings/support-triage/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Reports that eval exited with status 3 because queue (0.85) and urgency (0.81) fall short of 0.9, and that needs_reply (0.98) meets it",
+        "Treats status 3 as a finding, not an error, and says how it would serve as a CI gate against committed recordings",
+        "Notes that the queue shortfall is partly the wrong label and the billing/account overlap, so fixing those (not the bar) is what raises it: --min-accuracy holds the model's accuracy, which no policy change moves"
+      ]
+    },
+    {
+      "id": "tune-relabel-whatif",
+      "prompt": "/jud:tune support.jud support-cases.jud recordings/support-triage -- what would the queue bar be if refund-request were labelled billing? Don't change my files.",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/support-triage",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud",
+          "recordings/support-triage/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Measures the what-if by running tune on a copy of the cases outside the project, rather than predicting it",
+        "Reports the measured queue bar with the label fixed (it stays at 0.80, because upgrade-plan at 0.79 still holds the 0.75 row under 95%) and what does move it",
+        "Leaves the project's files untouched and says the copy was a copy"
+      ]
+    },
+    {
+      "id": "record-stale-dir",
+      "prompt": "/jud:record support.jud support-cases.jud recordings/support-triage",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/support-triage",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+        },
+        "edit": [
+          {
+            "file": "support.jud",
+            "old": "account: login, passwords, users and seats, plan changes, closing the account",
+            "new": "account: login, passwords, users and seats, plan changes and trials, closing the account"
+          }
+        ]
+      },
+      "mock": {
+        "cases": [
+          "support-cases.jud"
+        ],
+        "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud"
+        ],
+        "exists": [
+          {
+            "glob": "recordings/support-triage/*.jud",
+            "count": 48
+          }
+        ],
+        "mock_requests": 48,
+        "new_files": []
+      },
+      "expectations": [
+        "Finds that the 48 recordings already in the directory are stale (fingerprint differs) and announces 48 new requests, not 0, before recording",
+        "Says which change made them stale (the queue criteria, from git diff) and that record replaces the stale files",
+        "Reports `recorded 48, kept 0`"
+      ]
     }
   ]
 }
