@@ -125,7 +125,7 @@
         "announce_before_record": true
       },
       "expectations": [
-        "Says before recording that the run will make 48 requests, to which backend and with which model",
+        "Says before recording that the run will make 48 requests, to which backend and with which model (in a text message, or as the record call's description)",
         "Never prints the API key's value",
         "Reports `recorded 48, kept 0` and the model the recordings name",
         "Offers /jud:eval as the next step"
@@ -580,7 +580,7 @@
         "announce_before_record": true
       },
       "expectations": [
-        "Finds that the 48 recordings already in the directory are stale (fingerprint differs) and announces 48 new requests, not 0, before recording",
+        "Finds that the 48 recordings already in the directory are stale (fingerprint differs) and announces 48 new requests, not 0, before recording (in a text message, or as the record call's description, which the user sees on the call)",
         "Says which change made them stale (the queue criteria, from git diff) and that record replaces the stale files",
         "Reports `recorded 48, kept 0`"
       ]

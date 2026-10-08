@@ -112,7 +112,8 @@ So fix labels and bars freely; batch question changes, then re-record once.
   itself reads no `.env`), or `api_key` in the configuration file `jud
   config` names. Never print it or ask for it.
 
-Say the cost to the user in a message of its own before the `record` call,
+Say the cost to the user before the `record` call: as the Bash call's
+description, which shows on the call, and as text just before it,
 for example `Recording 18 requests (30 already in recordings/support) to
 https://api.typesafe.ai, model jev-latest.` A final reply after the run is
 too late. If the user asked for this run in so many words (`/jud:record`
@@ -338,7 +339,9 @@ wants a separate file.
    with what `tune` printed, and keep what says what the gate does or whom
    it affects: `lowest bar at 95% accuracy; covers 29 of 36 labelled cases;
    high and critical page the on-call agent`. Keep `fallback`, `bands`,
-   `strict` and every comment as they are. A gate whose proposal equals
+   `strict` and every comment as they are, except words in a comment the
+   run makes false ("the bars below are hand-written guesses"), which are
+   reworded the way a note's stale part is. A gate whose proposal equals
    what is written (`propose 0.55 (now 0.55)`) keeps its value. Its note
    keeps what it says, except a part the run makes stale ("a guess", "no
    run behind it"), which becomes what `tune` printed. Otherwise the note

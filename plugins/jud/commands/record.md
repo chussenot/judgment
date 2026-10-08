@@ -52,12 +52,11 @@ tool.
    file `jud config` names, and that any non-blank word does for a local
    server that ignores it. Then re-run the command. Never
    ask for the key here.
-7. **Announce, then record.** This is a gate, and it comes after
-   whichever of steps 4 to 6 ran last (`git diff`, `jud config`): your next
-   output after that tool result is text, not a tool call, and the text is
-   this line. Only then call `jud.sh record`, with the same line as the
-   Bash call's description, so it shows on the call too. Saying it in the
-   final reply does not count. The line: `Recording <new> requests (<kept> kept,
+7. **Announce, then record.** This is a gate. The `jud.sh record` Bash
+   call carries this line as its description, so the cost shows on the
+   call before it runs. Also write the line as text just before the call,
+   after whichever of steps 4 to 6 ran last (`git diff`, `jud config`).
+   Saying it only in the final reply does not count. The line: `Recording <new> requests (<kept> kept,
    <stale> stale and replaced, in <dir>) to <base_url>, model <model>.`
    Leave out the parts that are zero (with nothing kept or stale, the
    parenthesis is just `(in <dir>)`), and add `, one per turn for <n>
