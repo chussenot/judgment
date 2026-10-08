@@ -32,7 +32,8 @@
       "expectations": [
         "Writes src/triage.rs with include_str!(\"../rubrics/triage.jud\")",
         "Runs cargo check, the module's test and clippy before replying, and says they passed",
-        "Replies with the Cargo.toml lines, the `mod triage;` line and a usage example with the real names (Desk, Tone, decide), without editing Cargo.toml or main.rs"
+        "Replies with the Cargo.toml lines, the `mod triage;` line and a usage example with the real names (Desk, Tone, decide), without editing Cargo.toml or main.rs",
+        "The module's header carries a complete usage example and quotes no threshold or band bar"
       ]
     },
     {
@@ -191,7 +192,8 @@
       },
       "expectations": [
         "Embeds the rubric's YAML in SOURCE instead of include_str!",
-        "Says that a retune of the rubric then needs the module regenerated"
+        "Says that a retune of the rubric then needs the module regenerated",
+        "Adds a test that holds the embedded SOURCE to the .jud file, so a forgotten regeneration fails a test"
       ]
     },
     {
@@ -238,7 +240,8 @@
       "expectations": [
         "Notices the existing module was generated from this rubric and regenerates it in place",
         "Adds the Security variant in rubric order and updates QUESTIONS_FINGERPRINT",
-        "Says which question changed and that callers matching on Desk must now handle Security"
+        "Says which question changed and that callers matching on Desk must now handle Security",
+        "Says that recordings made before the change no longer replay and the bars want re-tuning"
       ]
     }
   ]
