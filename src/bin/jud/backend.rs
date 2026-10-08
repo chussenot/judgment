@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::{EXIT_BACKEND, EXIT_USAGE, config};
 
+#[derive(Debug)]
 pub(crate) enum Failure {
     /// Fixable before any call: the file, the state, the configuration.
     Usage(String),

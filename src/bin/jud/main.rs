@@ -98,11 +98,8 @@ enum Command {
     },
     /// Print the request a rubric lowers to, for a state or for every case.
     Lower(tools::Lower),
-    /// Answer every case once and keep the answers as recordings.
     Record(record::Record),
-    /// Grade a model's answers against the labelled cases.
     Eval(eval::Eval),
-    /// Propose each gate's bar from recorded answers.
     Tune(tune::Tune),
     /// Print a shell completion script for jud's commands and flags.
     ///
