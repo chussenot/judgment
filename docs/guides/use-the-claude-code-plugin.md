@@ -1,6 +1,6 @@
 ---
 title: Use the Claude Code plugin
-description: How to install the jud plugin from this repository's marketplace, write a rubric and its cases with /jud:rubric and /jud:cases, check them with /jud:check, and measure and tune them with /jud:record, /jud:eval and /jud:tune; what the two skills know that the reader and the numbers cannot say.
+description: How to install the jud plugin from this repository's marketplace, write a rubric and its cases with /jud:rubric and /jud:cases, check them with /jud:check, and measure and tune them with /jud:record, /jud:eval and /jud:tune, and turn a rubric into a typed Rust module with /jud:rust; what the three skills know that the reader and the numbers cannot say.
 status: current
 last_reviewed: 2026-10-08
 tags: [judgment, jud, skill, agent, claude-code, how-to]
@@ -143,6 +143,46 @@ JUD=target/debug/jud python3 plugins/jud/skills/jud-tune/evals/run.py --out /tmp
 ```
 
 `--only ID ...` runs some, and `--model` picks the model. Each scenario's `reply.md`, `transcript.jsonl` and `checks.json` land under `--out`. Grading the prose expectations is left to a reader.
+
+### The Rust skill
+
+`/jud:rust` was battle-tested the same way: one prompt per scenario through `claude -p --plugin-dir plugins/jud`, in a fresh git workspace holding a small Rust application (`skills/jud-rust/evals/files/app/`, with `clippy::pedantic`, `unwrap_used` and `expect_used` on). The allow-list is the plugin's script, `cargo`, file edits and a few read-only commands. No scenario calls a backend.
+
+The 7 scenarios cover:
+
+- the triage rubric in a crate;
+- the routing rubric, with options supplied per request, `when`, bands, `strict` and `level_at_least`;
+- a conversation rubric in a project with no crate;
+- a rubric of hostile names (a keyword, a dotted id, a leading digit, `self`, two keys that collide, a level with no letters);
+- a plain-language request that names neither the command nor the skill;
+- the embedded form;
+- a regeneration after an option was added to the rubric.
+
+Each run is held to two kinds of check:
+
+- **Scripted checks** (`run.py`):
+  - Where the module was written, how it reads the rubric, and which files changed, with no stray files and no build output left in the project.
+  - The module compiled in a crate of the harness's own with a hidden test that uses the names the rubric must give, then `cargo clippy -D warnings`.
+  - A drift check: a question's instruction is edited and the module's own test must fail.
+  - The run compiled and tested its module itself, and no command the permission rules denied.
+- **Graded expectations**: an independent reader grades each scenario's expectations from the reply, the transcript and the workspace, reviews the module as a Rust reviewer would, and lists every claim the files contradict.
+
+| Round | Scripted checks | Expectations met | Claims the files contradict | What the round changed |
+|---|---|---|---|---|
+| 1 | 68 of 74 | 15 of 19 | 14 | no chained commands, files only through Write; the header's usage example complete; the reply says what the caller owes |
+| 2 | 73 of 74 | 21 of 22 | 8 | cargo's flags before `--`, so clippy checks the throwaway crate; no `target/` in the project; the user's lints copied; `none` becomes `NoneOption` |
+| 3 | 82 of 82 | 23 of 23 | 7 | a Score's fallback read by its text as well as its index; the program's `main` read before it is wired |
+| 4 | 88 of 88 | 25 of 25 | 7 | the `mod` line given once; `level_at_least` read through `reached` |
+
+Round 2's one missed check was the harness's: it forbade any `include_str!` in the embedded form, which the copy test the skill asks for uses. Round 3's grader found the one defect the scripted checks could not: a retune that gives a Score `fallback: calm` made every deferred answer fail at run time, since the module read levels by index only. Every round cost $2.41 to $2.88 for the 7 runs on Sonnet 5.5, $0.27 to $0.52 each.
+
+To run them again, with `claude` logged in and `jud` built:
+
+```sh
+JUD=target/debug/jud python3 plugins/jud/skills/jud-rust/evals/run.py --out /tmp/jud-rust-evals --jobs 3
+```
+
+The scenarios share one target directory under `--out`; `--reference` runs the harness on the repository's own modules instead of the skill's output.
 
 ## Next
 
