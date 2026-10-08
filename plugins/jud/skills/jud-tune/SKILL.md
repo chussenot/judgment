@@ -28,7 +28,12 @@ written:
 - Run one `jud` command per Bash call, with nothing chained before or after
   it (`;`, `&&`, `|`, `echo $?`) and no redirection into a file. The tool
   result shows stdout, stderr and a non-zero exit status.
-- Read files with the Read tool and edit them with the Edit tool.
+- The same holds for every other command: run `git diff -- support.jud`
+  as written, from the working directory, with no `-C`, no `cd`, no
+  absolute path.
+- Read files with the Read tool and edit them with the Edit tool. Make a
+  copy with Read and Write, not `cp` or `mkdir`: the Write tool creates the
+  directory.
 - Write nothing into the user's project that the task did not ask for: no
   copy of the rubric, no saved output. A what-if copy (a cases document with
   one label changed, to measure what the change would do) goes in a
@@ -78,6 +83,8 @@ So fix labels and bars freely; batch question changes, then re-record once.
   asked again and its file replaced. `jud.sh check RUBRIC CASES DIR/*.jud`
   tells them apart (`fingerprint matches` or `differs`). The cost is the
   requests minus the matching recordings, or all of them with `--refresh`.
+  When some are stale, find what changed (`git diff -- RUBRIC CASES`, or
+  `git log -p -1 -- RUBRIC` for a committed change) and name it.
 - **Which backend and model.** Run `jud.sh config` and read `base_url`,
   `model` and `model_from`. `model_from: default` means nothing chose the
   model; `jev-latest` is an alias, and the recordings will name the version
@@ -85,8 +92,10 @@ So fix labels and bars freely; batch question changes, then re-record once.
   backend.
 - **Whether a key is set.** `TYPESAFE_API_KEY` or `api_key` in the
   configuration file; any non-blank word for a local server that ignores it.
-  The user sets it outside the conversation (their shell, a gitignored
-  `.env`, the configuration file). Never print it or ask for it.
+  The user sets it outside the conversation: `export TYPESAFE_API_KEY=...`
+  in their shell (or a gitignored `.env` that mise or direnv loads; `jud`
+  itself reads no `.env`), or `api_key` in the configuration file `jud
+  config` names. Never print it or ask for it.
 
 Say the cost to the user in a message of its own before the `record` call,
 for example `Recording 18 requests (30 already in recordings/support) to
@@ -123,8 +132,15 @@ Per question:
   when `tune` prints it; do not soften it, and do not predict it.
 
   Say what each question is short of: about 35 labelled cases for a first
-  bar and 100 for a pinned one, minus those it has. Then name the outcomes
-  the new cases should label, from the coverage count.
+  bar and 100 for a pinned one, minus its own `labelled`. One new case can
+  label every question, so the total to add is the largest shortfall, not
+  the sum. Then name the outcomes the new cases should label, from the
+  coverage count.
+- **Tuned on these cases?** If the rubric's `spec.tuning.cases` equals the
+  `cases.fingerprint` in the JSON, the bars were tuned on the cases being
+  graded, so the gate numbers are optimistic (see "Do not grade on what you
+  tuned on"). It says nothing about the recordings: a replay that exits 0 or
+  3 is what shows they still answer.
 - **`brier`, `calibration error`, `confidence when right, when wrong`.** Read
   these as one question: does the model's confidence separate its right
   answers from its wrong ones? A bar can only defer what it can tell apart.
@@ -145,9 +161,15 @@ Per question:
   `criteria`, so map them to names first. Triage every one (next section).
 
 `--min-accuracy 0.9` (or `desk=0.95`) makes `eval` exit with status 3 when a
-question's accuracy falls short. That is how a rubric is held in CI against
-committed recordings (`docs/guides/run-in-ci.md` in the judgment
-repository).
+question's accuracy falls short. That is how a rubric is held in CI: the
+recordings are committed, and a CI job runs the same `eval --replay ...
+--min-accuracy` and fails the build on status 3 (`docs/guides/run-in-ci.md`
+in the judgment repository). The floor holds `accuracy` (every labelled
+case), never accuracy when acted: a deferred miss still counts. The policy is
+never sent, so no bar or fallback can raise it; only a fixed label, a
+sharper question or another model can. When a question falls short, say what
+would raise it, with the arithmetic (relabelling one case gives 42 of 48,
+0.875, still short of 0.9).
 
 ## Triage every miss
 
@@ -172,24 +194,34 @@ question is the user's to change, and a question change costs a
 re-recording.
 
 What a proposed fix would do to a bar is measured, never guessed. A
-relabel costs nothing to try: copy the cases document into a temporary directory outside the project,
-change the label there, and run `tune` on the copy against the same
-recordings. Report the bar it gives.
+relabel costs nothing to try. Read the cases document and Write it, with
+only that label changed, to `$TMPDIR/jud-whatif/<file name>` (else
+`/tmp/jud-whatif/`). Run `tune` on the copy against the same recordings,
+with the same `--target-accuracy` and `--min-covered` as the proposal you
+are weighing; if you weigh two targets, run the copy at both. Report the
+bar it gives, per target. What a sharper question would do cannot be
+measured without re-recording: say so instead of giving a number.
 
 ## Coverage
 
 `jud eval` does not count labels per outcome; count them from the cases
 document. For each question, list how many cases label each option, each
 level, `true` and `false` (or each `from_turn`). Name the cases behind every
-count of 3 or fewer (`none_of_these 2: thanks, receipt`). Say nothing about
-what an outcome's cases are like that the named cases do not show. Flag:
+count of 3 or fewer (`none_of_these 2: thanks, receipt`). Each question's
+counts add up to its `labelled` in the eval JSON; if they do not, recount
+before reporting. After a proposed relabel, move exactly the relabelled
+cases from one outcome to the other. After a split, count the tuning set
+and the held-out set apart. Say nothing about what an outcome's cases are
+like that the named cases do not show. Flag:
 
 - an outcome no case labels, so the model is never tested on it;
 - a Noul with no `false` cases, so its threshold can never learn to say no;
 - a way-out option (`none_of_these`) that is never the right answer, so the
   fallback was never measured;
-- a question labelled on far fewer cases than the others (`when`, or labels
-  left out), so its interval is wider than the table makes it look.
+- a question labelled on under about two thirds as many cases as the
+  others (through `when`, or labels left out). Its own
+  `accuracy_interval95` already reflects its count: quote that. Say nothing
+  when the counts differ by one or two.
 
 ## Reading `jud tune`
 
@@ -213,8 +245,10 @@ Decide per gate, and say which you decided:
 - **Accept** when the labelled count is enough for the use (the interval
   table above), the proposal moves in a direction the misses explain, and
   coverage stays acceptable to the user.
-- **Keep the written bar** when the proposal is `0` ("the gate would defer
-  nothing") on few cases, when it sits on a single case's confidence, when
+- **Keep the written bar** when the proposal is `0` on few cases (say why
+  in these words: a bar of 0 defers nothing, so every low-confidence answer
+  acts, and N cases with no miss cannot show the model never needs
+  deferring), when it sits on a single case's confidence, when
   the cases are too few to trust, when it was set by misses you triaged as
   wrong labels or overlapping outcomes, or when it waits on a label the user
   has not confirmed. Prepend the reason to the gate's note, for example
@@ -227,7 +261,15 @@ Decide per gate, and say which you decided:
 - **Say what set a bar only after checking.** A Choice or Score bar is the
   lowest row of the table that reaches the target. A miss moved it only if
   the next lower row reaches the target once that case counts as right;
-  read the row, or measure with a what-if copy.
+  read the row, or measure with a what-if copy. When the bar does not move,
+  name the misses whose confidence lies between the next lower row and the
+  proposed bar (case, expected, predicted, confidence): they hold that row
+  under the target. Then say what would move it: those cases answered right,
+  after a relabel if the label is wrong, after a re-record if the question
+  is.
+- **A bar that only a relabel would move** was set by a wrong label: keep
+  the written bar until the user confirms the relabel, or propose the
+  relabel and the bar together.
 - **Pass on** the warnings `tune` printed, and only those: `jud: warning:`
   lines, the bar of 0, the strict-gate note (an answer exactly at the bar is read the
   other way) and the Score note (the table reads the most probable level,
@@ -258,8 +300,10 @@ wants a separate file.
    it affects: `lowest bar at 95% accuracy; covers 29 of 36 labelled cases;
    high and critical page the on-call agent`. Keep `fallback`, `bands`,
    `strict` and every comment as they are. A gate whose proposal equals
-   what is written (`propose 0.55 (now 0.55)`) stays exactly as written,
-   its note included.
+   what is written (`propose 0.55 (now 0.55)`) keeps its value. Its note
+   keeps what it says, except a part the run makes stale ("a guess", "no
+   run behind it"), which becomes what `tune` printed. Otherwise the note
+   would contradict the `tuning` block.
 2. Replace or add `spec.tuning` with the block `tune` printed, indented two
    spaces under `spec:`, values unchanged. `cases`, `model`, `server`,
    `tuned_at` and `labelled` describe the run and are never written by hand.
@@ -283,7 +327,12 @@ the old one, say that the bars now rest on different cases.
 
 A bar tuned on the same cases it is graded on looks better than it will do.
 Count the labelled cases before splitting. At 40 or more, hold some out:
-48 gives 36 to tune on and 12 held out.
+48 gives 36 to tune on and 12 held out. Never say there are too few at 40 or
+more. When the user did not ask for split files (`/jud:tune ... holdout`),
+write the two documents to the temporary directory, not the project, and
+still report the held-out numbers. Count each question's outcomes in both
+halves, and name the cases behind every held-out count of 3 or fewer: a
+held-out number on 2 billing cases says little about billing.
 
 1. Split the cases into two documents: a tuning set and a held-out set,
    every outcome in both. Take every fourth case into the held-out set
@@ -331,8 +380,9 @@ the misses left are the model's own and the bars rest on enough cases.
 
 ## What the reply contains
 
-Whatever the request, a reply that measured or tuned anything has, in this
-order, what applies:
+A reply that ran `eval` or `tune` has items 2 to 6, always: one triage row
+per line under `model misses`, and counts for every question. Items 1, 6
+(for `eval` alone) and 7 depend on what was done. In this order:
 
 1. The cost, before anything was spent (`record`), and what was spent.
 2. One line per question: accuracy with its interval, whether confidence
@@ -350,3 +400,8 @@ order, what applies:
    changed, say so.
 8. The next steps, ranked, each with its cost: free (labels, bars),
    calls for new cases, or a full re-recording (questions).
+
+Before sending it, check every number against the output it came from: a
+count adds up to its total, a width is `high - low` from the JSON, and a
+statement of what a change would do names the run that measured it, or
+says it is unmeasured.

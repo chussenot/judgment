@@ -57,15 +57,19 @@ beside the rubric.
    - Before you say a miss (a wrong label, say) moved a bar, check it. Use
      the table: the bar moves only if the next lower row reaches the target
      once that case counts as right. Or run `tune` on a what-if copy of the
-     cases, in that temporary directory, with the label fixed. Report what was measured;
-     never predict it.
+     cases (made with Read and Write, in the temporary directory) with the
+     label fixed, at the same `--target-accuracy` and `--min-covered` as each
+     proposal you weigh. Report what was measured, per target. When the bar
+     does not move, name the misses that hold the next lower row under the
+     target, and what would move it.
 6. **Without `apply`**, stop here. Show the decision table and the exact
    edit as a unified diff against the rubric, with the comments around it
    as context. Then offer to apply it. Change no file.
 7. **With `apply`:**
-   - Edit the rubric in place as "Applying a proposal" says. Change only
-     the gates whose value moves; leave a gate proposed at its current value
-     as written. Give kept gates a reason prepended to their note. Add the
+   - Edit the rubric in place as "Applying a proposal" says. Change the
+     values of the gates whose value moves. A gate proposed at its current
+     value keeps its value and its note, except a part the run makes stale
+     ("a guess"), which becomes what `tune` printed. Give kept gates a reason prepended to their note. Add the
      `tuning` block exactly as `tune` printed it. Keep every comment.
    - `jud.sh check <rubric> <cases>` must say `0 refused`, with the same
      questions fingerprint as before.

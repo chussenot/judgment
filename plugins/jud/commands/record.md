@@ -32,7 +32,12 @@ tool.
    `fingerprint matches` is kept; one with `fingerprint differs` is stale:
    `record` asks that case again and replaces the file. So the new requests
    are the total minus the matching recordings (the total with
-   `--refresh`).
+   `--refresh`). When any is stale, find what changed: `git diff --
+   <rubric> <cases>` as written (no `-C`, no `cd`), or `git log -p -1 --
+   <rubric>` for a committed change. Name it in the announcement and the
+   reply, for example "the `queue` question's `account` criterion now says
+   plan changes and trials". All stale means a question changed; some, those
+   cases did.
 5. **Read the backend.** `jud.sh config` prints `base_url`, `model`,
    `model_from` and where the key comes from. It never prints the key, and
    neither do you. `model_from: default` means nothing set the model:
@@ -42,9 +47,10 @@ tool.
 6. **Stop if there is no key.** If `api_key` shows none, stop and report
    everything steps 1 to 5 found (directory, requests, kept, new, base_url,
    model) in one reply. Say that the key is set outside this conversation:
-   `export TYPESAFE_API_KEY=...` in the shell, a gitignored `.env`, or
-   `api_key` in the file `jud config` names, and that any non-blank word
-   does for a local server that ignores it. Then re-run the command. Never
+   `export TYPESAFE_API_KEY=...` in the shell (or a gitignored `.env` that
+   mise or direnv loads; `jud` reads no `.env` itself), or `api_key` in the
+   file `jud config` names, and that any non-blank word does for a local
+   server that ignores it. Then re-run the command. Never
    ask for the key here.
 7. **Announce, then record.** Before the `record` call, send the user this
    line as a message of its own: `Recording <new> requests (<kept> already

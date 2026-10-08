@@ -29,17 +29,30 @@ no file.
    (with any `--min-accuracy` given). Use the JSON for every number you
    quote; run it once more without `--json` only if you want the text
    layout.
-   - Exit 3: a `--min-accuracy` bar was not met. That is a finding.
+   - Exit 3: a `--min-accuracy` bar was not met. That is a finding, not a
+     failed run. Report each question from `min_accuracy` in the JSON
+     (accuracy against its bar, met or not). Say that this status is how CI
+     holds the rubric against committed recordings: the same command in a
+     CI job fails the build. Say that the floor holds the model's accuracy
+     over every labelled case, which no bar or fallback moves, and what
+     would raise it (a fixed label, a sharper question, another model), with
+     the arithmetic.
+   - Compare the rubric's `spec.tuning.cases` with `cases.fingerprint`:
+     equal means the bars were tuned on these very cases, so the gate
+     numbers are optimistic. It says nothing about the recordings.
    - `models` with more than one entry: the directory mixes models, which
      `tune` refuses. Say so.
-   - Recordings that no case asks for are ignored. Mention them in one line.
+   - `eval` does not report recordings that no case asks for. List the
+     directory with Glob, and name the files whose stem is no case's name
+     (a conversation's are `<case>-turn-<n>`), as your own count.
 4. **Stale recordings.** Exit 1 with `no recording answers N cases: ...;
    record them first` means the rubric or the cases changed since recording.
    - Run `jud.sh check <rubric> <cases> <dir>/*.jud`. Every recording with
      `fingerprint differs` is stale. All of them: a question changed. Some:
      those cases' state or options changed.
-   - Find which question: `git diff -- <rubric>` when the project is a git
-     repository. Without history, say that the recordings cannot tell
+   - Find which question: `git diff -- <rubric>` exactly as written, from
+     the working directory (no `-C`, no `cd`), when the project is a git
+     repository; `git log -p -1 -- <rubric>` if the change is committed. Without history, say that the recordings cannot tell
      (they keep answers, not the questions), and ask what was edited. If the
      recorded option keys and Score legends still match the rubric, the
      change is in instructions or criteria.
@@ -52,11 +65,12 @@ no file.
      rubric.
 5. **Coverage.** Read the cases document. Per question, count the cases
    labelling each outcome, and name the cases behind every count of 3 or
-   fewer.
+   fewer. Each question's counts add up to its `labelled`; recount if not.
 6. **Triage every miss.** Read the case's state and note and the question's
    criteria, then put the miss in one row of the skill's triage table. A
    Score miss is printed as level indices; map them to level names first.
 7. **Reply** as "What the reply contains" says, for `eval`:
+   - the `--min-accuracy` verdict, when one was asked;
    - one line per question;
    - whether the count supports a bar;
    - the triage table;
