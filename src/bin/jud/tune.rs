@@ -7,10 +7,10 @@
 //! sweep each gate, and print what the sweep says. The tables and every note
 //! go to stderr; stdout is the data, the proposed `policy` and `tuning` blocks
 //! a person pastes under `spec:`. A proposal is a person's to read first, so
-//! nothing is written unless `--out` names a file, and never over the input.
+//! nothing is written unless `--out` names a file, and never over the input
+//! or among the recordings.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -20,14 +20,17 @@ use judgment::eval::tuning::{
     GateRow, LevelRow, ThresholdRow, best_level, best_threshold, default_bars, default_thresholds,
     gate_table, level_sweep, lowest_bar, threshold_sweep,
 };
-use judgment::eval::{ECE_BINS, Judgment, QuestionMetrics, Recording, canonical};
+use judgment::eval::{ECE_BINS, Judgment, QuestionMetrics, canonical};
 use judgment::jud::{Gate, LevelRef, Rubric, Tuning};
 use judgment::{Question, eval};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::backend::{Backend, Failure};
+use crate::backend::{self, Backend, Failure};
 use crate::batch::{self, Answered};
+use crate::fsutil;
+use crate::out::{self, note};
+use crate::recordings;
 
 /// An accuracy interval wider than this says too few cases were read.
 const THIN_INTERVAL: f64 = 0.2;
@@ -41,9 +44,10 @@ const NAMES_SHOWN: usize = 5;
 /// against the cases, sweeps each gate and prints a proposal: a Noul's
 /// threshold by best F1, a Choice's or Score's confidence bar as the lowest
 /// that keeps --target-accuracy over at least --min-covered cases, a Score's
-/// `level_at_least` by best F1. The tables go to stderr; stdout carries the
-/// proposed policy and tuning blocks as YAML. --out writes the whole rubric
-/// with the proposal applied to a file instead; the input is never rewritten.
+/// `level_at_least` by best F1. The tables go to stderr. Stdout carries the
+/// proposed policy and tuning blocks as YAML, starting at column 0: paste
+/// them under `spec:`, indented two spaces. --out writes the whole rubric
+/// with the proposal applied instead.
 #[derive(Args)]
 pub(crate) struct Tune {
     /// The Rubric document whose gates are tuned.
@@ -62,7 +66,9 @@ pub(crate) struct Tune {
     #[arg(long, value_name = "N", default_value_t = 3)]
     pub min_covered: usize,
     /// Write the whole rubric with the proposal applied to this file, instead
-    /// of printing the blocks; never the input.
+    /// of printing the blocks. The rubric is serialised again: its comments
+    /// and layout are lost and `version` is written as text. Never the
+    /// rubric, the cases or a file in DIR.
     #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath)]
     pub out: Option<PathBuf>,
 }
@@ -80,6 +86,9 @@ pub(crate) fn run(args: &Tune) -> ExitCode {
 fn tune(args: &Tune) -> Result<(), Failure> {
     check_settings(args)?;
     check_out(args)?;
+    // Two files recording one request leave a replay to answer from either,
+    // so the sweep might read a stale answer: say so before it does.
+    recordings::warn_duplicates(&args.replay);
     let loaded = batch::load(&args.rubric, &args.cases)?;
     if loaded.rubric.policy.gates.is_empty() {
         return Err(Failure::Usage(format!(
@@ -96,7 +105,7 @@ fn tune(args: &Tune) -> Result<(), Failure> {
         target_accuracy: args.target_accuracy,
         min_covered: args.min_covered,
     };
-    eprintln!(
+    note!(
         "jud: tuning {} on {} answers to {} cases ({}) from the recordings under {}",
         loaded.rubric.name,
         answered.len(),
@@ -109,7 +118,7 @@ fn tune(args: &Tune) -> Result<(), Failure> {
         let file = args.out.as_ref().map_or_else(String::new, |path| {
             format!(" and no file was written to {}", path.display())
         });
-        eprintln!("jud: nothing was proposed, so there is no policy or tuning block{file}");
+        note!("jud: nothing was proposed, so there is no policy or tuning block{file}");
         return Ok(());
     }
 
@@ -128,11 +137,11 @@ fn tune(args: &Tune) -> Result<(), Failure> {
         Some(path) => {
             std::fs::write(path, &yaml)
                 .map_err(|e| Failure::Usage(format!("cannot write {}: {e}", path.display())))?;
-            eprintln!("jud: wrote the tuned rubric to {}", path.display());
+            note!("jud: wrote the tuned rubric to {}", path.display());
+            Ok(())
         }
-        None => print_blocks(&yaml)?,
+        None => out::result(&blocks(&yaml)?),
     }
-    Ok(())
 }
 
 /// The numbers a run was given, refused before any file is read.
@@ -155,30 +164,59 @@ fn check_settings(args: &Tune) -> Result<(), Failure> {
 /// `Rubric::to_yaml`, which drops the comments the author wrote, so it
 /// is only ever done into a new place; the cases are as precious (the labels
 /// are the work). Spelled differently is not another file: a path that
-/// resolves to the input, through `.` or a link, is the input.
+/// resolves to the input, through `.`, a symlink or a hard link, is the
+/// input. Nor is it among the recordings: a replay reads every `.jud` and
+/// `.json` in its directory as one, so a rubric put there makes the whole
+/// directory unreadable, and one put over a recording loses an answer that
+/// was paid for.
 fn check_out(args: &Tune) -> Result<(), Failure> {
     let Some(out) = &args.out else {
         return Ok(());
     };
     for (what, input) in [("rubric", &args.rubric), ("cases", &args.cases)] {
-        if same_file(out, Path::new(input)) {
+        if fsutil::same_file(out, Path::new(input)) {
             return Err(Failure::Usage(format!(
                 "refusing to overwrite the input: --out {} is the {what} {input}",
                 out.display()
             )));
         }
     }
+    if among_recordings(out, &args.replay) {
+        return Err(Failure::Usage(format!(
+            "refusing to write into the recordings directory: --out {} is in {}, and a replay reads every .jud and .json there as a recording",
+            out.display(),
+            args.replay.display()
+        )));
+    }
     Ok(())
 }
 
-/// Whether two paths name one file: the same spelling, or the same file
-/// once both exist and are resolved.
-fn same_file(a: &Path, b: &Path) -> bool {
-    a == b
-        || matches!(
-            (a.canonicalize(), b.canonicalize()),
-            (Ok(a), Ok(b)) if a == b
-        )
+/// Whether a file at `out` would be in the recordings directory `dir`, or
+/// is one of its recordings under another name (a symlink, a hard link), or
+/// is a link whose write would create one there.
+fn among_recordings(out: &Path, dir: &Path) -> bool {
+    let in_dir = |path: &Path| fsutil::same_file(&fsutil::parent_dir(path), dir);
+    in_dir(out)
+        || in_dir(&landing(out))
+        || recordings::scan(dir)
+            .iter()
+            .any(|found| fsutil::same_file(out, &found.path))
+}
+
+/// Where a write to `path` ends up: `path`, or where the symlinks it is lead,
+/// including a link to a file that is not there yet, which a write creates.
+/// Followed as many times as the system does before it gives up.
+fn landing(path: &Path) -> PathBuf {
+    const MAX_LINKS: usize = 40;
+    let mut here = path.to_path_buf();
+    for _ in 0..MAX_LINKS {
+        let Ok(target) = std::fs::read_link(&here) else {
+            break;
+        };
+        // A relative target is relative to the directory the link is in.
+        here = here.parent().unwrap_or_else(|| Path::new("")).join(target);
+    }
+    here
 }
 
 /// What a bar must keep to be proposed.
@@ -193,6 +231,14 @@ struct Proposal {
     labelled: usize,
 }
 
+/// A gate with the sweep's proposal in it, and the bar among its fields that
+/// the sweep proposed (`threshold` or `confidence`, not a level), which a
+/// strict gate reads the other way at.
+struct Proposed {
+    gate: Gate,
+    bar: Option<f64>,
+}
+
 /// Sweep every question of the rubric, in the rubric's order, and collect
 /// what it proposes. A question that cannot be tuned says why on stderr.
 fn propose(
@@ -200,23 +246,19 @@ fn propose(
     answered: &[Answered],
     settings: &Settings,
 ) -> IndexMap<String, Proposal> {
+    let by_question = batch::by_question(rubric, answered);
     let mut proposals = IndexMap::new();
     for (id, declared) in &rubric.questions {
         let Some(gate) = rubric.policy.gates.get(id) else {
-            eprintln!("jud: {id}: skipped, it has no gate; add one under `policy` to tune it");
+            note!("jud: {id}: skipped, it has no gate; add one under `policy` to tune it");
             continue;
         };
-        let judgments: Vec<Judgment> = answered
-            .iter()
-            .flat_map(|a| &a.judgments)
-            .filter(|(question, _)| question == id)
-            .map(|(_, judgment)| judgment.clone())
-            .collect();
+        let judgments = by_question.get(id).map_or(&[][..], Vec::as_slice);
         if judgments.is_empty() {
-            eprintln!("jud: {id}: skipped, no case labels it");
+            note!("jud: {id}: skipped, no case labels it");
             continue;
         }
-        if let Some(proposal) = tune_question(id, &declared.question, gate, &judgments, settings) {
+        if let Some(proposal) = tune_question(id, &declared.question, gate, judgments, settings) {
             proposals.insert(id.clone(), proposal);
         }
     }
@@ -236,7 +278,7 @@ fn tune_question(
     let metrics = QuestionMetrics::summarise(judgments, ECE_BINS);
     let labelled = metrics.labelled;
     let reading = reading(&metrics);
-    eprintln!(
+    note!(
         "jud: {id} ({}): {labelled} labelled cases, {reading}",
         question.kind()
     );
@@ -252,39 +294,53 @@ fn tune_question(
             Some(criteria.as_slice()),
         ),
     };
-    if proposed.is_some() && gate.strict {
-        eprintln!(
-            "jud: {id}: the gate is strict (acts above the bar) and the sweep counts an answer at a bar as acting, so an answer exactly at the proposed bar is read the other way"
-        );
+    if let Some(proposed) = &proposed
+        && gate.strict
+    {
+        note_strict(id, question, judgments, proposed.bar);
     }
     if metrics
         .accuracy_interval95
         .is_some_and(|(low, high)| high - low > THIN_INTERVAL)
     {
-        eprintln!(
+        note!(
             "jud: warning: {id}: {labelled} labelled cases, {reading}; a bar read off so few cases is a guess with a number on it"
         );
     }
-    proposed.map(|gate| Proposal { gate, labelled })
+    proposed.map(|proposed| Proposal {
+        gate: proposed.gate,
+        labelled,
+    })
 }
 
 /// A Noul's `threshold`: the best F1 over the sweep, the lowest on a tie.
-fn tune_threshold(id: &str, gate: &Gate, judgments: &[Judgment], labelled: usize) -> Option<Gate> {
+fn tune_threshold(
+    id: &str,
+    gate: &Gate,
+    judgments: &[Judgment],
+    labelled: usize,
+) -> Option<Proposed> {
     let rows = threshold_sweep(judgments, &default_thresholds());
     let best = best_threshold(&rows);
     print_threshold_table(&rows, best);
     let Some(threshold) = best else {
-        eprintln!(
+        note!(
             "jud: {id}: no threshold has an F1 over {labelled} labelled cases (it needs a case labelled yes and an answer that reaches yes); the gate stays as written"
         );
         return None;
     };
     let note = format!("best F1 on {labelled} labelled cases; ties go to the lower threshold");
-    eprintln!("jud: {id}: propose threshold {threshold:.2} ({note})");
-    Some(Gate {
-        threshold: Some(threshold),
-        note: Some(note),
-        ..gate.clone()
+    note!(
+        "jud: {id}: propose threshold {threshold:.2} (now {}): {note}",
+        shown_bar(gate.threshold)
+    );
+    Some(Proposed {
+        gate: Gate {
+            threshold: Some(threshold),
+            note: Some(note),
+            ..gate.clone()
+        },
+        bar: Some(threshold),
     })
 }
 
@@ -300,19 +356,21 @@ fn tune_confidence(
     labelled: usize,
     settings: &Settings,
     levels: Option<&[Value]>,
-) -> Option<Gate> {
+) -> Option<Proposed> {
     let rows = gate_table(judgments, &default_bars());
+    let digits = accuracy_digits(&rows, settings.target_accuracy);
     if !gate.bands.is_empty() {
-        print_bar_table(&rows, None);
-        eprintln!(
+        print_bar_table(&rows, None, digits);
+        note!(
             "jud: {id}: the gate has bands, which jud tune prints the table for and does not propose; the gate stays as written"
         );
         return None;
     }
     let bar = lowest_bar(&rows, settings.target_accuracy, settings.min_covered);
-    print_bar_table(&rows, bar);
+    print_bar_table(&rows, bar, digits);
     let mut proposed = gate.clone();
     let mut notes = Vec::new();
+    let mut proposed_bar = None;
     let mut changed = false;
     match bar.and_then(|bar| rows.iter().find(|row| same(row.bar, bar))) {
         Some(row) => {
@@ -322,20 +380,34 @@ fn tune_confidence(
                 row.covered,
                 row.n
             );
-            eprintln!("jud: {id}: propose confidence {:.2} ({note})", row.bar);
+            note!(
+                "jud: {id}: propose confidence {:.2} (now {}): {note}",
+                row.bar,
+                shown_bar(gate.confidence)
+            );
             if same(row.bar, 0.0) {
                 // A bar the table starts at is no bar: say so, since a gate
                 // that defers nothing is what the number now means.
-                eprintln!(
+                note!(
                     "jud: {id}: the proposed bar is 0, so the gate would defer nothing: the labelled answers are already at least {} right with no bar",
                     percent(settings.target_accuracy)
                 );
             }
+            if levels.is_some() {
+                // The table is the library's: a Score's answer is its most
+                // probable level there, where the gate acts on the level
+                // nearest the weighted score. They agree on a one-peaked
+                // answer and part on a spread one.
+                note!(
+                    "jud: {id}: the table reads the most probable level as the answer; the policy reads the level nearest the weighted score, which can differ"
+                );
+            }
             proposed.confidence = Some(row.bar);
+            proposed_bar = Some(row.bar);
             notes.push(note);
             changed = true;
         }
-        None => eprintln!(
+        None => note!(
             "jud: {id}: no bar reaches {} accuracy over at least {} cases; the confidence stays as written",
             percent(settings.target_accuracy),
             settings.min_covered
@@ -349,25 +421,79 @@ fn tune_confidence(
             let note = format!(
                 "level_at_least by best F1 on {labelled} labelled cases; ties go to the lower level"
             );
-            eprintln!(
-                "jud: {id}: propose level_at_least {} (level {level}; {note})",
-                level_text(levels.get(level), level)
+            note!(
+                "jud: {id}: propose level_at_least {} (now {}): level {level}; {note}",
+                level_text(levels.get(level), level),
+                level_ref_text(written)
             );
             proposed.level_at_least = Some(level_like(written, level, levels));
             notes.push(note);
             changed = true;
         } else {
-            eprintln!(
+            note!(
                 "jud: {id}: no level has an F1 over {labelled} labelled cases; the level_at_least stays as written"
             );
         }
     }
     if changed {
         proposed.note = Some(notes.join("; "));
-        Some(proposed)
+        Some(Proposed {
+            gate: proposed,
+            bar: proposed_bar,
+        })
     } else {
         None
     }
+}
+
+/// What a strict gate does at the bar that was proposed. A strict gate acts
+/// above its bar, the sweep counts an answer at it as acting, so an answer
+/// exactly there is read the other way; say how many there are when there
+/// are any, and that it can happen when there are none to count (or no bar
+/// was proposed, only a level).
+fn note_strict(id: &str, question: &Question, judgments: &[Judgment], bar: Option<f64>) {
+    let at_bar = bar.map_or(0, |bar| at_the_bar(question, judgments, bar));
+    match bar {
+        Some(bar) if at_bar > 0 => note!("jud: {id}: {}", strict_at_bar(question, at_bar, bar)),
+        _ => note!(
+            "jud: {id}: the gate is strict (acts above the bar) and the sweep counts an answer at a bar as acting, so an answer exactly at the proposed bar is read the other way"
+        ),
+    }
+}
+
+/// How many labelled answers sit exactly at `bar`: the probability of yes
+/// for a Noul (what its threshold is read against), the confidence for the
+/// others, over the answers the table counts.
+fn at_the_bar(question: &Question, judgments: &[Judgment], bar: f64) -> usize {
+    judgments
+        .iter()
+        .filter_map(|j| match question {
+            Question::Noul { .. } => j
+                .expected
+                .as_ref()
+                .and_then(|_| j.probabilities.get("yes").copied()),
+            _ => j.correct.map(|_| j.confidence),
+        })
+        .filter(|value| same(*value, bar))
+        .count()
+}
+
+/// The sentence for `n` answers at `bar` under a strict gate: a Choice's or
+/// Score's are deferred, a Noul's are a no, which is a verdict and not a
+/// deferral.
+fn strict_at_bar(question: &Question, n: usize, bar: f64) -> String {
+    let (subject, verb) = if n == 1 {
+        ("answer", "sits")
+    } else {
+        ("answers", "sit")
+    };
+    let effect = match (question, n) {
+        (Question::Noul { .. }, 1) => "reads it as no",
+        (Question::Noul { .. }, _) => "reads them as no",
+        (_, 1) => "defers it",
+        (_, _) => "defers them",
+    };
+    format!("{n} {subject} {verb} exactly at the proposed bar {bar:.2} and a strict gate {effect}")
 }
 
 /// The level `level` named the way the gate named its own: an index stays an
@@ -398,6 +524,14 @@ fn level_text(level: Option<&Value>, index: usize) -> String {
     }
 }
 
+/// A level as the gate wrote it: its index, or its text.
+fn level_ref_text(level: &LevelRef) -> String {
+    match level {
+        LevelRef::Index(index) => index.to_string(),
+        LevelRef::Text(text) => text.clone(),
+    }
+}
+
 /// What the model got right over the labelled cases, with the interval that
 /// says how far to trust it.
 fn reading(metrics: &QuestionMetrics) -> String {
@@ -420,6 +554,38 @@ fn same(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-9
 }
 
+/// A bar as the gate has it: two decimals like the proposal beside it, more
+/// when it was written with more, `unset` when the gate has no such field.
+fn shown_bar(bar: Option<f64>) -> String {
+    bar.map_or_else(
+        || "unset".to_owned(),
+        |bar| {
+            let two = format!("{bar:.2}");
+            if two.parse::<f64>().is_ok_and(|shown| same(shown, bar)) {
+                two
+            } else {
+                bar.to_string()
+            }
+        },
+    )
+}
+
+/// The decimals the accuracy column of a bar table is printed to: two, and
+/// more when a row under the target would otherwise print as the target (18
+/// of 19 is 0.947, which two decimals show as the 0.95 asked for, beside a
+/// proposal that skips it). One count for the whole column, so it stays
+/// aligned, and the comparison is the one `lowest_bar` makes.
+fn accuracy_digits(rows: &[GateRow], target: f64) -> usize {
+    (2..6)
+        .find(|digits| {
+            rows.iter().filter_map(|row| row.accuracy).all(|accuracy| {
+                let shown: f64 = format!("{accuracy:.digits$}").parse().unwrap_or(accuracy);
+                (shown >= target) == (accuracy >= target)
+            })
+        })
+        .unwrap_or(6)
+}
+
 fn cell(value: Option<f64>) -> String {
     value.map_or_else(|| "-".to_owned(), |v| format!("{v:.2}"))
 }
@@ -429,9 +595,9 @@ fn mark(chosen: bool) -> &'static str {
 }
 
 fn print_threshold_table(rows: &[ThresholdRow], best: Option<f64>) {
-    eprintln!("  threshold  accuracy  precision  recall  f1");
+    note!("  threshold  accuracy  precision  recall  f1");
     for row in rows {
-        eprintln!(
+        note!(
             "  {:<9.2}  {:<8.2}  {:<9}  {:<6}  {}{}",
             row.threshold,
             row.accuracy,
@@ -443,25 +609,28 @@ fn print_threshold_table(rows: &[ThresholdRow], best: Option<f64>) {
     }
 }
 
-fn print_bar_table(rows: &[GateRow], bar: Option<f64>) {
-    eprintln!("  bar   covered  coverage  correct  accuracy");
+fn print_bar_table(rows: &[GateRow], bar: Option<f64>, digits: usize) {
+    note!("  bar   covered  coverage  correct  accuracy");
     for row in rows {
-        eprintln!(
+        let accuracy = row
+            .accuracy
+            .map_or_else(|| "-".to_owned(), |a| format!("{a:.digits$}"));
+        note!(
             "  {:<4.2}  {:<7}  {:<8.2}  {:<7}  {}{}",
             row.bar,
             row.covered,
             row.coverage,
             row.correct,
-            cell(row.accuracy),
+            accuracy,
             mark(bar.is_some_and(|b| same(b, row.bar)))
         );
     }
 }
 
 fn print_level_table(rows: &[LevelRow], best: Option<usize>) {
-    eprintln!("  level  accuracy  precision  recall  f1");
+    note!("  level  accuracy  precision  recall  f1");
     for row in rows {
-        eprintln!(
+        note!(
             "  {:<5}  {:<8.2}  {:<9}  {:<6}  {}{}",
             row.level,
             row.accuracy,
@@ -476,7 +645,8 @@ fn print_level_table(rows: &[LevelRow], best: Option<usize>) {
 /// The one model that answered, `None` when nothing was answered. A bar is
 /// tuned per model version, so recordings of two are refused; the refusal
 /// says which cases each answered, since the odd one out is what to record
-/// again.
+/// again. A model's name is the recording's or the server's to choose, so it
+/// is shown as text (`out::plain`), never as the controls it may hold.
 fn single_model(answered: &[Answered]) -> Result<Option<String>, Failure> {
     let mut by_model: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for a in answered {
@@ -488,10 +658,11 @@ fn single_model(answered: &[Answered]) -> Result<Option<String>, Failure> {
     if by_model.len() <= 1 {
         return Ok(by_model.keys().next().map(|m| (*m).to_owned()));
     }
-    let models: Vec<&str> = by_model.keys().copied().collect();
+    let models: Vec<String> = by_model.keys().map(|m| out::plain(m)).collect();
     let answers: Vec<String> = by_model
         .iter()
         .map(|(model, cases)| {
+            let model = out::plain(model);
             let shown = cases
                 .iter()
                 .take(NAMES_SHOWN)
@@ -515,56 +686,40 @@ fn single_model(answered: &[Answered]) -> Result<Option<String>, Failure> {
 /// themselves: `Backend::server` is `None` under a replay, and a replay does
 /// not say which recording answered. Omitted when none of them says, or when
 /// they disagree, because a server written into the provenance has to be the
-/// one that gave these answers.
+/// one that gave these answers. Each is written without the credentials,
+/// query and fragment a URL can carry (`backend::public_url`), also when the
+/// recording was written by a run that kept them: the tuning block is
+/// meant to be committed.
 fn recorded_server(dir: &Path, answered: &[Answered]) -> Option<String> {
-    let recordings = read_recordings(dir);
+    let found = recordings::scan(dir);
     let mut servers = BTreeSet::new();
     for a in answered {
         let fingerprint = canonical::request_fingerprint(&a.unit.case.state, &a.questions);
-        let mut matching: Vec<&Recording> = recordings
+        let mut matching: Vec<_> = found
             .iter()
+            .map(|f| &f.recording)
             .filter(|r| r.fingerprint.as_deref() == Some(fingerprint.as_str()))
             .collect();
         if matching.is_empty() {
             // The order the replay itself looks in: the fingerprint, then the hash.
             let hash = eval::request_hash(&a.unit.case.state, &a.questions);
-            matching = recordings
+            matching = found
                 .iter()
+                .map(|f| &f.recording)
                 .filter(|r| r.request_hash.as_deref() == Some(hash.as_str()))
                 .collect();
         }
-        servers.extend(matching.iter().filter_map(|r| r.server.clone()));
+        servers.extend(
+            matching
+                .iter()
+                .filter_map(|r| r.server.as_deref().map(backend::public_url)),
+        );
     }
     let mut servers = servers.into_iter();
     match (servers.next(), servers.next()) {
         (Some(server), None) => Some(server),
         _ => None,
     }
-}
-
-/// The recordings under `dir`, read the way `Replay::open` reads them: the
-/// regular `.json` and `.jud` files, never a link or a directory. A file the
-/// replay already read cannot fail here; one that does is left out.
-fn read_recordings(dir: &Path) -> Vec<Recording> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.symlink_metadata()
-                .is_ok_and(|meta| meta.file_type().is_file())
-        })
-        .filter_map(|path| {
-            let text = std::fs::read_to_string(&path).ok()?;
-            match path.extension().and_then(|e| e.to_str()) {
-                Some("json") => serde_json::from_str::<Recording>(&text).ok(),
-                Some(judgment::jud::EXTENSION) => judgment::jud::parse_recording(&text).ok(),
-                _ => None,
-            }
-        })
-        .collect()
 }
 
 /// The questions the sweep tuned and how many labelled cases each was read
@@ -607,7 +762,8 @@ struct Blocks<'a> {
     tuning: &'a Tuning,
 }
 
-fn print_blocks(yaml: &str) -> Result<(), Failure> {
+/// The two blocks of `yaml`, as the text that goes to stdout.
+fn blocks(yaml: &str) -> Result<String, Failure> {
     let reread = Rubric::parse(yaml)
         .map_err(|e| Failure::Usage(format!("the tuned rubric does not read back: {e}")))?;
     let Some(tuning) = reread.policy.tuning.as_ref() else {
@@ -615,17 +771,80 @@ fn print_blocks(yaml: &str) -> Result<(), Failure> {
             "the tuned rubric lost its tuning block".to_owned(),
         ));
     };
-    let blocks = serde_saphyr::to_string(&Blocks {
+    serde_saphyr::to_string(&Blocks {
         policy: &reread.policy.gates,
         tuning,
     })
-    .map_err(|e| Failure::Usage(format!("cannot write the proposal: {e}")))?;
-    // A reader that closes early is not an error: the proposal was complete,
-    // it is the pipe that ended (the same rule as `jud completion`).
-    match std::io::stdout().write_all(blocks.as_bytes()) {
-        Err(e) if e.kind() != ErrorKind::BrokenPipe => {
-            Err(Failure::Usage(format!("cannot write to stdout: {e}")))
-        }
-        _ => Ok(()),
+    .map_err(|e| Failure::Usage(format!("cannot write the proposal: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn a_text_level_reads_back_as_the_level_or_falls_back_to_its_index() {
+        let calm = [json!("calm"), json!("annoyed"), json!("angry")];
+        assert_eq!(
+            level_like(&LevelRef::Text("angry".into()), 1, &calm),
+            LevelRef::Text("annoyed".into())
+        );
+        assert_eq!(
+            level_like(&LevelRef::Index(2), 1, &calm),
+            LevelRef::Index(1)
+        );
+        // Levels whose texts are numbers: the text "3" reads as the index 3,
+        // which is another level, so the index is what names this one.
+        let numbers = [json!(1), json!(2), json!(3)];
+        assert_eq!(
+            level_like(&LevelRef::Text("3".into()), 1, &numbers),
+            LevelRef::Text("1".into()),
+            "the level whose text is 2 is the index 1"
+        );
+        // The same text on two levels names only the first.
+        let twins = [json!("low"), json!("high"), json!("high")];
+        assert_eq!(
+            level_like(&LevelRef::Text("high".into()), 2, &twins),
+            LevelRef::Text("2".into())
+        );
+    }
+
+    #[test]
+    fn the_strict_sentence_counts_and_says_what_happens_to_them() {
+        let noul = Question::Noul {
+            instructions: Value::Null,
+            criteria: None,
+        };
+        let choice = Question::Choice {
+            instructions: Value::Null,
+            criteria: IndexMap::new(),
+        };
+        assert_eq!(
+            strict_at_bar(&choice, 2, 0.45),
+            "2 answers sit exactly at the proposed bar 0.45 and a strict gate defers them"
+        );
+        assert_eq!(
+            strict_at_bar(&choice, 1, 0.45),
+            "1 answer sits exactly at the proposed bar 0.45 and a strict gate defers it"
+        );
+        assert_eq!(
+            strict_at_bar(&noul, 1, 0.55),
+            "1 answer sits exactly at the proposed bar 0.55 and a strict gate reads it as no"
+        );
+        assert_eq!(
+            strict_at_bar(&noul, 3, 0.55),
+            "3 answers sit exactly at the proposed bar 0.55 and a strict gate reads them as no"
+        );
+    }
+
+    #[test]
+    fn a_bar_is_shown_with_the_digits_it_has() {
+        assert_eq!(shown_bar(Some(0.3)), "0.30");
+        assert_eq!(shown_bar(Some(0.0)), "0.00");
+        assert_eq!(shown_bar(Some(1.0)), "1.00");
+        assert_eq!(shown_bar(Some(0.333)), "0.333");
+        assert_eq!(shown_bar(None), "unset");
     }
 }

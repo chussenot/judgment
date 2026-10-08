@@ -10,7 +10,7 @@ mod support;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::Output;
+use std::process::{Command, Output, Stdio};
 
 use judgment::eval::{request_hash, write_recording};
 use judgment::jud::{Cases, Rubric, parse_recording};
@@ -71,6 +71,11 @@ fn cases_without_tone_labels() -> String {
         .filter(|line| !line.trim_start().starts_with("tone:"))
         .collect();
     indented(&kept.join("\n"), "")
+}
+
+/// The last component of a directory, as text.
+fn dir_name(dir: &Path) -> String {
+    dir.file_name().unwrap().to_string_lossy().into_owned()
 }
 
 fn write(dir: &Path, name: &str, text: &str) -> PathBuf {
@@ -272,10 +277,12 @@ fn the_tables_and_the_warnings_are_on_stderr_and_stdout_is_only_the_proposal() {
     assert!(err.contains("jud: tone (score): 6 labelled cases"), "{err}");
     // Each proposal, with the number of cases and the interval it rests on.
     assert!(
-        err.contains("jud: actionable: propose threshold 0.55 (best F1 on 7 labelled cases"),
+        err.contains(
+            "jud: actionable: propose threshold 0.55 (now 0.55): best F1 on 7 labelled cases"
+        ),
         "{err}"
     );
-    assert!(err.contains("jud: desk: propose confidence 0.45 (lowest bar at 95% accuracy; covers 6 of 7 labelled cases)"), "{err}");
+    assert!(err.contains("jud: desk: propose confidence 0.45 (now 0.45): lowest bar at 95% accuracy; covers 6 of 7 labelled cases"), "{err}");
     // Seven cases is a guess with a number on it, and the warning says so.
     for (question, n) in [("actionable", 7), ("desk", 7), ("tone", 6)] {
         let warning = format!("warning: {question}: {n} labelled cases, accuracy ");
@@ -477,6 +484,14 @@ fn out_is_never_the_input() {
         let link = dir.join("link.jud");
         std::os::unix::fs::symlink(&rubric, &link).unwrap();
         spellings.push((path_str(&link).to_owned(), "rubric"));
+        // A hard link is another name for the same bytes, which resolving a
+        // path does not see: writing through it rewrites the input.
+        let hard = dir.join("hard.jud");
+        std::fs::hard_link(&rubric, &hard).unwrap();
+        spellings.push((path_str(&hard).to_owned(), "rubric"));
+        let hard_cases = dir.join("hard-cases.jud");
+        std::fs::hard_link(&cases, &hard_cases).unwrap();
+        spellings.push((path_str(&hard_cases).to_owned(), "cases"));
     }
     let before = snapshot(&dir);
     for (spelling, what) in &spellings {
@@ -493,6 +508,102 @@ fn out_is_never_the_input() {
         assert!(stdout(&out).is_empty(), "{}", stdout(&out));
         assert_eq!(snapshot(&dir), before, "{spelling} was written");
     }
+    // Nothing was written through any name: the inputs are the examples still.
+    assert_eq!(
+        std::fs::read(&rubric).unwrap(),
+        std::fs::read(TRIAGE).unwrap()
+    );
+    assert_eq!(
+        std::fs::read(&cases).unwrap(),
+        std::fs::read(TRIAGE_CASES).unwrap()
+    );
+}
+
+/// `--out` is not in the recordings directory either: `--replay` reads every
+/// `.jud` and `.json` there as a recording, so a rubric put beside them
+/// makes the whole directory unreadable, and one put over a recording
+/// destroys an answer that was paid for.
+#[test]
+fn out_is_never_a_recording_nor_a_file_beside_them() {
+    let recordings = copy_dir(RECORDINGS);
+    let dir = path_str(&recordings).to_owned();
+    let name = dir_name(&recordings);
+    let before = snapshot(&recordings);
+    let receipt = std::fs::read(recordings.join("receipt.jud")).unwrap();
+    for spelling in [
+        // A new file in the directory, and a recording by name.
+        format!("{dir}/tuned.jud"),
+        format!("{dir}/receipt.jud"),
+        // Both extensions the replay reads.
+        format!("{dir}/tuned.json"),
+        // The same directory spelled another way.
+        format!("{dir}/./tuned.jud"),
+        format!("{dir}/../{name}/tuned.jud"),
+    ] {
+        let out = tune(TRIAGE, TRIAGE_CASES, &dir, &["--out", &spelling]);
+        assert_eq!(code(&out), 2, "{spelling}: {}", stderr(&out));
+        let err = stderr(&out);
+        assert!(
+            err.contains("refusing to write into the recordings directory"),
+            "{spelling}: {err}"
+        );
+        assert!(stdout(&out).is_empty(), "{spelling}: {}", stdout(&out));
+        assert_eq!(snapshot(&recordings), before, "{spelling} was written");
+    }
+    assert_eq!(
+        std::fs::read(recordings.join("receipt.jud")).unwrap(),
+        receipt,
+        "a recording is byte for byte what it was"
+    );
+    // The directory still replays.
+    let eval = jud(&["eval", TRIAGE, TRIAGE_CASES, "--replay", &dir], "", &[]);
+    assert_eq!(code(&eval), 0, "{}", stderr(&eval));
+    // And a file elsewhere is fine: only the directory is off limits.
+    let elsewhere = scratch("tune").join("tuned.jud");
+    let out = tune(TRIAGE, TRIAGE_CASES, &dir, &["--out", path_str(&elsewhere)]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(elsewhere.exists());
+}
+
+/// The same refusal through a link: a symlink or a hard link outside the
+/// directory is still the recording it points at, and a symlinked directory
+/// is still the directory.
+#[cfg(unix)]
+#[test]
+fn out_through_a_link_into_the_recordings_is_refused() {
+    let recordings = copy_dir(RECORDINGS);
+    let dir = path_str(&recordings).to_owned();
+    let elsewhere = scratch("tune");
+    let victim = recordings.join("receipt.jud");
+    let soft = elsewhere.join("soft.jud");
+    std::os::unix::fs::symlink(&victim, &soft).unwrap();
+    let hard = elsewhere.join("hard.jud");
+    std::fs::hard_link(&victim, &hard).unwrap();
+    let dir_link = elsewhere.join("dir-link");
+    std::os::unix::fs::symlink(&recordings, &dir_link).unwrap();
+    // A link to a file that is not there yet: writing through it creates the
+    // file in the directory, absolute or relative to the link.
+    let dangling = elsewhere.join("dangling.jud");
+    std::os::unix::fs::symlink(recordings.join("new.jud"), &dangling).unwrap();
+    let relative = elsewhere.join("relative.jud");
+    std::os::unix::fs::symlink(format!("../{}/new.jud", dir_name(&recordings)), &relative).unwrap();
+    let before = snapshot(&recordings);
+    let bytes = std::fs::read(&victim).unwrap();
+    for out_path in [soft, hard, dir_link.join("new.jud"), dangling, relative] {
+        let out = tune(TRIAGE, TRIAGE_CASES, &dir, &["--out", path_str(&out_path)]);
+        assert_eq!(code(&out), 2, "{}: {}", out_path.display(), stderr(&out));
+        assert!(
+            stderr(&out).contains("refusing to write into the recordings directory"),
+            "{}: {}",
+            out_path.display(),
+            stderr(&out)
+        );
+        assert!(stdout(&out).is_empty());
+        assert_eq!(snapshot(&recordings), before, "{}", out_path.display());
+        assert_eq!(std::fs::read(&victim).unwrap(), bytes);
+    }
+    let eval = jud(&["eval", TRIAGE, TRIAGE_CASES, "--replay", &dir], "", &[]);
+    assert_eq!(code(&eval), 0, "{}", stderr(&eval));
 }
 
 #[test]
@@ -516,6 +627,16 @@ fn the_target_accuracy_moves_the_confidence_bar() {
     assert_eq!(
         policy["desk"]["note"],
         json!("lowest bar at 80% accuracy; covers 7 of 7 labelled cases")
+    );
+    // A bar of 0 is no bar, and the proposal says so beside the number.
+    let err = stderr(&out);
+    assert!(
+        err.contains("jud: desk: propose confidence 0.00 (now 0.90): lowest bar at 80% accuracy"),
+        "{err}"
+    );
+    assert!(
+        err.contains("jud: desk: the proposed bar is 0, so the gate would defer nothing"),
+        "{err}"
     );
     // And the default asks for 95%, which wants the 0.45 bar.
     let out = tune(rubric, cases, RECORDINGS, &[]);
@@ -954,8 +1075,12 @@ fn recordings_of_two_models_are_refused() {
         err.contains("the recordings come from more than one model (jev-1.12.0, jev-1.13.0); a bar is tuned per model, record again with one"),
         "{err}"
     );
-    // The odd one out is named, to record again.
+    // The odd one out is named, to record again, and a long list is cut.
     assert!(err.contains("jev-1.12.0 answered receipt"), "{err}");
+    assert!(
+        err.contains("jev-1.13.0 answered refund-angry, thanks, login-loop, close-account, how-to-export and 1 more"),
+        "{err}"
+    );
     assert!(stdout(&out).is_empty());
 
     // A recording of another model that no case here asks for does not count.
@@ -1084,4 +1209,571 @@ fn tune_never_calls_a_backend() {
         ],
     );
     assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(
+        stdout(&out).starts_with("policy:\n"),
+        "a proposal, not nothing: {}",
+        stdout(&out)
+    );
+}
+
+// ---- what the gate has now ---------------------------------------------------
+
+#[test]
+fn every_proposal_says_what_the_gate_has_now() {
+    // The committed gates: the sweep agrees with two, and says the third
+    // (tone, a bar of 0.3 that defers nothing here) is not what it proposes.
+    let out = tune_triage(&[]);
+    let err = stderr(&out);
+    assert!(
+        err.contains("jud: actionable: propose threshold 0.55 (now 0.55): best F1"),
+        "{err}"
+    );
+    assert!(
+        err.contains("jud: desk: propose confidence 0.45 (now 0.45): lowest bar"),
+        "{err}"
+    );
+    assert!(
+        err.contains("jud: tone: propose confidence 0.00 (now 0.30): lowest bar"),
+        "{err}"
+    );
+    // The explanation of a bar of 0 stays beside it.
+    assert!(
+        err.contains("jud: tone: the proposed bar is 0, so the gate would defer nothing"),
+        "{err}"
+    );
+
+    // Guesses the sweep moves: each says where it came from.
+    let (_, rubric, cases) = workspace(GUESSES);
+    let out = tune(path_str(&rubric), path_str(&cases), RECORDINGS, &[]);
+    let err = stderr(&out);
+    assert!(
+        err.contains("jud: actionable: propose threshold 0.55 (now 0.90): best F1"),
+        "{err}"
+    );
+    assert!(
+        err.contains("jud: desk: propose confidence 0.45 (now 0.90): lowest bar"),
+        "{err}"
+    );
+
+    // A gate without the field says so, rather than a default it does not have.
+    let (_, rubric, cases) = workspace(
+        "    actionable:
+      note: no bar yet
+    desk:
+      fallback: none_of_these
+    tone:
+      level_at_least: 2
+",
+    );
+    let out = tune(path_str(&rubric), path_str(&cases), RECORDINGS, &[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(
+        err.contains("jud: actionable: propose threshold 0.55 (now unset): best F1"),
+        "{err}"
+    );
+    assert!(
+        err.contains("jud: desk: propose confidence 0.45 (now unset): lowest bar"),
+        "{err}"
+    );
+    assert!(
+        err.contains("jud: tone: propose confidence 0.00 (now unset): lowest bar"),
+        "{err}"
+    );
+    // A level is shown as the gate wrote it: an index, then a text.
+    assert!(
+        err.contains("jud: tone: propose level_at_least annoyed (now 2): level 1;"),
+        "{err}"
+    );
+    let (_, rubric, cases) = workspace("    tone:\n      level_at_least: angry\n");
+    let out = tune(path_str(&rubric), path_str(&cases), RECORDINGS, &[]);
+    assert!(
+        stderr(&out).contains("jud: tone: propose level_at_least annoyed (now angry): level 1;"),
+        "{}",
+        stderr(&out)
+    );
+
+    // A bar written with more digits than the grid is shown whole.
+    let (_, rubric, cases) = workspace("    desk:\n      confidence: 0.333\n");
+    let out = tune(path_str(&rubric), path_str(&cases), RECORDINGS, &[]);
+    assert!(
+        stderr(&out).contains("jud: desk: propose confidence 0.45 (now 0.333): lowest bar"),
+        "{}",
+        stderr(&out)
+    );
+    // And nothing the stdout carries changed for it.
+    assert!(!stdout(&out).contains("now"), "{}", stdout(&out));
+}
+
+// ---- strict gates -------------------------------------------------------------
+
+/// Every gate strict, the bars guesses the sweep moves.
+const STRICT: &str = "    actionable:
+      threshold: 0.9
+      strict: true
+    desk:
+      confidence: 0.9
+      fallback: none_of_these
+      strict: true
+    tone:
+      confidence: 0.3
+      strict: true
+";
+
+/// What a recording says its `question` answer was, over every recording
+/// that answers it: the `field` of that answer (`noul` for a Noul, else
+/// `confidence`).
+fn recorded_values(dir: &str, question: &str, field: &str) -> Vec<f64> {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .filter_map(|entry| {
+            let text = std::fs::read_to_string(entry.unwrap().path()).unwrap();
+            let doc = yaml(&text);
+            doc["spec"]["response"]["answers"][question][field].as_f64()
+        })
+        .collect()
+}
+
+#[test]
+fn a_strict_gate_says_so_and_counts_what_sits_exactly_at_its_bar() {
+    // The committed recordings: the sweep proposes 0.55, 0.45 and 0, and no
+    // recorded answer is exactly at any of them. Said, not assumed.
+    let at = |values: &[f64], bar: f64| values.iter().filter(|v| (**v - bar).abs() < 1e-9).count();
+    assert_eq!(
+        at(&recorded_values(RECORDINGS, "actionable", "noul"), 0.55),
+        0
+    );
+    assert_eq!(
+        at(&recorded_values(RECORDINGS, "desk", "confidence"), 0.45),
+        0
+    );
+    assert_eq!(
+        at(&recorded_values(RECORDINGS, "tone", "confidence"), 0.0),
+        0
+    );
+    let (_, rubric, cases) = workspace(STRICT);
+    let out = tune(path_str(&rubric), path_str(&cases), RECORDINGS, &[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(err.contains("propose threshold 0.55 (now 0.90)"), "{err}");
+    assert!(err.contains("propose confidence 0.45 (now 0.90)"), "{err}");
+    for question in ["actionable", "desk", "tone"] {
+        assert!(
+            err.contains(&format!(
+                "jud: {question}: the gate is strict (acts above the bar)"
+            )),
+            "{question}: {err}"
+        );
+    }
+    assert!(!err.contains("sit exactly"), "{err}");
+    assert!(!err.contains("sits exactly"), "{err}");
+
+    // The proposal itself is the sweep's as ever: the gate stays strict.
+    let proposal = yaml(&stdout(&out));
+    assert_eq!(proposal["policy"]["desk"]["confidence"], json!(0.45));
+    assert_eq!(proposal["policy"]["desk"]["strict"], json!(true));
+}
+
+#[test]
+fn a_strict_gate_names_the_answers_at_the_bar_it_would_defer() {
+    // A tie made on purpose in a scratch copy: two right desk answers at
+    // 0.45, the bar the sweep proposes, and one yes at exactly 0.55.
+    let recordings = copy_dir(RECORDINGS);
+    let edit = |name: &str, from: &str, to: &str| {
+        let path = recordings.join(name);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(from), "{name} has no `{from}`");
+        std::fs::write(&path, text.replacen(from, to, 1)).unwrap();
+    };
+    edit("how-to-export.jud", "confidence: 0.47", "confidence: 0.45");
+    edit("invoice-vat.jud", "confidence: 0.81", "confidence: 0.45");
+    edit("close-account.jud", "noul: 0.9\n", "noul: 0.55\n");
+    let (_, rubric, cases) = workspace(STRICT);
+    let out = tune(
+        path_str(&rubric),
+        path_str(&cases),
+        path_str(&recordings),
+        &[],
+    );
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(
+        err.contains("jud: desk: 2 answers sit exactly at the proposed bar 0.45 and a strict gate defers them"),
+        "{err}"
+    );
+    // A yes at the threshold is not deferred, it is a no.
+    assert!(
+        err.contains("jud: actionable: 1 answer sits exactly at the proposed bar 0.55 and a strict gate reads it as no"),
+        "{err}"
+    );
+    // The generic note is replaced where the count is said, kept where there
+    // is nothing at the bar (tone proposes 0).
+    assert_eq!(err.matches("the gate is strict").count(), 1, "{err}");
+    assert!(err.contains("jud: tone: the gate is strict"), "{err}");
+    let proposal = yaml(&stdout(&out));
+    assert_eq!(proposal["policy"]["desk"]["confidence"], json!(0.45));
+    assert_eq!(proposal["policy"]["actionable"]["threshold"], json!(0.55));
+}
+
+#[test]
+fn a_strict_gate_without_a_proposal_says_nothing_about_strictness() {
+    // `--min-covered 7`: desk and tone have no bar to propose, so the gates
+    // stay as written and there is nothing at a bar to warn about.
+    let (_, rubric, cases) = workspace(STRICT);
+    let out = tune(
+        path_str(&rubric),
+        path_str(&cases),
+        RECORDINGS,
+        &["--min-covered", "7"],
+    );
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(err.contains("jud: desk: no bar reaches"), "{err}");
+    assert_eq!(err.matches("the gate is strict").count(), 1, "{err}");
+    assert!(err.contains("jud: actionable: the gate is strict"), "{err}");
+}
+
+// ---- a Score's two readings -----------------------------------------------------
+
+#[test]
+fn a_score_bar_says_the_table_reads_the_most_probable_level() {
+    let out = tune_triage(&[]);
+    let err = stderr(&out);
+    let note = "jud: tone: the table reads the most probable level as the answer; the policy reads the level nearest the weighted score, which can differ";
+    assert_eq!(err.matches(note).count(), 1, "{err}");
+    // It follows the proposal it qualifies, and only a Score's.
+    assert!(
+        err.find(note).unwrap() > err.find("jud: tone: propose confidence").unwrap(),
+        "{err}"
+    );
+    assert!(!err.contains("jud: desk: the table reads"), "{err}");
+    assert!(!err.contains("jud: actionable: the table reads"), "{err}");
+
+    // No bar proposed, nothing to qualify.
+    let out = tune_triage(&["--min-covered", "7"]);
+    assert!(
+        !stderr(&out).contains("the table reads the most probable level"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+// ---- two files, one request ----------------------------------------------------
+
+/// The proposal as data without the moment it was made, which differs.
+fn proposal_without_time(out: &Output) -> Value {
+    let mut proposal = yaml(&stdout(out));
+    proposal["tuning"]
+        .as_object_mut()
+        .unwrap()
+        .remove("tuned_at");
+    proposal
+}
+
+#[test]
+fn two_recordings_of_one_request_are_warned_about_and_change_nothing() {
+    let clean = tune_triage(&[]);
+    assert!(
+        !stderr(&clean).contains("record the same request"),
+        "{}",
+        stderr(&clean)
+    );
+
+    let recordings = copy_dir(RECORDINGS);
+    std::fs::copy(
+        recordings.join("receipt.jud"),
+        recordings.join("receipt-again.jud"),
+    )
+    .unwrap();
+    let out = tune(TRIAGE, TRIAGE_CASES, path_str(&recordings), &[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let err = stderr(&out);
+    assert_eq!(err.matches("record the same request").count(), 1, "{err}");
+    let line = err
+        .lines()
+        .find(|l| l.contains("record the same request"))
+        .unwrap();
+    assert!(line.starts_with("jud: warning: 2 files under "), "{line}");
+    assert!(
+        line.contains("receipt.jud") && line.contains("receipt-again.jud"),
+        "both files are named: {line}"
+    );
+    // The warning is a warning: the proposal is the one without the twin.
+    assert_eq!(proposal_without_time(&out), proposal_without_time(&clean));
+}
+
+// ---- a reader that has gone ----------------------------------------------------------
+
+/// `jud tune` on the triage documents whose stdout or stderr reader goes
+/// away at once, as in `jud tune ... 2>&1 | head -1`.
+///
+/// Best effort: a child still starting has not written yet, and a child that
+/// wrote first ends with the same status, so this cannot fail for being
+/// early; it fails when a closed reader changes what the command does.
+fn tune_with_closed(stdout_closed: bool, stderr_closed: bool, extra: &[&str]) -> Output {
+    let mut args = vec!["tune", TRIAGE, TRIAGE_CASES, "--replay", RECORDINGS];
+    args.extend_from_slice(extra);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_jud"))
+        .current_dir(support::ROOT)
+        .args(&args)
+        .env_remove("TYPESAFE_API_KEY")
+        .env_remove("TYPESAFE_BASE_URL")
+        .env_remove("JUD_REPLAY")
+        .env("XDG_CONFIG_HOME", support::config_home())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    if stderr_closed {
+        drop(child.stderr.take());
+    }
+    if stdout_closed {
+        drop(child.stdout.take());
+    }
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn a_stderr_nobody_reads_does_not_stop_the_proposal() {
+    // Every table and note is a write to a closed pipe; `eprintln!` panics on
+    // that (status 101). The proposal is what the run is for.
+    let out = tune_with_closed(false, true, &[]);
+    assert_eq!(code(&out), 0, "a closed stderr is not a failure");
+    let proposal = yaml(&stdout(&out));
+    assert_eq!(proposal["policy"]["actionable"]["threshold"], json!(0.55));
+    assert_eq!(proposal["policy"]["desk"]["confidence"], json!(0.45));
+
+    // With --out the file is written the same.
+    let tuned = scratch("tune").join("tuned.jud");
+    let out = tune_with_closed(false, true, &["--out", path_str(&tuned)]);
+    assert_eq!(code(&out), 0);
+    assert!(stdout(&out).is_empty());
+    let check = jud(&["check", path_str(&tuned), TRIAGE_CASES], "", &[]);
+    assert_eq!(code(&check), 0, "{}{}", stdout(&check), stderr(&check));
+}
+
+#[test]
+fn a_stdout_nobody_reads_does_not_change_the_exit_status() {
+    // `jud tune ... | head -c1`: the proposal was complete, the pipe ended.
+    let out = tune_with_closed(true, false, &[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(
+        err.contains("jud: actionable: propose threshold 0.55"),
+        "{err}"
+    );
+    assert!(!err.contains("panicked"), "{err}");
+    // Neither reader at all.
+    let out = tune_with_closed(true, true, &[]);
+    assert_eq!(code(&out), 0);
+}
+
+// ---- the help ------------------------------------------------------------------------
+
+#[test]
+fn the_help_says_where_the_blocks_go_and_what_out_loses() {
+    let out = jud(&["tune", "--help"], "", &[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    // The help wraps at the terminal's width: compare the words.
+    let help = stdout(&out)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    for wanted in [
+        "column 0",
+        "paste them under `spec:`, indented two spaces",
+        "its comments and layout are lost",
+        "`version` is written as text",
+        "Never the rubric, the cases or a file in DIR",
+    ] {
+        assert!(help.contains(wanted), "`{wanted}` is not in: {help}");
+    }
+}
+
+// ---- digits ------------------------------------------------------------------------------
+
+/// Nineteen cases: the six desk answers the model got right, three times
+/// each under other ids, and the one it got wrong (the receipt, at 0.40).
+/// 18 of 19 is 0.947, which two decimals print as the 0.95 the target asks.
+fn cases_one_miss_in_nineteen() -> String {
+    let mut cases = yaml(&std::fs::read_to_string(TRIAGE_CASES).unwrap());
+    let originals = cases["spec"]["cases"].as_array().unwrap().clone();
+    let mut chosen = Vec::new();
+    for case in originals {
+        let id = case["id"].as_str().unwrap().to_owned();
+        let times = if id == "receipt" { 1 } else { 3 };
+        for k in 0..times {
+            let mut case = case.clone();
+            if id != "receipt" {
+                case["id"] = json!(format!("{id}-{k}"));
+            }
+            chosen.push(case);
+        }
+    }
+    cases["spec"]["cases"] = Value::Array(chosen);
+    serde_saphyr::to_string(&cases).unwrap()
+}
+
+#[test]
+fn a_row_below_the_target_never_prints_as_the_target() {
+    let dir = scratch("tune");
+    let cases = write(&dir, "cases.jud", &cases_one_miss_in_nineteen());
+    let out = tune(TRIAGE, path_str(&cases), RECORDINGS, &[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(
+        err.contains("jud: desk (choice): 19 labelled cases"),
+        "{err}"
+    );
+    let rows = table(&err, "desk (choice)");
+    // 18 of 19 right with the miss in: under 95%, and printed as such.
+    assert_eq!(rows[0][1..], ["19", "1.00", "18", "0.947"], "{err}");
+    let proposed = rows
+        .iter()
+        .find(|row| row.contains(&"<-".to_owned()))
+        .unwrap();
+    // The first bar the miss is under, with every row of the column in the
+    // same digits.
+    assert_eq!(proposed[0], "0.45", "{err}");
+    assert_eq!(proposed[4], "1.000", "{err}");
+    assert!(
+        err.contains("jud: desk: propose confidence 0.45 (now 0.45): lowest bar at 95% accuracy; covers 18 of 19 labelled cases"),
+        "{err}"
+    );
+
+    // Where two decimals say it right, they are kept: the committed table.
+    let out = tune_triage(&[]);
+    let rows = table(&stderr(&out), "desk (choice)");
+    assert_eq!(rows[0][4], "0.86", "{}", stderr(&out));
+}
+
+// ---- what a recording says is not trusted ---------------------------------------------------
+
+#[test]
+fn a_credential_in_a_recordings_server_is_not_copied_into_the_tuning_block() {
+    // Recordings an older run wrote with the base URL as it was configured.
+    let recordings = copy_dir(RECORDINGS);
+    for entry in std::fs::read_dir(&recordings).unwrap() {
+        let path = entry.unwrap().path();
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(
+            &path,
+            text.replace(
+                "server: https://api.typesafe.ai",
+                "server: https://user:s3cret@api.typesafe.ai/?key=abc#frag",
+            ),
+        )
+        .unwrap();
+    }
+    // One of them with another secret: the same server, still.
+    let receipt = recordings.join("receipt.jud");
+    let text = std::fs::read_to_string(&receipt).unwrap();
+    std::fs::write(&receipt, text.replace("user:s3cret@", "other:hunter2@")).unwrap();
+
+    let tuned = scratch("tune").join("tuned.jud");
+    for extra in [&[][..], &["--out", path_str(&tuned)][..]] {
+        let out = tune(TRIAGE, TRIAGE_CASES, path_str(&recordings), extra);
+        assert_eq!(code(&out), 0, "{}", stderr(&out));
+        for secret in ["s3cret", "hunter2", "key=abc", "frag", "user:"] {
+            assert!(!stdout(&out).contains(secret), "{secret}: {}", stdout(&out));
+            assert!(!stderr(&out).contains(secret), "{secret}: {}", stderr(&out));
+        }
+    }
+    let written = std::fs::read_to_string(&tuned).unwrap();
+    assert!(
+        !written.contains("s3cret") && !written.contains("hunter2"),
+        "{written}"
+    );
+    // The host and the path stay: they say which server answered.
+    assert_eq!(
+        yaml(&written)["spec"]["tuning"]["server"],
+        json!("https://api.typesafe.ai/")
+    );
+    let out = tune(TRIAGE, TRIAGE_CASES, path_str(&recordings), &[]);
+    assert_eq!(
+        yaml(&stdout(&out))["tuning"]["server"],
+        json!("https://api.typesafe.ai/")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_in_the_recordings_directory_does_not_vote_for_a_server() {
+    // The replay reads regular files only, so a link answers nothing and
+    // names no server.
+    let recordings = copy_dir(RECORDINGS);
+    let other = scratch("tune").join("elsewhere.jud");
+    let text = std::fs::read_to_string(recordings.join("receipt.jud")).unwrap();
+    std::fs::write(
+        &other,
+        text.replace(
+            "server: https://api.typesafe.ai",
+            "server: https://other.example",
+        ),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(&other, recordings.join("zz-link.jud")).unwrap();
+    let out = tune(TRIAGE, TRIAGE_CASES, path_str(&recordings), &[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert_eq!(
+        yaml(&stdout(&out))["tuning"]["server"],
+        json!("https://api.typesafe.ai")
+    );
+}
+
+#[test]
+fn a_models_control_characters_are_shown_as_text_never_obeyed() {
+    // A model a recording (or a server) named with an escape sequence and a
+    // line break: shown as characters, so it cannot recolour the terminal,
+    // retitle it or start a line of its own that a CI log reads as a command.
+    let hostile = "jev\\x1b[31mRED\\x1b]0;pwned\\x07\\n::error::spoofed";
+    let recordings = copy_dir(RECORDINGS);
+    let receipt = recordings.join("receipt.jud");
+    let text = std::fs::read_to_string(&receipt).unwrap();
+    std::fs::write(
+        &receipt,
+        text.replacen("model: jev-1.13.0", &format!("model: \"{hostile}\""), 1),
+    )
+    .unwrap();
+    let out = tune(TRIAGE, TRIAGE_CASES, path_str(&recordings), &[]);
+    assert_eq!(code(&out), 2, "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(err.contains("more than one model"), "{err}");
+    assert!(
+        err.contains("jev\\u{1b}[31mRED\\u{1b}]0;pwned\\u{7}\\n::error::spoofed"),
+        "{err}"
+    );
+    assert!(
+        !err.contains('\u{1b}') && !err.contains('\u{7}'),
+        "a control character reached the terminal: {err:?}"
+    );
+    assert!(
+        !err.lines().any(|l| l.starts_with("::error::")),
+        "a line of its own: {err}"
+    );
+
+    // Every recording by that model: tuned, and the YAML escapes it itself.
+    let recordings = copy_dir(RECORDINGS);
+    for entry in std::fs::read_dir(&recordings).unwrap() {
+        let path = entry.unwrap().path();
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(
+            &path,
+            text.replacen("model: jev-1.13.0", &format!("model: \"{hostile}\""), 1),
+        )
+        .unwrap();
+    }
+    let out = tune(TRIAGE, TRIAGE_CASES, path_str(&recordings), &[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let (text, err) = (stdout(&out), stderr(&out));
+    assert!(
+        !text.contains('\u{1b}') && !text.contains('\u{7}'),
+        "{text:?}"
+    );
+    assert!(!err.contains('\u{1b}') && !err.contains('\u{7}'), "{err:?}");
+    assert_eq!(
+        yaml(&text)["tuning"]["model"],
+        json!("jev\u{1b}[31mRED\u{1b}]0;pwned\u{7}\n::error::spoofed")
+    );
 }
