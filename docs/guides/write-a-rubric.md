@@ -2,7 +2,7 @@
 title: Write a rubric
 description: How to write a .jud Rubric from a brief, question by question, with a policy that is honest about its numbers, and check it with the crate's reader before it is used.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-08
 tags: [judgment, jud, rubric, how-to]
 ---
 
@@ -73,7 +73,7 @@ Keep facts the application has out of the questions. Whether the account is on a
 
 ## 3. Write the policy, and say it is a guess
 
-One gate per question, fitting its primitive ([Policy](../reference/jud-format.md#policy)). A hand-written rubric has no `tuning` block; a `note` on each gate says why the bar is where it is, and "a guess" is an honest note. Never invent a `tuning` block: [Tune thresholds](tune-thresholds.md) writes it from a real run.
+One gate per question, fitting its primitive ([Policy](../reference/jud-format.md#policy)). A hand-written rubric has no `tuning` block; a `note` on each gate says why the bar is where it is, and "a guess" is an honest note. Never invent a `tuning` block: `jud tune` writes it from a real run ([Tune thresholds](tune-thresholds.md)).
 
 ```yaml
   policy:
@@ -167,5 +167,5 @@ The builder calls map one to one, because a question in a rubric is the wire's o
 
 ## Next
 
-- [Label cases](label-cases.md): the examples the bars will be tuned on.
+- [Label cases](label-cases.md): the examples the bars will be tuned on. The loop after them is `jud record`, `jud eval` and `jud tune` ([Tune thresholds](tune-thresholds.md)).
 - [Use the Claude Code plugin](use-the-claude-code-plugin.md), which writes and checks these files from a brief.

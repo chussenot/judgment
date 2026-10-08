@@ -1,8 +1,8 @@
 ---
 title: Configuration
-description: Every setting the jud command and the crate's client read, where each comes from, in what order of precedence, and what the defaults are; the configuration file's fields and the output of jud config.
+description: Every setting the jud command and the crate's client read, where each comes from, in what order of precedence, and what the defaults are; the configuration file's fields, the output of jud config, and which commands read JUD_REPLAY.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-08
 tags: [judgment, jud, cli, configuration, reference]
 ---
 
@@ -26,12 +26,12 @@ flowchart TD
 | Setting | Environment | File field | Default |
 |---|---|---|---|
 | Base URL | `TYPESAFE_BASE_URL` | `base_url` | `https://api.typesafe.ai` |
-| API key | `TYPESAFE_API_KEY` | `api_key` | none; a run with no key is refused with status 2 |
+| API key | `TYPESAFE_API_KEY` | `api_key` | none; a command that asks a backend with no key is refused with status 2 |
 | Model | | `model` | `jev-latest` |
 | Timeout per attempt | | `timeout_secs` | `30` |
-| Replay directory | `JUD_REPLAY` | | none; the flag `--replay DIR` overrides the variable |
+| Replay directory | `JUD_REPLAY` | | none; the flag `--replay DIR` overrides the variable; [which commands read it](#replay) |
 
-An environment variable that is set to an empty or blank value counts as unset. No environment variable names the model for the command; the examples under `examples/` read `TYPESAFE_MODEL` for their `--live` runs, the command does not ([beads issue `judgment-rxl`](../project/contributing.md#tracking-work)).
+`TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL` set to an empty or blank value count as unset. `JUD_REPLAY` set to an empty or blank value does not: [Replay](#replay) says what happens. No environment variable names the model for the command; the examples under `examples/` read `TYPESAFE_MODEL` for their `--live` runs, the command does not ([beads issue `judgment-rxl`](../project/contributing.md#tracking-work)).
 
 ### The file
 
@@ -68,7 +68,21 @@ Prints the resolved backend and where each value came from, as JSON on stdout. T
 
 ### Replay
 
-With `--replay DIR` or `JUD_REPLAY=DIR`, the run answers from the recordings under the directory and consults no key, no file and no network. The directory is read as the crate's `Replay` backend reads it: every regular `.json` and `.jud` file that carries a request hash or a fingerprint. A state nobody recorded is a backend failure (status 1); a directory that does not exist is a usage error (status 2). [Record, replay and test](../guides/record-replay-and-test.md).
+With `--replay DIR` or `JUD_REPLAY=DIR`, a command answers from the recordings under the directory and consults no key, no file and no network. Commands that take the flag take it after the subcommand, so each command's `--replay` is its own ([The jud command line](cli.md)).
+
+| Command | `--replay DIR` | `JUD_REPLAY` |
+|---|---|---|
+| `jud RUBRIC` | optional | read |
+| `jud eval` | optional; without one the configured backend answers | read |
+| `jud tune` | required | read, and satisfies the requirement |
+| `jud record` | none; the flag is refused with status 2 | never read: it always asks the configured backend |
+| `jud config`, `jud check`, `jud lower`, `jud completion` | none | not read |
+
+The flag overrides the variable. A `JUD_REPLAY` that is set to an empty value is refused by every command, `jud record` and `jud config` included, with status 2 and the message `a value is required for '--replay <DIR>'`; unset it instead. A blank value, spaces only, is taken as a directory name, and a command that reads it refuses it with status 2.
+
+The directory is read as the crate's `Replay` backend reads it: every regular `.json` and `.jud` file in it, in name order. A file that does not read as a recording refuses the whole directory with status 2. A recording that carries neither a request hash nor a fingerprint is skipped, and so are links, subdirectories and files with another extension. A request is found by its fingerprint, then by its hash, never by a file name. When two files record one request, the later by name answers; `jud record` and `jud tune` warn about that.
+
+A request nobody recorded is a backend failure (status 1); a directory that does not exist is a usage error (status 2). [Record, replay and test](../guides/record-replay-and-test.md) is the procedure, and [The jud command line](cli.md#the-case-commands) says what each command does with the recordings.
 
 ## The crate's client
 

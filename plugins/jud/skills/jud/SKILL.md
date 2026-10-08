@@ -79,7 +79,30 @@ plugin's directory, so the checker is
 
    A question that is missing from a case's request cannot be labelled for
    that case; a part that is missing was left out by `part_when`.
-6. **Report** the files written and the `jud check` summary line, with the
+6. **Grade and tune, only when asked.** A rubric's bars are measured on its
+   cases by three commands. The first calls a model, so the skill runs it
+   only when the user asks:
+
+   ```sh
+   ${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh record path/to/rubric.jud path/to/cases.jud --out recordings/
+   ${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh eval path/to/rubric.jud path/to/cases.jud --replay recordings/
+   ${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh tune path/to/rubric.jud path/to/cases.jud --replay recordings/
+   ```
+
+   `record` asks the configured backend once per case (once per turn for a
+   conversation labelled with `from_turn`), keeps what the directory already
+   answers and writes the answers as recordings; it needs a backend and an API
+   key, any non-blank word for a server that ignores it. `eval` grades the
+   recorded answers against the labels, and `--min-accuracy 0.9` makes it exit
+   with status 3 when the model's accuracy on a question falls short. `tune`
+   proposes each gate's bar. With `--replay` both read recordings only, so
+   they need no key. `tune` prints its tables and warnings on stderr and the
+   proposed `policy` and `tuning` blocks on stdout, at column 0. The user
+   pastes them under `spec:`, indented two spaces, and `jud check` reads the
+   result; `--out PATH` writes the whole rubric to another file instead,
+   without its comments. A file already at `PATH` is replaced; the rubric,
+   the cases and a file among the recordings are refused.
+7. **Report** the files written and the `jud check` summary line, with the
    fingerprints when the rubric will be pinned or the cases named by `tuning`.
 
 ## The rules writers trip on
@@ -153,8 +176,10 @@ round trip.
 - **Be honest in the policy.** A hand-written rubric has no `tuning` block,
   and a `threshold: 0.5` with no `note` says "a guess" plainly. A `note` on a
   gate says why the bar is where it is. Do not invent a `tuning` block, a
-  fingerprint or a model version: `tuning.cases` is written by the tuning run
-  (`examples/jud_calibration.rs`) from the real cases fingerprint.
+  fingerprint or a model version: `jud tune` prints the block from a run over
+  recordings, with the real cases fingerprint and the model that answered.
+  When the user wants measured bars, tell them to run `jud tune` (step 6) and
+  paste what it prints; `examples/jud_calibration.rs` is the same loop in Rust.
 
 ## Writing cases a threshold can rest on
 
@@ -199,7 +224,8 @@ they cover anything. That is the writer's job.
   test into a test of nothing.
 - **Count honestly.** A handful of cases finds a document that is wrong and
   shows the loop; it does not tune a bar. Say so rather than letting a
-  `tuning` block imply otherwise.
+  `tuning` block imply otherwise. `jud tune` warns on stderr when it reads a
+  bar off too few cases; pass the warning on.
 
 ## Turning questions written in code into a rubric
 

@@ -2,7 +2,7 @@
 title: Label cases
 description: How to write the labelled cases a rubric is graded on and its thresholds are tuned from, bind them to the rubric, and check that every label fits the request its case lowers to.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-08
 tags: [judgment, jud, cases, labels, how-to]
 ---
 
@@ -49,14 +49,14 @@ The cases that were argued about are the ones that define the line. Give each a 
       note: reason left unlabelled; a refund is implied, not asked for, and two labellers disagreed
 ```
 
-Count honestly. Four cases find a document that is wrong and show the loop; they do not tune a bar, and the interval the crate reports will say so.
+Count honestly. Four cases find a document that is wrong and show the loop; they do not tune a bar, and the interval `jud eval` reports will say so.
 
 ## 5. Name the rubric and check the binding
 
-`spec.rubric` names the rubric by name while the questions move, by fingerprint once a run must be reproducible. Check the two files together, so each label is checked against the request its case lowers to:
+`spec.rubric` names the rubric by name while the questions move, by fingerprint once a run must be reproducible. Check the two files together, so each label is checked against the request its case lowers to. The paths are those of this repository's example; give yours:
 
 ```sh
-jud check screening.jud screening-cases.jud
+jud check examples/jud/screening.jud examples/jud/screening-cases.jud
 ```
 
 <!-- transcript: jud check examples/jud/screening.jud examples/jud/screening-cases.jud -->
@@ -69,7 +69,7 @@ cases     examples/jud/screening-cases.jud: name refund-screening-cases, jud/v1.
 2 documents, 0 refused
 ```
 
-`bound to` says every label fit. A label for a question the case's state does not trigger, an option the case was not offered, a level past the last one, a `from_turn` on a Choice: each is refused here with the case and the field named, and nowhere later. `jud lower screening.jud --cases screening-cases.jud` prints what each case sends when a `when` or a `part_when` makes that unclear.
+`bound to` names the rubric the cases were matched to among the files; it does not say that the labels fit. A label that does not fit is an `error` line printed after it, with the case and the field named, and the last line counts it. Every label fit when no `error` line follows and the last line says `0 refused` (status 0). A label for a question the case's state does not trigger, an option the case was not offered, a level past the last one, a `from_turn` on a Choice: each is refused here, and nowhere later. `jud lower examples/jud/screening.jud --cases examples/jud/screening-cases.jud` prints what each case sends when a `when` or a `part_when` makes that unclear.
 
 ## Conversations
 
@@ -119,5 +119,5 @@ When the questions change, bind the cases again. A label that no longer fits is 
 
 ## Next
 
-- [Record, replay and test](record-replay-and-test.md): answer the cases once and keep the answers.
-- [Tune thresholds](tune-thresholds.md): read the bars off the graded answers.
+- [Record, replay and test](record-replay-and-test.md#record-a-rubrics-cases-from-the-shell): `jud record` answers the cases once, with a key, and keeps the answers.
+- [Tune thresholds](tune-thresholds.md): `jud eval` grades the answers against the labels, and `jud tune` reads the bars off them.

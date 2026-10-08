@@ -1,14 +1,14 @@
 ---
 title: Record, replay and test
-description: How to test a decision with no key and no network, with the Fake backend that refuses an answer the question could not produce, the Recorder and Replay pair keyed by the request's content, and jud --replay for a rubric on the command line.
+description: How to test a decision with no key and no network, with the Fake backend that refuses an answer the question could not produce, the Recorder and Replay pair keyed by the request's content, jud --replay for a rubric on the command line, and jud record to answer a rubric's labelled cases once and keep the answers.
 status: current
-last_reviewed: 2026-10-07
-tags: [judgment, testing, fake, replay, recordings, how-to]
+last_reviewed: 2026-10-08
+tags: [judgment, testing, fake, replay, recordings, record, how-to]
 ---
 
 # Record, replay and test
 
-**You will** test a decision against scripted answers, record a real model's answers once and replay them in every later run, in Rust and on the command line. **Prerequisites:** [Your first decision in Rust](../start/first-decision-rust.md) or [from the command line](../start/first-decision-cli.md). Why a recording is what it is: [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md).
+**You will** test a decision against scripted answers, record a real model's answers once and replay them in every later run, in Rust and on the command line, with `jud record` for a rubric's labelled cases. **Prerequisites:** [Your first decision in Rust](../start/first-decision-rust.md) or [from the command line](../start/first-decision-cli.md). Why a recording is what it is: [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md).
 
 A decision made on a probability is hard to test against a live model: the call costs money, the answer moves between runs, and a test that passes against the real server says nothing about the branch the model did not take. The crate separates the three things a test needs: a backend that answers what the test scripts, a recording of what the real model once said, and a way to grade those recordings against labels. All three sit behind the same `SystemOne` trait as the client, so the code under test does not change.
 
@@ -88,7 +88,66 @@ The crate writes its own `.json` form; with the `jud` feature it writes and read
 cat event.json | jud --replay examples/recordings/jud_calibration examples/jud/triage.jud
 ```
 
-A state nobody recorded is a backend failure (status 1, `no recording`); a directory that does not exist is a usage error (status 2). [Run in CI](run-in-ci.md) turns this into a job.
+A state nobody recorded is a backend failure (status 1, `no recording`); a directory that does not exist is a usage error (status 2). `jud eval` takes the same flag and variable, and `jud tune` requires one of them. [Run in CI](run-in-ci.md) turns this into a job.
+
+## Record a rubric's cases from the shell
+
+`jud record` answers every case of a Cases document once and keeps each answer as a `.jud` recording. It is the command that spends calls to keep the answers: a plain run and `jud eval` without `--replay` ask a backend too, and keep nothing. It needs a backend and a key, which a server that ignores the bearer takes as any non-blank word ([Configure a backend](configure-a-backend.md)). It always asks the configured backend. It has no `--replay` and never replays from `JUD_REPLAY`: a non-empty value is ignored, and an empty one is refused as everywhere else ([Replay](../reference/configuration.md#replay)). Every flag is in [The jud command line](../reference/cli.md#jud-record).
+
+`jud record`, `jud eval` and `jud tune` arrived after 0.10.4; pin a release that lists them in [the changelog](../../CHANGELOG.md).
+
+The repository's `refund-screening` documents have no recordings, so recording them needs a key:
+
+```sh
+export TYPESAFE_API_KEY=...
+jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out recordings/screening
+```
+
+The cases are asked one at a time, in order. Each line below goes to stderr as its case is recorded, then a tally; stdout stays empty. The times are the calls' own, in milliseconds; those shown came from a local test server.
+
+```text
+recorded charged-twice (1/4, 2 ms)
+recorded cancelled-last-week (2/4, 1 ms)
+recorded how-does-billing-work (3/4, 1 ms)
+recorded furious-outage (4/4, 1 ms)
+recorded 4, kept 0 in recordings/screening
+```
+
+Run it again and nothing is asked:
+
+```text
+kept charged-twice
+kept cancelled-last-week
+kept how-does-billing-work
+kept furious-outage
+recorded 0, kept 4 in recordings/screening
+```
+
+What the command does:
+
+- **It writes one file per case.** `DIR/CASE.jud` is a `Recording` document: the response as received, the request's fingerprint, the rubric's name, the server and the time ([Recording](../reference/jud-format.md#recording)). `DIR` is created if it is not there. A file is written whole or not at all, and a recording is on disk the moment its answer has been checked against its questions.
+- **It records what a case asks.** A case's state and its own `options` are lowered through the rubric, as `jud lower --cases` shows. A Choice with `options_from: request` is recorded too.
+- **It records a conversation turn by turn** when a label uses `from_turn`. Each turn is its own request, with the label resolved at that turn, and its file is `CASE-turn-N.jud`, from `escalates-turn-0.jud` for a case named `escalates`. [Conversations](../reference/jud-format.md#conversations) has the rule.
+- **It resumes.** A request already recorded in `DIR` is kept, found by its fingerprint under whatever file name, so an interrupted run continues where it stopped. A new case costs one call, and so does a recording you deleted. A case whose state changed, or a rubric whose questions changed, has another fingerprint and is asked again.
+- **It asks the model the configuration names.** That is the `model` field of the configuration file, `jev-latest` when there is none. No flag and no environment variable names it, and `jud config` prints the model a run would use and where it came from ([Configure a backend](configure-a-backend.md)). To record another model, set `model` first, in the file or in another one that `XDG_CONFIG_HOME` points the run at, such as `model: tev1:0.8b` for a local model.
+- **`--refresh` asks every case again.** Each answer is written over the file named after its case. Use it once the model has changed, since a request's fingerprint leaves the model out and a recording of the old model would be kept ([Tune thresholds](tune-thresholds.md#when-the-model-moves)). Recording into a new directory keeps the old answers beside the new. A file under another name is left alone, and the run warns when two files record one request, since a replay reads only one.
+- **A failed call stops the run** with status 1. The message names the case it stopped at, how many were recorded and kept before it, and the directory. What was written stays, and the next run resumes.
+- **It strips credentials.** The server written into a recording is the base URL without its user information, query and fragment, so a recording can be committed.
+
+A refusal is status 2 and comes before any call, so nothing is written, not even `DIR`. The message says what to change. Two are fixed in `DIR` rather than in the documents:
+
+- **A stale recording under another name**, a file that records this request and no longer fits its questions. Delete or move it, then record again. Under `--refresh` it is not refused: the new recording is written, the stale file stays beside it and the run warns that two files record one request, so delete it. A stale recording in the case's own file is replaced, and the run says so.
+- **A file the reader refuses**, such as a `.jud` that is not a recording. Fix or move it, or pass `--refresh`, which does not read `DIR`.
+
+[The jud command line](../reference/cli.md#refusals-before-any-call) lists every refusal, among them a case without an `id`, a recording that would land on the rubric or the cases, and a missing key.
+
+Check what was written with the rubric and the cases. Each recording is verified against its request and its fingerprint compared:
+
+```sh
+jud check examples/jud/screening.jud examples/jud/screening-cases.jud recordings/screening/*.jud
+```
+
+The recordings then answer `jud --replay`, `jud eval` and `jud tune` ([Tune thresholds](tune-thresholds.md)).
 
 ## Write a recording by hand
 
@@ -96,7 +155,7 @@ Only as a test fixture, where the answer is scripted and the point is the shape.
 
 ## Grade the recordings
 
-A directory of recordings beside a cases document is the input of the tuning loop: each recording is graded against its case's labels into judgments, and the bars are read off the judgments. [Tune thresholds](tune-thresholds.md).
+A directory of recordings beside a cases document is the input of the tuning loop. `jud eval RUBRIC CASES --replay DIR` grades each recording against its case's labels, and `jud tune` reads the bars off the same answers. In Rust the steps are `jud::grade` and `eval::tuning`. [Tune thresholds](tune-thresholds.md).
 
 ## What this does not replace
 

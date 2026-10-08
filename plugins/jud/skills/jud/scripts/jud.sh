@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
-# Run the `jud` command (src/bin/jud/): `jud.sh check FILE...` or
-# `jud.sh lower RUBRIC ...`. Uses a `jud` on PATH (cargo install judgment
-# --features cli), else builds it from a judgment checkout: the one
-# JUDGMENT_DIR names, the project, the one this plugin sits in, or the
-# current directory.
+# Run the `jud` command (src/bin/jud/): `jud.sh SUBCOMMAND ...` passes its
+# arguments on, so `check`, `lower`, `record`, `eval` and `tune` all run
+# through it. Uses a `jud` on PATH (cargo install judgment --features cli),
+# else builds it from a judgment checkout: the one JUDGMENT_DIR names, the
+# project, the one this plugin sits in, or the current directory.
 set -eu
 if command -v jud >/dev/null 2>&1; then
   exec jud "$@"

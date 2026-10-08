@@ -2,7 +2,7 @@
 title: Use the Claude Code plugin
 description: How to install the jud plugin from this repository's marketplace, write a rubric and its cases from a brief with the /jud:rubric and /jud:cases commands, and check documents with /jud:check; what the skill knows that the reader cannot see.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-08
 tags: [judgment, jud, skill, agent, claude-code, how-to]
 ---
 
@@ -48,7 +48,8 @@ The skill also loads on its own whenever a task touches a `.jud` file, a rubric,
 3. Write the document in the `jud/v1.3` envelope, starting from the nearest example under `examples/jud/`.
 4. Check it with `scripts/jud.sh check`, rubric and cases together, and fix every refusal in the document rather than around it.
 5. When the request depends on the state, look at what each case sends with `scripts/jud.sh lower`.
-6. Report the files, the `jud check` summary and, when the rubric will be pinned, its two fingerprints.
+6. When bars are to be measured, name `jud record`, `jud eval` and `jud tune`, and run them only when asked. Never write a `tuning` block: tell the user to paste what `jud tune` prints under `spec:`.
+7. Report the files, the `jud check` summary and, when the rubric will be pinned, its two fingerprints.
 
 ## Work on the plugin itself
 
@@ -70,3 +71,4 @@ Every document written with the skill passed every assertion (49 of 49); without
 ## Next
 
 - [Write a rubric](write-a-rubric.md) and [Label cases](label-cases.md), the guides the skill follows.
+- [Tune thresholds](tune-thresholds.md), the loop behind the bars the skill never writes itself.

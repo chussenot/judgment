@@ -171,9 +171,14 @@ fn config_home() -> PathBuf {
 }
 
 fn jud(args: &[&str], stdin: &str, env: &[(&str, &str)]) -> Output {
+    jud_in(Path::new(ROOT), args, stdin, env)
+}
+
+/// `jud ARGS` run in `cwd`, with no key, no server and a scratch configuration.
+fn jud_in(cwd: &Path, args: &[&str], stdin: &str, env: &[(&str, &str)]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_jud"));
     command
-        .current_dir(ROOT)
+        .current_dir(cwd)
         .args(args)
         .env_remove("TYPESAFE_API_KEY")
         .env_remove("TYPESAFE_BASE_URL")
@@ -269,4 +274,189 @@ fn the_cli_tutorial_replays_the_recorded_answer() {
         state,
         &[],
     );
+}
+
+const TRIAGE: &str = "examples/jud/triage.jud";
+const TRIAGE_CASES: &str = "examples/jud/triage-cases.jud";
+const TRIAGE_RECORDINGS: &str = "examples/recordings/jud_calibration";
+const TUNE_GUIDE: &str = "docs/guides/tune-thresholds.md";
+
+/// The label a transcript of `jud eval` over the triage documents has on the
+/// tune guide: the command as the page shows it, and what part of its output
+/// the block holds.
+fn triage_label(command: &str, part: &str) -> String {
+    let base = format!("jud {command} {TRIAGE} {TRIAGE_CASES} --replay {TRIAGE_RECORDINGS}");
+    if part.is_empty() {
+        base
+    } else {
+        format!("{base} {part}")
+    }
+}
+
+/// `text` with the value of every `tuned_at` line replaced, since a proposal
+/// carries the time of the run that made it. The value itself is checked to
+/// be a timestamp, so the mask hides a clock and nothing else.
+fn without_the_clock(text: &str) -> String {
+    text.lines()
+        .map(|line| match line.trim_start().strip_prefix("tuned_at: ") {
+            Some(value) => {
+                assert!(
+                    value.starts_with("\"20") && value.ends_with("Z\""),
+                    "tuned_at is an RFC 3339 time in UTC: {line}"
+                );
+                format!(
+                    "{}tuned_at: <time>",
+                    &line[..line.len() - line.trim_start().len()]
+                )
+            }
+            None => line.to_owned(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn stderr(output: &Output) -> String {
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+/// The tune guide's report is what `jud eval` prints over the triage
+/// documents and their recordings, with no key and no network.
+#[test]
+fn the_tune_guide_shows_the_report_of_jud_eval() {
+    assert_transcript(
+        TUNE_GUIDE,
+        &triage_label("eval", ""),
+        &["eval", TRIAGE, TRIAGE_CASES, "--replay", TRIAGE_RECORDINGS],
+        "",
+        &[],
+    );
+}
+
+/// A gate that is not met: the whole report on stdout, the section the gate
+/// adds at its end, the message on stderr and the exit status 3.
+#[test]
+fn the_tune_guide_shows_a_gate_that_is_not_met() {
+    let out = jud(
+        &[
+            "eval",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--replay",
+            TRIAGE_RECORDINGS,
+            "--min-accuracy",
+            "0.9",
+        ],
+        "",
+        &[],
+    );
+    assert_eq!(out.status.code(), Some(3), "{}", stderr(&out));
+
+    let section = transcript(
+        TUNE_GUIDE,
+        &triage_label("eval", "--min-accuracy 0.9 (end of stdout)"),
+    );
+    let report = stdout(&out);
+    assert!(
+        report
+            .trim_end()
+            .ends_with(&format!("\n\n{}", section.trim_end())),
+        "the page's section must end the report, after a blank line:\n{report}"
+    );
+    assert_eq!(
+        stderr(&out).trim_end(),
+        transcript(
+            TUNE_GUIDE,
+            &triage_label("eval", "--min-accuracy 0.9 (stderr)")
+        )
+        .trim_end(),
+        "the page's message must be what the gate writes on stderr"
+    );
+}
+
+/// The proposal on stdout, and the notes `jud tune` writes on stderr, one
+/// line for each decision (the tables, which start with spaces, are left out).
+#[test]
+fn the_tune_guide_shows_what_jud_tune_proposes() {
+    let out = jud(
+        &["tune", TRIAGE, TRIAGE_CASES, "--replay", TRIAGE_RECORDINGS],
+        "",
+        &[],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    assert_eq!(
+        without_the_clock(stdout(&out).trim_end()),
+        without_the_clock(transcript(TUNE_GUIDE, &triage_label("tune", "(stdout)")).trim_end()),
+        "the page's proposal must be what `jud tune` prints on stdout, but for the time"
+    );
+    let notes: Vec<String> = stderr(&out)
+        .lines()
+        .filter(|line| line.starts_with("jud:"))
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(
+        notes.join("\n"),
+        transcript(TUNE_GUIDE, &triage_label("tune", "(stderr notes)")).trim_end(),
+        "the page's notes must be the `jud:` lines `jud tune` writes on stderr"
+    );
+}
+
+/// `--out` writes a rubric that `jud check` reads and binds to its cases. Run
+/// in a scratch directory holding the example documents and recordings at
+/// their paths, so the page's relative paths are the ones the test runs.
+#[test]
+fn the_tune_guide_shows_the_rubric_tuned_into_a_new_file_checked() {
+    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+    let dir = std::env::temp_dir().join(format!("jud-docs-tune-{}-{n}", std::process::id()));
+    for from in ["examples/jud", TRIAGE_RECORDINGS] {
+        copy_tree(&Path::new(ROOT).join(from), &dir.join(from));
+    }
+
+    let tuned = jud_in(
+        &dir,
+        &[
+            "tune",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--replay",
+            TRIAGE_RECORDINGS,
+            "--out",
+            "triage-tuned.jud",
+        ],
+        "",
+        &[],
+    );
+    assert!(tuned.status.success(), "{}", stderr(&tuned));
+    assert!(
+        stdout(&tuned).is_empty(),
+        "--out writes the file and prints no proposal"
+    );
+
+    let checked = jud_in(&dir, &["check", "triage-tuned.jud", TRIAGE_CASES], "", &[]);
+    assert!(checked.status.success(), "{}", stderr(&checked));
+    assert_eq!(
+        stdout(&checked).trim_end(),
+        transcript(
+            TUNE_GUIDE,
+            &format!(
+                "jud tune --out triage-tuned.jud, then jud check triage-tuned.jud {TRIAGE_CASES}"
+            )
+        )
+        .trim_end()
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// `from`'s files, and its directories' files, copied under `to`.
+fn copy_tree(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let path = entry.unwrap().path();
+        let target = to.join(path.file_name().unwrap());
+        if path.is_dir() {
+            copy_tree(&path, &target);
+        } else {
+            std::fs::copy(&path, &target).unwrap();
+        }
+    }
 }

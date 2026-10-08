@@ -1,6 +1,6 @@
 ---
 description: Check .jud documents with the judgment crate's reader (jud check), binding cases to their rubric and verifying recordings, and explain every refusal
-argument-hint: "[files or directories; default: every .jud under the project]"
+argument-hint: "[files; default: every .jud under the project]"
 ---
 
 Check these `.jud` documents with the crate's reader:
@@ -9,8 +9,9 @@ $ARGUMENTS
 
 If no path is given, find every `*.jud` under the project (skipping build
 output) and check them together, so cases bind to the rubric they name and
-recordings verify against the request they answer. Run
-`${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh check <files>`; the script
+recordings verify against the request they answer. `jud check` reads files and
+refuses a directory, so expand a directory given to the `*.jud` files in it.
+Run `${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh check <files>`; the script
 uses a `jud` on PATH, else builds it from a judgment checkout (the project, or
 `JUDGMENT_DIR`), and otherwise says how to install one.
 

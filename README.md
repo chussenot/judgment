@@ -69,11 +69,19 @@ $ cat event.json | jud triage.jud
 
 `triage.jud` is [`examples/jud/triage.jud`](examples/jud/triage.jud); the
 transcript is what the binary prints for that state, replayed from a
-recording of `jev-1.13.0` with no key and no network (`tests/jud_cli.rs`
-holds it to that). With `TYPESAFE_API_KEY` set the model answers;
+recorded answer with no key and no network (`tests/jud_cli.rs` holds it to
+that). The example recordings are scripted answers labelled `jev-1.13.0`,
+not a model's. With `TYPESAFE_API_KEY` set the model answers;
 `TYPESAFE_BASE_URL` points the same command at any other server that speaks
 the wire. [Your first decision from the command line](docs/start/first-decision-cli.md)
 walks through it.
+
+The loop around a rubric runs from the shell too: `jud record` keeps a
+model's answers to the rubric's labelled cases as recordings, `jud eval`
+grades them against the labels (and exits 3 below an accuracy bar you set),
+and `jud tune` proposes each gate's bar from them. The last two replay the
+recordings (`--replay DIR`) with no key. [Record, replay and test](docs/guides/record-replay-and-test.md#record-a-rubrics-cases-from-the-shell)
+and [Tune thresholds](docs/guides/tune-thresholds.md) walk through it.
 
 ## The Rust API
 

@@ -2,7 +2,7 @@
 title: Contributing
 description: How the repository is worked on; the quality gates and the hooks, tracking work in beads, Conventional Commits, how the documentation is organised (Diátaxis) and checked, what is generated, how the container image is built locally, and how a decision is recorded.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-08
 tags: [judgment, contributing, tooling, documentation, diataxis]
 ---
 
@@ -29,7 +29,7 @@ Issues live in [beads](https://github.com/gastownhall/beads): `bd ready` lists w
 
 ## Commits and releases
 
-Commits are [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/); `cog verify` runs on every message and CI checks a pull request's commits. The `CHANGELOG` is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) under [Semantic Versioning](https://semver.org/spec/v2.0.0.html): a change to what the crate sends or accepts on the wire, to the `.jud` format, or to the `jud` command's exit status, verdict JSON or configuration is listed as breaking. A release is `cog bump --auto` on `main` and never a hand-edited version ([Releasing](releasing.md)).
+Commits are [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/); `cog verify` runs on every message and CI checks a pull request's commits. The `CHANGELOG` is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) under [Semantic Versioning](https://semver.org/spec/v2.0.0.html): a change to what the crate sends or accepts on the wire, to the `.jud` format, or to what the `jud` command's exit statuses, JSON keys, file writes or configuration mean is listed as breaking, and an addition to any of them is listed under Added ([Stability](../reference/stability.md)). A release is `cog bump --auto` on `main` and never a hand-edited version ([Releasing](releasing.md)).
 
 ## The documentation
 
@@ -55,7 +55,7 @@ Generated, never edited by hand:
 | `docs/llms.txt`, `docs/llms-full.txt` | `scripts/gen-llms-txt.sh` | the same, `--check` |
 | `docs/demo.cast` | `scripts/record_demo.sh` (`mise run demo`), from the example recordings | a pre-bump hook re-records it |
 
-Code on the pages is held to the code: every Rust block in a tutorial is an `examples/` file, compared verbatim by `tests/docs_examples.rs`, and every Rust block in a guide is compiled as a documentation test (`src/lib.rs` includes the page under `#[cfg(doctest)]`); every whole `.jud` document on a page is a file under `examples/jud/`, named in an HTML comment before the fence, compared verbatim and read by `jud check` (`mise run jud:check`); every command transcript is reproduced by the same test against the binary, offline. `mise run docs:check` runs the frontmatter, generated-file and link checks (`lychee --offline`); `mise run docs:links` also checks the external links, which a weekly workflow does in CI.
+Code on the pages is held to the code: a Rust block in a tutorial or the README is an `examples/` file between `README:BEGIN` and `README:END` markers, compared verbatim by `tests/docs_examples.rs`, and a Rust block in a guide is compiled as a documentation test (`src/lib.rs` includes the page under `#[cfg(doctest)]`); a whole `.jud` document or configuration file on a page is a file under `examples/`, named in an HTML comment before the fence (`file: PATH` between `<!--` and `-->`) and compared verbatim (a `.jud` one is also read by `jud check`, `mise run jud:check`); a command transcript is held only when it is marked with an HTML comment (`transcript: LABEL` between `<!--` and `-->`), which the same test reproduces from the binary, offline; a step that needs a key or a server stays plain text. `mise run docs:check` runs the frontmatter, generated-file and link checks (`lychee --offline`); `mise run docs:links` also checks the external links, which a weekly workflow does in CI.
 
 ## Decision records
 
