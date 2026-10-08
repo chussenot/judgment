@@ -6,6 +6,18 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `jud completion zsh` completes a subcommand's own arguments. The script
+  clap generates declared the optional `RUBRIC` before the subcommand, so in
+  `jud eval <TAB>` zsh read `eval` as the rubric and offered the subcommand
+  names again; `check`, `lower`, `record`, `eval` and `tune` completed
+  neither their files nor their flags. The first word now offers a
+  subcommand or a file, and each subcommand completes its own arguments.
+  Bash, fish, elvish and PowerShell were not affected. Regenerate the
+  installed script (`jud completion zsh > ...`, or `mise run install` in a
+  checkout) to pick it up.
+
 ## [0.11.0] - 2026-10-08
 
 ### Added
