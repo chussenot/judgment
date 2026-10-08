@@ -73,7 +73,7 @@ project, as the skill says, never beside the rubric.
    7 would make on a copy of the rubric (Read then Write, in a temporary
    directory of its own): the policy values and notes in place, and the
    `tuning` block indented two spaces under `spec:`, never at column 0 as
-   `tune` prints it. `jud.sh check` the copy with the cases: `0 refused`,
+   `tune` prints it, and comments as step 7 says. `jud.sh check` the copy with the cases: `0 refused`,
    same questions fingerprint. Run `eval --replay` on the copy (held-out
    set first, when there is one): that is the *after* the edit would give.
    Show the decision table, the before and after, and the diff of the copy
@@ -86,7 +86,9 @@ project, as the skill says, never beside the rubric.
      ("a guess"), which becomes what `tune` printed. Only a gate whose
      proposal you declined gets a `kept at <value>: <reason>;` prefix before
      its note; a gate proposed at its current value is accepted, not kept. Add the
-     `tuning` block exactly as `tune` printed it. Keep every comment.
+     `tuning` block exactly as `tune` printed it. Keep every comment,
+     except words the run makes false (a header's "hand-written guesses"),
+     which are reworded the way a note's stale part is.
    - `jud.sh check <rubric> <cases>` must say `0 refused`, with the same
      questions fingerprint as before.
    - Run the same `eval` again: that is the *after*. Show each gate's acts,

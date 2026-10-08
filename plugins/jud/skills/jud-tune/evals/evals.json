@@ -321,7 +321,7 @@
       "expectations": [
         "Writes a tuning set and a held-out set whose cases together are the original 48 with no case in both, every queue option in both",
         "Tunes on the tuning set and reports the held-out gate numbers as the ones to expect",
-        "Edits the rubric in place, keeps its comments, and keeps or adjusts queue's bar with a reason instead of taking a bar that covers a handful of cases",
+        "Edits the rubric in place, keeps its comments (rewording only words the tuning makes false), and keeps or adjusts queue's bar with a reason instead of taking a bar that covers a handful of cases",
         "Shows before and after"
       ]
     },
@@ -473,7 +473,7 @@
       "expectations": [
         "Loads the jud-tune skill without being told to",
         "Explains that the wrong-queue tickets come from a wrong label (refund-request) and the billing/account overlap, which a bar cannot fix, and proposes the label fix and a sharper criterion",
-        "If it changes a bar, it changes only the policy (and the tuning block as tune printed it), keeps comments, and shows before and after; it does not change any label or question without asking"
+        "If it changes a bar, it changes only the policy (and the tuning block as tune printed it), keeps comments (rewording only words the tuning makes false), and shows before and after; it does not change any label or question without asking"
       ]
     },
     {

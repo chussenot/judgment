@@ -54,9 +54,9 @@ tool.
    ask for the key here.
 7. **Announce, then record.** This is a gate. The `jud.sh record` Bash
    call carries this line as its description, so the cost shows on the
-   call before it runs. Also write the line as text just before the call,
-   after whichever of steps 4 to 6 ran last (`git diff`, `jud config`).
-   Saying it only in the final reply does not count. The line: `Recording <new> requests (<kept> kept,
+   call before it runs. If you write any text between the last check
+   (`git diff`, `jud config`) and the call, it is this line. Saying it only
+   in the final reply does not count. The line: `Recording <new> requests (<kept> kept,
    <stale> stale and replaced, in <dir>) to <base_url>, model <model>.`
    Leave out the parts that are zero (with nothing kept or stale, the
    parenthesis is just `(in <dir>)`), and add `, one per turn for <n>

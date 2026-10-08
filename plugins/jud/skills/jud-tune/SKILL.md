@@ -208,8 +208,10 @@ A miss that only a proposed bar would defer is triaged on its own merits
 (overlap, ambiguity, the model); the decision table then says the proposal
 defers it.
 
-Each miss has exactly one cause in the whole reply: a miss triaged as a
-wrong label is not counted again as overlap or a coverage gap later on.
+Each miss has exactly one cause in the whole reply, in every sentence,
+summary and next step: a miss triaged as a wrong label is not counted again
+as overlap or a coverage gap later on, and "N misses sit on the border" counts
+only those triaged so, taken from the triage table.
 
 Report the triage as a table (case, question, expected, predicted,
 confidence, cause, proposed action). Propose; do not apply. A label or a
@@ -300,7 +302,15 @@ Decide per gate, and say which you decided:
   is.
 - **A bar that only a relabel would move** was set by a wrong label: keep
   the written bar until the user confirms the relabel, or propose the
-  relabel and the bar together.
+  relabel and the bar together. Mind the direction: a miss on a wrong label
+  can only push a confidence bar up, so it never makes a proposal looser
+  than it should be. When the proposal and the written bar fall on the same
+  table row (same covered, same correct), say they are equivalent on these
+  cases, and keep the written value for that reason, not because of a
+  label. Lead with the reason for the target you rejected ("at 0.95: 0.80,
+  covers 10 of 36").
+- **The reason cell holds the reason**, in one line, never a pointer to
+  another section.
 - **Pass on** the warnings `tune` printed, and only those: `jud: warning:`
   lines, the bar of 0, the strict-gate note (an answer exactly at the bar is read the
   other way) and the Score note (the table reads the most probable level,
@@ -320,8 +330,8 @@ request to accept every proposal. Before applying:
 1. With 40 or more labelled cases, split first (see "Do not grade on what
    you tuned on"), tune on the tuning set, and report the held-out numbers.
 2. Run the accept, keep and re-run rules gate by gate. A Choice or Score
-   bar set by misses you triaged as wrong labels or overlapping outcomes is
-   kept, whatever the user asked: a bar cannot fix either. Say so, and
+   bar raised to exclude misses above the written bar that you triaged as
+   wrong labels or overlapping outcomes is kept, whatever the user asked: a bar cannot fix either. Say so, and
    propose the label fix or the sharper criterion instead.
 
 Then apply every gate you accept, keep the others with a reason, and show
