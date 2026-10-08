@@ -184,8 +184,8 @@ in the judgment repository). The floor holds `accuracy` (every labelled
 case), never accuracy when acted: a deferred miss still counts. The policy is
 never sent, so no bar or fallback can raise it; only a fixed label, a
 sharper question or another model can. When a question falls short, say what
-would raise it, with the arithmetic (relabelling one case gives 42 of 48,
-0.875, still short of 0.9).
+would raise it, with the arithmetic (with 50 of 60 right, relabelling one
+case gives 51 of 60, 0.85, still short of 0.9, which needs 54).
 
 ## Triage every miss
 
@@ -196,10 +196,10 @@ the confidence. Then put it in exactly one row:
 | What you see | Cause | What to do |
 |---|---|---|
 | The state plainly supports the model's answer, or the case's own `note` argues for it | **The label is wrong** | Propose the corrected label to the user, with the reason. Never change a label just because the model disagreed: the model being confident is not evidence, and a low-confidence miss on a label the criteria plainly support is not a label problem. |
-| A Choice or Score answer at or under the `confidence` bar written in the rubric being graded (this comes first, even for a Score miss that swaps adjacent levels) | **The bar's job** | Nothing for the gate: it defers this to its `fallback`. Say so. It is still a wrong answer: it counts in `accuracy` and against any `--min-accuracy` floor, and only a sharper question or another model removes it. |
+| A Choice or Score answer under the `confidence` bar written in the rubric being graded (at the bar too, for a `strict` gate; a non-strict gate acts on an answer exactly at its bar). This comes first, even for a Score miss that swaps adjacent levels | **The bar's job** | Nothing for the gate: it defers this to its `fallback`. Say so. It is still a wrong answer: it counts in `accuracy` and against any `--min-accuracy` floor, and only a sharper question or another model removes it. |
 | A Noul whose probability falls on the label's side of `threshold` (0.52 under a 0.55 threshold, labelled no) | **The bar's job** | Nothing: a threshold never defers, it decides, and here it decides the label. Say so. |
 | Confidence is high, the label is right, and the criteria could be read the model's way | **The question is ambiguous** | Propose a sharper criterion: name the deciding detail. This changes the request, so re-record after. |
-| Confidence is high, the label is right, and the deciding fact is not in the state | **The question asks what the model cannot see** | The fact belongs in the state, computed by the caller, or the question should not be asked (`when`). |
+| Confidence is high, the label is right, and the deciding fact is not in the state | **The question asks what the model cannot see** | The fact belongs in the state, computed by the caller, or the question should not be asked: `when: <state path>` asks it only when that path is present in the state. `when` cannot name another question or depend on its answer. |
 | Several misses swap the same two options or adjacent levels | **The outcomes overlap** | Sharpen both criteria against each other, merge the options, or use fewer levels. Re-record. |
 | The miss's right answer is an outcome few or no other cases label | **A coverage gap** | Add cases for that outcome before reading anything into the bar. |
 | None of the above: the label is right, the question is clear, and the model is confidently wrong once | **The model** | Record it as a known miss. One such case does not move a bar or justify rewriting a question. |
@@ -275,8 +275,12 @@ Decide per gate, and say which you decided:
   acts, and N cases with no miss cannot show the model never needs
   deferring), when it sits on a single case's confidence, when
   the cases are too few to trust, when it was set by misses you triaged as
-  wrong labels or overlapping outcomes, or when it waits on a label the user
-  has not confirmed. Prepend the reason to the gate's note, for example
+  wrong labels or overlapping outcomes *and* the step up defers right
+  answers too, or when it waits on a label the user has not confirmed.
+  Compare the written bar's row with the proposed one: if correct drops,
+  the raise costs right answers to exclude misses a bar cannot fix, so
+  keep it. If correct stays the same and only covered falls, the raise
+  defers misses and nothing else: accept it, whatever caused the misses. Prepend the reason to the gate's note, for example
   `kept at 0.30: tune proposed 0.00 on 6 cases, too few to drop the bar;`
   followed by what the note said before. The reason must agree with what
   you measured: put a bar on a label only if the what-if copy moved it at
@@ -292,7 +296,8 @@ Decide per gate, and say which you decided:
   the next lower row reaches the target once that case counts as right;
   read the row, or measure with a what-if copy. When the bar does not move,
   read the next lower row (the one just below the proposed bar: 0.65 under
-  0.70). Its misses are covered minus correct. Name those whose confidence
+  0.70), in the run you are reporting: in a what-if run the relabelled case
+  counts as right. Its misses are covered minus correct. Name those whose confidence
   lies between that row's bar and the proposed one (case, expected,
   predicted, confidence): they are what the step down adds. Then say how
   many more right answers the row needs to reach the target
@@ -329,10 +334,13 @@ request to accept every proposal. Before applying:
 
 1. With 40 or more labelled cases, split first (see "Do not grade on what
    you tuned on"), tune on the tuning set, and report the held-out numbers.
-2. Run the accept, keep and re-run rules gate by gate. A Choice or Score
-   bar raised to exclude misses above the written bar that you triaged as
-   wrong labels or overlapping outcomes is kept, whatever the user asked: a bar cannot fix either. Say so, and
-   propose the label fix or the sharper criterion instead.
+2. Run the accept, keep and re-run rules gate by gate, and run the re-run
+   and the what-if even for a gate you expect to keep: the reason quotes
+   them. A Choice or Score bar raised to exclude confident misses you
+   triaged as wrong labels or overlapping outcomes, at the cost of right
+   answers, is kept, whatever the user asked: a bar cannot fix either. Say
+   so, and propose the label fix or the sharper criterion instead. A raise
+   that defers only misses is accepted.
 
 Then apply every gate you accept, keep the others with a reason, and show
 the before and after. A label or a question is never applied with the bars; propose it
@@ -360,7 +368,8 @@ wants a separate file.
    spaces under `spec:`, values unchanged. `cases`, `model`, `server`,
    `tuned_at` and `labelled` describe the run and are never written by hand.
    If you kept some gates, the block stays: it records the run the other
-   gates came from.
+   gates came from. If no gate's value moves, write no `tuning` block and
+   leave comments alone; the reasons go in the notes.
 3. Check: `jud.sh check RUBRIC CASES` must say `0 refused`. The questions
    fingerprint must be the one it was before your edit: you changed only
    the policy.
@@ -458,6 +467,10 @@ case), and counts for every question. Items 1, 6
    changed, say so.
 8. The next steps, ranked, each with its cost: free (labels, bars),
    calls for new cases, or a full re-recording (questions).
+
+Quote a fingerprint in full, as `jud` printed it, or as its first 12 hex
+digits followed by `…`; never write an ending you did not copy. A sentence
+that sums up counts holds for every count listed.
 
 Before sending it, check every number against the output it came from: a
 count adds up to its total, a width is `high - low` from the JSON, and a

@@ -29,7 +29,9 @@ project, as the skill says, never beside the rubric.
 2. **Hold out** whenever the cases document has 40 or more cases (count
    before splitting: 48 gives 36 to tune and 12 held out). Skip it only
    for a what-if question about one bar, and then say the numbers are
-   tuned on all cases.
+   tuned on all cases. That skip covers the what-if runs only: an edit you
+   build in step 6 is tuned on the tuning set, or you say that `apply`
+   would re-tune on it and may propose other bars.
    - With `apply`, keep the split: without `holdout` in the arguments, say
      that the `tuning` block will name a tuning set the project does not
      keep, and recommend `holdout` so it does.
@@ -68,7 +70,8 @@ project, as the skill says, never beside the rubric.
      label fixed, at the same `--target-accuracy` and `--min-covered` as each
      proposal you weigh. Report what was measured, per target. When the bar
      does not move, name the misses that hold the next lower row under the
-     target, and what would move it.
+     target in the what-if run's own table (the relabelled case now counts
+     as right), and what would move it.
 6. **Without `apply`**, change no file in the project. Build the edit step
    7 would make on a copy of the rubric (Read then Write, in a temporary
    directory of its own): the policy values and notes in place, and the
@@ -77,7 +80,9 @@ project, as the skill says, never beside the rubric.
    same questions fingerprint. Run `eval --replay` on the copy (held-out
    set first, when there is one): that is the *after* the edit would give.
    Show the decision table, the before and after, and the diff of the copy
-   against the rubric, with the comments around it as context. Ask whether
+   against the rubric, made with one Bash call, `git diff --no-index --
+   <rubric> <copy>` (it exits 1 when the files differ, which is expected),
+   pasted as it printed. Ask whether
    to apply it.
 7. **With `apply`:**
    - Edit the rubric in place as "Applying a proposal" says. Change the
