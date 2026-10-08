@@ -9,7 +9,8 @@
 //!
 //! Exit status: 0 on verdicts; 1 when the backend call failed; 2 when the
 //! invocation, a file, the state or the configuration is wrong, which is
-//! fixable before any call is made.
+//! fixable before any call is made; 3 when `jud eval` ran and a
+//! `--min-accuracy` gate was not met.
 
 use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
@@ -17,9 +18,14 @@ use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueHint};
 
+mod backend;
+mod batch;
 mod config;
+mod eval;
+mod record;
 mod run;
 mod tools;
+mod tune;
 
 type Fallible<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -28,6 +34,8 @@ type Fallible<T> = Result<T, Box<dyn std::error::Error>>;
 const EXIT_USAGE: u8 = 2;
 /// The backend was asked and the call failed.
 const EXIT_BACKEND: u8 = 1;
+/// `jud eval` ran, and a `--min-accuracy` gate was not met.
+const EXIT_UNMET: u8 = 3;
 
 const EXAMPLES: &str = "\
 Examples:
@@ -36,7 +44,8 @@ Examples:
   yq -o=json '.spec' resource.yaml | jud rubric.jud
 
 Exit status: 0 verdicts printed; 1 the backend call failed; 2 the
-invocation, a file, the state or the configuration is wrong.";
+invocation, a file, the state or the configuration is wrong; 3 `jud eval`
+ran and a --min-accuracy gate was not met.";
 
 /// Evaluate JSON input against a .jud Rubric and print the verdicts.
 ///
@@ -89,6 +98,12 @@ enum Command {
     },
     /// Print the request a rubric lowers to, for a state or for every case.
     Lower(tools::Lower),
+    /// Answer every case once and keep the answers as recordings.
+    Record(record::Record),
+    /// Grade a model's answers against the labelled cases.
+    Eval(eval::Eval),
+    /// Propose each gate's bar from recorded answers.
+    Tune(tune::Tune),
     /// Print a shell completion script for jud's commands and flags.
     ///
     /// Generated from the same command tree clap parses, so it cannot drift
@@ -107,6 +122,9 @@ fn main() -> ExitCode {
         (Some(Command::Config), _) => report(config::show(), EXIT_USAGE),
         (Some(Command::Check { files }), _) => report(Ok(tools::check(&files)), EXIT_USAGE),
         (Some(Command::Lower(args)), _) => report(tools::lower(&args), EXIT_USAGE),
+        (Some(Command::Record(args)), _) => record::run(&args),
+        (Some(Command::Eval(args)), _) => eval::run(&args),
+        (Some(Command::Tune(args)), _) => tune::run(&args),
         (Some(Command::Completion { shell }), _) => report(completion(shell), EXIT_USAGE),
         (None, Some(path)) => run::run(&path, replay.as_deref()),
         // `arg_required_else_help` has already printed the help and exited.

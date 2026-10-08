@@ -155,6 +155,19 @@ required-features = ["cli"]
 name = "docs_examples"
 required-features = ["cli"]
 
+# `jud record`, `eval` and `tune` (decision 0021).
+[[test]]
+name = "jud_record"
+required-features = ["cli"]
+
+[[test]]
+name = "jud_eval"
+required-features = ["cli"]
+
+[[test]]
+name = "jud_tune"
+required-features = ["cli"]
+
 # The `.jud` format against its JSON Schemas and its example documents.
 [[test]]
 name = "jud"
