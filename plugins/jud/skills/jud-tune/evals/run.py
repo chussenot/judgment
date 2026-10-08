@@ -318,7 +318,8 @@ def run_one(ev, out_dir, model):
     # A denied `jud` command means a command page taught a form the user's
     # permission rules do not match (a shell variable, a `cd` first). Other
     # denials (a guessed path outside the workspace) are noted, not failed.
-    jud_denied = [d for d in denials if "jud" in json.dumps(d.get("tool_input", {}))]
+    runs_jud = re.compile(r"jud\.sh\b|(^|[;&|(]\s*)jud\s")
+    jud_denied = [d for d in denials if runs_jud.search(str(d.get("tool_input", {}).get("command", "")))]
     check("no jud command denied", not jud_denied, json.dumps(jud_denied)[:300])
 
     summary = {"denials": [json.dumps(d.get("tool_input", {}))[:200] for d in denials], "id": eid, "passed": sum(c["ok"] for c in checks), "total": len(checks),

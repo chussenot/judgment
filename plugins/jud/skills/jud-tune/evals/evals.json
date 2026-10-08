@@ -356,7 +356,7 @@
       },
       "expectations": [
         "Explains that the recordings no longer answer the rubric because a question changed (the queue criteria), not that something is broken",
-        "Says re-recording costs 48 calls and offers /jud:record with --refresh (or record into a new directory)",
+        "Says re-recording costs 48 calls and offers /jud:record into the same directory (which replaces the stale files; --refresh is not needed) or into a new one",
         "Does not edit any recording, does not revert the rubric, and spends no call"
       ]
     },
