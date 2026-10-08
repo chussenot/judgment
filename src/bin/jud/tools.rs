@@ -65,7 +65,7 @@ fn load(paths: &[String]) -> (Vec<Loaded>, usize) {
         let text = match std::fs::read_to_string(path) {
             Ok(text) => text,
             Err(e) => {
-                println!("error     {path}: {e}");
+                crate::out::say!("error     {path}: {e}");
                 errors += 1;
                 continue;
             }
@@ -77,7 +77,7 @@ fn load(paths: &[String]) -> (Vec<Loaded>, usize) {
                 document,
             }),
             Err(e) => {
-                println!("error     {path}: {e}{}", hint(&e));
+                crate::out::say!("error     {path}: {e}{}", hint(&e));
                 errors += 1;
             }
         }
@@ -106,7 +106,7 @@ pub(crate) fn check(paths: &[String]) -> bool {
                     match cases.bind(rubric) {
                         Ok(()) => bound.push((cases, rubric)),
                         Err(e) => {
-                            println!("error     {}: {e}", l.path);
+                            crate::out::say!("error     {}: {e}", l.path);
                             errors += 1;
                         }
                     }
@@ -121,7 +121,7 @@ pub(crate) fn check(paths: &[String]) -> bool {
         }
     }
     let documents = loaded.len() + errors;
-    println!("{documents} documents, {errors} refused");
+    crate::out::say!("{documents} documents, {errors} refused");
     errors == 0
 }
 
@@ -146,22 +146,22 @@ fn print_rubric(l: &Loaded, rubric: &Rubric) {
     } else {
         "untuned"
     };
-    println!(
+    crate::out::say!(
         "rubric    {}: name {}, {}, {} questions, {gates} gates ({tuned})",
         l.path,
         rubric.name,
         l.declared,
         rubric.questions.len()
     );
-    println!("          questions {}", rubric.fingerprint());
-    println!("          policy    {}", rubric.policy_fingerprint());
+    crate::out::say!("          questions {}", rubric.fingerprint());
+    crate::out::say!("          policy    {}", rubric.policy_fingerprint());
     if let Some(cases) = rubric
         .policy
         .tuning
         .as_ref()
         .and_then(|t| t.cases.as_deref())
     {
-        println!("          tuned on  {cases}");
+        crate::out::say!("          tuned on  {cases}");
     }
 }
 
@@ -171,14 +171,14 @@ fn print_cases(l: &Loaded, cases: &Cases, rubric_path: Option<&str>) {
         (None, Some(name)) => format!("rubric `{name}` not among the files, labels unchecked"),
         (None, None) => "no rubric given, labels unchecked".to_owned(),
     };
-    println!(
+    crate::out::say!(
         "cases     {}: name {}, {}, {} cases, {bound_to}",
         l.path,
         cases.name,
         l.declared,
         cases.cases.len()
     );
-    println!("          cases     {}", cases.fingerprint());
+    crate::out::say!("          cases     {}", cases.fingerprint());
 }
 
 /// The state and the request a recording's `case` names among the bound
@@ -212,20 +212,20 @@ fn print_recording(l: &Loaded, recording: &Recording, bound: &[(&Cases, &Rubric)
         l.path, recording.case, l.declared, recording.response.model
     );
     let Some(found) = find_request(bound, &recording.case) else {
-        println!("{line}, no bound case of that name, answers unchecked");
+        crate::out::say!("{line}, no bound case of that name, answers unchecked");
         return true;
     };
     let (state, questions) = match found {
         Ok(found) => found,
         Err(e) => {
-            println!("{line}");
-            println!("error     {}: the case's request: {e}", l.path);
+            crate::out::say!("{line}");
+            crate::out::say!("error     {}: the case's request: {e}", l.path);
             return false;
         }
     };
     if let Err(e) = recording.response.verify(&questions) {
-        println!("{line}");
-        println!("error     {}: against the request: {e}", l.path);
+        crate::out::say!("{line}");
+        crate::out::say!("error     {}: against the request: {e}", l.path);
         return false;
     }
     let expected = canonical::request_fingerprint(&state, &questions);
@@ -236,7 +236,7 @@ fn print_recording(l: &Loaded, recording: &Recording, bound: &[(&Cases, &Rubric)
     };
     line.push_str(", verified, ");
     line.push_str(&verdict);
-    println!("{line}");
+    crate::out::say!("{line}");
     true
 }
 
@@ -290,17 +290,17 @@ pub(crate) fn lower(args: &Lower) -> Fallible<bool> {
         (Some(cases), _) => {
             for (i, case) in cases.cases.iter().enumerate() {
                 let questions = case.request(&rubric)?;
-                println!("# {}", case.name(i));
-                println!("{}", serde_json::to_string_pretty(&questions)?);
+                crate::out::say!("# {}", case.name(i));
+                crate::out::say!("{}", serde_json::to_string_pretty(&questions)?);
             }
         }
         (None, Some(state)) => {
             let questions = rubric.lower(&state, &options)?;
-            println!("{}", serde_json::to_string_pretty(&questions)?);
+            crate::out::say!("{}", serde_json::to_string_pretty(&questions)?);
         }
         (None, None) => {
             let questions = rubric.lower(&Value::Object(serde_json::Map::new()), &options)?;
-            println!("{}", serde_json::to_string_pretty(&questions)?);
+            crate::out::say!("{}", serde_json::to_string_pretty(&questions)?);
         }
     }
     Ok(true)

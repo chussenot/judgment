@@ -18,7 +18,7 @@ pub(crate) fn line(line: &str) {
     let _ = writeln!(err, "{line}");
 }
 
-/// `note!("...", args)`: [`line`] with `format!` arguments.
+/// `note!("...", args)`: [`line()`] with `format!` arguments.
 macro_rules! note {
     ($($arg:tt)*) => {
         $crate::out::line(&format!($($arg)*))
@@ -54,6 +54,33 @@ pub(crate) fn plain(text: &str) -> String {
     }
     shown
 }
+
+/// Write one line to stdout for a command whose output is a stream of lines
+/// (`jud check`, `jud lower`, `jud config`). A reader that closes early is not
+/// an error, as in [`result`]; any other failure is said once on stderr and
+/// the output stops, because the lines that follow would be lost the same way.
+pub(crate) fn stream(text: &str) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static BROKEN: AtomicBool = AtomicBool::new(false);
+    if BROKEN.load(Ordering::Relaxed) {
+        return;
+    }
+    let mut out = std::io::stdout().lock();
+    if let Err(e) = writeln!(out, "{text}") {
+        BROKEN.store(true, Ordering::Relaxed);
+        if e.kind() != ErrorKind::BrokenPipe {
+            line(&format!("jud: cannot write to stdout: {e}"));
+        }
+    }
+}
+
+/// `say!("...", args)`: [`stream`] with `format!` arguments.
+macro_rules! say {
+    ($($arg:tt)*) => {
+        $crate::out::stream(&format!($($arg)*))
+    };
+}
+pub(crate) use say;
 
 #[cfg(test)]
 mod tests {

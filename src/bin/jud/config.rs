@@ -150,6 +150,6 @@ impl Resolved {
 /// `jud config`: the resolved backend as JSON, the key never shown.
 pub(crate) fn show() -> Fallible<bool> {
     let resolved = resolve()?;
-    println!("{}", serde_json::to_string_pretty(&resolved)?);
+    crate::out::say!("{}", serde_json::to_string_pretty(&resolved)?);
     Ok(true)
 }

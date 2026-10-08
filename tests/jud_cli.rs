@@ -686,3 +686,41 @@ fn the_readme_shows_what_the_binary_prints() {
         "README.md's transcript must be what `jud` prints for that state; regenerate it from the binary"
     );
 }
+
+/// Run `jud ARGS` with its stdout pipe closed at once, as `jud ... | true`
+/// does, and give the status and what it wrote to stderr.
+fn with_stdout_closed(args: &[&str]) -> (Option<i32>, String) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_jud"))
+        .args(args)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .env_remove("TYPESAFE_API_KEY")
+        .env_remove("TYPESAFE_BASE_URL")
+        .env_remove("JUD_REPLAY")
+        .env("XDG_CONFIG_HOME", config_home())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    drop(child.stdout.take());
+    let out = child.wait_with_output().unwrap();
+    (out.status.code(), stderr(&out))
+}
+
+/// `check`, `lower` and `config` print their result a line at a time; a
+/// reader that has gone is not an error and never a panic (status 101), and
+/// the status still says what the command found.
+#[test]
+fn a_closed_stdout_never_panics_the_reader_commands() {
+    let state = r#"{"message": "x"}"#;
+    for (args, status) in [
+        (vec!["check", RUBRIC, CASES], 0),
+        (vec!["check", "Cargo.toml"], 2),
+        (vec!["lower", RUBRIC, "--state", state], 0),
+        (vec!["config"], 0),
+    ] {
+        let (code, err) = with_stdout_closed(&args);
+        assert_eq!(code, Some(status), "jud {args:?}: {err}");
+        assert!(!err.contains("panicked"), "jud {args:?}: {err}");
+    }
+}
