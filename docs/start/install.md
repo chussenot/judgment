@@ -99,13 +99,13 @@ Regenerate the file after upgrading: a script written by an older binary complet
 
 ```toml
 [dependencies]
-judgment = "0.10"
+judgment = "0.11"
 ```
 
 Pin the minor: the crate is 0.x and a minor release may break ([Stability](../reference/stability.md)). The `http` feature, on by default, is the client; `jud` adds the `.jud` format; `openapi` the vendored OpenAPI document; `cli` the binary. [The crate](../reference/crate.md#features) says what each pulls in.
 
 ```toml
-judgment = { version = "0.10", features = ["jud"] }
+judgment = { version = "0.11", features = ["jud"] }
 ```
 
 ## Next

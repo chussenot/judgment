@@ -133,13 +133,13 @@ Regenerate the file after upgrading: a script written by an older binary complet
 
 ```toml
 [dependencies]
-judgment = "0.10"
+judgment = "0.11"
 ```
 
 Pin the minor: the crate is 0.x and a minor release may break ([Stability](../reference/stability.md)). The `http` feature, on by default, is the client; `jud` adds the `.jud` format; `openapi` the vendored OpenAPI document; `cli` the binary. [The crate](../reference/crate.md#features) says what each pulls in.
 
 ```toml
-judgment = { version = "0.10", features = ["jud"] }
+judgment = { version = "0.11", features = ["jud"] }
 ```
 
 ## Next
@@ -273,7 +273,7 @@ cargo new first-decision && cd first-decision
 
 ```toml
 [dependencies]
-judgment = { version = "0.10", features = ["jud"] }
+judgment = { version = "0.11", features = ["jud"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt"] }
 ```
@@ -2746,9 +2746,9 @@ Without `http` the crate is the questions, the answers, `Fake`, `Recorder`, `Rep
 
 ```toml
 [dependencies]
-judgment = "0.10"                                   # the client; pin the minor, 0.x may break between minors
-judgment = { version = "0.10", features = ["jud"] } # with the .jud format
-judgment = { version = "0.10", default-features = false }   # no HTTP client
+judgment = "0.11"                                   # the client; pin the minor, 0.x may break between minors
+judgment = { version = "0.11", features = ["jud"] } # with the .jud format
+judgment = { version = "0.11", default-features = false }   # no HTTP client
 ```
 
 ## Modules

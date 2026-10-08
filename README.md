@@ -31,7 +31,7 @@ docker run -i --rm -v "$PWD:/work" ghcr.io/chussenot/jud triage.jud < event.json
 
 ```toml
 [dependencies]
-judgment = "0.10"
+judgment = "0.11"
 ```
 
 [Install](docs/start/install.md) has every route, with checksums and
