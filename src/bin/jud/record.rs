@@ -101,24 +101,21 @@ struct Session<'a> {
 
 fn record(args: &Record) -> Result<(), Failure> {
     let loaded = batch::load(&args.rubric, &args.cases)?;
-    let units = batch::units(&loaded.cases);
+    // Every request is lowered, and every label of a conversation's turn
+    // checked, before the first call (`batch::plan`): a request that does not
+    // lower must be found before case 1 is paid for, not after case 4.
+    let shared = batch::plan(&loaded)?;
+    let units: Vec<Unit> = shared.iter().map(|p| p.unit.clone()).collect();
     let names = recording_names(&units, &args.cases)?;
-    // Every request is lowered before the first call: the cases were bound to
-    // the rubric at their full state, but a turn of a conversation is a
-    // shorter state, and a request that does not lower for it must be found
-    // before case 1 is paid for, not after case 4.
-    let planned = names
+    let planned: Vec<Planned> = names
         .into_iter()
-        .zip(units)
-        .map(|(name, unit)| {
-            let questions = batch::request(&loaded.rubric, &unit)?;
-            Ok(Planned {
-                name,
-                unit,
-                questions,
-            })
+        .zip(shared)
+        .map(|(name, p)| Planned {
+            name,
+            unit: p.unit,
+            questions: p.questions,
         })
-        .collect::<Result<Vec<_>, Failure>>()?;
+        .collect();
     let backend = Backend::open(None)?;
     let known = prepare_directory(&args.out, args.refresh)?;
     let mut session = Session {
@@ -208,7 +205,7 @@ impl Session<'_> {
         let mut recording = Recording::new(planned.name.clone(), response, elapsed_ms);
         recording.fingerprint = Some(canonical::request_fingerprint(state, &planned.questions));
         recording.rubric = Some(self.rubric.to_owned());
-        recording.server = self.backend.server().map(str::to_owned);
+        recording.server = self.backend.server();
         recording.recorded_at = Some(now_rfc3339());
         let text = render(&recording, &planned.questions)?;
         write_atomically(self.out, &planned.name, &text).map_err(|e| {

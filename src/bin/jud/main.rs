@@ -22,7 +22,10 @@ mod backend;
 mod batch;
 mod config;
 mod eval;
+mod fsutil;
+mod out;
 mod record;
+mod recordings;
 mod run;
 mod tools;
 mod tune;
@@ -152,7 +155,7 @@ fn report(result: Fallible<bool>, code: u8) -> ExitCode {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(code),
         Err(e) => {
-            eprintln!("jud: {e}");
+            out::note!("jud: {e}");
             ExitCode::from(code)
         }
     }

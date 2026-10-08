@@ -87,9 +87,9 @@ fn tune(args: &Tune) -> Result<(), Failure> {
             args.rubric
         )));
     }
-    let units = batch::units(&loaded.cases);
+    let planned = batch::plan(&loaded)?;
     let backend = Backend::open(Some(args.replay.as_path()))?;
-    let answered = batch::answer_all(&backend, &loaded, units)?;
+    let answered = batch::answer_all(&backend, &loaded, planned)?;
     let model = single_model(&answered)?;
 
     let settings = Settings {

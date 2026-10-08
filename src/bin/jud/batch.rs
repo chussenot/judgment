@@ -46,6 +46,9 @@ pub(crate) struct Unit {
     /// The case as asked: for a turn, the state cut after that turn and the
     /// labels resolved at it.
     pub case: Case,
+    /// True for one turn of a conversation, a state cut short of the
+    /// document's.
+    pub by_turn: bool,
 }
 
 impl Unit {
@@ -74,6 +77,7 @@ pub(crate) fn units(cases: &Cases) -> Vec<Unit> {
                 name,
                 index,
                 case: case.clone(),
+                by_turn: false,
             });
         } else {
             for turn in turns {
@@ -81,6 +85,7 @@ pub(crate) fn units(cases: &Cases) -> Vec<Unit> {
                     name: format!("{name}-turn-{}", turn.index),
                     index,
                     case: turn.case,
+                    by_turn: true,
                 });
             }
         }
@@ -99,22 +104,71 @@ pub(crate) struct Answered {
     pub judgments: Vec<(String, Judgment)>,
 }
 
+/// A unit with its request lowered: what [`plan`] hands to the commands.
+pub(crate) struct Planned {
+    pub unit: Unit,
+    pub questions: Questions,
+}
+
 /// Lower a unit's request, a usage failure when the rubric does not lower
-/// for it (bind has already checked the labels, not every state).
+/// for it or asks nothing: a state that satisfies none of the rubric's
+/// `when` declarations lowers to an empty request, which the wire refuses
+/// (a request needs at least one question), so a call for it can only fail.
 pub(crate) fn request(rubric: &Rubric, unit: &Unit) -> Result<Questions, Failure> {
-    unit.case.request(rubric).map_err(|e| {
+    let questions = unit.case.request(rubric).map_err(|e| {
         Failure::Usage(format!(
             "the rubric does not lower for case {}: {e}",
             unit.name
         ))
-    })
+    })?;
+    if questions.is_empty() {
+        return Err(Failure::Usage(format!(
+            "the rubric asks no question for case {}: every `when` fails for its state, so there is nothing to ask",
+            unit.name
+        )));
+    }
+    Ok(questions)
 }
 
-/// Answer and grade one unit through `backend`.
-pub(crate) fn answer(backend: &Backend, loaded: &Loaded, unit: Unit) -> Result<Answered, Failure> {
-    let questions = request(&loaded.rubric, &unit)?;
-    let response = backend.answer(&unit.case.state, &questions)?;
-    grade(loaded, unit, questions, response)
+/// Everything about the cases that can be known before a call is made, so
+/// that a document problem is a usage failure (status 2) found before any
+/// call is paid for, never a backend failure after some were: every unit's
+/// request lowers and asks something, and every label of a conversation's
+/// turn names a question that turn asks. `Cases::bind` has checked the
+/// labels at the whole state; a turn is a shorter state, where a `when` can
+/// fail that held at the end.
+pub(crate) fn plan(loaded: &Loaded) -> Result<Vec<Planned>, Failure> {
+    let units = units(&loaded.cases);
+    let mut planned = Vec::with_capacity(units.len());
+    for unit in units {
+        let questions = request(&loaded.rubric, &unit)?;
+        planned.push(Planned { unit, questions });
+    }
+    let turns: Vec<Case> = planned
+        .iter()
+        .filter(|p| p.unit.by_turn)
+        .map(|p| p.unit.case.clone())
+        .collect();
+    if !turns.is_empty() {
+        let mut cut = loaded.cases.clone();
+        cut.cases = turns;
+        cut.bind(&loaded.rubric).map_err(|e| {
+            Failure::Usage(format!(
+                "a conversation's label does not fit one of its turns: {e}"
+            ))
+        })?;
+    }
+    Ok(planned)
+}
+
+/// Answer and grade one planned unit through `backend`.
+pub(crate) fn answer(
+    backend: &Backend,
+    loaded: &Loaded,
+    planned: Planned,
+) -> Result<Answered, Failure> {
+    let response = backend.answer(&planned.unit.case.state, &planned.questions)?;
+    grade(loaded, planned.unit, planned.questions, response)
 }
 
 /// Read a response through the policy and against the labels.
@@ -146,23 +200,28 @@ pub(crate) fn grade(
     })
 }
 
-/// Answer every unit, in order. Under a replay a missing recording is not
-/// fatal until every unit has been tried, so one run names every case that
-/// has none; against a server the first failure stops the run, because the
-/// next call would fail the same way and cost the same.
+/// Answer every planned unit, in order. Under a replay a missing recording
+/// is not fatal until every unit has been tried, so one run names every case
+/// that has none; any other failure stops the run, naming the case, because
+/// against a server the next call would fail the same way and cost the same.
 pub(crate) fn answer_all(
     backend: &Backend,
     loaded: &Loaded,
-    units: Vec<Unit>,
+    planned: Vec<Planned>,
 ) -> Result<Vec<Answered>, Failure> {
-    let mut answered = Vec::with_capacity(units.len());
+    let mut answered = Vec::with_capacity(planned.len());
     let mut missing: Vec<String> = Vec::new();
-    for unit in units {
-        let name = unit.name.clone();
-        match answer(backend, loaded, unit) {
+    let total = planned.len();
+    for (position, one) in planned.into_iter().enumerate() {
+        let name = one.unit.name.clone();
+        match answer(backend, loaded, one) {
             Ok(a) => answered.push(a),
-            Err(Failure::Backend(m)) if backend.is_replay() && m.contains("no recording") => {
-                missing.push(name);
+            Err(Failure::Missing(_)) => missing.push(name),
+            Err(Failure::Backend(m)) => {
+                return Err(Failure::Backend(format!(
+                    "case {name} ({} of {total}): {m}",
+                    position + 1
+                )));
             }
             Err(e) => return Err(e),
         }
@@ -170,11 +229,34 @@ pub(crate) fn answer_all(
     if missing.is_empty() {
         Ok(answered)
     } else {
-        Err(Failure::Backend(format!(
+        Err(Failure::Missing(format!(
             "no recording answers {} case{}: {}; record them first with `jud record`",
             missing.len(),
             if missing.len() == 1 { "" } else { "s" },
             missing.join(", ")
         )))
     }
+}
+
+/// The labelled judgments of every question, in the rubric's order: what a
+/// per-question report or sweep reads. A question nobody labelled has an
+/// empty list.
+pub(crate) fn by_question(
+    rubric: &Rubric,
+    answered: &[Answered],
+) -> IndexMap<String, Vec<Judgment>> {
+    let mut grouped: IndexMap<String, Vec<Judgment>> = rubric
+        .questions
+        .keys()
+        .map(|id| (id.clone(), Vec::new()))
+        .collect();
+    for a in answered {
+        for (id, judgment) in &a.judgments {
+            grouped
+                .entry(id.clone())
+                .or_default()
+                .push(judgment.clone());
+        }
+    }
+    grouped
 }

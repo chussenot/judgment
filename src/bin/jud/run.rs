@@ -15,10 +15,10 @@ use crate::tools;
 
 pub(crate) fn run(path: &str, replay: Option<&Path>) -> ExitCode {
     match evaluate(path, replay) {
-        Ok(verdicts) => {
-            println!("{verdicts}");
-            ExitCode::SUCCESS
-        }
+        Ok(verdicts) => match crate::out::result(&format!("{verdicts}\n")) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(failure) => failure.report(),
+        },
         Err(failure) => failure.report(),
     }
 }

@@ -420,13 +420,21 @@ impl Replay {
             context: dir.display().to_string(),
             source,
         })?;
+        let mut paths = Vec::new();
         for entry in entries {
-            let path = entry
-                .map_err(|source| Error::Io {
-                    context: dir.display().to_string(),
-                    source,
-                })?
-                .path();
+            paths.push(
+                entry
+                    .map_err(|source| Error::Io {
+                        context: dir.display().to_string(),
+                        source,
+                    })?
+                    .path(),
+            );
+        }
+        // In name order, so that when two files record one request the one
+        // that answers does not depend on the file system's enumeration.
+        paths.sort();
+        for path in paths {
             let regular = path
                 .symlink_metadata()
                 .is_ok_and(|m| m.file_type().is_file());
@@ -437,7 +445,12 @@ impl Replay {
             let recording = match extension {
                 Some("json") => {
                     let text = read(&path)?;
-                    serde_json::from_str::<Recording>(&text)?
+                    serde_json::from_str::<Recording>(&text).map_err(|source| {
+                        Error::InvalidRecording {
+                            path: path.display().to_string(),
+                            reason: source.to_string(),
+                        }
+                    })?
                 }
                 #[cfg(feature = "jud")]
                 Some(crate::jud::EXTENSION) => {

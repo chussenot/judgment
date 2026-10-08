@@ -555,8 +555,8 @@ fn evaluate(args: &Eval) -> Result<Report, Failure> {
     let loaded = batch::load(&args.rubric, &args.cases)?;
     check_bars(&loaded.rubric, &args.min_accuracy, &args.rubric)?;
     let backend = Backend::open(args.replay.as_deref())?;
-    let units = batch::units(&loaded.cases);
-    let answered = batch::answer_all(&backend, &loaded, units)?;
+    let planned = batch::plan(&loaded)?;
+    let answered = batch::answer_all(&backend, &loaded, planned)?;
     Ok(Report::build(&loaded, &answered, &args.min_accuracy))
 }
 

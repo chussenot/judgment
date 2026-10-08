@@ -192,8 +192,8 @@ pub enum Error {
     #[error("no recording for request {0}; record it first")]
     NoRecording(String),
     /// A file in a recordings directory that is not a recording: a `.jud`
-    /// document of another kind, or one that does not parse. A `.json` file
-    /// that does not parse is [`Error::Decode`]. Fix or move the file.
+    /// document of another kind, or a `.jud` or `.json` file that does not
+    /// parse. Fix or move the file.
     #[error("not a recording, {path}: {reason}")]
     InvalidRecording {
         /// The file.
