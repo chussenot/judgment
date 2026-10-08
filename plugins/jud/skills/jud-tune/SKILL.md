@@ -368,8 +368,10 @@ wants a separate file.
    spaces under `spec:`, values unchanged. `cases`, `model`, `server`,
    `tuned_at` and `labelled` describe the run and are never written by hand.
    If you kept some gates, the block stays: it records the run the other
-   gates came from. If no gate's value moves, write no `tuning` block and
-   leave comments alone; the reasons go in the notes.
+   gates came from. Replace the block whenever you accept at least one
+   proposal, even one equal to the written value: the accepted bars now
+   rest on this run. Write no new block only when you keep every gate; then
+   leave the existing block and the comments alone.
 3. Check: `jud.sh check RUBRIC CASES` must say `0 refused`. The questions
    fingerprint must be the one it was before your edit: you changed only
    the policy.

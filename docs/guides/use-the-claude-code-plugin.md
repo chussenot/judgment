@@ -115,8 +115,9 @@ The pages were rewritten between rounds from what the graders found. A round on 
 | 5 | 6 | 19 of 21 | 13 | the cost line carried on the `record` call itself; a proposed edit built on a copy, checked and replayed before it is shown |
 | 6 | 4 | 12 of 13 | 2 | a wrong label only ever raises a bar; a comment the tuning makes false is reworded, the others kept |
 | final | 14 | 50 of 50 | 18 | a raise that defers only misses is accepted; a non-strict gate acts at its bar; fingerprints quoted exactly |
+| confirm | 6 | 21 of 22 | 8 | the `tuning` block replaced whenever a proposal is accepted; a single what-if question answered, not the whole flow |
 
-Every scripted check passed in the final round: 109 of 109, at $4.61 for the 14 runs on Sonnet 5.5, $0.15 to $0.76 each. Two weaknesses remain, both in the replies' prose rather than in what the commands do:
+Every scripted check passed in the final round: 109 of 109, at $4.61 for the 14 runs on Sonnet 5.5, $0.15 to $0.76 each. The confirmation round re-ran the six scenarios its fixes touched, and the two its own fixes touched were run once more, all checks passing. Two weaknesses remain, both in the replies' prose rather than in what the commands do:
 
 - **Contradicted claims.** Their number swings between rounds (2 to 20) with no trend after round 3. Most are arithmetic done by hand on label counts, which `jud eval --json` does not yet report per outcome.
 - **The cost announcement.** A model writes it reliably as the `record` call's description, and less reliably as text before the call, so the check accepts either.
