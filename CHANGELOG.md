@@ -6,6 +6,38 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `jud record`, `jud eval` and `jud tune` run a rubric over its labelled
+  cases from the shell (decision 0021; `docs/reference/cli.md`). `jud record
+  RUBRIC CASES --out DIR` asks the configured backend once per case, or once
+  per turn for a conversation labelled with `from_turn`, and writes each
+  answer as a `.jud` recording. It keeps what `DIR` already answers, so an
+  interrupted run resumes, and `--refresh` asks again. The server a
+  recording names is the base URL (`TYPESAFE_BASE_URL`, or `base_url` in the
+  configuration file) without its userinfo, query and fragment, so a
+  credential kept in the URL is never written to a recording, and `jud tune`
+  strips a recording's server the same way for its `tuning` block. `jud eval
+  RUBRIC CASES [--replay DIR]` grades the answers against the labels and
+  reports, per question, the model's accuracy with its 95 % interval, its
+  Brier score and calibration error, how often the policy's gate acts and how
+  often its verdict is right, and every miss, as text or as one JSON object
+  (`--json`). `--min-accuracy [QUESTION=]ACCURACY` holds the model's
+  accuracy per question and makes `jud eval` exit with the new status 3 when
+  a bar is not met. `jud tune RUBRIC CASES --replay DIR` reads recordings
+  only, prints each gate's sweep on stderr and proposes the bars as the
+  `policy` and `tuning` blocks on stdout; `--out PATH` writes the whole
+  rubric instead.
+
+  Contract: exit status 3 (`jud eval` alone), the keys of `jud eval --json`
+  (`rubric`, `cases`, `requests`, `models`, `questions`, `min_accuracy`) and
+  the two places that write files, `jud record --out` and `jud tune --out`,
+  join the command's contract (`docs/reference/stability.md`). Neither
+  command writes over a rubric or a cases document it was given, and `jud
+  tune --out` never writes among the recordings. Every other command stays
+  read-only. stdout is the result and nothing else; progress, tables and
+  failures go to stderr. Statuses 0, 1 and 2 keep their meaning.
+
 ### Changed
 
 - The documentation is rebuilt in Diátaxis form under `docs/`: tutorials
@@ -15,9 +47,37 @@ All notable changes to the `judgment` crate. The format follows
   specification is `docs/reference/jud-format.md`, in BCP 14 wording, and
   the plugin's `references/format.md` is generated from it; the command
   line's reference is generated from the binary's help; the README is a
-  front door. Every Rust block, `.jud` document and transcript on a page is
-  held to the code by a test, and every internal link is checked
-  (`mise run docs:links`). No behaviour, API or format rule changed.
+  front door. Every Rust block, whole `.jud` document and marked transcript
+  on a page is held to the code by a test, and every internal link is checked
+  (`mise run docs:links`). The rebuild itself changed no behaviour, API or
+  format rule.
+- `Replay::open` reads a directory in name order, so that when two files
+  record one request the same one answers on every file system, and a
+  `.json` recording that does not parse is `Error::InvalidRecording`, which
+  names the file, instead of `Error::Decode`. **Breaking** for a caller that
+  matched `Error::Decode` there.
+- `jud RUBRIC`, `jud check`, `jud lower` and `jud config` no longer panic
+  (status 101) when stdout is closed (`jud check FILE | head -0`): a reader
+  that has gone is not an error, and the status is the command's own, as it
+  already was for `jud completion` and is for `jud record`, `jud eval` and
+  `jud tune`.
+- Messages of the existing paths, each with its status unchanged:
+  - A failure of `jud RUBRIC` names the backend as `scheme://host/path`,
+    without the userinfo, query or fragment of its base URL, so a credential
+    kept in the URL is not printed.
+  - A misplaced `--replay` gets a hint. `jud --replay DIR eval ...` says the
+    flag belongs after the subcommand, and `jud --replay DIR` alone says a
+    rubric is required; both are status 2 as before.
+  - A mistyped bare subcommand (`jud evaluate`) reads as a rubric path that is
+    not there, and the message now adds `(not a subcommand either: ...)` with
+    the subcommands' names.
+  - Under `jud RUBRIC --replay DIR`, a recording that matches the state and
+    the rubric but no longer fits the questions is reported as `a recording
+    under DIR matches this state and rubric but cannot answer it`, where the
+    message said that no recording answers; status 1 as before.
+  - `jud check` points a document that is not `jud/v1.3` at
+    `docs/reference/jud-format.md`, where it named the page's old path,
+    `docs/jud.md`.
 
 ## [0.10.4] - 2026-10-07
 
@@ -31,7 +91,8 @@ All notable changes to the `judgment` crate. The format follows
   attestation. The release workflow's new `image` job fills the build
   context from the tarballs it just built (`scripts/image-context.sh`),
   runs the image on the runner and pushes it after the publish
-  ([The jud command line](docs/cli.md), [Releasing](docs/releasing.md)).
+  ([The jud command line](docs/reference/cli.md),
+  [Releasing](docs/project/releasing.md)).
 
 ## [0.10.3] - 2026-10-07
 
@@ -41,14 +102,15 @@ All notable changes to the `judgment` crate. The format follows
   compiling: `[package.metadata.binstall]` in `Cargo.toml` names the asset
   and the binary's path inside it, and the release workflow checks, on every
   platform it packages, that the templates name the tarball it just built
-  ([The jud command line](docs/cli.md)).
+  ([The jud command line](docs/reference/cli.md)).
 - A Homebrew formula for `jud`: `brew install chussenot/tap/jud` on Apple
   silicon and Linux, from [chussenot/homebrew-tap](https://github.com/chussenot/homebrew-tap).
   The formula installs the release tarballs by their checksums and generates
   the shell completions from the binary. It is rendered from each release's
   `SHA256SUMS` by `scripts/homebrew-formula.sh` and committed to the tap by
   the release workflow's new `homebrew` job, so the tap's version is the
-  release's ([The jud command line](docs/cli.md), [Releasing](docs/releasing.md)).
+  release's ([The jud command line](docs/reference/cli.md),
+  [Releasing](docs/project/releasing.md)).
 
 ## [0.10.2] - 2026-10-07
 
@@ -79,7 +141,7 @@ All notable changes to the `judgment` crate. The format follows
   no key, no network, a state nobody recorded is an error. The README's
   command-line transcript runs this way over `examples/recordings/` and
   `tests/jud_cli.rs` holds it to what the binary prints.
-- `docs/stability.md`: what is promised across versions. `jud/v1` is stable, a
+- `docs/reference/stability.md`: what is promised across versions. `jud/v1` is stable, a
   minor version only adds, readers accept every `v1` document for at least
   twelve months after a later minor is published, fingerprints exclude the
   envelope and never change for a document's `spec`; the crate's 0.x rule and
@@ -105,7 +167,7 @@ All notable changes to the `judgment` crate. The format follows
 
 - `jud completion <shell>` prints a completion script for bash, zsh, fish,
   elvish or PowerShell, generated from the command tree the binary parses
-  with, so it cannot drift from the binary; `docs/cli.md` says where each
+  with, so it cannot drift from the binary; `docs/reference/cli.md` says where each
   shell wants it, and `mise run install` refreshes the scripts a shell
   already has. The binary's arguments are now parsed by `clap`: `jud --help`
   and every subcommand's `--help` are derived from the same tree, a usage
@@ -140,7 +202,7 @@ All notable changes to the `judgment` crate. The format follows
   `aarch64-apple-darwin`, attaches the tarballs and `SHA256SUMS` with a
   build-provenance attestation to the GitHub release, so
   `mise use -g github:chussenot/judgment@latest` installs it without a Rust
-  toolchain (decision 0019; `docs/cli.md`). `mise run install` installs it
+  toolchain (decision 0019; `docs/reference/cli.md`). `mise run install` installs it
   from a checkout. A `workflow_dispatch` of the release workflow is a dry
   run that builds every leg and publishes nothing.
 
@@ -161,13 +223,13 @@ All notable changes to the `judgment` crate. The format follows
   jud@judgment`): the `jud` skill for writing, reviewing and fixing `.jud`
   documents, with a one-page field reference, the checker as a script and
   the six tasks it was tested on, and three commands, `/jud:rubric`,
-  `/jud:cases` and `/jud:check`. `docs/skill.md` says how it works and how
+  `/jud:cases` and `/jud:check`. `docs/guides/use-the-claude-code-plugin.md` says how it works and how
   to install it.
 
 ### Changed
 
 - **Breaking:** the `.jud` envelope is a manifest's (decision 0018;
-  `docs/jud.md`): `apiVersion: jud/v1.3`, `kind: Rubric`, `Cases` or
+  `docs/reference/jud-format.md`): `apiVersion: jud/v1.3`, `kind: Rubric`, `Cases` or
   `Recording`, `metadata` (`name`, required on every kind; `version`,
   `description`, `labels`, `annotations`) and `spec`, which holds every
   field a kind had at the top level. A rubric's or a cases document's `id`
@@ -191,7 +253,7 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
-- `.jud` version 1.2 (decision 0017; `docs/jud.md`): no new field. Every
+- `.jud` version 1.2 (decision 0017; `docs/reference/jud-format.md`): no new field. Every
   id is a name (letters, digits, `.`, `_`, `-`, starting with a letter or
   a digit), so a case id never reaches the file system as a path; a merge
   key and a tag the core schema does not define are refused with their
@@ -238,7 +300,7 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
-- `docs/implementation.md`, the rules the code applies and why: the path
+- `docs/project/internals.md`, the rules the code applies and why: the path
   of one call through the modules, the tolerant decoder, what the response
   check leaves unchecked, how an error body is read, what a per-call option
   replaces, the retry loop's edge rules, how recordings are keyed, the
@@ -305,7 +367,7 @@ All notable changes to the `judgment` crate. The format follows
   specification's examples and the test fixtures use a support inbox
   instead of an operational domain, as the crate's own rule on staying
   generic requires.
-- `docs/jud.md` states what the review found unstated: instruction parts
+- `docs/reference/jud-format.md` states what the review found unstated: instruction parts
   are a JSON object whose key order carries no meaning, an `x-` value is
   JSON-representable, and a fingerprint does not witness the order of a
   Choice's options. `eval::tuning::level_sweep` says where it can read a
@@ -369,7 +431,7 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
-- The `.jud` format (`docs/jud.md`, decision 0014), behind the new `jud`
+- The `.jud` format (`docs/reference/jud-format.md`, decision 0014), behind the new `jud`
   feature (off by default): one YAML format, JSON accepted, for a `rubric`
   (the questions in wire shape and wire order, with a `policy` of gates per
   question and the `tuning` they came from), the labelled `cases` a rubric
@@ -463,7 +525,7 @@ All notable changes to the `judgment` crate. The format follows
   full payload and with `LAYA_JEV_STRICT=1` behind a bearer key, and
   against the shim now at `examples/laya/serve_laya.py` (moved from the
   repository's `examples/`), on `laya` 0.3.24
-  (`docs/verification/laya-typed-decisions.md`).
+  (`docs/project/verification/laya-typed-decisions.md`).
 - `eval::metrics::wilson_interval` and `QuestionMetrics::accuracy_interval95`:
   a 95% Wilson interval beside every accuracy, because a ratio on three
   labelled cases and one on three hundred read the same without it. A
@@ -490,7 +552,7 @@ All notable changes to the `judgment` crate. The format follows
 - Releases are cut with cocogitto and published by CI: the commits are
   Conventional Commits, `cog bump --auto` derives the version from them,
   stamps this file's Unreleased section and tags, and the pushed `v*` tag
-  runs the gate and `cargo publish` (`docs/releasing.md`, decision 0013).
+  runs the gate and `cargo publish` (`docs/project/releasing.md`, decision 0013).
   `publish = false` is lifted from the manifest for it; the crate is not on
   crates.io until the first tag is pushed.
 - `Response::verify` accepts a structured Score level echoed as any string
@@ -518,7 +580,7 @@ All notable changes to the `judgment` crate. The format follows
 ## [0.2.0] - 2026-09-25
 
 Hardens the wire and closes the gaps against the official TypeSafe SDKs that
-the [System One client survey](docs/research/system-one-client-libraries.md)
+the [System One client survey](docs/project/research/system-one-client-libraries.md)
 identified. TypeSafe had answered this client live once at this release;
 everything else is checked against wiremock, the published OpenAPI
 document (0.2.0) and the SDK references.

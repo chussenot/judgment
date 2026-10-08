@@ -2,7 +2,7 @@
 title: Rubrics, cases and recordings
 description: Why a decision is written as a rubric, why the labelled examples it is graded on and the answers a model gave are documents of their own, how the three name each other by content, and the loop that tunes a policy from them.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-08
 tags: [judgment, jud, rubric, cases, recordings, calibration, concepts]
 ---
 
@@ -42,7 +42,7 @@ A **rubric** is the decision itself: the questions the model is asked about a st
 
 A **cases** document is the examples the decision is checked against: real states, each with the answer a person gave for the questions they were sure of. The cases are never sent to the model. They are what its answers are graded on, and what the rubric's thresholds are tuned from. The person who labels a case is asked what a careful colleague would say with the rubric in front of them; that is the standard the model is held to.
 
-A **recording** is what the model actually answered to one request, kept so a run can be replayed, graded again or compared with a later model's without another call. One rubric, graded on one cases document, produces one recording per case.
+A **recording** is what the model actually answered to one request, kept so a run can be replayed, graded again or compared with a later model's without another call. One rubric, graded on one cases document, produces one recording per case, or per turn for a conversation labelled with `from_turn`.
 
 ## The word
 
@@ -74,13 +74,15 @@ Every fingerprint is over a value inside `spec`. The envelope, `apiVersion`, `ki
 
 ## The loop
 
-1. **Read and bind.** Parse the rubric and the cases; bind the cases to the rubric, so a label that names an option nobody offered, or a question the case's state does not trigger, fails before any call.
-2. **Answer.** Lower each case's request and send it, to a server or to a replay of earlier recordings; record what came back with its fingerprint.
-3. **Grade.** Grade each response against the case's labels, in the answer's own vocabulary; summarise per question into accuracy with its interval, the Brier score and the calibration error.
-4. **Tune.** Sweep each Noul's threshold and read off the best F1; table each Choice's confidence bar against accuracy and coverage and read off the lowest bar that keeps the accuracy wanted; sweep each Score's levels.
-5. **Write back.** Put the gates into `policy`, with the cases' fingerprint, the model, the server and the time in `tuning`. The next person to open the file sees what the numbers rest on.
+You write the rubric and label the cases; the commands run the five steps.
 
-When the model version moves, run step 2 again. The questions do not change, so their fingerprint does not; the bars may, and the policy fingerprint shows it; `tuning` names the new model.
+1. **Read and bind.** Parse the rubric and the cases; bind the cases to the rubric, so a label that names an option nobody offered, or a question the case's state does not trigger, fails before any call. `jud check` does it.
+2. **Answer.** Lower each case's request and send it, to a server or to a replay of earlier recordings; record what came back with its fingerprint. `jud record` asks a server once and writes the recordings; `--replay` answers from them afterwards.
+3. **Grade.** Grade each response against the case's labels, in the answer's own vocabulary; summarise per question into accuracy with its interval, the Brier score and the calibration error. `jud eval` prints it, and `--min-accuracy` turns it into a gate.
+4. **Tune.** Sweep each Noul's threshold and read off the best F1; table each Choice's confidence bar against accuracy and coverage and read off the lowest bar that keeps the accuracy wanted; sweep each Score's levels. `jud tune` prints the tables and a proposal.
+5. **Write back.** Put the gates into `policy`, with the cases' fingerprint, the model, the server and the time in `tuning`. The next person to open the file sees what the numbers rest on. Paste the blocks `jud tune` prints, or let `jud tune --out` write the rubric to a new file.
+
+When the model version moves, run step 2 again (`jud record --refresh`). The questions do not change, so their fingerprint does not; the bars may, and the policy fingerprint shows it; `tuning` names the new model.
 
 ## The metrics
 

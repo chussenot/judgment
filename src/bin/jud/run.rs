@@ -8,37 +8,26 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use judgment::jud::{Rubric, Supplied};
-use judgment::{Replay, SystemOne};
 use serde_json::Value;
 
-use crate::{EXIT_BACKEND, EXIT_USAGE, config, tools};
+use crate::backend::{Backend, Failure};
+use crate::tools;
 
 pub(crate) fn run(path: &str, replay: Option<&Path>) -> ExitCode {
     match evaluate(path, replay) {
-        Ok(verdicts) => {
-            println!("{verdicts}");
-            ExitCode::SUCCESS
-        }
-        Err(Failure::Usage(message)) => {
-            eprintln!("jud: {message}");
-            ExitCode::from(EXIT_USAGE)
-        }
-        Err(Failure::Backend(message)) => {
-            eprintln!("jud: {message}");
-            ExitCode::from(EXIT_BACKEND)
-        }
+        Ok(verdicts) => match crate::out::result(&format!("{verdicts}\n")) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(failure) => failure.report(),
+        },
+        Err(failure) => failure.report(),
     }
 }
 
-enum Failure {
-    /// Fixable before any call: the file, the state, the configuration.
-    Usage(String),
-    /// The call was made and failed, or its answer did not fit.
-    Backend(String),
-}
-
 fn read_rubric(path: &str) -> Result<Rubric, Failure> {
-    tools::read_document(path, "Rubric", Rubric::parse).map_err(Failure::Usage)
+    tools::read_document(path, "Rubric", Rubric::parse).map_err(|message| {
+        // `jud evaluate` is a mistyped subcommand that reads as a rubric path.
+        Failure::Usage(format!("{message}{}", crate::not_a_subcommand_either(path)))
+    })
 }
 
 fn read_state() -> Result<Value, Failure> {
@@ -62,77 +51,6 @@ fn read_state() -> Result<Value, Failure> {
         };
         Failure::Usage(format!("stdin is not JSON: {e}{hint}"))
     })
-}
-
-/// Which backend answers: the configured server, or the recordings under
-/// a directory. Both are the crate's; the run is the same either side.
-#[allow(
-    clippy::large_enum_variant,
-    reason = "one value per run; the client's size is not worth a box"
-)]
-enum Backend {
-    Server {
-        client: judgment::Client,
-        resolved: config::Resolved,
-    },
-    Recordings {
-        replay: Replay,
-        dir: String,
-    },
-}
-
-impl Backend {
-    fn open(replay: Option<&Path>) -> Result<Self, Failure> {
-        if let Some(dir) = replay {
-            let replay = Replay::open(dir).map_err(|e| {
-                Failure::Usage(format!("cannot replay from {}: {e}", dir.display()))
-            })?;
-            return Ok(Self::Recordings {
-                replay,
-                dir: dir.display().to_string(),
-            });
-        }
-        let resolved = config::resolve().map_err(|e| Failure::Usage(e.to_string()))?;
-        let client = resolved
-            .client()
-            .map_err(|e| Failure::Usage(e.to_string()))?;
-        Ok(Self::Server { client, resolved })
-    }
-
-    fn model(&self) -> &str {
-        match self {
-            Self::Server { resolved, .. } => resolved.model(),
-            Self::Recordings { .. } => judgment::client::DEFAULT_MODEL,
-        }
-    }
-
-    fn answer(
-        &self,
-        state: &Value,
-        questions: &judgment::Questions,
-    ) -> Result<judgment::Response, Failure> {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| Failure::Backend(format!("cannot start the runtime: {e}")))?;
-        match self {
-            Self::Server { client, resolved } => runtime
-                .block_on(client.answer(state, self.model(), questions))
-                .map_err(|e| {
-                    Failure::Backend(format!(
-                        "the backend at {} failed: {e}",
-                        resolved.base_url()
-                    ))
-                }),
-            Self::Recordings { replay, dir } => runtime
-                .block_on(replay.answer(state, self.model(), questions))
-                .map_err(|e| {
-                    Failure::Backend(format!(
-                        "no recording under {dir} answers this state and rubric: {e}"
-                    ))
-                }),
-        }
-    }
 }
 
 fn evaluate(path: &str, replay: Option<&Path>) -> Result<String, Failure> {

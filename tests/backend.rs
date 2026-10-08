@@ -501,3 +501,39 @@ async fn a_replay_of_every_committed_recording_answers_its_sample() {
     assert_eq!(answered, 40);
     assert_eq!(replay.len(), 40);
 }
+
+#[tokio::test]
+async fn a_replay_names_the_json_file_it_cannot_read() {
+    let dir = test_dir("a_replay_names_the_json_file_it_cannot_read");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("broken.json"), "{ not json").unwrap();
+    let err = Replay::open(&dir).unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidRecording { path, .. } if path.ends_with("broken.json")),
+        "{err:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn two_files_recording_one_request_are_read_in_name_order() {
+    // The file that answers must not depend on the file system's enumeration
+    // order: the later name wins, as a later recording of a request replaces
+    // an earlier one. `a.json` is the unusable off-list answer and `b.json`
+    // the good one, written in the opposite order.
+    let dir = test_dir("two_files_recording_one_request_are_read_in_name_order");
+    std::fs::create_dir_all(&dir).unwrap();
+    let (q, _, _) = questions();
+    let state = json!({ "message": "charged twice" });
+    let hash = request_hash(&state, &q);
+    let good = fake().answer(&state, "m", &q).await.unwrap();
+    for (name, response) in [("b.json", good), ("a.json", off_list())] {
+        let mut recording = Recording::new(name, response, 1);
+        recording.request_hash = Some(hash.clone());
+        std::fs::write(dir.join(name), serde_json::to_string(&recording).unwrap()).unwrap();
+    }
+    let replay = Replay::open(&dir).unwrap();
+    let response = replay.answer(&state, "m", &q).await.unwrap();
+    assert_eq!(response.model, "fake-1", "b.json, the later name, answers");
+    let _ = std::fs::remove_dir_all(&dir);
+}

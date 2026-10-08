@@ -14,7 +14,7 @@ mise use -g github:chussenot/judgment@latest   # the `jud` command the plugin ch
 
 | What | Invoked as |
 |---|---|
-| The skill: the workflow, the rules the reader enforces, how to write questions and cases that hold up | loads when a task touches a `.jud` file, a rubric or labelled cases |
+| The skill: the workflow, the rules the reader enforces, how to write questions and cases that hold up, and which `jud` commands grade and tune them | loads when a task touches a `.jud` file, a rubric or labelled cases |
 | Write a rubric from a brief | `/jud:rubric <brief>` |
 | Write the cases a rubric is tuned on | `/jud:cases <rubric path> [brief]` |
 | Check documents and explain every refusal | `/jud:check [files]` |

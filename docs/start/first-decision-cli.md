@@ -2,7 +2,7 @@
 title: Your first decision from the command line
 description: From nothing to a verdict with the jud command and no account, by replaying a recorded answer; then the same command against the hosted API or a local model.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-08
 tags: [judgment, jud, cli, tutorial, getting-started, replay]
 ---
 
@@ -12,7 +12,7 @@ tags: [judgment, jud, cli, tutorial, getting-started, replay]
 
 ## 1. Get the example files
 
-The repository holds a rubric, the labelled cases its policy was tuned on, and the recorded answers of `jev-1.13.0` to those cases.
+The repository holds a rubric, the labelled cases its policy was tuned on, and recorded answers to those cases. The answers are scripted and labelled `jev-1.13.0`: they let the command run with no key, and they are not what that model says. Step 5 asks a real model.
 
 ```sh
 git clone https://github.com/chussenot/judgment && cd judgment
@@ -38,7 +38,7 @@ cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1.3, 7 ca
 2 documents, 0 refused
 ```
 
-Open the file. Under `spec.questions` are the questions the model is asked, in the shape the wire sends them; under `spec.policy` the bar at which each answer becomes an action; under `spec.tuning` which cases, which model and which server the bars were tuned on. `tuned on` is the fingerprint of the cases document, which the second line of the output shows is the same `sha256:` as the cases file beside it: the policy rests on exactly those labels ([Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md)).
+Open the file. Under `spec.questions` are the questions the model is asked, in the shape the wire sends them; under `spec.policy` the bar at which each answer becomes an action; under `spec.tuning` which cases, which model and which server the bars were tuned on. `tuned on` is the fingerprint of the cases document, which the `cases sha256:` line below shows is the same `sha256:` as the cases file beside it: the policy rests on exactly those labels ([Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md)).
 
 ## 3. Evaluate a state from a recording
 
@@ -108,5 +108,6 @@ Without a key the run is refused before any call, with status 2 and a message na
 ## Next
 
 - [Write a rubric](../guides/write-a-rubric.md) for a decision of your own.
+- [Tune thresholds](../guides/tune-thresholds.md): grade the recordings you replayed against the labels with `jud eval`, and see how the bars were chosen with `jud tune`.
 - [The jud command line](../reference/cli.md): every subcommand, flag and exit status.
 - [Run in CI](../guides/run-in-ci.md).

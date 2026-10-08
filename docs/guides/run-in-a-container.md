@@ -2,7 +2,7 @@
 title: Run in a container
 description: How to run jud as the ghcr.io/chussenot/jud image: how a rubric and a state reach it through the working directory and stdin, what the non-root user without a shell changes, and the four ways a backend is reached from inside, a key, another server, the host's Ollama, a replay directory.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-08
 tags: [judgment, jud, container, docker, how-to]
 ---
 
@@ -18,7 +18,7 @@ That line is the whole model: `-i` carries stdin into the container, `-v "$PWD:/
 
 ## Files reach it through `/work`
 
-The container sees only what is mounted. The working directory is `/work`, so a mount there makes a rubric, a state file or a recordings directory reachable by a relative path. Mount read-only: no subcommand writes a file.
+The container sees only what is mounted. The working directory is `/work`, so a mount there makes a rubric, a state file or a recordings directory reachable by a relative path. Mount read-only for `check`, `lower`, `eval` and a plain run, none of which writes a file. `jud record` and `jud tune --out`, which arrived after 0.10.4, do write and need a writable mount ([Run in CI](run-in-ci.md#hold-the-labels-with-jud-eval) shows `record` with the user it needs).
 
 ```sh
 # Read documents as the crate reads them; status 2 if any is refused.

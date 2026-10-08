@@ -2,13 +2,13 @@
 title: The container image
 description: What is inside ghcr.io/chussenot/jud, the user it runs as, the paths it reads, the tags a release pushes, and how its provenance is verified.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-08
 tags: [judgment, jud, container, docker, ghcr, reference]
 ---
 
 # The container image
 
-`ghcr.io/chussenot/jud` is the `jud` binary as a container image. [Run in a container](../guides/run-in-a-container.md) is the procedure; this page is what the image is. Every fact here was checked against `ghcr.io/chussenot/jud:0.10.4` on 2026-10-07.
+`ghcr.io/chussenot/jud` is the `jud` binary as a container image. [Run in a container](../guides/run-in-a-container.md) is the procedure; this page is what the image is. Every fact here was checked against `ghcr.io/chussenot/jud:0.10.4` on 2026-10-07, except what the binary writes (under Contents), which is that of the release that ships `jud record` and `jud tune`.
 
 ## Contents
 
@@ -25,7 +25,7 @@ The image is `FROM scratch`. It holds the statically linked `jud` binary, a CA b
 | Size | about 10 MB |
 | Labels | `org.opencontainers.image.version`, `org.opencontainers.image.revision` (the commit), `org.opencontainers.image.source` (the repository) |
 
-The binary is the one `start/install.md` describes for Linux; its subcommands, flags and exit status are [The jud command line](cli.md). Nothing in the image writes a file.
+The binary is the one `start/install.md` describes for Linux; its subcommands, flags and exit status are [The jud command line](cli.md). The image holds no state of its own, and the binary writes a file only where a command is told to: `jud record --out` and `jud tune --out`, into a mounted directory that the image's user can write ([Run in CI](../guides/run-in-ci.md) shows the `docker run`). `check`, `lower`, `eval` and a plain run write nothing.
 
 ## Tags
 

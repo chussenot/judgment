@@ -21,7 +21,7 @@ Not affiliated with TypeSafe AI.
 | You are | Start with | Then |
 |---|---|---|
 | Evaluating whether this fits | [System One](concepts/system-one.md), [How judgment works](concepts/how-judgment-works.md) | [Stability](reference/stability.md), [Compared with the other Rust clients](project/research/client-comparison.md) |
-| Using `jud` from a shell, no Rust | [Install](start/install.md), [Your first decision from the command line](start/first-decision-cli.md) | [Configure a backend](guides/configure-a-backend.md), [Run in CI](guides/run-in-ci.md), [The jud command line](reference/cli.md) |
+| Using `jud` from a shell, no Rust | [Install](start/install.md), [Your first decision from the command line](start/first-decision-cli.md) | [Configure a backend](guides/configure-a-backend.md), [Record, replay and test](guides/record-replay-and-test.md#record-a-rubrics-cases-from-the-shell), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [The jud command line](reference/cli.md) |
 | Writing `.jud` documents | [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [Write a rubric](guides/write-a-rubric.md) | [Label cases](guides/label-cases.md), [Tune thresholds](guides/tune-thresholds.md), [The .jud format](reference/jud-format.md) |
 | Using the crate from Rust | [Your first decision in Rust](start/first-decision-rust.md) | [Record, replay and test](guides/record-replay-and-test.md), [Patterns](guides/patterns.md), [The crate](reference/crate.md) and the [rustdoc](https://docs.rs/judgment) |
 | Contributing | [Contributing](project/contributing.md) | [Internals](project/internals.md), [How the crate is checked](project/verification/method.md), [Decisions](project/decisions/README.md) |
@@ -157,7 +157,7 @@ judgment = { version = "0.10", features = ["jud"] }
 
 ## 1. Get the example files
 
-The repository holds a rubric, the labelled cases its policy was tuned on, and the recorded answers of `jev-1.13.0` to those cases.
+The repository holds a rubric, the labelled cases its policy was tuned on, and recorded answers to those cases. The answers are scripted and labelled `jev-1.13.0`: they let the command run with no key, and they are not what that model says. Step 5 asks a real model.
 
 ```sh
 git clone https://github.com/chussenot/judgment && cd judgment
@@ -183,7 +183,7 @@ cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1.3, 7 ca
 2 documents, 0 refused
 ```
 
-Open the file. Under `spec.questions` are the questions the model is asked, in the shape the wire sends them; under `spec.policy` the bar at which each answer becomes an action; under `spec.tuning` which cases, which model and which server the bars were tuned on. `tuned on` is the fingerprint of the cases document, which the second line of the output shows is the same `sha256:` as the cases file beside it: the policy rests on exactly those labels ([Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md)).
+Open the file. Under `spec.questions` are the questions the model is asked, in the shape the wire sends them; under `spec.policy` the bar at which each answer becomes an action; under `spec.tuning` which cases, which model and which server the bars were tuned on. `tuned on` is the fingerprint of the cases document, which the `cases sha256:` line below shows is the same `sha256:` as the cases file beside it: the policy rests on exactly those labels ([Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md)).
 
 ## 3. Evaluate a state from a recording
 
@@ -253,6 +253,7 @@ Without a key the run is refused before any call, with status 2 and a message na
 ## Next
 
 - [Write a rubric](../guides/write-a-rubric.md) for a decision of your own.
+- [Tune thresholds](../guides/tune-thresholds.md): grade the recordings you replayed against the labels with `jud eval`, and see how the bars were chosen with `jud tune`.
 - [The jud command line](../reference/cli.md): every subcommand, flag and exit status.
 - [Run in CI](../guides/run-in-ci.md).
 
@@ -670,7 +671,7 @@ Keep facts the application has out of the questions. Whether the account is on a
 
 ## 3. Write the policy, and say it is a guess
 
-One gate per question, fitting its primitive ([Policy](../reference/jud-format.md#policy)). A hand-written rubric has no `tuning` block; a `note` on each gate says why the bar is where it is, and "a guess" is an honest note. Never invent a `tuning` block: [Tune thresholds](tune-thresholds.md) writes it from a real run.
+One gate per question, fitting its primitive ([Policy](../reference/jud-format.md#policy)). A hand-written rubric has no `tuning` block; a `note` on each gate says why the bar is where it is, and "a guess" is an honest note. Never invent a `tuning` block: `jud tune` writes it from a real run ([Tune thresholds](tune-thresholds.md)).
 
 ```yaml
   policy:
@@ -764,7 +765,7 @@ The builder calls map one to one, because a question in a rubric is the wire's o
 
 ## Next
 
-- [Label cases](label-cases.md): the examples the bars will be tuned on.
+- [Label cases](label-cases.md): the examples the bars will be tuned on. The loop after them is `jud record`, `jud eval` and `jud tune` ([Tune thresholds](tune-thresholds.md)).
 - [Use the Claude Code plugin](use-the-claude-code-plugin.md), which writes and checks these files from a brief.
 
 
@@ -814,14 +815,14 @@ The cases that were argued about are the ones that define the line. Give each a 
       note: reason left unlabelled; a refund is implied, not asked for, and two labellers disagreed
 ```
 
-Count honestly. Four cases find a document that is wrong and show the loop; they do not tune a bar, and the interval the crate reports will say so.
+Count honestly. Four cases find a document that is wrong and show the loop; they do not tune a bar, and the interval `jud eval` reports will say so.
 
 ## 5. Name the rubric and check the binding
 
-`spec.rubric` names the rubric by name while the questions move, by fingerprint once a run must be reproducible. Check the two files together, so each label is checked against the request its case lowers to:
+`spec.rubric` names the rubric by name while the questions move, by fingerprint once a run must be reproducible. Check the two files together, so each label is checked against the request its case lowers to. The paths are those of this repository's example; give yours:
 
 ```sh
-jud check screening.jud screening-cases.jud
+jud check examples/jud/screening.jud examples/jud/screening-cases.jud
 ```
 
 <!-- transcript: jud check examples/jud/screening.jud examples/jud/screening-cases.jud -->
@@ -834,7 +835,7 @@ cases     examples/jud/screening-cases.jud: name refund-screening-cases, jud/v1.
 2 documents, 0 refused
 ```
 
-`bound to` says every label fit. A label for a question the case's state does not trigger, an option the case was not offered, a level past the last one, a `from_turn` on a Choice: each is refused here with the case and the field named, and nowhere later. `jud lower screening.jud --cases screening-cases.jud` prints what each case sends when a `when` or a `part_when` makes that unclear.
+`bound to` names the rubric the cases were matched to among the files; it does not say that the labels fit. A label that does not fit is an `error` line printed after it, with the case and the field named, and the last line counts it. Every label fit when no `error` line follows and the last line says `0 refused` (status 0). A label for a question the case's state does not trigger, an option the case was not offered, a level past the last one, a `from_turn` on a Choice: each is refused here, and nowhere later. `jud lower examples/jud/screening.jud --cases examples/jud/screening-cases.jud` prints what each case sends when a `when` or a `part_when` makes that unclear.
 
 ## Conversations
 
@@ -884,8 +885,8 @@ When the questions change, bind the cases again. A label that no longer fits is 
 
 ## Next
 
-- [Record, replay and test](record-replay-and-test.md): answer the cases once and keep the answers.
-- [Tune thresholds](tune-thresholds.md): read the bars off the graded answers.
+- [Record, replay and test](record-replay-and-test.md#record-a-rubrics-cases-from-the-shell): `jud record` answers the cases once, with a key, and keeps the answers.
+- [Tune thresholds](tune-thresholds.md): `jud eval` grades the answers against the labels, and `jud tune` reads the bars off them.
 
 
 <!-- source: docs/guides/record-replay-and-test.md -->
@@ -893,7 +894,7 @@ When the questions change, bind the cases again. A label that no longer fits is 
 
 # Record, replay and test
 
-**You will** test a decision against scripted answers, record a real model's answers once and replay them in every later run, in Rust and on the command line. **Prerequisites:** [Your first decision in Rust](../start/first-decision-rust.md) or [from the command line](../start/first-decision-cli.md). Why a recording is what it is: [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md).
+**You will** test a decision against scripted answers, record a real model's answers once and replay them in every later run, in Rust and on the command line, with `jud record` for a rubric's labelled cases. **Prerequisites:** [Your first decision in Rust](../start/first-decision-rust.md) or [from the command line](../start/first-decision-cli.md). Why a recording is what it is: [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md).
 
 A decision made on a probability is hard to test against a live model: the call costs money, the answer moves between runs, and a test that passes against the real server says nothing about the branch the model did not take. The crate separates the three things a test needs: a backend that answers what the test scripts, a recording of what the real model once said, and a way to grade those recordings against labels. All three sit behind the same `SystemOne` trait as the client, so the code under test does not change.
 
@@ -973,7 +974,66 @@ The crate writes its own `.json` form; with the `jud` feature it writes and read
 cat event.json | jud --replay examples/recordings/jud_calibration examples/jud/triage.jud
 ```
 
-A state nobody recorded is a backend failure (status 1, `no recording`); a directory that does not exist is a usage error (status 2). [Run in CI](run-in-ci.md) turns this into a job.
+A state nobody recorded is a backend failure (status 1, `no recording`); a directory that does not exist is a usage error (status 2). `jud eval` takes the same flag and variable, and `jud tune` requires one of them. [Run in CI](run-in-ci.md) turns this into a job.
+
+## Record a rubric's cases from the shell
+
+`jud record` answers every case of a Cases document once and keeps each answer as a `.jud` recording. It is the command that spends calls to keep the answers: a plain run and `jud eval` without `--replay` ask a backend too, and keep nothing. It needs a backend and a key, which a server that ignores the bearer takes as any non-blank word ([Configure a backend](configure-a-backend.md)). It always asks the configured backend. It has no `--replay` and never replays from `JUD_REPLAY`: a non-empty value is ignored, and an empty one is refused as everywhere else ([Replay](../reference/configuration.md#replay)). Every flag is in [The jud command line](../reference/cli.md#jud-record).
+
+`jud record`, `jud eval` and `jud tune` arrived after 0.10.4; pin a release that lists them in [the changelog](../../CHANGELOG.md).
+
+The repository's `refund-screening` documents have no recordings, so recording them needs a key:
+
+```sh
+export TYPESAFE_API_KEY=...
+jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out recordings/screening
+```
+
+The cases are asked one at a time, in order. Each line below goes to stderr as its case is recorded, then a tally; stdout stays empty. The times are the calls' own, in milliseconds; those shown came from a local test server.
+
+```text
+recorded charged-twice (1/4, 2 ms)
+recorded cancelled-last-week (2/4, 1 ms)
+recorded how-does-billing-work (3/4, 1 ms)
+recorded furious-outage (4/4, 1 ms)
+recorded 4, kept 0 in recordings/screening
+```
+
+Run it again and nothing is asked:
+
+```text
+kept charged-twice
+kept cancelled-last-week
+kept how-does-billing-work
+kept furious-outage
+recorded 0, kept 4 in recordings/screening
+```
+
+What the command does:
+
+- **It writes one file per case.** `DIR/CASE.jud` is a `Recording` document: the response as received, the request's fingerprint, the rubric's name, the server and the time ([Recording](../reference/jud-format.md#recording)). `DIR` is created if it is not there. A file is written whole or not at all, and a recording is on disk the moment its answer has been checked against its questions.
+- **It records what a case asks.** A case's state and its own `options` are lowered through the rubric, as `jud lower --cases` shows. A Choice with `options_from: request` is recorded too.
+- **It records a conversation turn by turn** when a label uses `from_turn`. Each turn is its own request, with the label resolved at that turn, and its file is `CASE-turn-N.jud`, from `escalates-turn-0.jud` for a case named `escalates`. [Conversations](../reference/jud-format.md#conversations) has the rule.
+- **It resumes.** A request already recorded in `DIR` is kept, found by its fingerprint under whatever file name, so an interrupted run continues where it stopped. A new case costs one call, and so does a recording you deleted. A case whose state changed, or a rubric whose questions changed, has another fingerprint and is asked again.
+- **It asks the model the configuration names.** That is the `model` field of the configuration file, `jev-latest` when there is none. No flag and no environment variable names it, and `jud config` prints the model a run would use and where it came from ([Configure a backend](configure-a-backend.md)). To record another model, set `model` first, in the file or in another one that `XDG_CONFIG_HOME` points the run at, such as `model: tev1:0.8b` for a local model.
+- **`--refresh` asks every case again.** Each answer is written over the file named after its case. Use it once the model has changed, since a request's fingerprint leaves the model out and a recording of the old model would be kept ([Tune thresholds](tune-thresholds.md#when-the-model-moves)). Recording into a new directory keeps the old answers beside the new. A file under another name is left alone, and the run warns when two files record one request, since a replay reads only one.
+- **A failed call stops the run** with status 1. The message names the case it stopped at, how many were recorded and kept before it, and the directory. What was written stays, and the next run resumes.
+- **It strips credentials.** The server written into a recording is the base URL without its user information, query and fragment, so a recording can be committed.
+
+A refusal is status 2 and comes before any call, so nothing is written, not even `DIR`. The message says what to change. Two are fixed in `DIR` rather than in the documents:
+
+- **A stale recording under another name**, a file that records this request and no longer fits its questions. Delete or move it, then record again. Under `--refresh` it is not refused: the new recording is written, the stale file stays beside it and the run warns that two files record one request, so delete it. A stale recording in the case's own file is replaced, and the run says so.
+- **A file the reader refuses**, such as a `.jud` that is not a recording. Fix or move it, or pass `--refresh`, which does not read `DIR`.
+
+[The jud command line](../reference/cli.md#refusals-before-any-call) lists every refusal, among them a case without an `id`, a recording that would land on the rubric or the cases, and a missing key.
+
+Check what was written with the rubric and the cases. Each recording is verified against its request and its fingerprint compared:
+
+```sh
+jud check examples/jud/screening.jud examples/jud/screening-cases.jud recordings/screening/*.jud
+```
+
+The recordings then answer `jud --replay`, `jud eval` and `jud tune` ([Tune thresholds](tune-thresholds.md)).
 
 ## Write a recording by hand
 
@@ -981,7 +1041,7 @@ Only as a test fixture, where the answer is scripted and the point is the shape.
 
 ## Grade the recordings
 
-A directory of recordings beside a cases document is the input of the tuning loop: each recording is graded against its case's labels into judgments, and the bars are read off the judgments. [Tune thresholds](tune-thresholds.md).
+A directory of recordings beside a cases document is the input of the tuning loop. `jud eval RUBRIC CASES --replay DIR` grades each recording against its case's labels, and `jud tune` reads the bars off the same answers. In Rust the steps are `jud::grade` and `eval::tuning`. [Tune thresholds](tune-thresholds.md).
 
 ## What this does not replace
 
@@ -998,103 +1058,216 @@ A mock encodes what the client author believed about the wire. Only a real serve
 
 # Tune thresholds
 
-**You will** replace the guessed bars in a rubric's policy with bars read off a table, and record what they rest on. **Prerequisites:** a rubric and its cases ([Write a rubric](write-a-rubric.md), [Label cases](label-cases.md)); recordings of a model's answers to every case ([Record, replay and test](record-replay-and-test.md)); a checkout and a Rust toolchain for the example. The metrics and the loop are explained in [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md).
+**You will** grade a model's recorded answers against labelled cases with `jud eval`, hold them to an accuracy bar, and replace the guessed bars of a rubric's policy with bars read off a table by `jud tune`, recording what they rest on. **Prerequisites:** the `jud` command ([Install](../start/install.md)), in a release that has `jud eval` and `jud tune`, which arrived after 0.10.4 ([the changelog](../../CHANGELOG.md) lists them); a rubric and its cases ([Write a rubric](write-a-rubric.md), [Label cases](label-cases.md)); a checkout of the repository, whose triage documents and recordings this page uses. Nothing below needs a key or a network. For a rubric of your own you also need recordings of a model's answers to every case, which `jud record` makes once, with a key ([Record, replay and test](record-replay-and-test.md#record-a-rubrics-cases-from-the-shell)). The loop and its metrics are explained in [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md).
 
-The loop is `examples/jud_calibration.rs`, run here over the repository's own documents with no key and no network:
+`jud eval` and `jud tune` read the answers from a directory of recordings, named with `--replay DIR` or `JUD_REPLAY`. `jud tune` requires it. Without it `jud eval` asks the configured backend, which costs calls and keeps nothing. Neither writes a file, except `jud tune --out`. Run every command from the root of the checkout. The recordings under `examples/recordings/jud_calibration` are scripted answers that carry the model name `jev-1.13.0`, not a model's own, so the numbers below show the loop and not how that model performs.
+
+## 1. Grade the recorded answers
+
+`jud eval` answers every case from the recordings, grades each answer against the case's `expect`, and prints one block per question:
+
+```sh
+jud eval examples/jud/triage.jud examples/jud/triage-cases.jud \
+  --replay examples/recordings/jud_calibration
+```
+
+<!-- transcript: jud eval examples/jud/triage.jud examples/jud/triage-cases.jud --replay examples/recordings/jud_calibration -->
+```text
+rubric inbox-triage: questions sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a, policy sha256:1585094f59711426a98044a00ded2ec747010b5369e941f33a2732a50262e99f
+cases inbox-triage-cases: sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6, 7 cases
+7 requests, model jev-1.13.0
+
+actionable
+  labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)
+  brier 0.090, calibration error 0.144, confidence when right 0.92, when wrong 0.52
+  gate: acts on 7 of 7, defers 0, accuracy when acted 1.00
+
+desk
+  labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)
+  brier 0.155, calibration error 0.151, confidence when right 0.76, when wrong 0.40
+  gate: acts on 6 of 7, defers 1, accuracy when acted 1.00
+
+tone
+  labelled 6, correct 6, accuracy 1.00 (95% interval 0.61 to 1.00)
+  brier 0.059, calibration error 0.202, confidence when right 0.80, when wrong -
+  gate: acts on 7 of 7, defers 0, accuracy when acted 1.00
+
+model misses (2)
+  actionable  receipt: expected no, predicted yes, confidence 0.52
+  desk        receipt: expected none_of_these, predicted billing, confidence 0.40
+```
+
+The report is on stdout and nothing else is. Read a block from the top.
+
+- **Accuracy** is the share of labelled cases the model got right, with its 95 % interval. Six of seven is 0.86, and the interval runs from 0.49 to 0.97. On seven cases that width is the honest number.
+- **Brier** is 0 for a perfect answer and grows with confident wrong ones. **Calibration error** is the gap between how confident the model was and how often it was right; it needs far more than seven cases to mean anything.
+- **Confidence when right and when wrong** says whether confidence separates the two. For `actionable` it does, 0.92 against 0.52. If the two are close, no bar can sort the answers.
+- **The gate line** is the policy's, not the model's. It says how many answers the gate acted on rather than deferred, and how often the policy's own verdict was right among those.
+- **Model misses** lists each answer the model got wrong, by case.
+
+The model's accuracy and the policy's can differ. The `receipt` case is a miss for `actionable`: the recorded answer is 0.52, which is a yes, and the label says no. The gate's threshold is 0.55, so the policy says no and is right, and `accuracy when acted` is 1.00. The model's own reading decides a miss: a Noul at 0.5, a Choice by its pick, a Score by its most probable level.
+
+## 2. Hold the labels with a gate
+
+`--min-accuracy` makes the command fail when a question's accuracy falls short. A bare number holds every labelled question; `desk=0.95` holds one; the flag repeats. It holds the model's accuracy, the first number of a block, and never the policy's.
+
+```sh
+jud eval examples/jud/triage.jud examples/jud/triage-cases.jud \
+  --replay examples/recordings/jud_calibration --min-accuracy 0.9
+```
+
+The report is the same, with a section at the end:
+
+<!-- transcript: jud eval examples/jud/triage.jud examples/jud/triage-cases.jud --replay examples/recordings/jud_calibration --min-accuracy 0.9 (end of stdout) -->
+```text
+--min-accuracy
+  NOT MET  actionable 0.86 < 0.9
+  NOT MET  desk 0.86 < 0.9
+  met      tone 1.00 >= 0.9
+```
+
+The report is printed in full. The message goes to stderr and the exit status is 3:
+
+<!-- transcript: jud eval examples/jud/triage.jud examples/jud/triage-cases.jud --replay examples/recordings/jud_calibration --min-accuracy 0.9 (stderr) -->
+```text
+jud: 2 question(s) below --min-accuracy: actionable 0.86 < 0.9, desk 0.86 < 0.9
+```
+
+Status 3 means the evaluation ran and the labels were not met. It is the only command that exits 3. Status 1 means a call failed, or a case has no recording under `--replay`. Status 2 means the invocation was wrong before any call, and a `--min-accuracy` that names a question the rubric does not ask is one of those. Without a gate flag `jud eval` exits 0 whatever the accuracy. A bar that names a question nobody labelled is not met, and a bare bar holds only the labelled questions and fails when none is labelled. [The exit status table](../reference/cli.md#exit-status) has every status, and [Run in CI](run-in-ci.md) puts this in a job.
+
+## 3. Propose the bars
+
+`jud tune` sweeps each gate over the same answers and proposes a bar for it. It reads recordings only and never calls a backend.
+
+- **A Noul's `threshold`** is the one with the best F1, the lowest on a tie.
+- **A Choice's or Score's `confidence`** is the lowest bar that keeps `--target-accuracy` (0.95 by default) over at least `--min-covered` cases (3 by default). The lowest bar acts on the most cases that still meet the target.
+- **A Score's `level_at_least`**, when the gate has one, is the level with the best F1.
+
+The tables and every note go to stderr. The proposal goes to stdout. Send stderr to a file, since the tables are long:
+
+```sh
+jud tune examples/jud/triage.jud examples/jud/triage-cases.jud \
+  --replay examples/recordings/jud_calibration 2> tune.log
+```
+
+<!-- transcript: jud tune examples/jud/triage.jud examples/jud/triage-cases.jud --replay examples/recordings/jud_calibration (stdout) -->
+```yaml
+policy:
+  actionable:
+    threshold: 0.55
+    note: best F1 on 7 labelled cases; ties go to the lower threshold
+  desk:
+    confidence: 0.45
+    fallback: none_of_these
+    note: lowest bar at 95% accuracy; covers 6 of 7 labelled cases
+  tone:
+    confidence: 0.0
+    note: lowest bar at 95% accuracy; covers 6 of 6 labelled cases
+tuning:
+  cases: sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
+  model: jev-1.13.0
+  server: https://api.typesafe.ai
+  tuned_at: "2026-10-08T09:40:05Z"
+  labelled:
+    actionable: 7
+    desk: 7
+    tone: 6
+```
+
+The blocks start at column 0. `tuned_at` is the time of your run. Read the decision of each gate in `tune.log`, which also holds the tables:
+
+```sh
+grep '^jud:' tune.log
+```
+
+<!-- transcript: jud tune examples/jud/triage.jud examples/jud/triage-cases.jud --replay examples/recordings/jud_calibration (stderr notes) -->
+```text
+jud: tuning inbox-triage on 7 answers to 7 cases (sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6) from the recordings under examples/recordings/jud_calibration
+jud: actionable (noul): 7 labelled cases, accuracy 0.86 (95% interval 0.49-0.97)
+jud: actionable: propose threshold 0.55 (now 0.55): best F1 on 7 labelled cases; ties go to the lower threshold
+jud: warning: actionable: 7 labelled cases, accuracy 0.86 (95% interval 0.49-0.97); a bar read off so few cases is a guess with a number on it
+jud: desk (choice): 7 labelled cases, accuracy 0.86 (95% interval 0.49-0.97)
+jud: desk: propose confidence 0.45 (now 0.45): lowest bar at 95% accuracy; covers 6 of 7 labelled cases
+jud: warning: desk: 7 labelled cases, accuracy 0.86 (95% interval 0.49-0.97); a bar read off so few cases is a guess with a number on it
+jud: tone (score): 6 labelled cases, accuracy 1.00 (95% interval 0.61-1.00)
+jud: tone: propose confidence 0.00 (now 0.30): lowest bar at 95% accuracy; covers 6 of 6 labelled cases
+jud: tone: the proposed bar is 0, so the gate would defer nothing: the labelled answers are already at least 95% right with no bar
+jud: tone: the table reads the most probable level as the answer; the policy reads the level nearest the weighted score, which can differ
+jud: warning: tone: 6 labelled cases, accuracy 1.00 (95% interval 0.61-1.00); a bar read off so few cases is a guess with a number on it
+```
+
+Read these lines before you keep anything.
+
+- **`(now X)`** is the gate's current value. `actionable` stays at 0.55 and `desk` at 0.45: the cases say what the committed rubric already says. `tone` would move from 0.30 to 0.00.
+- **A proposed bar of 0** defers nothing. All six labelled `tone` answers are right, so the table has no reason to defer one, and the note says so. That is a result to weigh, not to paste.
+- **The warning** appears when the accuracy interval is wider than 0.2. Seven cases trigger it whatever the accuracy. A bar read off so few cases is a guess with a number on it; add cases before you trust it.
+- **A Score's note**, printed when a confidence bar is proposed for it, says the table reads the most probable level as the answer, where the policy reads the level nearest the weighted score. They agree on a one-peaked answer and part on a spread one.
+- **A strict gate** acts above its bar, and the table counts an answer at the bar as acting. The note counts the answers sitting exactly at the proposed bar when there are any, since the gate reads those the other way, and says it can happen when there are none.
+- **A gate with `bands`** gets its table and no proposal, and stays as written. It is also absent from the `labelled` count, which lists only the questions that were tuned and the cases each was read from.
+
+`jud tune` refuses with status 2 when the rubric has no gate, when `--target-accuracy` is outside 0 to 1, or when `--min-covered` is 0. It refuses recordings of more than one model, since a bar is tuned per model, and names which cases each model answered. A question with no gate, or that no case labels, is skipped with a note. When no gate gets a proposal, stdout is empty and a note says so. `jud tune` warns when two files record one request, because a replay answers from only one of them.
+
+## 4. Write the proposal back
+
+Keep the proposal in one of two ways.
+
+**Paste it.** The two blocks are the rubric's `policy` and `tuning`. Indent them two spaces, and replace the rubric's own `policy` and `tuning` under `spec:` with them. Every other comment in the file stays. The `sed` does the indenting:
+
+```sh
+jud tune examples/jud/triage.jud examples/jud/triage-cases.jud \
+  --replay examples/recordings/jud_calibration 2> tune.log | sed 's/^/  /' > proposal.yaml
+```
+
+**Write to another file.** `--out PATH` writes the whole rubric with the proposal applied and prints nothing on stdout. A file already at `PATH` is replaced:
+
+```sh
+jud tune examples/jud/triage.jud examples/jud/triage-cases.jud \
+  --replay examples/recordings/jud_calibration --out triage-tuned.jud
+```
+
+The rubric is serialised again, so its comments and layout are lost and `version` is written as text. `--out` never names the rubric, the cases or a file in the recordings directory: that is a status 2 refusal. Without `--out`, `jud tune` writes nothing.
+
+Check the file with its cases:
+
+```sh
+jud check triage-tuned.jud examples/jud/triage-cases.jud
+```
+
+<!-- transcript: jud tune --out triage-tuned.jud, then jud check triage-tuned.jud examples/jud/triage-cases.jud -->
+```text
+rubric    triage-tuned.jud: name inbox-triage, jud/v1.3, 3 questions, 3 gates (tuned)
+          questions sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a
+          policy    sha256:d9e705af6ee1d94e4219fd4a8c26710d18e01d160262f3e83d8ab8c0032eefc7
+          tuned on  sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
+cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1.3, 7 cases, bound to triage-tuned.jud
+          cases     sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
+2 documents, 0 refused
+```
+
+The questions' fingerprint is unchanged. The policy fingerprint moved, which is the point. `tuned on` is the fingerprint of the cases the bars rest on, and `tuning` also names the model, the server and the time. The next person to open the file sees what the numbers rest on.
+
+## When the model moves
+
+A bar is tuned per model version, and a confidence is the model's own formula: a threshold tuned on `jev-1.13.0` says nothing about `tev1:0.8b`. Record the cases again against the new model, which `jud record` reads from the `model` field of the configuration file: no flag and no environment variable names it ([Configure a backend](configure-a-backend.md), [the file](../reference/configuration.md#the-file)). Read how it grades with `jud eval`, and run `jud tune` for the new bars. Pass `--refresh` to `jud record`, or record into a new directory: a request's fingerprint leaves the model out, so otherwise the old model's answers are kept. `tuning.model` names which model answered.
+
+When the cases change, the cost depends on what changed. A new case, or one whose state changed, has no recording, so `jud eval` and `jud tune` exit 1 naming it; `jud record` asks only that one. A changed label needs no new recording. A changed question has a new request fingerprint, so every case needs a recording again.
+
+## The same loop in Rust
+
+`examples/jud_calibration.rs` runs the loop in code, with `judgment::eval::tuning`, `judgment::jud::grade` and `eval::QuestionMetrics`:
 
 ```sh
 cargo run --features jud --example jud_calibration
 ```
 
-## 1. Read, bind, answer
-
-The example reads `examples/jud/triage.jud` and `examples/jud/triage-cases.jud`, binds the cases to the rubric so a label that does not fit fails before any call, and answers each case from the `.jud` recordings under `examples/recordings/jud_calibration/` through a `Replay`. Against a live model, the `Replay` is a `Recorder` over a `Client`, and nothing else changes.
-
-```text
-rubric inbox-triage (questions sha256:fda347c2…, policy sha256:1585094f…), 7 cases (sha256:d752d806…), 13 recordings
-```
-
-## 2. Read the verdicts and the metrics
-
-The committed policy's verdicts per case come first, so a surprising bar is seen on the case that trips it; then, per question, the accuracy, the Brier score and, with enough cases, the calibration error:
-
-```text
-verdicts through the committed policy:
-  refund-angry   actionable=yes(0.97)  desk=billing(0.87)  tone=angry(0.84)
-  thanks         actionable=no(0.08)  desk=none_of_these(0.77)  tone=calm(0.93)
-  receipt        actionable=no(0.52)  desk=deferred→none_of_these(0.40<0.45)  tone=calm(0.96)
-  …
-
-metrics per question:
-  actionable   labelled 7  accuracy 0.86  brier 0.090
-  desk         labelled 7  accuracy 0.86  brier 0.155
-  tone         labelled 6  accuracy 1.00  brier 0.059
-```
-
-The example prints the accuracy and the Brier score; `eval::QuestionMetrics::summarise` computes all four below, and a harness prints what it needs.
-
-- **Accuracy** comes with a 95 % Wilson interval (`eval::metrics::wilson_interval`); on seven cases it is wide, and that width is the honest number.
-- **The Brier score** (`eval::metrics::brier`) is the multi-class sum of squared differences between the probabilities and the outcome: 0 is perfect, 2 is full confidence in the wrong option. It penalises confident wrong answers most.
-- **Expected calibration error** (`eval::metrics::expected_calibration_error`, ten bins) is the gap between how confident the model was and how often it was right. It needs more cases than seven to mean anything.
-- **Mean confidence when right and when wrong** says whether the confidence separates the two at all. If it does not, no bar will.
-
-## 3. Sweep each bar
-
-For a Noul, `eval::tuning::threshold_sweep` tables accuracy, precision, recall and F1 at every candidate threshold (`default_thresholds`, 0.05 to 0.95), and `best_threshold` reads off the best F1, ties to the lower bar:
-
-```text
-tuning:
-  threshold  acc   prec  rec   f1
-  0.50       0.86  0.83  1.00  0.91
-  0.55       1.00  1.00  1.00  1.00
-  …
-  0.90       0.86  1.00  0.80  0.89
-  best threshold by F1 (ties to the lower): 0.55
-```
-
-The one case between 0.50 and 0.55 is the automated receipt, which the model put at 0.52: the threshold moved to keep it out, and the cases document's `note` on that case says why it is there.
-
-For a Choice or a Score, `gate_table` tables accuracy and coverage at every candidate confidence bar (`default_bars`), and `lowest_bar` reads off the lowest bar that keeps a target accuracy over a minimum number of covered cases:
-
-```text
-  lowest desk bar with ≥95% accuracy over ≥3 covered: 0.45 (covers 6/7, accuracy 1.00)
-```
-
-Coverage is the share of cases the gate acts on rather than defers; the bar trades one for the other, and the policy's `fallback` is what the deferred ones get. Each band of a `bands` gate is read off the same table. For a Score with `level_at_least`, `level_sweep` and `best_level` do the same over the levels.
-
-## 4. Write the policy back
-
-The example puts the gates into the rubric's `policy`, with a `tuning` block naming the cases by fingerprint, the model, the server and the time, and prints the rubric:
-
-```yaml
-  policy:
-    actionable:
-      threshold: 0.55
-      note: best F1 on the labelled cases; 0.5 lets the automated receipt through
-    desk:
-      confidence: 0.45
-      fallback: none_of_these
-      note: lowest bar at 95% accuracy; covers 6 of 7 labelled cases
-  tuning:
-    cases: sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
-    model: jev-1.13.0
-    server: https://api.typesafe.ai
-    tuned_at: "2026-10-04T12:00:00Z"
-```
-
-The next person to open the file sees what the numbers rest on. The questions' fingerprint is unchanged; the policy fingerprint moved, which is the point.
-
-## When the model moves
-
-A bar is tuned per model version, and a confidence is the model's own formula: a threshold tuned on `jev-1.13.0` says nothing about `tev1:0.8b`. Record the cases again against the new model, run the loop, and read the new bars off the new table; `tuning.model` names which one answered.
-
-## In your own code
-
-The functions above are `judgment::eval::tuning`; `judgment::jud::grade` grades one case against one response into judgments; `eval::QuestionMetrics` summarises them. The example is the reference for wiring them, and `cargo test --all-features` runs its test over the recordings.
+It proposes the same bars for `actionable` and `desk`. It tunes two of the three gates, where `jud tune` sweeps every gate of the rubric. `cargo test --all-features` runs its test over the recordings.
 
 ## Next
 
-- [Run in CI](run-in-ci.md), so the tuned rubric and its cases are checked on every change.
+- [Run in CI](run-in-ci.md): hold the labels on every change with `jud eval --min-accuracy`.
+- [Record, replay and test](record-replay-and-test.md): record the answers again when the model or the cases move.
+- [Label cases](label-cases.md): more cases make a bar worth trusting.
+- [The jud command line](../reference/cli.md#jud-eval): every flag of `jud eval` and `jud tune`, and the JSON report.
 
 
 <!-- source: docs/guides/run-in-ci.md -->
@@ -1102,7 +1275,7 @@ The functions above are `judgment::eval::tuning`; `judgment::jud::grade` grades 
 
 # Run in CI
 
-**You will** have a job that refuses a broken rubric, replays a known case without a key, and evaluates with a key when one is provided. **Prerequisites:** rubrics and cases ([Write a rubric](write-a-rubric.md), [Label cases](label-cases.md)); recordings for the replay ([Record, replay and test](record-replay-and-test.md)).
+**You will** have a job that refuses a broken rubric, replays a known case without a key, fails when a model's recorded answers no longer meet the labels, and runs a rubric with a key when one is provided. **Prerequisites:** rubrics and cases ([Write a rubric](write-a-rubric.md), [Label cases](label-cases.md)); recordings of the cases, committed to the repository ([Record, replay and test](record-replay-and-test.md)).
 
 ## Get the binary into the job
 
@@ -1111,10 +1284,10 @@ Any route from [Install](../start/install.md) works in a job; the two that need 
 ```yaml
 # GitHub Actions, with mise
 - uses: jdx/mise-action@v2
-- run: mise use -g github:chussenot/judgment@0.10.4
+- run: mise use -g github:chussenot/judgment@X.Y.Z
 ```
 
-or the container image, which needs no install step at all ([Run in a container](run-in-a-container.md)). Pin a version either way.
+or the container image, which needs no install step at all ([Run in a container](run-in-a-container.md)). Pin a version either way. `X.Y.Z` stands for a release that has `jud eval`, `jud record` and `jud tune`, which a job that holds the labels needs. 0.10.4 has `check` and `--replay` but not those three, which arrived after it: pin a release that lists them in [the changelog](../../CHANGELOG.md).
 
 ## Check every document
 
@@ -1127,7 +1300,7 @@ jud check rubrics/*.jud
 Give it the rubric and its cases together, so each label is checked against the request its case lowers to. With the image:
 
 ```sh
-docker run --rm -v "$PWD:/work:ro" ghcr.io/chussenot/jud:0.10.4 check rubrics/*.jud
+docker run --rm -v "$PWD:/work:ro" ghcr.io/chussenot/jud:X.Y.Z check rubrics/*.jud
 ```
 
 ## Replay a smoke case with no key
@@ -1145,7 +1318,72 @@ A directory of recordings is a backend: a state that was recorded is answered ex
 
 `jq -e` exits non-zero when the verdict is not what the test expects, so the job fails for the right reason.
 
-## Evaluate with a key
+## Hold the labels with `jud eval`
+
+A change can break the labels in two ways. A label or a recording can change so that the model's accuracy falls below the bar, and a case or a question can change so that a request has no recording. `jud eval` over committed recordings catches both, with no key, no network, and no file written:
+
+```yaml
+- name: Hold the labels
+  run: jud eval rubrics/triage.jud cases/triage.jud --replay recordings/triage --min-accuracy 0.9
+```
+
+`--min-accuracy 0.9` holds every labelled question. `--min-accuracy desk=0.95` holds one, and the flag repeats. The bar holds the model's accuracy per question, as [Tune thresholds](tune-thresholds.md#2-hold-the-labels-with-a-gate) explains. The job fails for two different reasons, with two statuses:
+
+- **Status 3** means a question's accuracy is below its bar. The report is on stdout, and the message on stderr names the questions.
+- **Status 1** means a case has no recording, because a case was added, its state changed or a question was edited, and nobody recorded the new request. The message names the cases:
+
+```text
+jud: no recording answers 1 case: password-reset; record them first with `jud record`
+```
+
+A step fails on any status other than 0. To tell the two apart in the job's log, read the status:
+
+```yaml
+- name: Hold the labels
+  run: |
+    status=0
+    jud eval rubrics/triage.jud cases/triage.jud --replay recordings/triage --min-accuracy 0.9 || status=$?
+    case "$status" in
+      0) ;;
+      3) echo "::error::a question fell below its accuracy bar" ;;
+      1) echo "::error::a case has no recording: run jud record and commit the recordings" ;;
+      *) echo "::error::jud was invoked wrongly" ;;
+    esac
+    exit "$status"
+```
+
+`--min-accuracy` does not hold the policy's own accuracy, the `accuracy when acted` of a gate. To hold that, read the JSON report. A gate that acted on no labelled answer has no accuracy and fails the check:
+
+```yaml
+- run: |
+    jud eval rubrics/triage.jud cases/triage.jud --replay recordings/triage --json \
+      | jq -e '[.questions[] | select(.gate != null) | .gate.accuracy_when_acted >= 0.95] | all'
+```
+
+When a case is added, record it on your machine, with a key, and commit the file. `jud record` keeps what is already in the directory and asks only for the new case:
+
+```sh
+jud record rubrics/triage.jud cases/triage.jud --out recordings/triage
+git add recordings/triage
+```
+
+The job never records. Recording needs a key and a directory it can write, and a job that rewrites its own recordings cannot fail.
+
+With the image, `eval` reads through a read-only mount, and `docker run` exits with the container's status, so 1, 2 and 3 reach the job unchanged:
+
+```sh
+docker run --rm -v "$PWD:/work:ro" ghcr.io/chussenot/jud:X.Y.Z \
+  eval rubrics/triage.jud cases/triage.jud --replay recordings/triage --min-accuracy 0.9
+```
+
+`record` is the command that needs a writable mount and a key; `tune --out` needs the writable mount and no key. The image runs as uid 65532, so the directory must be writable by that user, or run the container as yourself:
+
+```sh
+docker run --rm -v "$PWD:/work" --user "$(id -u):$(id -g)" -e TYPESAFE_API_KEY ghcr.io/chussenot/jud:X.Y.Z \
+  record rubrics/triage.jud cases/triage.jud --out recordings/triage
+```
+
+## Run a rubric with a key
 
 A key is a secret passed through the job's masked variables, never written into a file in the job:
 
@@ -1163,24 +1401,28 @@ A CI system that runs a job *inside* an image (GitLab's Docker executor, a Kuber
 
 ```dockerfile
 FROM alpine:3.21
-COPY --from=ghcr.io/chussenot/jud:0.10.4 /usr/local/bin/jud /usr/local/bin/jud
+COPY --from=ghcr.io/chussenot/jud:X.Y.Z /usr/local/bin/jud /usr/local/bin/jud
 ```
 
 `jud` is statically linked, so it runs on any Linux base, musl or glibc, and the bytes are still the release's.
 
 ## Read the exit status
 
-| Status | Meaning | In a script |
-|---|---|---|
-| 0 | Verdicts on stdout | read them with `jq` |
-| 1 | The backend was asked and the call failed, or its answer did not fit the rubric, or no recording for the state | retry later, or a missing recording to add |
-| 2 | Wrong before any call: the file, the input, a missing key, the configuration | fix the job |
+[The jud command line](../reference/cli.md#exit-status) defines each status. In a job they read:
 
-Every error goes to stderr, prefixed `jud:`; stdout carries verdicts and nothing else, so a pipeline never reads an error as a result ([The jud command line](../reference/cli.md#exit-status)).
+| Status | What it asks of the job |
+|---|---|
+| 0 | Nothing: read the verdicts, or `jud eval`'s report, with `jq` |
+| 1 | A call or a recording failed: retry later, or record the case (again) with `jud record` |
+| 2 | Wrong before any call: fix the job |
+| 3 | `jud eval` only: the labels are no longer met, so read the report |
+
+Every failure the command finds goes to stderr as `jud: MESSAGE`; a usage error that clap catches reads `error:` instead, also on stderr with status 2. Stdout carries the result, so a pipeline does not read a failure as a result, with one exception: `jud check` reports its refusals as `error` lines in its result, on stdout. `jud eval` prints its report on stdout before it exits 3.
 
 ## Next
 
 - [Tune thresholds](tune-thresholds.md), which the same recordings feed.
+- [Record, replay and test](record-replay-and-test.md): record a case you added.
 
 
 <!-- source: docs/guides/run-in-a-container.md -->
@@ -1198,7 +1440,7 @@ That line is the whole model: `-i` carries stdin into the container, `-v "$PWD:/
 
 ## Files reach it through `/work`
 
-The container sees only what is mounted. The working directory is `/work`, so a mount there makes a rubric, a state file or a recordings directory reachable by a relative path. Mount read-only: no subcommand writes a file.
+The container sees only what is mounted. The working directory is `/work`, so a mount there makes a rubric, a state file or a recordings directory reachable by a relative path. Mount read-only for `check`, `lower`, `eval` and a plain run, none of which writes a file. `jud record` and `jud tune --out`, which arrived after 0.10.4, do write and need a writable mount ([Run in CI](run-in-ci.md#hold-the-labels-with-jud-eval) shows `record` with the user it needs).
 
 ```sh
 # Read documents as the crate reads them; status 2 if any is refused.
@@ -1307,7 +1549,8 @@ The skill also loads on its own whenever a task touches a `.jud` file, a rubric,
 3. Write the document in the `jud/v1.3` envelope, starting from the nearest example under `examples/jud/`.
 4. Check it with `scripts/jud.sh check`, rubric and cases together, and fix every refusal in the document rather than around it.
 5. When the request depends on the state, look at what each case sends with `scripts/jud.sh lower`.
-6. Report the files, the `jud check` summary and, when the rubric will be pinned, its two fingerprints.
+6. When bars are to be measured, name `jud record`, `jud eval` and `jud tune`, and run them only when asked. Never write a `tuning` block: tell the user to paste what `jud tune` prints under `spec:`.
+7. Report the files, the `jud check` summary and, when the rubric will be pinned, its two fingerprints.
 
 ## Work on the plugin itself
 
@@ -1329,6 +1572,7 @@ Every document written with the skill passed every assertion (49 of 49); without
 ## Next
 
 - [Write a rubric](write-a-rubric.md) and [Label cases](label-cases.md), the guides the skill follows.
+- [Tune thresholds](tune-thresholds.md), the loop behind the bars the skill never writes itself.
 
 
 <!-- source: docs/guides/patterns.md -->
@@ -1373,7 +1617,7 @@ The same primitives take other shapes, each with a [cookbook](https://docs.types
 
 # The jud command line
 
-`jud` evaluates a JSON state against a `.jud` Rubric and prints one verdict per question. The help blocks on this page are the binary's own `--help` output, refreshed by `scripts/gen-cli-reference.sh` and checked in CI, so they cannot drift from the command tree. [Install](../start/install.md) puts the binary on your `PATH`; [Configuration](configuration.md) is where the backend comes from.
+`jud` evaluates a JSON state against a `.jud` Rubric and prints one verdict per question. `jud record`, `jud eval` and `jud tune` run a Rubric over a Cases document: they keep the model's answers as recordings, grade them against the labels and propose each gate's bar. The help blocks on this page are the binary's own `--help` output, refreshed by `scripts/gen-cli-reference.sh` and checked in CI, so they cannot drift from the command tree. [Install](../start/install.md) puts the binary on your `PATH`; [Configuration](configuration.md) is where the backend comes from. Why the loop is three commands: [decision 0021](../project/decisions/0021-record-eval-and-tune-from-the-command-line.md).
 
 ## `jud [OPTIONS] [RUBRIC]`
 
@@ -1390,6 +1634,9 @@ Commands:
   config      The backend a run would use: base URL, model, timeout, whether an API key is set
   check       Read documents as the crate reads them
   lower       Print the request a rubric lowers to, for a state or for every case
+  record      Answer every case once and write the recordings
+  eval        Grade a model's answers against the labelled cases
+  tune        Propose each gate's bar from recorded answers
   completion  Print a shell completion script for jud's commands and flags
   help        Print this message or the help of the given subcommand(s)
 
@@ -1401,7 +1648,7 @@ Options:
       --replay <DIR>
           Answer from the recordings in this directory instead of a server.
 
-          The crate's Replay backend: a recording whose request fingerprint matches this state and rubric answers, verified against the questions as a server's response would be; no key, no network. A state nobody recorded is an error, never a guess.
+          The crate's Replay backend: a recording whose request fingerprint matches this state and rubric answers, verified against the questions as a server's response would be; no key, no network. A state nobody recorded is an error, never a guess. `jud eval` and `jud tune` take their own --replay after the subcommand; `jud record` never replays, it writes recordings with --out.
 
           [env: JUD_REPLAY=]
 
@@ -1416,11 +1663,19 @@ Examples:
   jq '.customer' event.json | jud rubric.jud
   yq -o=json '.spec' resource.yaml | jud rubric.jud
 
-Exit status: 0 verdicts printed; 1 the backend call failed; 2 the
-invocation, a file, the state or the configuration is wrong.
+  # The loop over labelled cases: ask once, then grade and tune offline.
+  jud record rubric.jud cases.jud --out recordings/
+  jud eval rubric.jud cases.jud --replay recordings/
+  jud tune rubric.jud cases.jud --replay recordings/
+
+Exit status: 0 success; 1 a backend call failed, or a recording is missing
+under --replay; 2 wrong before any call: the invocation, a file, the state or
+the configuration; 3 `jud eval` only: a --min-accuracy gate was not met.
 ```
 
-The state is read from stdin to the end and parsed as one JSON value ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)); empty input, invalid JSON and a stream of several values are refused with status 2. A rubric whose Choice takes its options from the request (`options_from: request`) cannot be evaluated by `jud` and is refused with a message saying so.
+The state is read from stdin to the end and parsed as one JSON value ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)); empty input, invalid JSON and a stream of several values are refused with status 2. A rubric whose Choice takes its options from the request (`options_from: request`) cannot be evaluated by `jud` and is refused with a message saying so; a case carries its own options, so [the case commands](#the-case-commands) can ask it.
+
+`--replay` is an option of the command it follows. `jud --replay DIR eval RUBRIC CASES` is refused with status 2 and a message that names where the flag goes. The `--replay` above and `JUD_REPLAY` are those of `jud RUBRIC`; `jud eval` and `jud tune` take their own after the subcommand, and `jud record` takes none.
 
 ### Verdicts
 
@@ -1451,8 +1706,20 @@ Stdout carries a JSON object keyed by question id, in the rubric's order, the se
 |---|---|---|
 | `yes`, `no` | Noul | `probability` |
 | `option` | Choice | `key`, `confidence`, and `band` when the gate has bands |
-| `level` | Score | `index`, `label`, `value`, `confidence`, and `reached` when the gate has `level_at_least` |
-| `deferred` | Choice, Score | `fallback`, the nearest option or level, and the bar it was below |
+| `level` | Score | `index`, `label`, `value`, `confidence`, `band` when the gate has bands, and `reached` when the gate has `level_at_least` |
+| `deferred` | Choice, Score | `fallback` (`null` when the gate names none), `nearest`, `confidence` and `bar` |
+
+`nearest` is the option key a Choice named, or the index of the level a Score is nearest to, as a string. `bar` is the bar the answer was below, the lowest when the gate has bands. A `desk` the triage rubric defers, because the answer `billing` at 0.4 is below the bar of 0.45:
+
+```json
+"desk": {
+  "verdict": "deferred",
+  "fallback": "none_of_these",
+  "nearest": "billing",
+  "confidence": 0.4,
+  "bar": 0.45
+}
+```
 
 ## `jud config`
 
@@ -1513,6 +1780,395 @@ Options:
 
 Prints the request the rubric lowers to, as the `questions` map the wire carries, for one state or for every case of a cases document.
 
+## The case commands
+
+`jud record`, `jud eval` and `jud tune` take the same two documents, a `RUBRIC` and the `CASES` labelled for it, and differ in where the answers come from and what is written.
+
+| Command | Answers come from | Writes | Needs a key |
+|---|---|---|---|
+| `jud record` | the configured backend, one call per request not yet recorded | recordings, under `--out DIR` | yes |
+| `jud eval` | the configured backend, or the recordings under `--replay DIR` | nothing | unless `--replay` is given |
+| `jud tune` | the recordings under `--replay DIR`, always | with `--out PATH`, a rubric file | no |
+
+`record` is the only command that spends calls on purpose; `eval` spends them when it has no replay. [Tune thresholds](../guides/tune-thresholds.md) and [Run in CI](../guides/run-in-ci.md) show them at work.
+
+The three share these rules.
+
+- **Documents.** Both are read as `jud check` reads them and the cases are bound to the rubric. A document that is refused, or a label that does not fit its question, is status 2 and names the file and the field.
+- **Requests.** A case's request is its `state` lowered with its own `options`, so a Choice with `options_from: request` is asked over the case's options. A conversation (a `state` that is an array) with a `from_turn` label is one request per turn, the state cut after that turn, named `ID-turn-N` with N counted from 0. Every other case is one request.
+- **Before any call.** Every request is lowered, and every label of a conversation's turn is checked, before any call is made or any answer is taken from a recording. A request the rubric does not lower for the case, or one that asks nothing because every `when` fails for its state, is status 2 and names the case.
+- **Recordings.** Under a replay a recording answers a request by the request's fingerprint, or by its request hash, and never by its file name. It is verified against the questions as a server's response would be.
+- **Missing recordings.** Under a replay every request is tried before the run fails. Status 1 then names every case that has no recording and says to record it with `jud record`. A recording that matches a request and no longer fits its questions is status 1 at that case.
+
+## `jud record`
+
+<!-- help: jud record -->
+```text
+Answer every case once and write the recordings.
+
+Each case's request is lowered from its state and its own options and sent to the configured backend; the verified response is written to DIR/CASE.jud with the request fingerprint, the rubric, the server and the time. A conversation labelled with `from_turn` is recorded turn by turn as CASE-turn-N.jud. A request already recorded in DIR is kept and not asked again, so an interrupted run resumes.
+
+Record always asks the configured backend and never reads `JUD_REPLAY`, so a run spends calls.
+
+Usage: jud record [OPTIONS] --out <DIR> <RUBRIC> <CASES>
+
+Arguments:
+  <RUBRIC>
+          The Rubric document the cases are for
+
+  <CASES>
+          The Cases document to answer
+
+Options:
+      --out <DIR>
+          The directory the recordings are written to, created if needed
+
+      --refresh
+          Ask every case again, replacing the recordings already in DIR
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+Reads `RUBRIC`, `CASES` and the recordings already in `DIR`. Asks the backend [Configuration](configuration.md#the-jud-command) resolves, so it needs a key. It takes no `--replay` and never reads `JUD_REPLAY`, though an empty `JUD_REPLAY` is refused as it is by every command ([Replay](configuration.md#replay)). Writes into `--out` and nowhere else, never over the rubric or the cases.
+
+### What it writes
+
+One file per request, `DIR/NAME.jud`, where `NAME` is the case's `id`, or `ID-turn-N` for a turn of a conversation. `DIR` is created when it does not exist. Each file is a [Recording](jud-format.md#recording) under a one-line comment: the verified response, the request's fingerprint, the rubric's name, the server and the time.
+
+- **Server.** It is written without the userinfo, the query and the fragment of the base URL, so a recording can be committed.
+- **Atomic.** The text goes to a temporary file in `DIR` and is renamed onto the recording's name, so a reader never sees half a file. A temporary name never ends in `.jud` or `.json`.
+- **Verified.** A response that does not fit its questions is never written.
+
+### What it asks
+
+The requests are asked one at a time, in the cases' order. A recording is written as soon as its answer is verified.
+
+- **Kept.** A request that a recording in `DIR` already answers is not asked again, so an interrupted run resumes and a new case costs one call.
+- **Refreshed.** `--refresh` asks every request again and replaces the file named after each case. It does not read `DIR` and does not remove other files, so a stale recording under another name stays beside the new one. The `jud: warning:` that names two files recording one request is then the cue to delete the stale one.
+- **Stale.** A recording of the request, in the case's own file, that no longer fits the questions is asked again and replaced.
+
+### Refusals before any call
+
+Status 2, before the first call:
+
+- A case without an `id`, named by its position counted from 0: a recording is a file named after its case.
+- Two requests that would share one file name, such as a case named like a turn of a conversation.
+- A recording that would be written over the rubric or the cases, whether the path names the input, a symbolic link to it or a hard link. `--refresh` does not lift this.
+- A stale recording of a request in a file that is not the case's own, which the run would leave beside the new one, unless `--refresh` is given. Delete or move it.
+- A file in `DIR` that does not read as a recording, unless `--refresh` is given, which does not read `DIR`.
+- A missing key, or a `DIR` that cannot be created.
+
+The refusals under [the case commands](#the-case-commands) apply as well.
+
+### What it prints
+
+Stdout is empty. Stderr carries one line per request, then the tally. It needs a key, so what follows is plain text from a second run against a server, after one recording was deleted and another edited by hand so that it no longer fits its questions:
+
+```text
+replaced refund-angry (stale)
+recorded thanks (2/7, 1 ms)
+kept login-loop
+kept receipt
+kept close-account
+kept how-to-export
+kept invoice-vat
+recorded 2, kept 5 in recordings
+```
+
+A line for each of `recorded NAME (N/TOTAL, MS ms)`, `kept NAME` and `replaced NAME (stale)`, then `recorded R, kept K in DIR`, where a replaced recording counts as recorded. When two files in `DIR` record one request, a `jud: warning:` line names them, since a replay answers from one of them.
+
+A call that fails stops the run at that case with status 1. The message names the case, its position, how many were recorded and kept before it, and `DIR`. The recordings already written stay, and the next run resumes from them. Exit status: 0 when every request has a recording, written or kept; 1 when a call failed or a recording could not be written; 2 for a refusal.
+
+## `jud eval`
+
+<!-- help: jud eval -->
+```text
+Grade a model's answers against the labelled cases.
+
+Answers every case from the configured backend, or from the recordings in DIR with --replay (no key, no network), and grades each against its expected answer: per question the accuracy with its 95% interval, the Brier score, the calibration error, how often the rubric's gate acts rather than defers and how often it is right when it acts, and every miss by the model. With --min-accuracy the command exits with status 3 when a question falls short, which makes it a CI check. Against a server eval keeps nothing: use `jud record` to keep the answers.
+
+Usage: jud eval [OPTIONS] <RUBRIC> <CASES>
+
+Arguments:
+  <RUBRIC>
+          The Rubric document the cases are for
+
+  <CASES>
+          The Cases document to grade
+
+Options:
+      --replay <DIR>
+          Answer from the recordings in this directory instead of a server
+
+          [env: JUD_REPLAY=]
+
+      --json
+          Print the report as one JSON object on stdout instead of text
+
+      --min-accuracy <[QUESTION=]ACCURACY>
+          Fail with status 3 when accuracy is below this, 0 to 1: `0.9` for every labelled question, `desk=0.95` for one. Repeatable. It is the model's accuracy per question, not the policy's. A question with no labelled case does not meet its bar
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+Reads `RUBRIC`, `CASES` and, with `--replay DIR` or `JUD_REPLAY`, the recordings in `DIR`; the flag overrides the variable. Writes nothing, against a server too: use [`jud record`](#jud-record) to keep what a server answered. Without a replay it asks the configured backend once per request and needs a key. With one it needs no key and no network.
+
+Stdout carries the report, as text or, with `--json`, as one JSON object. Both come from one value, so they say the same things. Status 0 whatever the accuracy, unless a [gate](#gating-on-accuracy) is given.
+
+### The text report
+
+The report, with the variable parts in capitals. [Tune thresholds](../guides/tune-thresholds.md) shows one for the triage documents.
+
+```text
+rubric NAME: questions FINGERPRINT, policy FINGERPRINT
+cases NAME: FINGERPRINT, N cases
+N requests, model MODEL
+
+QUESTION
+  labelled L, correct C, accuracy A (95% interval LOW to HIGH)
+  brier B, calibration error E, confidence when right R, when wrong W
+  gate: acts on A of T, defers D, accuracy when acted X
+
+model misses (N)
+  QUESTION  CASE: expected E, predicted P, confidence C
+
+--min-accuracy
+  met      QUESTION A >= BAR
+  NOT MET  QUESTION A < BAR
+```
+
+There is one block per question, in the rubric's order. When several models answered, `model MODEL` reads `models MODEL, MODEL`. A question no case labels prints `not labelled` in place of its two metrics lines, a question without a gate prints `gate: none`, and a run with no miss prints `model misses: none`. The `--min-accuracy` section appears only with a gate flag.
+
+A report holds three things that are not the same number: what the model got right, what the policy does with its answers, and where the model was wrong.
+
+- **The model.** `labelled`, `correct`, `accuracy` with its 95 % interval, the Brier score, the calibration error and the mean confidence when right and when wrong, each `-` when there is none. They read the model's own answer: a Noul is yes from a probability of 0.5, a Choice is the option it picked, a Score is its most probable level. [The metrics](../concepts/rubrics-cases-recordings.md#the-metrics) defines them.
+- **The gate.** `acts on A of T, defers D` counts what the rubric's gate for the question does with the T answers that asked it. A Noul's gate never defers, so it acts on every answer. `accuracy when acted` is the accuracy of the policy's own verdicts among the answers the gate acted on and a case labels. A Noul is read at the gate's `threshold` and `strict`, a Choice by the option the verdict names, a Score by the level the policy reads, the one nearest the weighted score. It is not the question's `accuracy`, and moving a bar moves one and not the other.
+- **The misses.** `model misses` lists the model's own readings that the labels call wrong, one line per miss: question, case, expected, predicted and the model's confidence in what it predicted, which for a Noul is the larger of p and 1 - p. A Noul is `yes` or `no`, a Choice is an option key and a Score is a level index. A miss is not the policy's: a Noul answered 0.52 is a miss against a `false` label, and a gate at 0.55 says no and is right.
+
+### The JSON report
+
+`--json` prints one object. Key names are `snake_case`; they and the types below are part of [the command's contract](stability.md#the-crate-and-the-command). Numbers are unrounded. A value that cannot be computed is `null`, never a string.
+
+| Key | Type | Meaning |
+|---|---|---|
+| `rubric` | object | The rubric the cases were graded against. |
+| `rubric.name` | string | Its `metadata.name`. |
+| `rubric.fingerprint` | string | `sha256:` over its questions. |
+| `rubric.policy_fingerprint` | string | `sha256:` over its policy, so a moved bar is as visible as a changed question. |
+| `cases` | object | The cases that were asked. |
+| `cases.name` | string | Its `metadata.name`. |
+| `cases.fingerprint` | string | `sha256:` over its cases. |
+| `cases.count` | integer | Cases in the document, not requests. |
+| `requests` | integer | Requests answered: one per case, one per turn for a conversation labelled with `from_turn`. |
+| `models` | array of strings | The distinct `model` the responses named, in the order first seen. |
+| `questions` | array of objects | One per question of the rubric, in its order. |
+| `questions[].id` | string | The question's id. |
+| `questions[].labelled` | integer | Answers a case labels. |
+| `questions[].correct` | integer | Labelled answers the model got right. |
+| `questions[].accuracy` | number or `null` | `correct` over `labelled`; `null` when nothing is labelled. |
+| `questions[].accuracy_interval95` | array of two numbers or `null` | The 95 % Wilson interval, low then high. |
+| `questions[].brier` | number or `null` | The mean Brier score. |
+| `questions[].ece` | number or `null` | The expected calibration error, over ten bins. |
+| `questions[].confidence_when_right` | number or `null` | `null` when no labelled answer was right. |
+| `questions[].confidence_when_wrong` | number or `null` | `null` when no labelled answer was wrong. |
+| `questions[].gate` | object or `null` | The policy's gate at work; `null` when the policy has none for the question. |
+| `questions[].gate.acted` | integer | Answers the gate acted on. |
+| `questions[].gate.deferred` | integer | Answers the gate deferred. |
+| `questions[].gate.accuracy_when_acted` | number or `null` | The policy's accuracy among the acted answers a case labels; `null` when there are none. |
+| `questions[].misses` | array of objects | The model's misses; `[]` when there are none. |
+| `questions[].misses[].case` | string | The case's id, `#N` for a case without one (its position, counted from 0), or `ID-turn-N`. |
+| `questions[].misses[].expected` | string | The label, in the answer's words. |
+| `questions[].misses[].predicted` | string | The model's reading, in the same words. |
+| `questions[].misses[].confidence` | number | The model's confidence in `predicted`. |
+| `min_accuracy` | array of objects | One entry per question a `--min-accuracy` flag checks; `[]` without the flag. |
+| `min_accuracy[].question` | string or `null` | The question; `null` when a bare bar found no question with a label. |
+| `min_accuracy[].bar` | number | The bar as given. |
+| `min_accuracy[].labelled` | integer | Labelled answers of the question; 0 when it has none. |
+| `min_accuracy[].accuracy` | number or `null` | The question's `accuracy`. |
+| `min_accuracy[].met` | boolean | `false` when `accuracy` is below the bar or there is none. |
+
+The same report with one question kept and `--min-accuracy desk=0.9`:
+
+```json
+{
+  "rubric": {
+    "name": "inbox-triage",
+    "fingerprint": "sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a",
+    "policy_fingerprint": "sha256:1585094f59711426a98044a00ded2ec747010b5369e941f33a2732a50262e99f"
+  },
+  "cases": {
+    "name": "inbox-triage-cases",
+    "fingerprint": "sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6",
+    "count": 7
+  },
+  "requests": 7,
+  "models": [
+    "jev-1.13.0"
+  ],
+  "questions": [
+    {
+      "id": "desk",
+      "labelled": 7,
+      "correct": 6,
+      "accuracy": 0.8571428571428571,
+      "accuracy_interval95": [
+        0.48686549668097007,
+        0.9743210440510253
+      ],
+      "brier": 0.15471428571428572,
+      "ece": 0.15142857142857136,
+      "confidence_when_right": 0.7566666666666668,
+      "confidence_when_wrong": 0.4,
+      "gate": {
+        "acted": 6,
+        "deferred": 1,
+        "accuracy_when_acted": 1.0
+      },
+      "misses": [
+        {
+          "case": "receipt",
+          "expected": "none_of_these",
+          "predicted": "billing",
+          "confidence": 0.4
+        }
+      ]
+    }
+  ],
+  "min_accuracy": [
+    {
+      "question": "desk",
+      "bar": 0.9,
+      "labelled": 7,
+      "accuracy": 0.8571428571428571,
+      "met": false
+    }
+  ]
+}
+```
+
+### Gating on accuracy
+
+`--min-accuracy [QUESTION=]ACCURACY`, repeatable, makes the command exit with status 3 when a question's accuracy is below its bar.
+
+- **The bar.** A number from 0 to 1, else status 2. A bare `0.9` applies to every question that has a labelled case. `desk=0.95` applies to the question `desk`; a name the rubric does not ask is status 2, and the message lists the questions.
+- **What is compared.** The question's `accuracy`, the model's, as the report prints it, and never `accuracy when acted`. The comparison is on the unrounded value, and the text shows as many digits as it takes to read true: `desk 0.857 < 0.86`.
+- **No labels.** A question with no labelled case does not meet its bar, named or not. A bare bar when no question has a label is one check that fails, so a gate cannot pass because nothing was measured.
+- **The result.** The report is complete on stdout first. Then a line on stderr, `jud: N question(s) below --min-accuracy: desk 0.86 < 0.95`, and status 3. A reader that closes stdout early does not change the status.
+
+## `jud tune`
+
+<!-- help: jud tune -->
+```text
+Propose each gate's bar from recorded answers.
+
+Reads the recordings in DIR (it never calls a backend), grades them against the cases, sweeps each gate and prints a proposal: a Noul's threshold by best F1, a Choice's or Score's confidence bar as the lowest that keeps --target-accuracy over at least --min-covered cases, a Score's `level_at_least` by best F1. The tables go to stderr. Stdout carries the proposed policy and tuning blocks as YAML, starting at column 0: paste them under `spec:`, indented two spaces. --out writes the whole rubric with the proposal applied instead.
+
+Usage: jud tune [OPTIONS] --replay <DIR> <RUBRIC> <CASES>
+
+Arguments:
+  <RUBRIC>
+          The Rubric document whose gates are tuned
+
+  <CASES>
+          The Cases document the gates are tuned on
+
+Options:
+      --replay <DIR>
+          The recordings to tune from; `jud record` writes them
+
+          [env: JUD_REPLAY=]
+
+      --target-accuracy <ACCURACY>
+          The accuracy a Choice's or Score's confidence bar must keep, 0 to 1
+
+          [default: 0.95]
+
+      --min-covered <N>
+          The fewest cases a confidence bar must still cover
+
+          [default: 3]
+
+      --out <PATH>
+          Write the whole rubric with the proposal applied to this file, instead of printing the blocks. The rubric is serialised again: its comments and layout are lost and `version` is written as text. Never the rubric, the cases or a file in DIR
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+Reads `RUBRIC`, `CASES` and the recordings in `--replay DIR`, which is required as the flag or as `JUD_REPLAY`. It never calls a backend and needs no key. It grades the recordings against the labels as `jud eval` does and sweeps each gate.
+
+### What it proposes
+
+| Question | Gate field | Rule |
+|---|---|---|
+| Noul | `threshold` | The threshold with the best F1, over 0.05 to 0.95 in steps of 0.05. A tie goes to the lower. |
+| Choice, Score | `confidence` | The lowest bar, over 0 to 0.95 in steps of 0.05, whose answers at or above it are right at least `--target-accuracy` of the time over at least `--min-covered` answers. |
+| Score with `level_at_least` | `level_at_least` | The level with the best F1 for "this level or higher". A tie goes to the lower. Written as the gate named it: an index stays an index, a text becomes the level's text. |
+
+`--target-accuracy` is a number from 0 to 1, default 0.95. `--min-covered` is at least 1, default 3. Anything else is status 2, before the documents are read.
+
+A proposal changes the field it proposes and the gate's `note`, which says how the number was found. Everything else in the gate is kept as written: `fallback`, `strict`, the other fields. A gate stays as written, with a line on stderr saying why, when:
+
+- **Bands.** The gate has `bands`. The table is printed and nothing is proposed.
+- **No bar.** No bar reaches the target over enough answers, or a Noul has no F1 because no case is labelled yes, or no answer reaches yes.
+- **No gate.** The policy has none for the question. The question is skipped.
+- **No label.** No case labels the question. It is skipped.
+
+### On stderr
+
+Tables and notes go to stderr. A question's header reads `jud: ID (KIND): L labelled cases, accuracy A (95% interval LO-HI)`, followed by its table. The row of the proposal carries a `proposed` marker at its end.
+
+| Table | Columns | Rows |
+|---|---|---|
+| Noul threshold | `threshold`, `accuracy`, `precision`, `recall`, `f1` | 0.05 to 0.95 |
+| Choice or Score bar | `bar`, `covered`, `coverage`, `correct`, `accuracy` | 0 to 0.95 |
+| Score level | `level`, `accuracy`, `precision`, `recall`, `f1` | level 1 up |
+
+`covered` counts the answers at or above the bar, `coverage` is that over the labelled answers, and `correct` and `accuracy` are among the covered. A line `jud: ID: propose threshold 0.55 (now 0.55): NOTE` follows, with `confidence` or `level_at_least` for the others. `now` is the gate's current value, or `unset` when it has none.
+
+[Tune thresholds](../guides/tune-thresholds.md) shows the notes for the triage documents.
+
+Warnings, none of which changes the status:
+
+- **Thin data.** The 95 % interval is wider than 0.2, so the bar is a guess with a number on it.
+- **A bar of 0.** The gate would defer nothing.
+- **A Score's bar table.** Printed for every Score whose `confidence` bar is proposed. The table reads the most probable level as the answer, where the policy reads the level nearest the weighted score. The level table reads the nearest, as the policy does.
+- **A strict gate.** The sweep counts an answer at the bar as acting, and a strict gate acts above it. The line says how many answers sit exactly at the proposed bar when any do, and otherwise that one can.
+- **Duplicates.** Two files in `DIR` record one request, so a replay answers from one of them.
+
+### On stdout
+
+The proposed `policy` and `tuning` blocks, as YAML, starting at column 0. Indent them two spaces to paste them under `spec:`. The `policy` block holds every gate of the rubric in its order, the proposed fields changed. The `tuning` block is the provenance:
+
+| Key | Value |
+|---|---|
+| `cases` | The fingerprint of the cases document. |
+| `model` | The one model that answered the recordings. |
+| `server` | The server the recordings name, without credentials, query or fragment; left out when none names one or they disagree. |
+| `tuned_at` | The time of the run, [RFC 3339](https://www.rfc-editor.org/rfc/rfc3339) in UTC. |
+| `labelled` | A map of question id to the labelled answers its proposal was read from; only the questions that were proposed. |
+
+[Tune thresholds](../guides/tune-thresholds.md) shows the blocks for the triage documents.
+
+When nothing is proposed, there is no block and no file: a line on stderr says so, and the status is 0.
+
+### With `--out`
+
+`--out PATH` writes the whole rubric with the proposal and the `tuning` block applied. Stdout stays empty and stderr says `jud: wrote the tuned rubric to PATH`. A file already at `PATH` is replaced. The rubric is serialised again, so its comments and layout are lost and `version` is written as text. `jud check` reads the result.
+
+`--out` is refused with status 2, before the documents are read, when `PATH`:
+
+- **Is an input.** It is the rubric or the cases, however spelled: a `./` path, a symbolic link or a hard link.
+- **Is among the recordings.** It is in `DIR`, is one of its recordings under another name, or is a link whose write would land there. A replay reads every `.jud` and `.json` in `DIR` as a recording.
+
+Without `--out`, `jud tune` writes nothing.
+
+### Refusals and failures
+
+Status 2: the settings above; a rubric with no gates, since there is nothing to tune; recordings that come from more than one model, since a bar is tuned per model, and the message names which cases each model answered; a `DIR` that cannot be read or holds a file that is not a recording; and the refusals under [the case commands](#the-case-commands). Status 1: a request with no recording, or one whose recording no longer fits.
+
 ## `jud completion`
 
 <!-- help: jud completion -->
@@ -1540,22 +2196,25 @@ Options:
 
 | Variable | Read by | Meaning |
 |---|---|---|
-| `TYPESAFE_API_KEY` | a run | The key sent as the bearer; overrides `api_key` in the file |
-| `TYPESAFE_BASE_URL` | a run | The server; overrides `base_url` in the file |
-| `JUD_REPLAY` | a run | A directory of recordings to answer from instead of a server; `--replay` overrides it |
-| `XDG_CONFIG_HOME` | every command | Moves the configuration file's directory |
+| `TYPESAFE_API_KEY` | `jud config`, `jud record`, and `jud RUBRIC` and `jud eval` when they have no replay | The key sent as the bearer; overrides `api_key` in the file |
+| `TYPESAFE_BASE_URL` | the same commands | The server; overrides `base_url` in the file |
+| `JUD_REPLAY` | the commands that take `--replay` ([which ones](configuration.md#replay)) | A directory of recordings to answer from instead of a server; `--replay` overrides it |
+| `XDG_CONFIG_HOME` | the same commands | Moves the configuration file's directory |
 
-[Configuration](configuration.md) has the precedence and the file.
+[Configuration](configuration.md) has the precedence, the file and what an empty value means.
 
 ## Exit status
 
 | Status | Meaning |
 |---|---|
-| 0 | Verdicts printed on stdout. |
-| 1 | The backend was asked and the call failed: a transport error after the retries, an HTTP error, a response that does not fit the rubric, or no recording for the state under `--replay`. |
-| 2 | Something fixable before any call: no rubric argument, a file that cannot be read, a document that is not a valid Rubric, stdin that is empty or not one JSON value, a missing API key, a malformed configuration file; for `check`, any document refused. |
+| 0 | Success. Verdicts printed; recordings written or kept; the report printed with every `--min-accuracy` bar met, or none given; a proposal printed, written, or none to make. |
+| 1 | The backend was asked and the call failed: a transport error after the retries, an HTTP error, a response that does not fit the rubric. Under a replay, no recording for a request, or a recording that no longer fits its questions. For `jud record`, a recording that could not be written. |
+| 2 | Wrong before any call, and fixable: no rubric argument, a file that cannot be read, a document that is not valid, cases that do not fit their rubric, stdin that is empty or not one JSON value, a missing API key, a malformed configuration file, an unknown flag or a flag with a bad value, an `--out` that would overwrite an input, a `--min-accuracy` that names no question; for `check`, any document refused. |
+| 3 | `jud eval` only. The evaluation ran, the report is on stdout, and a `--min-accuracy` bar was not met. |
 
-Every error goes to stderr, prefixed `jud:`; stdout carries verdicts and nothing else, so a pipeline never reads an error as a result. Nothing writes a file.
+Every failure goes to stderr as `jud: MESSAGE`. A usage error that clap catches prints clap's own `error:` text instead, with status 2. `jud check` is the exception: its refusals are `error` lines in its result on stdout. Stdout carries the command's result and nothing else: the verdicts of a run, the lines of `jud check` and `jud lower`, the JSON of `jud config`, `jud eval`'s report, `jud tune`'s blocks and the completion script. `jud record` prints nothing on stdout. Everything else is a diagnostic and goes to stderr: the progress and tally of `jud record`, the tables and notes of `jud tune`, and the line that says a bar was not met. A pipeline never reads an error as a result. A reader that closes stdout early (`jud check FILE | head -1`) is not an error for any command: nothing panics, and the status is the command's own.
+
+Two commands write files, and nothing else does. `jud record` writes recordings into its `--out` directory. `jud tune --out` writes one rubric file. Neither writes over a rubric or a cases document it was given, and `jud tune --out` never writes among the recordings. Every other command, `jud eval` and a plain run among them, writes no file.
 
 
 <!-- source: docs/reference/configuration.md -->
@@ -1581,12 +2240,12 @@ flowchart TD
 | Setting | Environment | File field | Default |
 |---|---|---|---|
 | Base URL | `TYPESAFE_BASE_URL` | `base_url` | `https://api.typesafe.ai` |
-| API key | `TYPESAFE_API_KEY` | `api_key` | none; a run with no key is refused with status 2 |
+| API key | `TYPESAFE_API_KEY` | `api_key` | none; a command that asks a backend with no key is refused with status 2 |
 | Model | | `model` | `jev-latest` |
 | Timeout per attempt | | `timeout_secs` | `30` |
-| Replay directory | `JUD_REPLAY` | | none; the flag `--replay DIR` overrides the variable |
+| Replay directory | `JUD_REPLAY` | | none; the flag `--replay DIR` overrides the variable; [which commands read it](#replay) |
 
-An environment variable that is set to an empty or blank value counts as unset. No environment variable names the model for the command; the examples under `examples/` read `TYPESAFE_MODEL` for their `--live` runs, the command does not ([beads issue `judgment-rxl`](../project/contributing.md#tracking-work)).
+`TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL` set to an empty or blank value count as unset. `JUD_REPLAY` set to an empty or blank value does not: [Replay](#replay) says what happens. No environment variable names the model for the command; the examples under `examples/` read `TYPESAFE_MODEL` for their `--live` runs, the command does not ([beads issue `judgment-rxl`](../project/contributing.md#tracking-work)).
 
 ### The file
 
@@ -1623,7 +2282,21 @@ Prints the resolved backend and where each value came from, as JSON on stdout. T
 
 ### Replay
 
-With `--replay DIR` or `JUD_REPLAY=DIR`, the run answers from the recordings under the directory and consults no key, no file and no network. The directory is read as the crate's `Replay` backend reads it: every regular `.json` and `.jud` file that carries a request hash or a fingerprint. A state nobody recorded is a backend failure (status 1); a directory that does not exist is a usage error (status 2). [Record, replay and test](../guides/record-replay-and-test.md).
+With `--replay DIR` or `JUD_REPLAY=DIR`, a command answers from the recordings under the directory and consults no key, no file and no network. Commands that take the flag take it after the subcommand, so each command's `--replay` is its own ([The jud command line](cli.md)).
+
+| Command | `--replay DIR` | `JUD_REPLAY` |
+|---|---|---|
+| `jud RUBRIC` | optional | read |
+| `jud eval` | optional; without one the configured backend answers | read |
+| `jud tune` | required | read, and satisfies the requirement |
+| `jud record` | none; the flag is refused with status 2 | never read: it always asks the configured backend |
+| `jud config`, `jud check`, `jud lower`, `jud completion` | none | not read |
+
+The flag overrides the variable. A `JUD_REPLAY` that is set to an empty value is refused by every command, `jud record` and `jud config` included, with status 2 and the message `a value is required for '--replay <DIR>'`; unset it instead. A blank value, spaces only, is taken as a directory name, and a command that reads it refuses it with status 2.
+
+The directory is read as the crate's `Replay` backend reads it: every regular `.json` and `.jud` file in it, in name order. A file that does not read as a recording refuses the whole directory with status 2. A recording that carries neither a request hash nor a fingerprint is skipped, and so are links, subdirectories and files with another extension. A request is found by its fingerprint, then by its hash, never by a file name. When two files record one request, the later by name answers; `jud record` and `jud tune` warn about that.
+
+A request nobody recorded is a backend failure (status 1); a directory that does not exist is a usage error (status 2). [Record, replay and test](../guides/record-replay-and-test.md) is the procedure, and [The jud command line](cli.md#the-case-commands) says what each command does with the recordings.
 
 ## The crate's client
 
@@ -2149,7 +2822,7 @@ Checked by the builder before a request is sent, and by the `.jud` reader:
 
 # The container image
 
-`ghcr.io/chussenot/jud` is the `jud` binary as a container image. [Run in a container](../guides/run-in-a-container.md) is the procedure; this page is what the image is. Every fact here was checked against `ghcr.io/chussenot/jud:0.10.4` on 2026-10-07.
+`ghcr.io/chussenot/jud` is the `jud` binary as a container image. [Run in a container](../guides/run-in-a-container.md) is the procedure; this page is what the image is. Every fact here was checked against `ghcr.io/chussenot/jud:0.10.4` on 2026-10-07, except what the binary writes (under Contents), which is that of the release that ships `jud record` and `jud tune`.
 
 ## Contents
 
@@ -2166,7 +2839,7 @@ The image is `FROM scratch`. It holds the statically linked `jud` binary, a CA b
 | Size | about 10 MB |
 | Labels | `org.opencontainers.image.version`, `org.opencontainers.image.revision` (the commit), `org.opencontainers.image.source` (the repository) |
 
-The binary is the one `start/install.md` describes for Linux; its subcommands, flags and exit status are [The jud command line](cli.md). Nothing in the image writes a file.
+The binary is the one `start/install.md` describes for Linux; its subcommands, flags and exit status are [The jud command line](cli.md). The image holds no state of its own, and the binary writes a file only where a command is told to: `jud record --out` and `jud tune --out`, into a mounted directory that the image's user can write ([Run in CI](../guides/run-in-ci.md) shows the `docker run`). `check`, `lower`, `eval` and a plain run write nothing.
 
 ## Tags
 
@@ -2221,7 +2894,14 @@ What the crate sends and accepts on `POST /v1/systemone` follows the TypeSafe HT
 
 The crate is 0.x on crates.io: a minor release may break, a patch release does not, so a consumer pins the minor ([Install](../start/install.md#the-crate)). Every release lists its breaking changes under its own heading in [`CHANGELOG.md`](../../CHANGELOG.md), in [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) form under [Semantic Versioning](https://semver.org/spec/v2.0.0.html), and a breaking change arrives in a minor bump, never a patch ([Releasing](../project/releasing.md)).
 
-The `jud` command follows the crate's version, and its contract is three things: the exit status, the verdict JSON on stdout, and the configuration it reads ([The jud command line](cli.md), [Configuration](configuration.md)). A change to any of them is listed as breaking.
+The `jud` command follows the crate's version, and its contract is what a script reads and what the command writes. A change to what an existing status, JSON key, file write or setting means, or removing one, is listed as breaking. An addition ships in a minor release, is listed under Added and joins the contract.
+
+- **Exit status.** 0, 1, 2 and 3, as [the command line reference](cli.md#exit-status) defines them. Status 3 is `jud eval`'s alone: the evaluation ran and a `--min-accuracy` bar was not met. Statuses 0, 1 and 2 keep their meaning.
+- **Stdout.** The result goes to stdout and every diagnostic to stderr, with the one exception that [the command line reference](cli.md#exit-status) names: `jud check`'s refusals are lines of its result. The result is the verdict JSON of a run ([Verdicts](cli.md#verdicts)) and, for `jud eval --json`, the keys and types of [the JSON report](cli.md#the-json-report). `jud tune` prints the `policy` and `tuning` blocks of the `jud/v1` format, which hold under that format's own promises. The text of `jud eval`'s report, the tables and notes of `jud tune` and the progress of `jud record` are for a person: a script reads `--json` and the exit status.
+- **Files written.** Two commands write files and no other does: `jud record`, into its `--out` directory, and `jud tune --out`, one rubric file. Neither writes over a rubric or a cases document it was given; [the command line reference](cli.md#exit-status) states the rule.
+- **Configuration.** What the command reads, and in what order ([Configuration](configuration.md)), including which commands read `JUD_REPLAY`.
+
+Exit status 3, `jud eval`'s `--json` keys and the two places that write files are such additions: they are part of the contract from the release that ships `jud record`, `jud eval` and `jud tune`, and not a break ([decision 0021](../project/decisions/0021-record-eval-and-tune-from-the-command-line.md)).
 
 ## In one table
 
@@ -2233,7 +2913,7 @@ The `jud` command follows the crate's version, and its contract is three things:
 | A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good | `jud/v1.3`, decision 0018 |
 | The wire | The vendored OpenAPI document; a change moves the contract test, the CHANGELOG and the README together | crate 0.3.0 |
 | The crate | 0.x: a minor may break and says so; a patch does not | crate 0.3.0 |
-| The `jud` command | Exit status, verdict JSON and configuration change only in a minor, listed as breaking | crate 0.9.0 |
+| The `jud` command | Exit status (0 to 3), the verdict JSON, `jud eval`'s `--json` keys, the two places that write files (`jud record --out`, `jud tune --out`) and the configuration: a change to what one means, or removing one, only in a minor, listed as breaking; an addition is listed under Added | crate 0.9.0; status 3, `eval --json` and the file writes from the release that ships `record`, `eval` and `tune` |
 
 
 <!-- source: docs/reference/glossary.md -->
@@ -2378,7 +3058,7 @@ A **rubric** is the decision itself: the questions the model is asked about a st
 
 A **cases** document is the examples the decision is checked against: real states, each with the answer a person gave for the questions they were sure of. The cases are never sent to the model. They are what its answers are graded on, and what the rubric's thresholds are tuned from. The person who labels a case is asked what a careful colleague would say with the rubric in front of them; that is the standard the model is held to.
 
-A **recording** is what the model actually answered to one request, kept so a run can be replayed, graded again or compared with a later model's without another call. One rubric, graded on one cases document, produces one recording per case.
+A **recording** is what the model actually answered to one request, kept so a run can be replayed, graded again or compared with a later model's without another call. One rubric, graded on one cases document, produces one recording per case, or per turn for a conversation labelled with `from_turn`.
 
 ## The word
 
@@ -2410,13 +3090,15 @@ Every fingerprint is over a value inside `spec`. The envelope, `apiVersion`, `ki
 
 ## The loop
 
-1. **Read and bind.** Parse the rubric and the cases; bind the cases to the rubric, so a label that names an option nobody offered, or a question the case's state does not trigger, fails before any call.
-2. **Answer.** Lower each case's request and send it, to a server or to a replay of earlier recordings; record what came back with its fingerprint.
-3. **Grade.** Grade each response against the case's labels, in the answer's own vocabulary; summarise per question into accuracy with its interval, the Brier score and the calibration error.
-4. **Tune.** Sweep each Noul's threshold and read off the best F1; table each Choice's confidence bar against accuracy and coverage and read off the lowest bar that keeps the accuracy wanted; sweep each Score's levels.
-5. **Write back.** Put the gates into `policy`, with the cases' fingerprint, the model, the server and the time in `tuning`. The next person to open the file sees what the numbers rest on.
+You write the rubric and label the cases; the commands run the five steps.
 
-When the model version moves, run step 2 again. The questions do not change, so their fingerprint does not; the bars may, and the policy fingerprint shows it; `tuning` names the new model.
+1. **Read and bind.** Parse the rubric and the cases; bind the cases to the rubric, so a label that names an option nobody offered, or a question the case's state does not trigger, fails before any call. `jud check` does it.
+2. **Answer.** Lower each case's request and send it, to a server or to a replay of earlier recordings; record what came back with its fingerprint. `jud record` asks a server once and writes the recordings; `--replay` answers from them afterwards.
+3. **Grade.** Grade each response against the case's labels, in the answer's own vocabulary; summarise per question into accuracy with its interval, the Brier score and the calibration error. `jud eval` prints it, and `--min-accuracy` turns it into a gate.
+4. **Tune.** Sweep each Noul's threshold and read off the best F1; table each Choice's confidence bar against accuracy and coverage and read off the lowest bar that keeps the accuracy wanted; sweep each Score's levels. `jud tune` prints the tables and a proposal.
+5. **Write back.** Put the gates into `policy`, with the cases' fingerprint, the model, the server and the time in `tuning`. The next person to open the file sees what the numbers rest on. Paste the blocks `jud tune` prints, or let `jud tune --out` write the rubric to a new file.
+
+When the model version moves, run step 2 again (`jud record --refresh`). The questions do not change, so their fingerprint does not; the bars may, and the policy fingerprint shows it; `tuning` names the new model.
 
 ## The metrics
 
@@ -2591,7 +3273,7 @@ Issues live in [beads](https://github.com/gastownhall/beads): `bd ready` lists w
 
 ## Commits and releases
 
-Commits are [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/); `cog verify` runs on every message and CI checks a pull request's commits. The `CHANGELOG` is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) under [Semantic Versioning](https://semver.org/spec/v2.0.0.html): a change to what the crate sends or accepts on the wire, to the `.jud` format, or to the `jud` command's exit status, verdict JSON or configuration is listed as breaking. A release is `cog bump --auto` on `main` and never a hand-edited version ([Releasing](releasing.md)).
+Commits are [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/); `cog verify` runs on every message and CI checks a pull request's commits. The `CHANGELOG` is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) under [Semantic Versioning](https://semver.org/spec/v2.0.0.html): a change to what the crate sends or accepts on the wire, to the `.jud` format, or to what the `jud` command's exit statuses, JSON keys, file writes or configuration mean is listed as breaking, and an addition to any of them is listed under Added ([Stability](../reference/stability.md)). A release is `cog bump --auto` on `main` and never a hand-edited version ([Releasing](releasing.md)).
 
 ## The documentation
 
@@ -2617,7 +3299,7 @@ Generated, never edited by hand:
 | `docs/llms.txt`, `docs/llms-full.txt` | `scripts/gen-llms-txt.sh` | the same, `--check` |
 | `docs/demo.cast` | `scripts/record_demo.sh` (`mise run demo`), from the example recordings | a pre-bump hook re-records it |
 
-Code on the pages is held to the code: every Rust block in a tutorial is an `examples/` file, compared verbatim by `tests/docs_examples.rs`, and every Rust block in a guide is compiled as a documentation test (`src/lib.rs` includes the page under `#[cfg(doctest)]`); every whole `.jud` document on a page is a file under `examples/jud/`, named in an HTML comment before the fence, compared verbatim and read by `jud check` (`mise run jud:check`); every command transcript is reproduced by the same test against the binary, offline. `mise run docs:check` runs the frontmatter, generated-file and link checks (`lychee --offline`); `mise run docs:links` also checks the external links, which a weekly workflow does in CI.
+Code on the pages is held to the code: a Rust block in a tutorial or the README is an `examples/` file between `README:BEGIN` and `README:END` markers, compared verbatim by `tests/docs_examples.rs`, and a Rust block in a guide is compiled as a documentation test (`src/lib.rs` includes the page under `#[cfg(doctest)]`); a whole `.jud` document or configuration file on a page is a file under `examples/`, named in an HTML comment before the fence (`file: PATH` between `<!--` and `-->`) and compared verbatim (a `.jud` one is also read by `jud check`, `mise run jud:check`); a command transcript is held only when it is marked with an HTML comment (`transcript: LABEL` between `<!--` and `-->`), which the same test reproduces from the binary, offline; a step that needs a key or a server stays plain text. `mise run docs:check` runs the frontmatter, generated-file and link checks (`lychee --offline`); `mise run docs:links` also checks the external links, which a weekly workflow does in CI.
 
 ## Decision records
 
@@ -3696,7 +4378,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0018](0018-jud-1-3-takes-the-manifest-envelope.md) | The .jud format 1.3 takes the manifest envelope and reads one apiVersion | accepted |
 | [0019](0019-a-command-line-for-the-format.md) | A command line for the format, released as a binary | accepted |
 | [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | proposed |
-| [0021](0021-record-eval-and-tune-from-the-command-line.md) | Record, evaluate and tune from the command line | proposed |
+| [0021](0021-record-eval-and-tune-from-the-command-line.md) | Record, evaluate and tune from the command line | accepted |
 
 ## Status notes
 
@@ -3712,6 +4394,8 @@ Records are not edited after acceptance; a fact that has moved since is noted he
 - 0016 and 0017 are superseded by [0018](0018-jud-1-3-takes-the-manifest-envelope.md) on 2026-10-06: the envelope is a manifest's, a reader reads exactly one `apiVersion` and any change of the format takes a new one, so the compatibility rule of 0016 and the exception 0017 made to it are both withdrawn. What the two records added to the format (declarations, bands and level gates, names, the refusal of what a reviewer cannot see, the policy fingerprint) stands as rules of the format, and 0018 is the one page that maps the earlier keys onto the new envelope.
 
 - 0018 says any change of the format, additive or not, takes a new `apiVersion` that a reader of the earlier one refuses. [Stability](../../reference/stability.md), on 2026-10-06, promises that a `v1` minor only adds and that readers accept every `v1` document for at least twelve months after a later minor is published; a reader of a later minor therefore reads earlier `v1` documents, and only a change of meaning takes a new major. How the minor is spelled is [0020](0020-how-a-v1-minor-is-spelled.md), proposed. Nothing moves in the code until it is accepted: one minor exists and the reader reads it exactly.
+
+- 0021 extends the command [0019](0019-a-command-line-for-the-format.md) defined: three subcommands (`record`, `eval`, `tune`), exit status 3 for `jud eval` alone, and two places that write files (`jud record --out` and `jud tune --out`). 0019 stands: its statuses 0, 1 and 2 keep their meaning, and `jud RUBRIC` still evaluates one state from stdin. 0021 was accepted on 2026-10-08, when the subcommands were implemented; its "As implemented" section records what the implementation settled, and where it differs from the proposal the implementation is the contract.
 
 ## Writing a record
 
@@ -4379,7 +5063,7 @@ When applied: `tests/jud.rs` reads a document of every published minor and refus
 
 # 0021 Record, evaluate and tune from the command line
 
-**Status: proposed.** Nothing in the binary moves until this record is accepted.
+**Status: accepted.** Implemented in the `jud` binary on 2026-10-08. The decision below is as it was proposed, with the sentences the implementation made false corrected. [As implemented](#as-implemented) lists what the implementation settled that the proposal left open or did differently; where the two differ, the implementation is the contract.
 
 ## Context and problem statement
 
@@ -4394,7 +5078,7 @@ The question is what the command line should add so that the loop runs from a sh
 - **The paid step is separate.** Answering the cases costs model calls. Grading and tuning cost nothing once the answers exist, and are repeated far more often (another target accuracy, another rubric edit).
 - **CI never calls a model and never rewrites a file.** A regression check runs over committed recordings, with no key, and only reads.
 - **A tuned bar is reviewed before it lands.** The format exists so that a number in a policy says what it rests on. A bar written into a file without a person seeing the table behind it is the guess with better formatting.
-- **No new logic.** Everything the commands do is already in the library and exercised by the calibration example; the commands are glue, and their results equal the example's on the same documents.
+- **No new logic.** Everything the commands do is already in the library and exercised by the calibration example; the commands are glue, and for the gates the example tunes their bars equal its on the same documents.
 - **The command's contract stays legible.** The exit status, the output and what writes a file are the command's contract ([Stability](../../reference/stability.md)); additions are named, and nothing existing changes meaning.
 
 ## Considered options
@@ -4404,7 +5088,7 @@ The question is what the command line should add so that the loop runs from a sh
 3. **`jud eval` alone**, with a `--record DIR` flag that writes what it answers, and tuning left to Rust.
 4. **Nothing in the binary**: document the shell loop and the calibration example as the way.
 
-## Proposed outcome
+## Decision outcome
 
 Option 2.
 
@@ -4412,7 +5096,7 @@ Option 2.
 
 Lowers every case's request (its state and its own `options`, so a Choice with `options_from: request` is recorded too) and asks the configured backend, as `jud RUBRIC` does. Each response is verified against its request, then written as `DIR/<case>.jud` through `jud::recording_to_yaml`, with the request fingerprint, the rubric's name, the server and the time. A conversation case whose labels use `from_turn` is recorded turn by turn, as `<case>-turn-<n>.jud`, the shape the calibration recordings already have.
 
-A recording already in `DIR` whose fingerprint matches the request is kept and not asked again, so an interrupted run resumes and a new case costs one call; `--refresh` asks every case again. Cases are asked one at a time. It is the only subcommand that spends calls. Status 1 when a call fails (the recordings already written stay), 2 for a usage error.
+A recording already in `DIR` whose fingerprint matches the request is kept and not asked again, so an interrupted run resumes and a new case costs one call; `--refresh` asks every case again. Cases are asked one at a time. It is the only subcommand whose job is to spend calls and keep the answers; `jud eval` without a replay also calls the backend, and keeps nothing. Status 1 when a call fails (the recordings already written stay), 2 for a usage error.
 
 ### `jud eval RUBRIC CASES [--replay DIR]`
 
@@ -4422,7 +5106,7 @@ Answers every case (from `DIR` with `--replay` or `JUD_REPLAY`, from the backend
 - what the current policy does with those answers: the share of cases each gate acts on rather than defers, and the accuracy among them;
 - every miss, by case, with the expected and the given answer.
 
-Text by default, for a person; `--json` writes the same report as one JSON object on stdout for `jq`. A gate is a flag: `--min-accuracy 0.9` for every question, or `--min-accuracy desk=0.95` for one, repeatable. When a gate is not met the command exits with **status 3**, a new status meaning "the evaluation ran and the labels were not met", distinct from 1 (a call failed, or no recording for a case under `--replay`) and 2 (wrong before any call). Without a gate it exits 0 whatever the accuracy.
+Text by default, for a person; `--json` writes the same report as one JSON object on stdout for `jq`. A gate is a flag: `--min-accuracy 0.9` for every labelled question, or `--min-accuracy desk=0.95` for one, repeatable. When a gate is not met the command exits with **status 3**, a new status meaning "the evaluation ran and the labels were not met", distinct from 1 (a call failed, or no recording for a case under `--replay`) and 2 (wrong before any call). Without a gate it exits 0 whatever the accuracy.
 
 ### `jud tune RUBRIC CASES --replay DIR`
 
@@ -4432,24 +5116,68 @@ Reads recordings only; there is no live mode, so a tuning run never spends a cal
 - a Choice's or a Score's `confidence`: the lowest bar that keeps `--target-accuracy` (default 0.95) over at least `--min-covered` cases (default 3) (`lowest_bar`);
 - a Score's `level_at_least`, when the gate has one: the best F1 over the levels (`best_level`).
 
-A gate with `bands` gets its table printed and no proposal in this first version; `fallback` and `strict` are kept as written. Every proposal carries the number of labelled cases and the accuracy interval, and a warning when the interval is wider than 0.2, so seven cases never print a precise-looking bar.
+A gate with `bands` gets its table printed and no proposal in this first version; `fallback` and `strict` are kept as written. Every question's sweep states the number of labelled cases and the accuracy interval on stderr, the `tuning` block records the number, and a warning follows when the interval is wider than 0.2, so seven cases never print a precise-looking bar.
 
 Output: the tables on stderr, and on stdout the proposed `policy` and `tuning` blocks as YAML, ready to paste. The `tuning` block names the cases by fingerprint, the model and server the recordings came from, and the time. `--out PATH` instead writes the whole rubric with the proposal applied, through `Rubric::to_yaml`, to a path other than the input. The input is never rewritten in place, because `to_yaml` serialises the document again and drops its YAML comments.
 
 ### Consequences
 
 - The loop runs from a shell: `jud record` once with a key, then `jud eval --replay` and `jud tune --replay` as often as needed, with no key.
-- CI gets a regression check: `jud eval rubric.jud cases.jud --replay recordings/ --min-accuracy 0.9`, which fails with status 3 when an edit breaks the labels, and with status 1 when a case was added and not recorded.
+- CI gets a regression check: `jud eval rubric.jud cases.jud --replay recordings/ --min-accuracy 0.9`, which fails with status 3 when the recorded answers fall below the bar, and with status 1 when a case was added or a question edited and the new request was not recorded.
 - Rubrics with `options_from: request` become testable from the shell, because cases carry their options where stdin cannot.
-- The command now writes files: `record` writes recordings and `tune --out` writes a rubric. [The jud command line](../../reference/cli.md) says today that nothing writes a file; that sentence becomes "only `record` and `tune --out` write, and never over their input". `check`, `lower`, `eval` and a run stay read-only.
+- The command now writes files: `record` writes recordings and `tune --out` writes a rubric. [The jud command line](../../reference/cli.md) said that nothing writes a file; it now says that two commands write and nothing else does, and never over a rubric or a cases document they were given. `check`, `lower`, `eval` and a run stay read-only.
 - Exit status 3 joins the command's contract in [Stability](../../reference/stability.md). The existing statuses keep their meaning, so the change is additive and ships in a minor release.
 - [Decision 0019](0019-a-command-line-for-the-format.md) stands; this record extends the command it defined. A status note in the [index](README.md) records that.
-- The calibration example stays, as the Rust reference for the same loop; its output and `jud tune`'s are the same on the example documents.
+- The calibration example stays, as the Rust reference for the same loop. Its bars and `jud tune`'s are the same for the two gates it tunes on the example documents; `jud tune` sweeps every gate that has labels, so it proposes a third, for `tone`, that the example does not ([As implemented](#as-implemented)).
 - Not decided here: patching the `policy` and `tuning` keys in place while keeping comments, tuning `bands`, asking cases concurrently, and a `jud init` scaffold. Each can be a later record once the three commands are used.
 
 ### Confirmation
 
-When applied: `tests/jud_cli.rs` runs each subcommand against wiremock and against `examples/recordings/jud_calibration/`, with no key and no network. `jud eval` over the triage documents reports the accuracies `examples/jud_calibration.rs` prints, and exits 3 with a gate above them. `jud tune` proposes the bars the example writes (`threshold: 0.55` and `confidence: 0.45` for the triage rubric). `jud record` against wiremock writes recordings that `jud check` verifies with matching fingerprints, and asks nothing on a second run. `docs/reference/cli.md` is regenerated from the new help, and the guides [Tune thresholds](../../guides/tune-thresholds.md) and [Run in CI](../../guides/run-in-ci.md) move from the example and the `yq` loop to the commands.
+The tests are `tests/jud_record.rs`, `tests/jud_eval.rs`, `tests/jud_tune.rs` and `tests/jud_loop.rs`. Each runs the binary as a subprocess with no key that works and no network.
+
+- `jud record` runs against wiremock: it asks every case once, writes recordings that `jud check` verifies with matching fingerprints, and asks nothing on a second run.
+- `jud eval` and `jud tune` run over `examples/recordings/jud_calibration/`. `jud eval` over the triage documents reports the accuracies `examples/jud_calibration.rs` prints, and exits 3 with a bar above them. `jud tune` proposes the bars the example writes: `threshold: 0.55` and `confidence: 0.45` for the triage rubric.
+- `tests/jud_loop.rs` runs the three one after the other, so what `jud record` writes is what `jud eval` and `jud tune` read, a Choice with `options_from: request` included.
+- `docs/reference/cli.md` is generated from the binary's help, and the guides [Tune thresholds](../../guides/tune-thresholds.md) and [Run in CI](../../guides/run-in-ci.md) use the commands where they used the example and the `yq` loop.
+
+## As implemented
+
+The subcommands are `src/bin/jud/record.rs`, `eval.rs` and `tune.rs`, with `batch.rs`, `backend.rs`, `out.rs`, `fsutil.rs` and `recordings.rs` shared. This section records what the implementation settled that the proposal left open or did differently. [The jud command line](../../reference/cli.md) is the reference for the commands as they are.
+
+### What the proposal left open
+
+- **Two accuracies in `jud eval`.** `--min-accuracy` holds the model's accuracy per question, the figure the report prints as `accuracy`. The gate block's `accuracy_when_acted` grades the policy: among the answers the gate acted on, how often its own verdict is the label. A Noul is read at the gate's threshold and `strict` flag, a Choice by its option, a Score by the level nearest the weighted score. Moving a gate's threshold or confidence moves the second figure and never the first, so a threshold set too high does not fail the check: `threshold: 0.95` on the triage rubric leaves the status at 0 and drops `accuracy_when_acted` to 0.43. The "model misses" are the model's own readings. An edit to a question changes the request's fingerprint, so a replay finds no recording and the status is 1, not 3.
+- **What a `--min-accuracy` bar holds.** A bar with no question is held by every labelled question. A bar on a question with no labelled case is not met, and so is a bare bar when no question is labelled, because a gate that passes on nothing measured is the failure it exists to catch. A bar that names a question the rubric does not ask is status 2. Without a bar flag the status is 0 whatever the accuracy.
+- **`jud tune --out` replaces the blocks.** Without `--out`, `jud tune` writes nothing and prints the `policy` and `tuning` blocks on stdout at column 0, to be indented two spaces under `spec:`. With `--out`, stdout stays empty, the whole rubric is written to the path, and stderr says so. A file already at the path is replaced. The comments of the input are lost and `version` is written as text.
+- **What is refused, before any call or any write.**
+    - `jud record` refuses to write a recording over the rubric or the cases. The path may be spelled another way (`./`, a symlinked directory, a hard link), and `--refresh` makes no difference.
+    - `jud record` refuses a stale twin: a recording of a request this run asks, in a file this run would not write, that no longer fits the questions. The file is not the run's to remove, and a new recording beside it would leave two for one request, so the run stops and names it, unless `--refresh` is given, which does not read the directory: the new recording is written, the stale file stays and the run warns that two files record one request. A stale recording in the case's own file is replaced and reported.
+    - `jud record` also refuses a case without an id, two requests that share a file name, a request that asks nothing, a label that a turn of a conversation cannot carry, and a directory that holds a file the reader refuses (`--refresh` skips reading the directory).
+    - `jud tune --out` refuses the rubric, the cases and anything in the recordings directory: a recording under another name, a link into the directory, a link whose write would create a file there.
+    - `jud tune` refuses recordings from more than one model and a rubric with no gates.
+- **`--replay`.** `jud eval` takes it, or `JUD_REPLAY`, optionally. `jud tune` requires one of them. `jud record` has neither and never reads `JUD_REPLAY`, so a variable set for a CI job does not turn a record into a replay. A CI check that must not spend a call passes `--replay`, since an `eval` without one asks the backend.
+
+### Streams, calls and files
+
+- **stdout and stderr.** stdout is the result and nothing else: `jud eval`'s report, `jud tune`'s blocks, nothing for `jud record`. Progress, the final tally, tables, notes, warnings and failures (`jud: MESSAGE`) go to stderr. A reader that closes a pipe early is not an error: the result was complete, and the exit status carries it. This also stops `jud RUBRIC`, `jud check`, `jud lower` and `jud config` from panicking on a closed stdout.
+- **Credentials.** The server written into a recording and into a `tuning` block is `scheme://host/path`, without userinfo, query or fragment, and so is the one a failure names. `jud tune` strips a recording's server the same way before it writes it into the `tuning` block, whatever the recording holds.
+- **One runtime per run.** The backend holds one async runtime for the life of the run, so the client's connection pool survives a loop of calls.
+- **Planning before any call.** Every request is lowered and every conversation label checked before any call is made or any answer is taken from a recording, so a document problem is status 2 found before case 1 is paid for, never status 1 after case 4. A failed call stops `jud record` at that case and names how many were recorded and kept; what was written stays. Under a replay `jud eval` and `jud tune` try every case before they fail, and one message names every case with no recording.
+- **Writes are atomic in `jud record`.** Each recording goes to a temporary file in the same directory, is flushed, and then takes its name, so a replay never reads half a file. Two cases that lower to one request share a recording: the second is kept.
+- **Replay order.** `Replay::open` reads files in name order, so which of two files recording one request answers does not depend on the file system: the one that sorts last. A `.json` recording that does not parse is `Error::InvalidRecording`, naming the file, where it was `Error::Decode`. `jud record` and `jud tune` warn when two files record one request.
+
+### What differs from the proposal
+
+- **Every gate with labels is swept.** `jud tune` sweeps each gated question that has labelled cases, where the calibration example tunes two. On the triage documents it proposes `tone` `confidence: 0.0` (now 0.30) beside the `0.55` and `0.45` the example writes. A question with no gate or no labelled case is skipped, and stderr says so.
+- **The `tuning` block records more.** `labelled` is a map from each tuned question to the number of cases its bar was read from, where the example writes one number. `server` is the one the recordings name, and is left out when none names one or they disagree. The accuracy interval is on stderr, not in the blocks.
+
+### Known limits, shipped on purpose
+
+- **A Score's table reads the most probable level; the policy reads the nearest.** The confidence table is the library's `gate_table`, which takes the most probable level as the answer. The policy acts on the level nearest the weighted score. They agree on an answer with one peak and part on a spread one. `jud tune` says so on stderr for every Score whose `confidence` bar it proposes.
+- **A strict gate's sweep counts an answer at the bar as acting.** A strict gate acts above its bar. `jud tune` counts the answers sitting exactly at the proposed bar and says what a strict gate does with them when there are any, and otherwise says that one can sit there.
+- **A lowest bar of 0.0 is proposed when every labelled answer is already right.** The gate would then defer nothing. `jud tune` proposes it and says so, as it does for `tone` on the triage documents.
+- **`jud tune --out` is a plain write.** It truncates and writes the path, not a temporary file renamed over it.
+- **A base URL with userinfo sends Basic auth.** With `https://user:pass@host` as the base URL the client sends those credentials as Basic auth instead of the API key. Every recording and message drops the userinfo, but the request still carries it.
 
 ## Pros and cons of the options
 
@@ -4483,5 +5211,5 @@ When applied: `tests/jud_cli.rs` runs each subcommand against wiremock and again
 
 - [Decision 0019](0019-a-command-line-for-the-format.md): the command this record extends.
 - [Rubrics, cases and recordings](../../concepts/rubrics-cases-recordings.md): the loop and the metrics.
-- [Tune thresholds](../../guides/tune-thresholds.md) and `examples/jud_calibration.rs`: the same loop in Rust today.
-- `src/bin/jud/`: where the subcommands land; `src/backend.rs` (`Recorder`, `Replay`), `src/jud/` (`grade`, `recording_to_yaml`, `Case::per_turn`), `src/eval/` (`QuestionMetrics`, `tuning`): what they call.
+- [Tune thresholds](../../guides/tune-thresholds.md) and `examples/jud_calibration.rs`: the same loop with the commands, and in Rust.
+- `src/bin/jud/`: where the subcommands are; `src/backend.rs` (`Recorder`, `Replay`), `src/jud/` (`grade`, `recording_to_yaml`, `Case::per_turn`), `src/eval/` (`QuestionMetrics`, `tuning`): what they call.
