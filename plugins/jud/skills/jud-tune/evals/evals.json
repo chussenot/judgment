@@ -231,10 +231,10 @@
         "new_files": []
       },
       "expectations": [
-        "Does not accept queue's proposed 0.80 as is: it covers 15 of 48 cases, and the misses it absorbs include a wrong label and the billing/account overlap",
+        "Does not accept queue's proposed 0.80 as is: it covers under a third of the cases (15 of 48, or 10 of 36 after a hold-out split), and the misses it absorbs include a wrong label and the billing/account overlap",
         "Shows the coverage trade-off of a lower --target-accuracy for queue (it ran tune again, or read the table)",
         "Gives a decision table: gate, primitive, now, proposed, decision, reason",
-        "Shows the exact edit it would make and offers to apply it, without changing any file"
+        "Shows the exact edit it would make as a diff that jud check accepts (tuning under spec), with its measured after, and offers to apply it, without changing any file in the project"
       ]
     },
     {

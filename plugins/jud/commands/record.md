@@ -52,12 +52,15 @@ tool.
    file `jud config` names, and that any non-blank word does for a local
    server that ignores it. Then re-run the command. Never
    ask for the key here.
-7. **Announce, then record.** This is a gate: the text you write right
-   before the `jud.sh record` call, in the same turn, is this line. Do not
-   call `record` until it is written; saying it in the final reply does not
-   count. The line: `Recording <new> requests (<kept> kept,
+7. **Announce, then record.** This is a gate, and it comes after
+   whichever of steps 4 to 6 ran last (`git diff`, `jud config`): your next
+   output after that tool result is text, not a tool call, and the text is
+   this line. Only then call `jud.sh record`, with the same line as the
+   Bash call's description, so it shows on the call too. Saying it in the
+   final reply does not count. The line: `Recording <new> requests (<kept> kept,
    <stale> stale and replaced, in <dir>) to <base_url>, model <model>.`
-   Leave out the parts that are zero, and add `, one per turn for <n>
+   Leave out the parts that are zero (with nothing kept or stale, the
+   parenthesis is just `(in <dir>)`), and add `, one per turn for <n>
    conversations` when that applies. When any are stale, follow it with the
    change step 4 found: `Stale because <the changed line>.` Invoking this command is the user
    asking for the run, so then run `jud.sh record <rubric> <cases> --out
@@ -66,8 +69,11 @@ tool.
 8. **Reply** with the announcement line again (as announced, in the past
    tense), then `record`'s summary line
    (`recorded N, kept M in DIR`). If N differs from what you announced, say
-   why. Give the model the recordings name, read from all of them with
-   `grep -h "^    model:" <dir>/*.jud` and counted. If there is more than
+   why. If you did not write the line before the call, say so plainly ("I
+   ran record without announcing the cost first") instead of claiming it
+   matched. Give the model the recordings name, read from all of them with
+   the Grep tool (pattern `^\s+model:`, glob `*.jud`, in the directory) and
+   tallied. If there is more than
    one model, say so: `tune` refuses a directory that mixes models. If the
    recorded model differs from `jud config`'s, say both. End with the next
    step, `/jud:eval <rubric> <cases> <dir>`, which grades them at no cost.

@@ -44,7 +44,10 @@ written:
   to find `$TMPDIR`. Build the copy with Read then Write only, no `sed`,
   `cp`, `mkdir` or redirection. If the file already exists, Read it in full
   before overwriting it, and never run `jud` on a copy this conversation
-  did not write. The reply says it was a copy.
+  did not write. The reply says it was a copy, gives its absolute path as
+  written, and says the project's files were not changed. An edited copy of
+  the rubric, made to measure a proposal before it is applied, is such a
+  copy too.
 
 The format and how to write a rubric or cases are the `jud` skill's
 (`${CLAUDE_PLUGIN_ROOT}/skills/jud/SKILL.md`); read it before changing a
@@ -192,13 +195,17 @@ the confidence. Then put it in exactly one row:
 | What you see | Cause | What to do |
 |---|---|---|
 | The state plainly supports the model's answer, or the case's own `note` argues for it | **The label is wrong** | Propose the corrected label to the user, with the reason. Never change a label just because the model disagreed: the model being confident is not evidence, and a low-confidence miss on a label the criteria plainly support is not a label problem. |
-| A Choice or Score answer at or under the gate's `confidence` bar | **The bar's job** | Nothing for the gate: it defers this to its `fallback`. Say so. It is still a wrong answer: it counts in `accuracy` and against any `--min-accuracy` floor, and only a sharper question or another model removes it. |
+| A Choice or Score answer at or under the `confidence` bar written in the rubric being graded (this comes first, even for a Score miss that swaps adjacent levels) | **The bar's job** | Nothing for the gate: it defers this to its `fallback`. Say so. It is still a wrong answer: it counts in `accuracy` and against any `--min-accuracy` floor, and only a sharper question or another model removes it. |
 | A Noul whose probability falls on the label's side of `threshold` (0.52 under a 0.55 threshold, labelled no) | **The bar's job** | Nothing: a threshold never defers, it decides, and here it decides the label. Say so. |
 | Confidence is high, the label is right, and the criteria could be read the model's way | **The question is ambiguous** | Propose a sharper criterion: name the deciding detail. This changes the request, so re-record after. |
 | Confidence is high, the label is right, and the deciding fact is not in the state | **The question asks what the model cannot see** | The fact belongs in the state, computed by the caller, or the question should not be asked (`when`). |
 | Several misses swap the same two options or adjacent levels | **The outcomes overlap** | Sharpen both criteria against each other, merge the options, or use fewer levels. Re-record. |
 | The miss's right answer is an outcome few or no other cases label | **A coverage gap** | Add cases for that outcome before reading anything into the bar. |
 | None of the above: the label is right, the question is clear, and the model is confidently wrong once | **The model** | Record it as a known miss. One such case does not move a bar or justify rewriting a question. |
+
+A miss that only a proposed bar would defer is triaged on its own merits
+(overlap, ambiguity, the model); the decision table then says the proposal
+defers it.
 
 Each miss has exactly one cause in the whole reply: a miss triaged as a
 wrong label is not counted again as overlap or a coverage gap later on.
@@ -268,20 +275,26 @@ Decide per gate, and say which you decided:
   wrong labels or overlapping outcomes, or when it waits on a label the user
   has not confirmed. Prepend the reason to the gate's note, for example
   `kept at 0.30: tune proposed 0.00 on 6 cases, too few to drop the bar;`
-  followed by what the note said before.
+  followed by what the note said before. The reason must agree with what
+  you measured: put a bar on a label only if the what-if copy moved it at
+  that target; otherwise name the cases that hold the next lower row.
 - **Re-run with another `--target-accuracy`** whenever the proposed bar
   covers less than about half the labelled cases, or you would call it too
   aggressive. Each run is free. Show the trade-off in one line: at 0.95 the
-  bar is 0.80 and covers 15 of 48; at 0.90 it is 0.55 and covers 45.
+  bar is 0.70 and covers 9 of 30; at 0.90 it is 0.45 and covers 24. A bar at
+  another target is the bar a `tune` run at that target printed, on the
+  cases the decision rests on (the tuning set after a split).
 - **Say what set a bar only after checking.** A Choice or Score bar is the
   lowest row of the table that reaches the target. A miss moved it only if
   the next lower row reaches the target once that case counts as right;
   read the row, or measure with a what-if copy. When the bar does not move,
-  read the next lower row (the one just below the proposed bar: 0.75 under
-  0.80). Its misses are covered minus correct; name exactly that many
-  cases, each with a confidence at or above that row's bar and below the
-  proposed one (case, expected, predicted, confidence). They hold that row
-  under the target. Then say what would move it: those cases answered right,
+  read the next lower row (the one just below the proposed bar: 0.65 under
+  0.70). Its misses are covered minus correct. Name those whose confidence
+  lies between that row's bar and the proposed one (case, expected,
+  predicted, confidence): they are what the step down adds. Then say how
+  many more right answers the row needs to reach the target
+  (target x covered, rounded up, minus correct), and which of its misses
+  could supply them. Then say what would move it: those cases answered right,
   after a relabel if the label is wrong, after a re-record if the question
   is.
 - **A bar that only a relabel would move** was set by a wrong label: keep

@@ -59,7 +59,8 @@ project, as the skill says, never beside the rubric.
    - Whenever a proposed bar covers less than half the labelled cases, or
      you would call it too aggressive, run `tune` again with a lower
      `--target-accuracy` (it is free). Show both in one line, for example
-     "at 0.95: 0.80, covers 15 of 48; at 0.90: 0.55, covers 45".
+     "at 0.95: 0.70, covers 9 of 30 tuning cases; at 0.90: 0.45, covers
+     24 of 30". After a split, every count is of the tuning set.
    - Before you say a miss (a wrong label, say) moved a bar, check it. Use
      the table: the bar moves only if the next lower row reaches the target
      once that case counts as right. Or run `tune` on a what-if copy of the
@@ -68,9 +69,16 @@ project, as the skill says, never beside the rubric.
      proposal you weigh. Report what was measured, per target. When the bar
      does not move, name the misses that hold the next lower row under the
      target, and what would move it.
-6. **Without `apply`**, stop here. Show the decision table and the exact
-   edit as a unified diff against the rubric, with the comments around it
-   as context. Then offer to apply it. Change no file.
+6. **Without `apply`**, change no file in the project. Build the edit step
+   7 would make on a copy of the rubric (Read then Write, in a temporary
+   directory of its own): the policy values and notes in place, and the
+   `tuning` block indented two spaces under `spec:`, never at column 0 as
+   `tune` prints it. `jud.sh check` the copy with the cases: `0 refused`,
+   same questions fingerprint. Run `eval --replay` on the copy (held-out
+   set first, when there is one): that is the *after* the edit would give.
+   Show the decision table, the before and after, and the diff of the copy
+   against the rubric, with the comments around it as context. Ask whether
+   to apply it.
 7. **With `apply`:**
    - Edit the rubric in place as "Applying a proposal" says. Change the
      values of the gates whose value moves. A gate proposed at its current
