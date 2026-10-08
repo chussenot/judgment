@@ -9,7 +9,7 @@
     {
       "name": "jud",
       "source": "./plugins/jud",
-      "description": "Write, review, fix, measure and tune .jud documents (Rubric, Cases, Recording) with the judgment crate's reader and jud command: the jud and jud-tune skills and the /jud:rubric, /jud:cases, /jud:check, /jud:record, /jud:eval and /jud:tune commands."
+      "description": "Write, review, fix, measure and tune .jud documents (Rubric, Cases, Recording), and turn a rubric into a typed Rust module, with the judgment crate's reader and jud command: the jud, jud-tune and jud-rust skills and the /jud:rubric, /jud:cases, /jud:check, /jud:record, /jud:eval, /jud:tune and /jud:rust commands."
     }
   ]
 }

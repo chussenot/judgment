@@ -28,7 +28,9 @@ plugin's directory, so the checker is
 `${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh` from anywhere. Measuring
 and tuning a rubric once it is written is the `jud-tune` skill's
 (`${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/SKILL.md`), with `/jud:record`,
-`/jud:eval` and `/jud:tune`.
+`/jud:eval` and `/jud:tune`. Using a rubric from a Rust program, as a typed
+module, is the `jud-rust` skill's (`${CLAUDE_PLUGIN_ROOT}/skills/jud-rust/SKILL.md`),
+with `/jud:rust`.
 
 ## Workflow
 
