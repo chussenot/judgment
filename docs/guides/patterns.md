@@ -21,7 +21,7 @@ TypeSafe documents four [patterns](https://docs.typesafe.ai/patterns). Each has 
 
 Each example replays its committed recordings (`examples/recordings/<name>/`, `jev-1.13.0`'s answers of 2026-10-03) by default, so it runs with no key and no network and prints every answer next to the decision it led to. `-- --live` sends the same requests to the hosted API (`TYPESAFE_API_KEY`; `TYPESAFE_BASE_URL` for another server, `TYPESAFE_MODEL` for another model), and `-- --record` does that and rewrites the recordings. Each example ends in a test over its recordings that `cargo test` runs: the request hash covers the questions, so a question changed without re-recording fails the gate rather than the next reader.
 
-Two more examples run the `.jud` loop and the typed-decisions benchmark: `jud_calibration` ([Tune thresholds](tune-thresholds.md)) and `typed_decisions` ([Against Laya typed-decisions](../project/verification/laya-typed-decisions.md)).
+Three more examples run the `.jud` loop, a rubric as a typed module and the typed-decisions benchmark: `jud_calibration` ([Tune thresholds](tune-thresholds.md)), `jud_typed` (the module the plugin's `/jud:rust` writes, wired in with `mod` and one call; [Use the Claude Code plugin](use-the-claude-code-plugin.md)) and `typed_decisions` ([Against Laya typed-decisions](../project/verification/laya-typed-decisions.md)).
 
 ## What the recordings teach
 

@@ -1,0 +1,36 @@
+# A rubric whose ids, option keys and levels are valid .jud but awkward as
+# Rust names: a keyword id, an id with `-` and `.`, an id that clashes with
+# a name the generated module defines, keys that collide once cased, a key
+# that is `self`, one that starts with a digit, and a level with no letters.
+apiVersion: jud/v1.3
+kind: Rubric
+metadata:
+  name: edge-names
+spec:
+  questions:
+    type:
+      type: noul
+      instructions: Is `message` a question?
+    support-level.v2:
+      type: score
+      instructions: How much help does `message` need?
+      criteria: ["low", "very high!", "!!!"]
+    error:
+      type: choice
+      instructions: Which kind of error does `message` report?
+      criteria:
+        self: The writer's own mistake
+        3d: Something in the 3D view
+        a-b: Moving data from A to B
+        a_b: An A/B test
+        none of these: Nothing listed here
+    2fa:
+      type: noul
+      instructions: Is `message` about two-factor sign-in?
+      when: account
+  policy:
+    error:
+      confidence: 0.6
+      fallback: none of these
+    2fa:
+      threshold: 0.7

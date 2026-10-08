@@ -1,0 +1,258 @@
+{
+  "skill_name": "jud-rust",
+  "about": "Each eval runs one prompt through `claude -p --plugin-dir plugins/jud` in a fresh workspace (run.py). Then run.py compiles the module the run wrote in a crate of its own, against this checkout, with the scenario's `snippet` as a test module: the snippet uses the names the skill's rules give, so a module that strays from them does not compile. It runs the module's own test, the snippet, and clippy (pedantic, unwrap and expect denied); with `drift`, it edits a question of the rubric and expects the module's test to fail. REPO_ROOT and JUDGMENT_PATH are filled in by run.py.",
+  "evals": [
+    {
+      "id": "triage-in-crate",
+      "prompt": "/jud:rust rubrics/triage.jud",
+      "setup": {
+        "copy": {
+          "Cargo.toml": "plugins/jud/skills/jud-rust/evals/files/app/Cargo.toml",
+          "src/main.rs": "plugins/jud/skills/jud-rust/evals/files/app/src/main.rs",
+          "rubrics/triage.jud": "examples/jud/triage.jud"
+        }
+      },
+      "module": {
+        "path": "src/triage.rs",
+        "name": "triage",
+        "rubric": "rubrics/triage.jud"
+      },
+      "snippet": "\nuse crate::triage::{self, Desk, Gated, Tone};\n\n#[test]\nfn names_and_order() {\n    assert_eq!(Desk::ALL.map(Desk::key), [\"billing\", \"technical\", \"account\", \"none_of_these\"]);\n    assert_eq!(Tone::ALL.map(Tone::label), [\"calm\", \"annoyed\", \"angry\"]);\n    assert!(Tone::Angry > Tone::Calm);\n}\n\n#[tokio::test]\nasync fn decides_with_a_fake() {\n    let state = serde_json::json!({\"message\": \"My invoice is wrong and I am furious\"});\n    let backend = judgment::Fake::new()\n        .noul(\"actionable\", 0.9).unwrap()\n        .choice(\"desk\", [(\"billing\", 0.8), (\"technical\", 0.1), (\"account\", 0.05), (\"none_of_these\", 0.05)], 0.8).unwrap()\n        .score(\"tone\", [0.1, 0.2, 0.7], 0.7).unwrap();\n    let d = triage::decide(&backend, \"jev-latest\", &state).await.unwrap();\n    assert!(d.actionable.yes);\n    assert!(matches!(d.desk, Gated::Act { value: Desk::Billing, .. }));\n    assert!(matches!(d.tone, Gated::Act { value: Tone::Angry, .. }));\n    let backend = judgment::Fake::new()\n        .noul(\"actionable\", 0.5).unwrap()\n        .choice(\"desk\", [(\"billing\", 0.4), (\"technical\", 0.3), (\"account\", 0.2), (\"none_of_these\", 0.1)], 0.4).unwrap()\n        .score(\"tone\", [0.8, 0.1, 0.1], 0.8).unwrap();\n    let d = triage::decide(&backend, \"jev-latest\", &state).await.unwrap();\n    assert!(!d.actionable.yes, \"0.5 is under the 0.55 threshold\");\n    assert_eq!(d.desk.or_fallback(), Some(Desk::NoneOfThese), \"0.4 is under the 0.45 bar\");\n}\n\n#[tokio::test]\nasync fn replays_the_recordings() {\n    let root = std::path::Path::new(\"REPO_ROOT\");\n    let backend = judgment::Replay::open(&root.join(\"examples/recordings/jud_calibration\")).unwrap();\n    let text = std::fs::read_to_string(root.join(\"examples/jud/triage-cases.jud\")).unwrap();\n    for case in &judgment::jud::Cases::parse(&text).unwrap().cases {\n        triage::decide(&backend, \"jev-latest\", &case.state).await.unwrap();\n    }\n}\n",
+      "checks": {
+        "unchanged": [
+          "rubrics/triage.jud",
+          "Cargo.toml",
+          "src/main.rs"
+        ],
+        "new_files": [
+          "src/triage.rs"
+        ],
+        "drift": true
+      },
+      "expectations": [
+        "Writes src/triage.rs with include_str!(\"../rubrics/triage.jud\")",
+        "Runs the module's test and clippy in a throwaway crate before replying, says they passed, and says that `cargo test` in the crate runs the drift test once the mod line is in",
+        "Replies with the Cargo.toml lines, the `mod triage;` line and a usage example with the real names (Desk, Tone, decide), without editing Cargo.toml or main.rs",
+        "The module's header carries a complete usage example and quotes no threshold or band bar",
+        "Reads Tone with from_level, which takes an index or a level's text, and keeps the levels_read_by_index_and_by_text test"
+      ]
+    },
+    {
+      "id": "routing-in-crate",
+      "prompt": "/jud:rust rubrics/routing.jud",
+      "setup": {
+        "copy": {
+          "Cargo.toml": "plugins/jud/skills/jud-rust/evals/files/app/Cargo.toml",
+          "src/main.rs": "plugins/jud/skills/jud-rust/evals/files/app/src/main.rs",
+          "rubrics/routing.jud": "examples/jud/routing.jud"
+        }
+      },
+      "module": {
+        "path": "src/routing.rs",
+        "name": "routing",
+        "rubric": "rubrics/routing.jud"
+      },
+      "snippet": "\nuse crate::routing::{self, Desk, DuplicateOf, Gated, Offered, Tone};\n\n#[test]\nfn sends_what_the_rubric_sends() {\n    let root = std::path::Path::new(\"REPO_ROOT\");\n    let text = std::fs::read_to_string(root.join(\"examples/jud/routing-cases.jud\")).unwrap();\n    let rubric = judgment::jud::Rubric::parse(routing::SOURCE).unwrap();\n    for case in &judgment::jud::Cases::parse(&text).unwrap().cases {\n        let pairs = |id: &str| -> Vec<(String, String)> {\n            case.options.get(id).map_or_else(Vec::new, |o| {\n                o.iter().map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned())).collect()\n            })\n        };\n        let offered = Offered { desk: pairs(\"desk\"), duplicate_of: pairs(\"duplicate_of\") };\n        assert_eq!(\n            routing::questions(&case.state, &offered).unwrap(),\n            rubric.lower(&case.state, &case.options).unwrap()\n        );\n    }\n}\n\n#[tokio::test]\nasync fn types_every_gate() {\n    let state = serde_json::json!({\n        \"message\": {\"text\": \"Charged twice for #1042, refund it now.\"},\n        \"customer\": {\"recent_orders\": [\"#1042\"], \"open_tickets\": [{\"id\": \"T-1\"}]}\n    });\n    let offered = Offered {\n        desk: vec![(\"billing\".into(), \"Invoices\".into()), (\"technical\".into(), \"Errors\".into())],\n        duplicate_of: vec![(\"T-1\".into(), \"Charged twice\".into())],\n    };\n    let backend = judgment::Fake::new()\n        .choice(\"desk\", [(\"billing\", 0.55), (\"technical\", 0.25), (\"none_of_these\", 0.2)], 0.55).unwrap()\n        .score(\"tone\", [0.0, 0.1, 0.8, 0.1], 0.8).unwrap()\n        .choice(\"duplicate_of\", [(\"T-1\", 0.5), (\"none\", 0.5)], 0.5).unwrap()\n        .noul(\"refund_request\", 0.65).unwrap();\n    let d = routing::decide(&backend, \"jev-latest\", &state, &offered).await.unwrap();\n    assert!(matches!(&d.desk, Gated::Act { value: Desk::Supplied(k), band: Some(b), .. } if k == \"billing\" && b == \"confirm\"));\n    assert!(matches!(d.tone, Gated::Act { value: Tone::Angry, reached: Some(true), .. }));\n    assert_eq!(d.duplicate_of.and_then(|g| g.or_fallback()), Some(DuplicateOf::NoneOption));\n    assert_eq!(d.refund_request.map(|r| r.yes), Some(false), \"strict: 0.65 is not above 0.65\");\n    let bare = serde_json::json!({\"message\": {\"text\": \"Hello\"}});\n    let backend = judgment::Fake::new()\n        .choice(\"desk\", [(\"billing\", 0.9), (\"none_of_these\", 0.1)], 0.9).unwrap()\n        .score(\"tone\", [0.9, 0.1, 0.0, 0.0], 0.9).unwrap();\n    let offered = Offered { desk: vec![(\"billing\".into(), \"Invoices\".into())], ..Offered::default() };\n    let d = routing::decide(&backend, \"jev-latest\", &bare, &offered).await.unwrap();\n    assert_eq!((d.duplicate_of, d.refund_request), (None, None));\n}\n",
+      "checks": {
+        "unchanged": [
+          "rubrics/routing.jud",
+          "Cargo.toml",
+          "src/main.rs"
+        ],
+        "new_files": [
+          "src/routing.rs"
+        ],
+        "drift": true
+      },
+      "expectations": [
+        "Follows the routing template: Offered with desk and duplicate_of, Supplied(String) variants, Option fields for the `when` questions",
+        "Explains in the reply which options the program must supply with each request and which fields can be None",
+        "Verifies with cargo before replying",
+        "Says that a supplied key must not be one of the question's own keys (none_of_these, none), and that a `when` path counts only when present and not null or empty"
+      ]
+    },
+    {
+      "id": "handoff-no-crate",
+      "prompt": "/jud:rust handoff.jud",
+      "setup": {
+        "copy": {
+          "handoff.jud": "examples/jud/handoff.jud"
+        }
+      },
+      "module": {
+        "path": "handoff.rs",
+        "name": "handoff",
+        "rubric": "handoff.jud"
+      },
+      "snippet": "\nuse crate::handoff;\n\n#[tokio::test]\nasync fn decides_every_turn_from_the_recordings() {\n    let root = std::path::Path::new(\"REPO_ROOT\");\n    let backend = judgment::Replay::open(&root.join(\"examples/recordings/jud_calibration\")).unwrap();\n    let text = std::fs::read_to_string(root.join(\"examples/jud/handoff-cases.jud\")).unwrap();\n    let mut asked = 0;\n    for case in &judgment::jud::Cases::parse(&text).unwrap().cases {\n        let turns = case.state.as_array().unwrap();\n        for k in 0..turns.len() {\n            let so_far = serde_json::Value::Array(turns[..=k].to_vec());\n            let d = handoff::decide(&backend, \"jev-latest\", &so_far).await.unwrap();\n            let _: handoff::YesNo = d.wants_human;\n            asked += 1;\n        }\n    }\n    assert_eq!(asked, 6);\n}\n",
+      "checks": {
+        "unchanged": [
+          "handoff.jud"
+        ],
+        "new_files": [
+          "handoff.rs"
+        ],
+        "drift": true
+      },
+      "expectations": [
+        "With no Rust crate in the project, writes handoff.rs beside the rubric with include_str!(\"handoff.jud\")",
+        "Verifies it in a throwaway crate outside the project and leaves nothing behind in the project",
+        "Says the state is the conversation so far and decide is called once per turn",
+        "The main it shows mounts the module with the #[path] line a crate made later needs, not a bare `mod handoff;`"
+      ]
+    },
+    {
+      "id": "edge-names",
+      "prompt": "/jud:rust rubrics/edge-names.jud",
+      "setup": {
+        "copy": {
+          "Cargo.toml": "plugins/jud/skills/jud-rust/evals/files/app/Cargo.toml",
+          "src/main.rs": "plugins/jud/skills/jud-rust/evals/files/app/src/main.rs",
+          "rubrics/edge-names.jud": "plugins/jud/skills/jud-rust/evals/files/edge-names.jud"
+        }
+      },
+      "module": {
+        "path": "src/edge_names.rs",
+        "name": "edge_names",
+        "rubric": "rubrics/edge-names.jud"
+      },
+      "snippet": "\nuse crate::edge_names::{self, ErrorChoice, Gated, SupportLevelV2, YesNo};\n\n#[test]\nfn names_follow_the_rules() {\n    assert_eq!(\n        ErrorChoice::ALL.map(ErrorChoice::key),\n        [\"self\", \"3d\", \"a-b\", \"a_b\", \"none of these\"]\n    );\n    assert_eq!(\n        ErrorChoice::ALL,\n        [ErrorChoice::SelfOption, ErrorChoice::N3d, ErrorChoice::AB, ErrorChoice::AB2, ErrorChoice::NoneOfThese]\n    );\n    assert_eq!(SupportLevelV2::ALL.map(SupportLevelV2::label), [\"low\", \"very high!\", \"!!!\"]);\n    assert_eq!(SupportLevelV2::ALL, [SupportLevelV2::Low, SupportLevelV2::VeryHigh, SupportLevelV2::Level2]);\n}\n\n#[tokio::test]\nasync fn decides_with_a_fake() {\n    let backend = judgment::Fake::new()\n        .noul(\"type\", 0.8).unwrap()\n        .score(\"support-level.v2\", [0.1, 0.8, 0.1], 0.8).unwrap()\n        .choice(\"error\", [(\"self\", 0.1), (\"3d\", 0.1), (\"a-b\", 0.2), (\"a_b\", 0.5), (\"none of these\", 0.1)], 0.5).unwrap();\n    let d = edge_names::decide(&backend, \"jev-latest\", &serde_json::json!({\"message\": \"?\"})).await.unwrap();\n    let t: YesNo = d.r#type;\n    assert!(t.yes);\n    assert!(matches!(d.support_level_v2, Gated::Act { value: SupportLevelV2::VeryHigh, .. }));\n    assert_eq!(d.error.or_fallback(), Some(ErrorChoice::NoneOfThese), \"0.5 is under the 0.6 bar\");\n    assert_eq!(d.q_2fa, None, \"asked only when the state has `account`\");\n}\n",
+      "checks": {
+        "unchanged": [
+          "rubrics/edge-names.jud",
+          "Cargo.toml",
+          "src/main.rs"
+        ],
+        "new_files": [
+          "src/edge_names.rs"
+        ],
+        "drift": true
+      },
+      "expectations": [
+        "Lists every name it had to change and why (r#type, support_level_v2, q_2fa, ErrorChoice, SelfOption, N3d, AB and AB2, Level2)",
+        "Keeps every wire key and level text exactly as written in key() and label()"
+      ]
+    },
+    {
+      "id": "screening-natural",
+      "prompt": "I'd like to call rubrics/screening.jud from the Rust app in this directory with real types instead of matching on verdict strings. Can you generate what I need?",
+      "setup": {
+        "copy": {
+          "Cargo.toml": "plugins/jud/skills/jud-rust/evals/files/app/Cargo.toml",
+          "src/main.rs": "plugins/jud/skills/jud-rust/evals/files/app/src/main.rs",
+          "rubrics/screening.jud": "examples/jud/screening.jud"
+        }
+      },
+      "module": {
+        "path": "src/screening.rs",
+        "name": "screening",
+        "rubric": "rubrics/screening.jud"
+      },
+      "snippet": "\nuse crate::screening::{self, Gated, Reason, Tone};\n\n#[tokio::test]\nasync fn decides_with_a_fake() {\n    assert_eq!(Reason::ALL.map(Reason::key), [\"duplicate_charge\", \"unhappy\", \"cancelled\", \"none_of_these\"]);\n    let backend = judgment::Fake::new()\n        .noul(\"refund_request\", 0.9).unwrap()\n        .choice(\"reason\", [(\"duplicate_charge\", 0.7), (\"unhappy\", 0.1), (\"cancelled\", 0.1), (\"none_of_these\", 0.1)], 0.7).unwrap()\n        .score(\"tone\", [0.1, 0.2, 0.7], 0.7).unwrap();\n    let d = screening::decide(&backend, \"jev-latest\", &serde_json::json!({\"message\": \"Charged twice!\"})).await.unwrap();\n    assert!(d.refund_request.yes);\n    assert!(matches!(d.reason, Some(Gated::Act { value: Reason::DuplicateCharge, .. })));\n    assert!(matches!(d.tone, Gated::Act { value: Tone::Angry, reached: Some(true), .. }));\n    let backend = judgment::Fake::new()\n        .noul(\"refund_request\", 0.1).unwrap()\n        .score(\"tone\", [0.9, 0.1, 0.0], 0.9).unwrap();\n    let d = screening::decide(&backend, \"jev-latest\", &serde_json::json!({\"other\": 1})).await.unwrap();\n    assert_eq!(d.reason, None, \"asked only when the state has `message`\");\n}\n",
+      "checks": {
+        "unchanged": [
+          "rubrics/screening.jud"
+        ],
+        "new_files": [
+          "src/screening.rs"
+        ],
+        "drift": true,
+        "skill_loaded": "jud-rust"
+      },
+      "expectations": [
+        "Loads the jud-rust skill without being told to",
+        "Makes `reason` an Option because of its `when: message`",
+        "Reads the app's main.rs, shows the whole main from the module's header as a replacement, and lists the lines that change in the app's sync main"
+      ]
+    },
+    {
+      "id": "triage-embed",
+      "prompt": "/jud:rust rubrics/triage.jud embed",
+      "setup": {
+        "copy": {
+          "Cargo.toml": "plugins/jud/skills/jud-rust/evals/files/app/Cargo.toml",
+          "src/main.rs": "plugins/jud/skills/jud-rust/evals/files/app/src/main.rs",
+          "rubrics/triage.jud": "examples/jud/triage.jud"
+        }
+      },
+      "module": {
+        "path": "src/triage.rs",
+        "name": "triage",
+        "rubric": "rubrics/triage.jud"
+      },
+      "snippet": "\nuse crate::triage::{self, Desk, Gated, Tone};\n\n#[test]\nfn names_and_order() {\n    assert_eq!(Desk::ALL.map(Desk::key), [\"billing\", \"technical\", \"account\", \"none_of_these\"]);\n    assert_eq!(Tone::ALL.map(Tone::label), [\"calm\", \"annoyed\", \"angry\"]);\n    assert!(Tone::Angry > Tone::Calm);\n}\n\n#[tokio::test]\nasync fn decides_with_a_fake() {\n    let state = serde_json::json!({\"message\": \"My invoice is wrong and I am furious\"});\n    let backend = judgment::Fake::new()\n        .noul(\"actionable\", 0.9).unwrap()\n        .choice(\"desk\", [(\"billing\", 0.8), (\"technical\", 0.1), (\"account\", 0.05), (\"none_of_these\", 0.05)], 0.8).unwrap()\n        .score(\"tone\", [0.1, 0.2, 0.7], 0.7).unwrap();\n    let d = triage::decide(&backend, \"jev-latest\", &state).await.unwrap();\n    assert!(d.actionable.yes);\n    assert!(matches!(d.desk, Gated::Act { value: Desk::Billing, .. }));\n    assert!(matches!(d.tone, Gated::Act { value: Tone::Angry, .. }));\n    let backend = judgment::Fake::new()\n        .noul(\"actionable\", 0.5).unwrap()\n        .choice(\"desk\", [(\"billing\", 0.4), (\"technical\", 0.3), (\"account\", 0.2), (\"none_of_these\", 0.1)], 0.4).unwrap()\n        .score(\"tone\", [0.8, 0.1, 0.1], 0.8).unwrap();\n    let d = triage::decide(&backend, \"jev-latest\", &state).await.unwrap();\n    assert!(!d.actionable.yes, \"0.5 is under the 0.55 threshold\");\n    assert_eq!(d.desk.or_fallback(), Some(Desk::NoneOfThese), \"0.4 is under the 0.45 bar\");\n}\n\n#[tokio::test]\nasync fn replays_the_recordings() {\n    let root = std::path::Path::new(\"REPO_ROOT\");\n    let backend = judgment::Replay::open(&root.join(\"examples/recordings/jud_calibration\")).unwrap();\n    let text = std::fs::read_to_string(root.join(\"examples/jud/triage-cases.jud\")).unwrap();\n    for case in &judgment::jud::Cases::parse(&text).unwrap().cases {\n        triage::decide(&backend, \"jev-latest\", &case.state).await.unwrap();\n    }\n}\n",
+      "checks": {
+        "unchanged": [
+          "rubrics/triage.jud",
+          "Cargo.toml",
+          "src/main.rs"
+        ],
+        "new_files": [
+          "src/triage.rs"
+        ],
+        "drift": true,
+        "no_include_str": true
+      },
+      "expectations": [
+        "Embeds the rubric's YAML in SOURCE instead of include_str!",
+        "Says that a retune of the rubric then needs the module regenerated",
+        "Adds a test that holds the embedded SOURCE to the .jud file, so a forgotten regeneration fails a test"
+      ]
+    },
+    {
+      "id": "triage-regenerate",
+      "prompt": "/jud:rust rubrics/triage.jud",
+      "setup": {
+        "copy": {
+          "Cargo.toml": "plugins/jud/skills/jud-rust/evals/files/app/Cargo.toml",
+          "src/main.rs": "plugins/jud/skills/jud-rust/evals/files/app/src/main.rs",
+          "rubrics/triage.jud": "examples/jud/triage.jud",
+          "src/triage.rs": "examples/jud/triage.rs"
+        },
+        "prepare": [
+          {
+            "file": "src/triage.rs",
+            "old": "include_str!(\"triage.jud\")",
+            "new": "include_str!(\"../rubrics/triage.jud\")"
+          },
+          {
+            "file": "src/triage.rs",
+            "old": "examples/jud/triage.jud",
+            "new": "rubrics/triage.jud"
+          }
+        ],
+        "edit": [
+          {
+            "file": "rubrics/triage.jud",
+            "old": "        account: Sign-in, passwords, personal details, closing an account\n",
+            "new": "        account: Sign-in, passwords, personal details, closing an account\n        security: A breach, a phishing mail, a stolen account\n"
+          }
+        ]
+      },
+      "module": {
+        "path": "src/triage.rs",
+        "name": "triage",
+        "rubric": "rubrics/triage.jud"
+      },
+      "snippet": "\nuse crate::triage::Desk;\n\n#[test]\nfn has_the_new_option() {\n    assert_eq!(Desk::ALL.map(Desk::key), [\"billing\", \"technical\", \"account\", \"security\", \"none_of_these\"]);\n}\n",
+      "checks": {
+        "unchanged": [
+          "rubrics/triage.jud",
+          "Cargo.toml",
+          "src/main.rs"
+        ],
+        "changed": [
+          "src/triage.rs"
+        ],
+        "new_files": [],
+        "drift": true
+      },
+      "expectations": [
+        "Notices the existing module was generated from this rubric and regenerates it in place",
+        "Adds the Security variant in rubric order and updates QUESTIONS_FINGERPRINT",
+        "Says which question changed and that callers matching on Desk must now handle Security",
+        "Says that recordings made before the change no longer replay and the bars want re-tuning"
+      ]
+    }
+  ]
+}

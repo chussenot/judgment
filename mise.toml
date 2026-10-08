@@ -79,13 +79,14 @@ env = { RUSTDOCFLAGS = "-D warnings" }
 run = "cargo doc --no-deps --document-private-items --all-features"
 
 [tasks."docs:check"]
-description = "The documentation gate: frontmatter on every page, the generated pages (llms.txt, the CLI reference, the plugin's format reference) match their sources, every .jud document the pages show is read, and every internal link resolves"
+description = "The documentation gate: frontmatter on every page, the generated pages (llms.txt, the CLI reference, the plugin's format reference and Rust templates) match their sources, every .jud document the pages show is read, and every internal link resolves"
 run = """
 set -eu
 scripts/check-frontmatter.sh docs
 scripts/gen-llms-txt.sh --check
 scripts/gen-cli-reference.sh --check
 scripts/gen-plugin-format.sh --check
+scripts/gen-plugin-rust.sh --check
 mise run jud:check
 mise run docs:links
 """
@@ -99,8 +100,12 @@ description = "Regenerate docs/reference/cli.md from the jud binary's --help tex
 run = "scripts/gen-cli-reference.sh"
 
 [tasks."docs:plugin"]
-description = "Regenerate the jud plugin's references/format.md from docs/reference/jud-format.md"
-run = "scripts/gen-plugin-format.sh"
+description = "Regenerate the jud plugin's references from their sources: format.md from docs/reference/jud-format.md, the jud-rust templates from examples/jud/"
+run = """
+set -eu
+scripts/gen-plugin-format.sh
+scripts/gen-plugin-rust.sh
+"""
 
 [tasks."docs:links"]
 description = "Check the documentation's links with lychee (lychee.toml): internal links offline by default; `mise run docs:links -- --online` also fetches the external ones, as the weekly workflow does"

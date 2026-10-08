@@ -233,6 +233,13 @@ test = true
 name = "jud_quickstart"
 required-features = ["jud"]
 
+# A rubric wired in as a typed module (`examples/jud/triage.rs`, what the
+# plugin's `/jud:rust` writes), answered from the calibration recordings.
+[[example]]
+name = "jud_typed"
+required-features = ["jud"]
+test = true
+
 # The README's third example: a rubric from a file, asked of the hosted API;
 # needs the format and the client, and a key to run.
 [[example]]

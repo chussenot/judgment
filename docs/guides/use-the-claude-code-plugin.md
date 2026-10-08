@@ -1,6 +1,6 @@
 ---
 title: Use the Claude Code plugin
-description: How to install the jud plugin from this repository's marketplace, write a rubric and its cases with /jud:rubric and /jud:cases, check them with /jud:check, and measure and tune them with /jud:record, /jud:eval and /jud:tune; what the two skills know that the reader and the numbers cannot say.
+description: How to install the jud plugin from this repository's marketplace, write a rubric and its cases with /jud:rubric and /jud:cases, check them with /jud:check, and measure and tune them with /jud:record, /jud:eval and /jud:tune, and turn a rubric into a typed Rust module with /jud:rust; what the three skills know that the reader and the numbers cannot say.
 status: current
 last_reviewed: 2026-10-08
 tags: [judgment, jud, skill, agent, claude-code, how-to]
@@ -31,8 +31,9 @@ Or interactively: `/plugin marketplace add chussenot/judgment`, then `/plugin in
 | `/jud:record <rubric> <cases> [dir]` | Runs `jud record` after telling you, in a message of its own, how many requests it will spend (only those the directory does not already answer), to which backend and model. Stops with what to set when no key is set, and never asks for the key. |
 | `/jud:eval <rubric> <cases> [dir]` | Grades the recordings with `jud eval --replay`, counts the labels per outcome, and puts every miss in one cause: a wrong label, an ambiguous question, a fact the model cannot see, overlapping outcomes, a coverage gap, the bar's job or the model. It proposes each fix with its cost and changes no file. Explains stale recordings rather than working around them. |
 | `/jud:tune <rubric> <cases> <dir> [apply] [holdout]` | Runs `jud tune`, decides gate by gate whether to take the proposal, and shows the coverage a lower target would buy. It refuses a bar of 0 on a handful of cases and a bar that absorbs a wrong label. With `apply` it edits the rubric in place, keeping comments and the notes that still hold, and shows each gate before and after. With `holdout` it tunes on three quarters of the cases and reports the rest as the numbers to expect. |
+| `/jud:rust <rubric> [out.rs] [embed]` | Writes the rubric as a small Rust module: an enum per Choice and Score, a `Decision` struct and one `decide(backend, model, state)` call, with the rubric read through `include_str!` so its requests are what `jud lower` sends and a retune needs no regeneration. It compiles the module, runs its test and clippy before handing it over, and replies with the `Cargo.toml` and `mod` lines and a usage example. |
 
-The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric, typed questions with thresholds, labelled cases, or questions written in code that should become a document. The `jud-tune` skill loads when a task is about how well a rubric works: its accuracy, why a decision came out wrong, its thresholds or its recordings ("our rubric sends too many tickets to the wrong queue, fix the thresholds"). Neither needs the word "jud" in the request.
+The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric, typed questions with thresholds, labelled cases, or questions written in code that should become a document. The `jud-rust` skill loads when a task is about using a rubric from Rust ("call screening.jud from my service with real types"). The `jud-tune` skill loads when a task is about how well a rubric works: its accuracy, why a decision came out wrong, its thresholds or its recordings ("our rubric sends too many tickets to the wrong queue, fix the thresholds"). Neither needs the word "jud" in the request.
 
 ## What is in it
 
@@ -42,7 +43,9 @@ The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric
 | `skills/jud/references/format.md` | [The .jud format](../reference/jud-format.md), generated into the plugin by `scripts/gen-plugin-format.sh` so the two cannot differ; CI checks it. |
 | `skills/jud/scripts/jud.sh` | Runs the `jud` command: one on `PATH`, else one built from a judgment checkout. |
 | `skills/jud-tune/SKILL.md` | The tuning guide: what each edit costs and which ones make recordings stale, how to count a run's calls, what every `jud eval` and `jud tune` number means and how many cases a bar needs, the miss triage table, when to accept, keep or re-run a proposed bar, how to apply it in place, how to hold cases out, and what a reply must contain. |
-| `commands/rubric.md`, `cases.md`, `check.md`, `record.md`, `eval.md`, `tune.md` | The six commands, each a page of instructions that follows its skill. |
+| `skills/jud-rust/SKILL.md` | The Rust guide: what the generated module is and why the rubric stays its source, the naming rules from `.jud` keys to Rust identifiers, the mapping per primitive and declaration, how to wire and verify it. |
+| `skills/jud-rust/references/` | The two modules the skill copies its shape from, with their rubrics: copies of `examples/jud/triage.rs` and `routing.rs`, which `cargo test` compiles and runs (`examples/jud_typed.rs`); `scripts/gen-plugin-rust.sh --check` keeps the copies equal. |
+| `commands/rubric.md`, `cases.md`, `check.md`, `record.md`, `eval.md`, `tune.md`, `rust.md` | The seven commands, each a page of instructions that follows its skill. |
 | `skills/jud/evals/` | The six tasks the authoring skill was tested on. |
 | `skills/jud-tune/evals/` | The battle test of the tuning commands: the scenarios, the support fixture with its planted wrong labels, a mock System One server and the runner (below). |
 
@@ -64,6 +67,17 @@ The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric
 4. Put every miss in one cause and propose its fix, measured rather than guessed. A relabel is tried on a copy outside the project.
 5. Take a proposed bar only when the cases support it and no wrong label set it. Otherwise keep the written bar with a reason, or show what a lower target buys.
 6. Apply in place: values and notes of the gates that move, the `tuning` block as printed, every comment kept. Then show the before and after, from held-out cases when there are 40 or more.
+
+## How the Rust skill works
+
+A program that asks a rubric's questions from Rust has the crate's `Rubric::lower` and `Rubric::apply`, which give verdicts keyed by strings. The module the skill writes turns them into types the compiler checks, and adds no logic of its own:
+
+- **The rubric stays the source.** `SOURCE` is `include_str!` of the `.jud` file, and the request is `Rubric::lower`. The module therefore sends what `jud lower` and `jud record` send, and recordings made with the command line replay against it.
+- **Only questions are compiled in.** A Choice's options and a Score's levels become enums, a question asked only `when` the state has a path becomes an `Option`, and options supplied per request get an `Offered` struct. The bars, bands and fallbacks are read from the file at run time, so `jud tune` changes them with no regeneration.
+- **Drift fails a test.** The module's own test compares its fingerprint and enums with the parsed rubric, so an edited question fails `cargo test` until the module is regenerated.
+- **It is cheap to wire.** The module depends only on `judgment` (feature `jud`), `serde` and `serde_json`. It builds under `clippy::pedantic` with `unwrap_used` and `expect_used` denied. A program adds `mod triage;` and calls `triage::decide(&backend, "jev-latest", &state)`.
+
+[`examples/jud_typed.rs`](../../examples/jud_typed.rs) is such a program: it routes the calibration cases through `examples/jud/triage.rs` from recordings, and tests `examples/jud/routing.rs` with `Fake`. Both modules are the skill's templates.
 
 ## Work on the plugin itself
 
@@ -129,6 +143,48 @@ JUD=target/debug/jud python3 plugins/jud/skills/jud-tune/evals/run.py --out /tmp
 ```
 
 `--only ID ...` runs some, and `--model` picks the model. Each scenario's `reply.md`, `transcript.jsonl` and `checks.json` land under `--out`. Grading the prose expectations is left to a reader.
+
+### The Rust skill
+
+`/jud:rust` was battle-tested the same way: one prompt per scenario through `claude -p --plugin-dir plugins/jud`, in a fresh git workspace holding a small Rust application (`skills/jud-rust/evals/files/app/`, with `clippy::pedantic`, `unwrap_used` and `expect_used` on). The allow-list is the plugin's script, `cargo`, file edits and a few read-only commands. No scenario calls a backend.
+
+The 7 scenarios cover:
+
+- the triage rubric in a crate;
+- the routing rubric, with options supplied per request, `when`, bands, `strict` and `level_at_least`;
+- a conversation rubric in a project with no crate;
+- a rubric of hostile names (a keyword, a dotted id, a leading digit, `self`, two keys that collide, a level with no letters);
+- a plain-language request that names neither the command nor the skill;
+- the embedded form;
+- a regeneration after an option was added to the rubric.
+
+Each run is held to two kinds of check:
+
+- **Scripted checks** (`run.py`):
+  - Where the module was written, how it reads the rubric, and which files changed, with no stray files and no build output left in the project.
+  - The module compiled in a crate of the harness's own with a hidden test that uses the names the rubric must give, then `cargo clippy -D warnings`.
+  - A drift check: a question's instruction is edited and the module's own test must fail.
+  - The run compiled and tested its module itself, and no command the permission rules denied.
+- **Graded expectations**: an independent reader grades each scenario's expectations from the reply, the transcript and the workspace, reviews the module as a Rust reviewer would, and lists every claim the files contradict.
+
+| Round | Scripted checks | Expectations met | Claims the files contradict | What the round changed |
+|---|---|---|---|---|
+| 1 | 68 of 74 | 15 of 19 | 14 | no chained commands, files only through Write; the header's usage example complete; the reply says what the caller owes |
+| 2 | 73 of 74 | 21 of 22 | 8 | cargo's flags before `--`, so clippy checks the throwaway crate; no `target/` in the project; the user's lints copied; `none` becomes `NoneOption` |
+| 3 | 82 of 82 | 23 of 23 | 7 | a Score's fallback read by its text as well as its index; the program's `main` read before it is wired |
+| 4 | 88 of 88 | 25 of 25 | 7 | the `mod` line given once; `level_at_least` read through `reached` |
+| 5 | 88 of 88 | 24 of 25 | 2 | a sync `main`'s changes a bullet of their own; the usage example compiled in the throwaway crate as well as the module |
+| confirm | 38 of 38 (3 scenarios) | spot-checked | not counted | none: every run compiled its usage example and listed a sync `main`'s changes |
+
+Round 2's one missed check was the harness's: it forbade any `include_str!` in the embedded form, which the copy test the skill asks for uses. Round 3's grader found the one defect the scripted checks could not: a retune that gives a Score `fallback: calm` made every deferred answer fail at run time, since the module read levels by index only. The last two rounds passed every scripted check; round 5's one missed expectation was a sync `main` whose changed lines the reply did not list, and the confirmation round, on the three scenarios with a sync `main`, found every reply listing them. Every round cost $2.41 to $2.88 for the 7 runs on Sonnet 5.5, $0.27 to $0.52 each.
+
+To run them again, with `claude` logged in and `jud` built:
+
+```sh
+JUD=target/debug/jud python3 plugins/jud/skills/jud-rust/evals/run.py --out /tmp/jud-rust-evals --jobs 3
+```
+
+The scenarios share one target directory under `--out`; `--reference` runs the harness on the repository's own modules instead of the skill's output.
 
 ## Next
 

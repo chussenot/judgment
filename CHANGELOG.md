@@ -8,6 +8,19 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- The Claude Code plugin (now 0.3.0) turns a rubric into a typed Rust module:
+  the `jud-rust` skill and `/jud:rust <rubric>`. The module reads the rubric
+  with `include_str!` and lowers the request with `Rubric::lower`, so it sends
+  what `jud lower` sends and a retune needs no regeneration. It gives each
+  Choice and Score an enum and the program one call, `decide(backend, model,
+  state)`, and its own test fails when the rubric's questions drift from it.
+  `examples/jud_typed.rs` wires the two template modules
+  (`examples/jud/triage.rs`, `examples/jud/routing.rs`) into a program and
+  tests them; `scripts/gen-plugin-rust.sh` keeps the plugin's copies equal
+  to them.
+
+### Added
+
 - The Claude Code plugin (`plugins/jud/`, now 0.2.0) measures and tunes
   rubrics as well as writing them: a `jud-tune` skill and three commands.
   `/jud:record` says how many calls a run spends, to which backend and model,

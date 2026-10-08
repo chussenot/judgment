@@ -64,6 +64,7 @@ jobs:
       - run: scripts/gen-llms-txt.sh --check
       - run: scripts/gen-cli-reference.sh --check
       - run: scripts/gen-plugin-format.sh --check
+      - run: scripts/gen-plugin-rust.sh --check
       - run: cargo run -q --features cli --bin jud -- check examples/jud/*.jud examples/recordings/jud_calibration/*.jud
       - uses: lycheeverse/lychee-action@v2
         with:
