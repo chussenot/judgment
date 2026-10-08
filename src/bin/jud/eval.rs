@@ -11,7 +11,6 @@
 
 use std::collections::BTreeSet;
 use std::fmt::{self, Display, Formatter};
-use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -23,6 +22,7 @@ use serde::Serialize;
 use crate::EXIT_UNMET;
 use crate::backend::{Backend, Failure};
 use crate::batch::{self, Answered, Loaded};
+use crate::out;
 
 /// Grade a model's answers against the labelled cases.
 ///
@@ -30,8 +30,10 @@ use crate::batch::{self, Answered, Loaded};
 /// DIR with --replay (no key, no network), and grades each against its
 /// expected answer: per question the accuracy with its 95% interval, the Brier
 /// score, the calibration error, how often the rubric's gate acts rather than
-/// defers, and every miss. With --min-accuracy the command exits with status
-/// 3 when a question falls short, which makes it a CI check.
+/// defers and how often it is right when it acts, and every miss by the
+/// model. With --min-accuracy the command exits with status 3 when a question
+/// falls short, which makes it a CI check. Against a server eval keeps
+/// nothing: use `jud record` to keep the answers.
 #[derive(Args)]
 pub(crate) struct Eval {
     /// The Rubric document the cases are for.
@@ -47,8 +49,9 @@ pub(crate) struct Eval {
     #[arg(long)]
     pub json: bool,
     /// Fail with status 3 when accuracy is below this, 0 to 1: `0.9` for
-    /// every labelled question, `desk=0.95` for one. Repeatable. A question
-    /// with no labelled case does not meet its bar.
+    /// every labelled question, `desk=0.95` for one. Repeatable. It is the
+    /// model's accuracy per question, not the policy's. A question with no
+    /// labelled case does not meet its bar.
     #[arg(long, value_name = "[QUESTION=]ACCURACY", value_parser = parse_min_accuracy)]
     pub min_accuracy: Vec<MinAccuracy>,
 }
@@ -99,9 +102,15 @@ const TOLERANCE: f64 = 1e-9;
 ///       "accuracy", "accuracy_interval95",   // [low, high], Wilson
 ///       "brier", "ece",
 ///       "confidence_when_right", "confidence_when_wrong",
-///                                        // all null while "labelled" is 0
+///                                        // all null while "labelled" is 0;
+///                                        // all of these read the MODEL's answer
+///                                        // (a Noul at 0.5, a Choice by its pick,
+///                                        // a Score by its most probable level)
 ///       "gate": { "acted", "deferred", "accuracy_when_acted" } | null,
+///                                        // the POLICY's: what the gate did with
+///                                        // the answers, see `GateCoverage`
 ///       "misses": [ { "case", "expected", "predicted", "confidence" } ]
+///                                        // the model's misses, as `correct` counts
 ///     }
 ///   ],
 ///   "min_accuracy": [                    // one per --min-accuracy check, [] without any
@@ -112,7 +121,8 @@ const TOLERANCE: f64 = 1e-9;
 ///
 /// Numbers are numbers, unrounded; a value that cannot be computed is
 /// `null`, never a string. A `case` is the case's id (`#3` for one without),
-/// or `ID-turn-N` for a turn of a conversation.
+/// or `ID-turn-N` for a turn of a conversation. `--min-accuracy` holds the
+/// question's `accuracy`, the model's, and never `accuracy_when_acted`.
 #[derive(Debug, Serialize)]
 struct Report {
     /// The rubric the cases were graded against.
@@ -168,12 +178,17 @@ struct QuestionReport {
     misses: Vec<Miss>,
 }
 
-/// What a gate does with the answers: acts on them, or defers them.
+/// What the policy's gate does with the answers: acts on them, or defers them.
 ///
 /// A Noul's gate never defers (it says yes or no at its threshold), so its
-/// `acted` is every request that asked it. `accuracy_when_acted` reads each
-/// acted answer the way the question's own accuracy does (a Noul at 0.5, a
-/// Choice by its pick), over the acted requests that carry a label.
+/// `acted` is every request that asked it. `accuracy_when_acted` is the
+/// accuracy of the policy's own verdicts against the labels, over the acted
+/// requests that carry one: a Noul's yes or no at the gate's threshold (and
+/// `strict`), a Choice's option, a Score's level nearest to the weighted score.
+/// That is not the question's accuracy, which reads the model's answer (a Noul
+/// at 0.5, a Choice by its pick, a Score by its most probable level), so
+/// moving a bar moves this number and leaves that one where it is. A deferred
+/// answer is not acted on and is in neither count.
 #[derive(Debug, Serialize)]
 struct GateCoverage {
     acted: usize,
@@ -181,7 +196,8 @@ struct GateCoverage {
     accuracy_when_acted: Option<f64>,
 }
 
-/// One labelled answer that was wrong.
+/// One labelled answer the model got wrong: the question's own accuracy
+/// counts it, whatever the policy then did with it.
 #[derive(Debug, Serialize)]
 struct Miss {
     case: String,
@@ -258,11 +274,9 @@ impl Report {
     /// every labelled judgment, the gate's coverage, the misses, and each
     /// `--min-accuracy` check. Pure: nothing is asked, nothing is printed.
     fn build(loaded: &Loaded, answered: &[Answered], bars: &[MinAccuracy]) -> Self {
-        let questions: Vec<QuestionReport> = loaded
-            .rubric
-            .questions
-            .keys()
-            .map(|id| question_report(&loaded.rubric, id, answered))
+        let questions: Vec<QuestionReport> = batch::by_question(&loaded.rubric, answered)
+            .iter()
+            .map(|(id, judgments)| question_report(&loaded.rubric, id, judgments, answered))
             .collect();
         let min_accuracy = bars
             .iter()
@@ -316,31 +330,15 @@ impl Report {
     }
 }
 
-/// One question's report: its metrics over the labelled judgments of every
-/// unit, what its gate did, and where it was wrong.
-fn question_report(rubric: &Rubric, id: &str, answered: &[Answered]) -> QuestionReport {
-    let judgments: Vec<(&str, &Judgment)> = answered
-        .iter()
-        .flat_map(|a| {
-            a.judgments
-                .iter()
-                .filter(|(question, _)| question == id)
-                .map(|(_, judgment)| (a.unit.name.as_str(), judgment))
-        })
-        .collect();
-    let metrics = QuestionMetrics::summarise(judgments.iter().map(|(_, j)| *j), ECE_BINS);
-    let misses = judgments
-        .iter()
-        .filter(|(_, j)| j.correct == Some(false))
-        .filter_map(|(case, j)| {
-            Some(Miss {
-                case: (*case).to_owned(),
-                expected: j.expected.clone()?,
-                predicted: j.predicted.clone(),
-                confidence: j.confidence,
-            })
-        })
-        .collect();
+/// One question's report: the model's metrics over its labelled `judgments`,
+/// what the policy's gate did, and where the model was wrong.
+fn question_report(
+    rubric: &Rubric,
+    id: &str,
+    judgments: &[Judgment],
+    answered: &[Answered],
+) -> QuestionReport {
+    let metrics = QuestionMetrics::summarise(judgments, ECE_BINS);
     QuestionReport {
         id: id.to_owned(),
         labelled: metrics.labelled,
@@ -356,17 +354,61 @@ fn question_report(rubric: &Rubric, id: &str, answered: &[Answered]) -> Question
             .gates
             .contains_key(id)
             .then(|| coverage(id, answered)),
-        misses,
+        misses: misses(id, answered),
     }
+}
+
+/// The labelled answers the model got wrong, in case order. These are the
+/// model's misses (what `correct` counts), not the policy's: a Noul at 0.52
+/// is a miss against a `false` label here even where the gate's threshold of
+/// 0.55 answers `no` and is right.
+fn misses(id: &str, answered: &[Answered]) -> Vec<Miss> {
+    answered
+        .iter()
+        .flat_map(|a| {
+            a.judgments
+                .iter()
+                .filter(|(question, judgment)| question == id && judgment.correct == Some(false))
+                .filter_map(|(_, judgment)| {
+                    Some(Miss {
+                        case: a.unit.name.clone(),
+                        expected: judgment.expected.clone()?,
+                        predicted: judgment.predicted.clone(),
+                        confidence: judgment.confidence,
+                    })
+                })
+        })
+        .collect()
+}
+
+/// Whether the policy's `verdict` is the answer `judgment`'s label asks for;
+/// `None` for an answer with no label. A verdict is compared in the label's
+/// own words: `yes` or `no` for a Noul, the option for a Choice, the level's
+/// index for a Score. The verdict has already applied the gate's bar and
+/// `strict`, and a Score's is the level nearest the weighted score where the
+/// model's own reading is its most probable one, so this is what the policy
+/// does and `Judgment::correct` is not.
+fn policy_is_right(verdict: &Verdict, judgment: &Judgment) -> Option<bool> {
+    let expected = judgment.expected.as_deref()?;
+    let decided = match verdict {
+        Verdict::Yes { .. } => "yes".to_owned(),
+        Verdict::No { .. } => "no".to_owned(),
+        Verdict::Option { key, .. } => key.clone(),
+        Verdict::Level { index, .. } => index.to_string(),
+        // A verdict this build does not know acts on the model's reading, so
+        // a new kind of verdict cannot quietly shrink the labelled count.
+        _ => return judgment.correct,
+    };
+    Some(decided == expected)
 }
 
 /// What the gate for `id` did over the units that asked the question: a
 /// verdict and a judgment of one unit meet by question id, so the accuracy
 /// among the acted answers is over the same answers the gate let through.
 /// A unit that did not ask the question (its `when` was absent) has no
-/// verdict and counts for neither side.
+/// verdict and counts for neither side; a deferred one is not acted on.
 fn coverage(id: &str, answered: &[Answered]) -> GateCoverage {
-    let (mut acted, mut deferred, mut labelled, mut correct) = (0, 0, 0, 0);
+    let (mut acted, mut deferred, mut labelled, mut right) = (0, 0, 0, 0);
     for a in answered {
         let Some(verdict) = a.verdicts.get(id) else {
             continue;
@@ -380,16 +422,16 @@ fn coverage(id: &str, answered: &[Answered]) -> GateCoverage {
             .judgments
             .iter()
             .find(|(question, _)| question == id)
-            .and_then(|(_, judgment)| judgment.correct);
-        if let Some(right) = graded {
+            .and_then(|(_, judgment)| policy_is_right(verdict, judgment));
+        if let Some(is_right) = graded {
             labelled += 1;
-            correct += usize::from(right);
+            right += usize::from(is_right);
         }
     }
     GateCoverage {
         acted,
         deferred,
-        accuracy_when_acted: ratio(correct, labelled),
+        accuracy_when_acted: ratio(right, labelled),
     }
 }
 
@@ -438,7 +480,11 @@ impl Display for Report {
             plural(self.cases.count)
         )?;
         write!(f, "{} request{}", self.requests, plural(self.requests))?;
-        match self.models.as_slice() {
+        // A model's name comes from the server or a recording: whatever it
+        // holds is shown as text, never as a terminal command. The JSON
+        // form carries it verbatim, as a string.
+        let models: Vec<String> = self.models.iter().map(|m| out::plain(m)).collect();
+        match models.as_slice() {
             [] => {}
             [one] => write!(f, ", model {one}")?,
             many => write!(f, ", models {}", many.join(", "))?,
@@ -466,13 +512,15 @@ impl Display for Report {
 }
 
 impl Report {
-    /// Every miss, one line each, the question first so the lines line up.
+    /// Every miss of the model, one line each, the question first so the
+    /// lines line up. Titled for what it is: the model's answers that the
+    /// labels say were wrong, which is not what the gate section counts.
     fn fmt_misses(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let total: usize = self.questions.iter().map(|q| q.misses.len()).sum();
         if total == 0 {
-            return writeln!(f, "misses: none");
+            return writeln!(f, "model misses: none");
         }
-        writeln!(f, "misses ({total})")?;
+        writeln!(f, "model misses ({total})")?;
         let width = self.questions.iter().map(|q| q.id.len()).max().unwrap_or(0);
         for q in &self.questions {
             for m in &q.misses {
@@ -560,18 +608,6 @@ fn evaluate(args: &Eval) -> Result<Report, Failure> {
     Ok(Report::build(&loaded, &answered, &args.min_accuracy))
 }
 
-/// Write the report to stdout. A reader that closes early
-/// (`jud eval ... | head`) is not an error: the report was complete, and
-/// the exit status must still say whether a bar was met.
-fn print(text: &str) -> Result<(), Failure> {
-    let mut out = std::io::stdout().lock();
-    match out.write_all(text.as_bytes()).and_then(|()| out.flush()) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == ErrorKind::BrokenPipe => Ok(()),
-        Err(e) => Err(Failure::Usage(format!("cannot write the report: {e}"))),
-    }
-}
-
 fn render(report: &Report, json: bool) -> Result<String, Failure> {
     if json {
         let mut text = serde_json::to_string_pretty(report)
@@ -588,12 +624,15 @@ pub(crate) fn run(args: &Eval) -> ExitCode {
         Ok(report) => report,
         Err(failure) => return failure.report(),
     };
-    if let Err(failure) = render(&report, args.json).and_then(|text| print(&text)) {
+    // The report is complete on stdout before the status says whether a bar
+    // was met, and a reader that has gone does not change the status
+    // (`out::result`).
+    if let Err(failure) = render(&report, args.json).and_then(|text| out::result(&text)) {
         return failure.report();
     }
     match report.unmet_line() {
         Some(line) => {
-            eprintln!("jud: {line}");
+            out::note!("jud: {line}");
             ExitCode::from(EXIT_UNMET)
         }
         None => ExitCode::SUCCESS,

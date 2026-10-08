@@ -1,4 +1,5 @@
-//! Writing to the terminal without ever panicking on a closed pipe.
+//! Writing to the terminal without ever panicking on a closed pipe, and
+//! showing text a server or a file chose without handing it the terminal.
 //!
 //! Rust ignores SIGPIPE, so `eprintln!` and `println!` panic when the
 //! reader of a pipe has gone (`jud record ... 2>&1 | head -1`). A command
@@ -34,5 +35,47 @@ pub(crate) fn result(text: &str) -> Result<(), Failure> {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == ErrorKind::BrokenPipe => Ok(()),
         Err(e) => Err(Failure::Usage(format!("cannot write to stdout: {e}"))),
+    }
+}
+
+/// `text` with every control character written as its escape (`\u{1b}`,
+/// `\n`), so what a server or a recording named (a model, say) is shown and
+/// never obeyed: an escape sequence in it would move the cursor, retitle the
+/// window or hide what was printed before. Only controls change; every other
+/// character, accented or not, is as it was.
+pub(crate) fn plain(text: &str) -> String {
+    let mut shown = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c.is_control() {
+            shown.extend(c.escape_default());
+        } else {
+            shown.push(c);
+        }
+    }
+    shown
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plain;
+
+    #[test]
+    fn a_control_character_is_shown_as_its_escape() {
+        assert_eq!(
+            plain("jev\u{1b}[31mRED\u{1b}[0m"),
+            "jev\\u{1b}[31mRED\\u{1b}[0m"
+        );
+        assert_eq!(plain("a\nb\tc\r"), "a\\nb\\tc\\r");
+        // The bell, DEL and a C1 control (a one-byte CSI) are controls too.
+        assert_eq!(plain("\u{7}\u{7f}\u{9b}"), "\\u{7}\\u{7f}\\u{9b}");
+    }
+
+    #[test]
+    fn everything_else_is_left_alone() {
+        assert_eq!(plain("jev-1.13.0"), "jev-1.13.0");
+        assert_eq!(plain("modèle ✓ 模型"), "modèle ✓ 模型");
+        assert_eq!(plain(""), "");
+        // A backslash is not a control: it is not doubled.
+        assert_eq!(plain(r"a\b"), r"a\b");
     }
 }

@@ -11,7 +11,7 @@ mod support;
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::process::Output;
+use std::process::{Command, Output, Stdio};
 
 use judgment::jud::{Cases, Rubric};
 use serde_json::{Value, json};
@@ -23,10 +23,15 @@ use wiremock::matchers::{any, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// `jud eval RUBRIC CASES --replay RECORDINGS EXTRA...`
-fn eval(rubric: &str, cases: &str, extra: &[&str]) -> Output {
-    let mut args = vec!["eval", rubric, cases, "--replay", RECORDINGS];
+fn eval_with(recordings: &str, rubric: &str, cases: &str, extra: &[&str]) -> Output {
+    let mut args = vec!["eval", rubric, cases, "--replay", recordings];
     args.extend_from_slice(extra);
     jud(&args, "", &[])
+}
+
+/// The same against the example recordings.
+fn eval(rubric: &str, cases: &str, extra: &[&str]) -> Output {
+    eval_with(RECORDINGS, rubric, cases, extra)
 }
 
 /// The triage cases against the example recordings.
@@ -85,6 +90,31 @@ fn replaced(text: &str, from: &str, to: &str) -> String {
     text.replacen(from, to, 1)
 }
 
+/// A copy of the example recordings in which the files named (every one when
+/// `files` is empty) give `model`, a YAML scalar as written; the directory.
+fn recordings_naming(model: &str, files: &[&str]) -> String {
+    let dir = copy_dir(RECORDINGS);
+    let files: Vec<String> = if files.is_empty() {
+        std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect()
+    } else {
+        files.iter().map(|f| format!("{f}.jud")).collect()
+    };
+    for file in files {
+        let path = dir.join(file);
+        let text = std::fs::read_to_string(&path).unwrap();
+        let renamed = replaced(
+            &text,
+            "    model: jev-1.13.0\n",
+            &format!("    model: {model}\n"),
+        );
+        std::fs::write(&path, renamed).unwrap();
+    }
+    dir.to_str().unwrap().to_owned()
+}
+
 /// The triage rubric with the `desk` gate's bar moved.
 fn triage_with_desk_bar(bar: &str) -> String {
     write(
@@ -125,8 +155,42 @@ fn the_triage_cases_replayed_give_the_accuracies_and_briers_the_calibration_exam
             brier,
             "{id}"
         );
-        assert!(q["ece"].is_f64(), "{id}");
-        assert!(q["confidence_when_right"].is_f64(), "{id}");
+    }
+    // The calibration numbers, to three places, from the recordings by hand.
+    // A Noul's confidence is max(p, 1 - p), a Choice's and a Score's the one
+    // the answer carries; "right" and "wrong" are by the question's own
+    // accuracy. The calibration error is the ten-equal-bin sum
+    // (n_b / n) * |mean confidence_b - accuracy_b|:
+    //   actionable: 0.97 0.92 0.93 0.90 0.91 right (bin 9: mean 0.926, so
+    //     0.074 * 5/7), 0.88 right (0.12 * 1/7), the receipt 0.52 wrong
+    //     (0.52 * 1/7): 0.144; right 5.51 / 6 = 0.918; wrong 0.52.
+    //   desk: 0.87 0.89 0.81 right (mean 0.857, 0.143 * 3/7), 0.77 0.73 right
+    //     (0.25 * 2/7), 0.47 right with the receipt's 0.40 wrong (bin 4,
+    //     0.065 * 2/7): 0.151; right 4.54 / 6 = 0.757; wrong 0.40.
+    //   tone (six labelled, all right): 0.84 0.80 0.87 0.89 (0.15 * 4/6),
+    //     0.93 (0.07 * 1/6), 0.46 (0.54 * 1/6): 0.202; right 4.79 / 6 = 0.798;
+    //     nobody was wrong, so no confidence when wrong.
+    let calibration = [
+        ("actionable", "0.144", "0.918", Some("0.520")),
+        ("desk", "0.151", "0.757", Some("0.400")),
+        ("tone", "0.202", "0.798", None),
+    ];
+    for (id, ece, right, wrong) in calibration {
+        let q = question(&report, id);
+        assert_eq!(format!("{:.3}", q["ece"].as_f64().unwrap()), ece, "{id}");
+        assert_eq!(
+            format!("{:.3}", q["confidence_when_right"].as_f64().unwrap()),
+            right,
+            "{id}"
+        );
+        match wrong {
+            Some(wrong) => assert_eq!(
+                format!("{:.3}", q["confidence_when_wrong"].as_f64().unwrap()),
+                wrong,
+                "{id}"
+            ),
+            None => assert!(q["confidence_when_wrong"].is_null(), "{id}"),
+        }
     }
     // The order is the rubric's.
     let order: Vec<&str> = report["questions"]
@@ -136,8 +200,6 @@ fn the_triage_cases_replayed_give_the_accuracies_and_briers_the_calibration_exam
         .map(|q| q["id"].as_str().unwrap())
         .collect();
     assert_eq!(order, ["actionable", "desk", "tone"]);
-    // Nobody was wrong on tone, so there is no confidence to report for it.
-    assert!(question(&report, "tone")["confidence_when_wrong"].is_null());
     // Seven cases, seven requests, one model.
     assert_eq!(report["requests"], 7);
     assert_eq!(report["cases"]["count"], 7);
@@ -177,9 +239,15 @@ fn the_text_report_names_the_documents_and_each_question() {
     // One block per question, with the numbers the example prints.
     assert!(text.contains("labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)"));
     assert!(text.contains("labelled 6, correct 6, accuracy 1.00"));
-    assert!(text.contains("brier 0.090"), "{text}");
-    assert!(text.contains("brier 0.155"), "{text}");
-    assert!(text.contains("brier 0.059"), "{text}");
+    // The metrics line is brier, calibration error, then the two confidences,
+    // in that order (the numbers are derived in the JSON test above).
+    for line in [
+        "brier 0.090, calibration error 0.144, confidence when right 0.92, when wrong 0.52",
+        "brier 0.155, calibration error 0.151, confidence when right 0.76, when wrong 0.40",
+        "brier 0.059, calibration error 0.202, confidence when right 0.80, when wrong -",
+    ] {
+        assert!(text.contains(line), "{line}\n{text}");
+    }
     // No bar given, so no gate section.
     assert!(!text.contains("--min-accuracy"), "{text}");
 }
@@ -211,7 +279,9 @@ fn the_misses_name_the_case_what_was_expected_and_what_was_given() {
     );
 
     let text = stdout(&triage(&[]));
-    assert!(text.contains("misses (2)"), "{text}");
+    // Titled for whose misses they are: the model's, which is not what the
+    // gate section counts.
+    assert!(text.contains("\nmodel misses (2)\n"), "{text}");
     assert!(
         text.contains("receipt: expected none_of_these, predicted billing, confidence 0.40"),
         "{text}"
@@ -301,6 +371,10 @@ fn the_gate_reports_what_the_policy_acts_on_and_defers() {
         ),
         (Some(7), Some(0))
     );
+    // The policy's verdicts at threshold 0.55 are all right, the receipt's
+    // 0.52 included (a `no`, as labelled): 7 of 7, where the model's reading
+    // at 0.5 gets the same receipt wrong (see the next test).
+    assert_eq!(actionable["accuracy_when_acted"], 1.0);
     let tone = &question(&report, "tone")["gate"];
     assert_eq!(
         (tone["acted"].as_u64(), tone["deferred"].as_u64()),
@@ -428,7 +502,7 @@ fn a_bar_on_one_question_gates_that_question_only() {
     );
     let text = stdout(&out);
     // The report is printed as usual, then the gate lines.
-    assert!(text.contains("misses (2)"), "{text}");
+    assert!(text.contains("model misses (2)"), "{text}");
     assert!(
         text.ends_with("--min-accuracy\n  NOT MET  desk 0.86 < 0.95\n"),
         "{text}"
@@ -696,13 +770,18 @@ fn a_miss_in_a_conversation_names_the_turn() {
 #[test]
 fn jud_replay_in_the_environment_works_like_the_flag() {
     let flag = triage(&["--json"]);
+    assert_eq!(code(&flag), 0, "{}", stderr(&flag));
     let by_env = jud(
         &["eval", TRIAGE, TRIAGE_CASES, "--json"],
         "",
         &[("JUD_REPLAY", RECORDINGS)],
     );
     assert_eq!(code(&by_env), 0, "{}", stderr(&by_env));
-    assert_eq!(stdout(&by_env), stdout(&flag));
+    // `report` requires one pretty JSON object, so two empty outputs cannot
+    // pass for a match.
+    let by_env = report(&by_env);
+    assert_eq!(by_env["rubric"]["name"], "inbox-triage");
+    assert_eq!(by_env, report(&flag));
 }
 
 #[test]
@@ -832,7 +911,7 @@ fn eval_is_read_only_and_ignores_stdin() {
     // Whatever is piped in is not read as a state, and not echoed.
     let out = jud(&args, "this is not JSON at all", &[]);
     assert_eq!(code(&out), 0, "{}", stderr(&out));
-    assert_eq!(stdout(&out), stdout(&triage(&["--json"])));
+    assert_eq!(report(&out), report(&triage(&["--json"])));
     assert_eq!(snapshot(&dir), before, "eval wrote to a file");
 }
 
@@ -941,11 +1020,379 @@ async fn a_failing_server_is_exit_1_and_stops_at_the_first_failure() {
         ],
     );
     assert_eq!(code(&out), 1, "{}", stderr(&out));
+    // The failure names the case it stopped at and where it was in the run,
+    // since nothing is kept: the first case, of seven, and no other was asked.
     assert!(
-        stderr(&out).starts_with("jud: the backend at "),
+        stderr(&out).starts_with("jud: case refund-angry (1 of 7): the backend at "),
         "{}",
         stderr(&out)
     );
     assert!(stdout(&out).is_empty());
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+/// The gate's section of one question, from a run of `rubric` over the
+/// triage cases and `recordings`.
+fn gate_of(recordings: &str, rubric: &str, id: &str) -> (Value, Value) {
+    let out = eval_with(recordings, rubric, TRIAGE_CASES, &["--json"]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let report = report(&out);
+    let q = question(&report, id);
+    (q["gate"].clone(), q.clone())
+}
+
+/// What the model did on a question, with the policy's gate left out: the
+/// part a moved bar must not move.
+fn model_side(question: &Value) -> Value {
+    let mut model = question.clone();
+    model.as_object_mut().unwrap().remove("gate");
+    model
+}
+
+/// `value` is `numerator / denominator`, to float precision.
+fn is_ratio(value: &Value, numerator: u32, denominator: u32) -> bool {
+    (value.as_f64().unwrap() - f64::from(numerator) / f64::from(denominator)).abs() < 1e-12
+}
+
+#[test]
+fn a_noul_gates_accuracy_is_that_of_its_own_verdicts_and_not_the_models_reading_at_half() {
+    let (gate, question) = gate_of(RECORDINGS, TRIAGE, "actionable");
+    // The committed threshold is 0.55, so the receipt (0.52, labelled false)
+    // is a `no` and every one of the seven verdicts is right ...
+    assert_eq!(
+        (gate["acted"].as_u64(), gate["deferred"].as_u64()),
+        (Some(7), Some(0))
+    );
+    assert_eq!(gate["accuracy_when_acted"], 1.0, "{gate}");
+    // ... while the question's accuracy is the model's reading at 0.5, which
+    // says yes to the receipt and is right 6 times of 7. Both are reported,
+    // and neither stands in for the other.
+    assert_eq!(
+        (question["labelled"].as_u64(), question["correct"].as_u64()),
+        (Some(7), Some(6))
+    );
+    assert!(is_ratio(&question["accuracy"], 6, 7), "{question}");
+    let text = stdout(&triage(&[]));
+    assert!(
+        text.contains("labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("gate: acts on 7 of 7, defers 0, accuracy when acted 1.00"),
+        "{text}"
+    );
+}
+
+#[test]
+fn moving_a_noul_gates_threshold_moves_the_policys_accuracy_and_not_the_models() {
+    let committed = gate_of(RECORDINGS, TRIAGE, "actionable");
+    // The probabilities of yes in the recordings, by case: refund-angry 0.97,
+    // thanks 0.08, login-loop 0.93, receipt 0.52, close-account 0.90,
+    // how-to-export 0.88, invoice-vat 0.91; the labels are yes for all but
+    // thanks and the receipt. A bar of 0.95 says yes only to refund-angry:
+    // right for it, thanks and the receipt, wrong for the other four, 3 of 7.
+    let high = write(
+        "triage-0.95.jud",
+        &replaced(
+            &read(TRIAGE),
+            "      threshold: 0.55\n",
+            "      threshold: 0.95\n",
+        ),
+    );
+    let (gate, question) = gate_of(RECORDINGS, &high, "actionable");
+    assert_eq!(
+        (gate["acted"].as_u64(), gate["deferred"].as_u64()),
+        (Some(7), Some(0))
+    );
+    assert!(is_ratio(&gate["accuracy_when_acted"], 3, 7), "{gate}");
+    assert!(
+        gate["accuracy_when_acted"].as_f64() < committed.0["accuracy_when_acted"].as_f64(),
+        "a bar that misses four requests is not the better policy: {gate}"
+    );
+    // The question is the same question over the same answers.
+    assert_eq!(model_side(&question), model_side(&committed.1));
+
+    // `--min-accuracy` holds the model's accuracy, 6 of 7, whatever the
+    // policy does with it: the policy at 0.95 is right 3 times of 7 and the
+    // bar of 0.85 is met, and the policy at 0.55 is right 7 times of 7 and
+    // a bar of 0.9 is not.
+    let met = eval(&high, TRIAGE_CASES, &["--min-accuracy", "actionable=0.85"]);
+    assert_eq!(code(&met), 0, "{}", stderr(&met));
+    let unmet = triage(&["--min-accuracy", "actionable=0.9"]);
+    assert_eq!(code(&unmet), 3, "{}", stderr(&unmet));
+}
+
+#[test]
+fn a_strict_gate_changes_the_verdict_at_exactly_its_bar() {
+    // close-account's recording says 0.9, labelled true, and a bar of 0.9 is
+    // exactly there: met without `strict`, not met with it. The other six
+    // verdicts are the same either way (0.97, 0.93, 0.91 yes; 0.08, 0.52,
+    // 0.88 no), five right of six, so the policy is 6 of 7 with the bar met
+    // at 0.9 and 5 of 7 with it met only above.
+    let at_bar = write(
+        "triage-at.jud",
+        &replaced(
+            &read(TRIAGE),
+            "      threshold: 0.55\n",
+            "      threshold: 0.9\n",
+        ),
+    );
+    let above = write(
+        "triage-above.jud",
+        &replaced(
+            &read(TRIAGE),
+            "      threshold: 0.55\n",
+            "      threshold: 0.9\n      strict: true\n",
+        ),
+    );
+    let (gate, question) = gate_of(RECORDINGS, &at_bar, "actionable");
+    assert!(is_ratio(&gate["accuracy_when_acted"], 6, 7), "{gate}");
+    let (strict, strict_question) = gate_of(RECORDINGS, &above, "actionable");
+    assert!(is_ratio(&strict["accuracy_when_acted"], 5, 7), "{strict}");
+    // The model's reading is not the gate's: strict or not, 6 of 7.
+    assert_eq!(model_side(&question), model_side(&strict_question));
+    assert_eq!(question["correct"], 6);
+}
+
+#[test]
+fn a_scores_gate_is_graded_by_the_level_the_policy_reads_and_not_the_most_probable_one() {
+    // how-to-export (labelled calm, 0) is edited so that the model's most
+    // probable level is still 0 (0.4) while the weighted score,
+    // 0.35 + 2 * 0.25 = 0.85, is nearest to level 1, which is what the policy
+    // reads. The question's accuracy goes by the first, the gate's by the
+    // second.
+    let dir = copy_dir(RECORDINGS);
+    let file = dir.join("how-to-export.jud");
+    let text = read(file.to_str().unwrap());
+    let text = replaced(&text, "        score: 0.12\n", "        score: 0.85\n");
+    let text = replaced(
+        &text,
+        "          \"0\": 0.9\n          \"1\": 0.08\n          \"2\": 0.02\n",
+        "          \"0\": 0.4\n          \"1\": 0.35\n          \"2\": 0.25\n",
+    );
+    std::fs::write(&file, text).unwrap();
+    let recordings = dir.to_str().unwrap();
+
+    // The committed bar, 0.3, acts on all seven; six carry a tone label and
+    // the policy's level is right for five (not for how-to-export).
+    let (gate, question) = gate_of(recordings, TRIAGE, "tone");
+    assert_eq!(
+        (gate["acted"].as_u64(), gate["deferred"].as_u64()),
+        (Some(7), Some(0))
+    );
+    assert!(is_ratio(&gate["accuracy_when_acted"], 5, 6), "{gate}");
+    assert_eq!(
+        (question["labelled"].as_u64(), question["correct"].as_u64()),
+        (Some(6), Some(6))
+    );
+
+    // A bar of 0.85 defers refund-angry (0.84), close-account (0.80) and
+    // login-loop (0.46), and acts on how-to-export (0.87), invoice-vat (0.89),
+    // thanks (0.93) and the receipt (0.96, no tone label): three labelled,
+    // of which invoice-vat and thanks read level 0, right, and how-to-export
+    // reads level 1, wrong: 2 of 3, the deferred three in neither count.
+    let bar = write(
+        "triage-tone-0.85.jud",
+        &replaced(
+            &read(TRIAGE),
+            "    tone:\n      confidence: 0.3\n",
+            "    tone:\n      confidence: 0.85\n",
+        ),
+    );
+    let (gate, question) = gate_of(recordings, &bar, "tone");
+    assert_eq!(
+        (gate["acted"].as_u64(), gate["deferred"].as_u64()),
+        (Some(4), Some(3))
+    );
+    assert!(is_ratio(&gate["accuracy_when_acted"], 2, 3), "{gate}");
+    assert_eq!(question["correct"], 6);
+}
+
+#[test]
+fn a_model_named_with_control_characters_is_text_in_the_report_and_verbatim_in_json() {
+    // A model's name comes from the server, or from a recording, which is a
+    // file someone else may have handed over. In the text report it must not
+    // reach the terminal as an escape sequence (colour, a retitled window, a
+    // bell); the JSON carries it exactly, escaped as JSON escapes it.
+    let model = "jev\u{1b}[31mRED\u{1b}[0m\u{1b}]0;pwned\u{7}";
+    let recordings = recordings_naming(r#""jev\x1b[31mRED\x1b[0m\x1b]0;pwned\x07""#, &[]);
+
+    let out = eval_with(&recordings, TRIAGE, TRIAGE_CASES, &[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        !text.bytes().any(|b| b == 0x1b || b == 0x07),
+        "a raw control character reached stdout: {text:?}"
+    );
+    assert!(
+        text.contains(r"7 requests, model jev\u{1b}[31mRED\u{1b}[0m\u{1b}]0;pwned\u{7}"),
+        "{text}"
+    );
+
+    let out = eval_with(&recordings, TRIAGE, TRIAGE_CASES, &["--json"]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(!stdout(&out).bytes().any(|b| b == 0x1b || b == 0x07));
+    assert_eq!(report(&out)["models"], json!([model]));
+}
+
+#[test]
+fn recordings_of_several_models_are_listed_in_the_order_they_were_first_seen() {
+    // refund-angry, the first request, is jev-1.13.0; the receipt, the
+    // fourth, is another model; the rest are jev-1.13.0 again.
+    let recordings = recordings_naming("jev-1.12.0", &["receipt"]);
+    let out = eval_with(&recordings, TRIAGE, TRIAGE_CASES, &["--json"]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert_eq!(report(&out)["models"], json!(["jev-1.13.0", "jev-1.12.0"]));
+    assert_eq!(report(&out)["requests"], 7);
+    let text = stdout(&eval_with(&recordings, TRIAGE, TRIAGE_CASES, &[]));
+    assert!(
+        text.contains("7 requests, models jev-1.13.0, jev-1.12.0\n"),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_report_with_no_misses_says_so() {
+    let out = eval(HANDOFF, HANDOFF_CASES, &[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(
+        stdout(&out).ends_with("\nmodel misses: none\n"),
+        "{}",
+        stdout(&out)
+    );
+    assert!(!stdout(&out).contains("model misses ("), "{}", stdout(&out));
+}
+
+#[test]
+fn a_case_without_an_id_is_named_by_its_position() {
+    let mut cases = read(TRIAGE_CASES);
+    for id in [
+        "refund-angry",
+        "thanks",
+        "login-loop",
+        "receipt",
+        "close-account",
+        "how-to-export",
+        "invoice-vat",
+    ] {
+        cases = replaced(&cases, &format!("- id: {id}\n      state:"), "- state:");
+    }
+    let cases = write("anonymous-cases.jud", &cases);
+    let out = eval(TRIAGE, &cases, &["--json"]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    // The receipt was the fourth case, so `#3`, in both forms of the report.
+    let report = report(&out);
+    assert_eq!(question(&report, "actionable")["misses"][0]["case"], "#3");
+    assert_eq!(question(&report, "desk")["misses"][0]["case"], "#3");
+    let text = stdout(&eval(TRIAGE, &cases, &[]));
+    assert!(
+        text.contains("#3: expected no, predicted yes, confidence 0.52"),
+        "{text}"
+    );
+}
+
+/// `jud ARGS` whose stdout reader goes away at once: the exit status and
+/// what it said on stderr.
+///
+/// Best effort: a child that is slow to start is not yet writing when the
+/// pipe closes, and a child that wrote first still ends with the same status,
+/// so this can never fail for being early; it fails when a closed reader
+/// changes what the command exits with.
+fn run_with_stdout_closed(args: &[&str]) -> (Option<i32>, String) {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_jud"))
+        .current_dir(support::ROOT)
+        .args(args)
+        .env_remove("TYPESAFE_API_KEY")
+        .env_remove("TYPESAFE_BASE_URL")
+        .env_remove("JUD_REPLAY")
+        .env("XDG_CONFIG_HOME", support::config_home())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    drop(child.stdout.take());
+    let output = child.wait_with_output().unwrap();
+    (output.status.code(), stderr(&output))
+}
+
+#[test]
+fn a_reader_that_closes_early_does_not_change_the_exit_status() {
+    // `jud eval ... | head -c1` in a CI step: status 3 must still say that a
+    // bar was not met, and a met bar must not turn into a failure.
+    let base = ["eval", TRIAGE, TRIAGE_CASES, "--replay", RECORDINGS];
+    for (extra, status) in [
+        (vec!["--min-accuracy", "0.99"], Some(3)),
+        (vec!["--min-accuracy", "0.99", "--json"], Some(3)),
+        (vec!["--min-accuracy", "0.5"], Some(0)),
+        (vec![], Some(0)),
+    ] {
+        let mut args = base.to_vec();
+        args.extend(&extra);
+        let (code, err) = run_with_stdout_closed(&args);
+        assert_eq!(code, status, "{extra:?}: {err}");
+        // Nothing but the bar's own line is said, and no panic.
+        if status == Some(3) {
+            assert!(
+                err.starts_with("jud: 2 question(s) below --min-accuracy: "),
+                "{extra:?}: {err}"
+            );
+        } else {
+            assert!(err.is_empty(), "{extra:?}: {err}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_server_that_fails_midway_names_the_case_and_its_place_in_the_run() {
+    // Two answers, then a refusal that is not retried: the third case is the
+    // one named, and the failure says how far the run got, since eval keeps
+    // nothing of the two it paid for.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(server_answers()))
+        .up_to_n_times(2)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(json!({"error": "bad key"})))
+        .mount(&server)
+        .await;
+    let out = jud(
+        &["eval", TRIAGE, TRIAGE_CASES],
+        "",
+        &[
+            ("TYPESAFE_API_KEY", "test-key"),
+            ("TYPESAFE_BASE_URL", &server.uri()),
+        ],
+    );
+    assert_eq!(code(&out), 1, "{}", stderr(&out));
+    assert!(
+        stderr(&out).starts_with("jud: case login-loop (3 of 7): the backend at "),
+        "{}",
+        stderr(&out)
+    );
+    assert!(stdout(&out).is_empty());
+    assert_eq!(server.received_requests().await.unwrap().len(), 3);
+}
+
+#[test]
+fn the_help_says_which_accuracy_a_bar_holds_and_that_a_server_run_keeps_nothing() {
+    let out = jud(&["eval", "--help"], "", &[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    // clap wraps lines; the sentences are what is asserted.
+    let help = stdout(&out)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        help.contains("It is the model's accuracy per question, not the policy's."),
+        "{help}"
+    );
+    assert!(
+        help.contains("Against a server eval keeps nothing: use `jud record` to keep the answers."),
+        "{help}"
+    );
 }
