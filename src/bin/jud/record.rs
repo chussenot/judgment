@@ -5,7 +5,10 @@
 //! Every refusal that can be known from the documents alone comes before the
 //! first call: a case without an id (a recording is a file named after its
 //! case), two requests that would share a file name, a request the rubric
-//! does not lower, a missing key, an output directory that cannot be made.
+//! does not lower or that asks nothing, a label a conversation's turn cannot
+//! carry, a recording that would be written over the rubric or the cases, a
+//! stale recording in a file this run would not replace, a missing key, an
+//! output directory that cannot be made.
 //! After that the cases are asked one at a time, in order, and a recording is
 //! written the moment its answer is verified, so whatever happens later
 //! (a failed call, a closed terminal) the answers already paid for are on
@@ -19,13 +22,15 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use clap::{Args, ValueHint};
-use judgment::eval::{Recording, canonical, now_rfc3339};
+use judgment::eval::{Recording, canonical, now_rfc3339, request_hash};
 use judgment::jud::{self, recording_to_yaml};
 use judgment::{Error, Questions, Replay, SystemOne};
-use tokio::runtime::Runtime;
 
 use crate::backend::{Backend, Failure};
 use crate::batch::{self, Unit};
+use crate::fsutil::same_file;
+use crate::out::note;
+use crate::recordings;
 
 /// Answer every case once and write the recordings.
 ///
@@ -35,6 +40,9 @@ use crate::batch::{self, Unit};
 /// time. A conversation labelled with `from_turn` is recorded turn by turn as
 /// CASE-turn-N.jud. A request already recorded in DIR is kept and not asked
 /// again, so an interrupted run resumes.
+///
+/// Record always asks the configured backend and never reads `JUD_REPLAY`, so
+/// a run spends calls.
 #[derive(Args)]
 pub(crate) struct Record {
     /// The Rubric document the cases are for.
@@ -90,8 +98,6 @@ struct Session<'a> {
     out: &'a Path,
     rubric: &'a str,
     backend: Backend,
-    /// Runs the lookups in `known`; the backend builds its own per call.
-    runtime: Runtime,
     /// The recordings a request can be matched to: those found in `out` at
     /// the start (none under `--refresh`) and each one written since.
     known: Replay,
@@ -116,26 +122,33 @@ fn record(args: &Record) -> Result<(), Failure> {
             questions: p.questions,
         })
         .collect();
+    // Before `Backend::open`, so that no key is needed to find that a case
+    // would be recorded over one of the documents it was given.
+    refuse_inputs(args, &planned)?;
     let backend = Backend::open(None)?;
     let known = prepare_directory(&args.out, args.refresh)?;
     let mut session = Session {
         out: &args.out,
         rubric: &loaded.rubric.name,
         backend,
-        runtime: runtime()?,
         known,
         total: planned.len(),
         tally: Tally::default(),
     };
+    session.refuse_stale_elsewhere(&planned)?;
     for (position, step) in planned.iter().enumerate() {
         session.record_one(position, step)?;
     }
-    eprintln!(
+    note!(
         "recorded {}, kept {} in {}",
         session.tally.recorded,
         session.tally.kept,
         args.out.display()
     );
+    // Whatever the run wrote or kept, two files left in the directory for one
+    // request (a case renamed and asked again with `--refresh`, say) are
+    // worth a line: a replay reads one of them.
+    recordings::warn_duplicates(&args.out);
     Ok(())
 }
 
@@ -152,7 +165,7 @@ impl Session<'_> {
         // for the same answer twice.
         let held = self.held(planned);
         if matches!(held, Held::Answers) {
-            eprintln!("kept {name}");
+            note!("kept {name}");
             self.tally.kept += 1;
             return Ok(());
         }
@@ -160,9 +173,9 @@ impl Session<'_> {
             .ask_and_write(planned)
             .map_err(|failure| self.stopped(position, name, &failure))?;
         if matches!(held, Held::Stale) {
-            eprintln!("replaced {name} (stale)");
+            note!("replaced {name} (stale)");
         } else {
-            eprintln!(
+            note!(
                 "recorded {name} ({}/{}, {elapsed_ms} ms)",
                 position + 1,
                 self.total
@@ -178,11 +191,12 @@ impl Session<'_> {
     /// recording that matches the request and cannot be used, which is asked
     /// again and replaced.
     ///
-    /// A stale recording that sits in a file of another name is not removed
-    /// (the file is not ours to guess at); the one written beside it carries
-    /// the same fingerprint, and `jud check` over the directory shows both.
+    /// Where the stale recording sits decides what happens to it:
+    /// [`Session::refuse_stale_elsewhere`] has already refused a run in which
+    /// it sits in a file this run would not write, so a `Stale` here is the
+    /// recording in the case's own file, which is replaced.
     fn held(&self, planned: &Planned) -> Held {
-        let answered = self.runtime.block_on(self.known.answer(
+        let answered = self.backend.block_on(self.known.answer(
             &planned.unit.case.state,
             self.backend.model(),
             &planned.questions,
@@ -192,6 +206,43 @@ impl Session<'_> {
             Err(Error::NoRecording(_)) => Held::Nothing,
             Err(_) => Held::Stale,
         }
+    }
+
+    /// Refuse, before any call, a request whose stale recording sits in a file
+    /// that is not the one this run would write. The file is not ours to
+    /// remove, and writing the new recording beside it would leave two files
+    /// for one request, of which a replay reads the one that comes last by
+    /// name, which may well be the stale one. The stale recording is found
+    /// by the fingerprint (or the hash a harness keyed it by) the request
+    /// has; a stale recording in `NAME.jud` itself is the file written
+    /// anyway. Nothing is held under `--refresh`, so nothing is refused.
+    fn refuse_stale_elsewhere(&self, planned: &[Planned]) -> Result<(), Failure> {
+        let mut found: Option<Vec<recordings::Found>> = None;
+        for step in planned {
+            if !matches!(self.held(step), Held::Stale) {
+                continue;
+            }
+            let state = &step.unit.case.state;
+            let fingerprint = canonical::request_fingerprint(state, &step.questions);
+            let hash = request_hash(state, &step.questions);
+            let own = recording_path(self.out, &step.name);
+            let files = found.get_or_insert_with(|| recordings::scan(self.out));
+            for file in files.iter().filter(|f| {
+                f.path != own
+                    && (f.recording.fingerprint.as_deref() == Some(fingerprint.as_str())
+                        || f.recording.request_hash.as_deref() == Some(hash.as_str()))
+            }) {
+                // The file's own reason: a valid twin of a stale recording in
+                // the case's own file is no problem (the run reports it).
+                if let Err(reason) = file.recording.response.verify(&step.questions) {
+                    return Err(Failure::Usage(format!(
+                        "{} records this request and no longer fits the questions ({reason}); delete or move it, then record again",
+                        file.path.display()
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Ask the backend, record the answer and write it; the call's time in
@@ -232,6 +283,26 @@ impl Session<'_> {
             failure.message()
         ))
     }
+}
+
+/// Refuse, before any call, a recording that would take the place of the
+/// rubric or the cases: nothing is ever written over an input (decision
+/// 0021). `--refresh` does not read the directory, so a case named like an
+/// input in `--out` would replace it without a word; [`same_file`] also sees
+/// `./`, a symlinked directory and a hard link as the input.
+fn refuse_inputs(args: &Record, planned: &[Planned]) -> Result<(), Failure> {
+    for step in planned {
+        let target = recording_path(&args.out, &step.name);
+        for (kind, input) in [("rubric", &args.rubric), ("cases", &args.cases)] {
+            if same_file(&target, Path::new(input)) {
+                return Err(Failure::Usage(format!(
+                    "refusing to write {} over the {kind} {input}; give the case another id, or record into another directory",
+                    target.display()
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The name each unit's recording takes, or a refusal, before any call: a
@@ -293,7 +364,7 @@ fn prepare_directory(dir: &Path, refresh: bool) -> Result<Replay, Failure> {
     }
     Replay::open(dir).map_err(|e| {
         Failure::Usage(format!(
-            "cannot read the recordings already in {}: {e}; fix or move the file, or pass --refresh to ask every case again",
+            "cannot read the recordings already in {}: {e}; fix or move the file, or pass --refresh to ask every case again and replace any file named after a case",
             dir.display()
         ))
     })
@@ -345,14 +416,6 @@ fn write_atomically(dir: &Path, name: &str, text: &str) -> std::io::Result<()> {
         let _ = std::fs::remove_file(&temporary);
     }
     renamed
-}
-
-/// The runtime a replay lookup runs on; the backend builds its own per call.
-fn runtime() -> Result<Runtime, Failure> {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| Failure::Backend(format!("cannot start the runtime: {e}")))
 }
 
 #[cfg(test)]

@@ -11,7 +11,8 @@
 mod support;
 
 use std::path::Path;
-use std::process::Output;
+use std::process::{Command, Output, Stdio};
+use std::time::Duration;
 
 use judgment::jud::Cases;
 use serde_json::{Value, json};
@@ -797,4 +798,630 @@ async fn recordings_already_in_the_directory_are_found_by_fingerprint_not_by_nam
         stderr(&turns)
     );
     assert_eq!(names(&dir), before);
+}
+
+/// A Cases document with one case over the triage rubric, named `id`.
+fn one_triage_case(id: &str) -> String {
+    format!(
+        "apiVersion: jud/v1.3
+kind: Cases
+metadata:
+  name: one
+spec:
+  rubric: inbox-triage
+  cases:
+    - id: {id}
+      state: {{message: Please refund the duplicate charge.}}
+      expect: {{desk: billing}}
+"
+    )
+}
+
+/// The bytes of each file, to say that a refusal changed none of them.
+fn bytes_of(files: &[&Path]) -> Vec<Vec<u8>> {
+    files.iter().map(|f| std::fs::read(f).unwrap()).collect()
+}
+
+// ---- never over its inputs ------------------------------------------------
+
+#[tokio::test]
+async fn record_never_writes_over_the_rubric_or_the_cases_it_was_given() {
+    // --out is the directory holding both documents, and a case is named
+    // after one of them: its recording would take the document's place. With
+    // --refresh the directory is not even read, so nothing else would stop it.
+    let server = server(triage_answers(), 0).await;
+    for extra in [&[][..], &["--refresh"][..]] {
+        for kind in ["rubric", "cases"] {
+            let dir = scratch("inputs");
+            let rubric = dir.join("rubric.jud");
+            let cases = dir.join("cases.jud");
+            std::fs::copy(TRIAGE, &rubric).unwrap();
+            std::fs::write(&cases, one_triage_case(kind)).unwrap();
+            let before = contents(&dir);
+
+            let run = record(
+                &server,
+                rubric.to_str().unwrap(),
+                cases.to_str().unwrap(),
+                &dir,
+                extra,
+            );
+            let err = stderr(&run);
+            assert_eq!(code(&run), 2, "{kind} {extra:?}: {err}");
+            assert!(stdout(&run).is_empty());
+            let input = if kind == "rubric" { &rubric } else { &cases };
+            let wanted = format!(
+                "refusing to write {} over the {kind} {}",
+                dir.join(format!("{kind}.jud")).display(),
+                input.display()
+            );
+            assert!(err.contains(&wanted), "{wanted} in {err}");
+            // Both documents are byte for byte what they were, and nothing
+            // else was made.
+            assert_eq!(contents(&dir), before, "{kind} {extra:?}");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_output_spelled_another_way_still_finds_the_input() {
+    // `./` and a symlinked directory are the same directory, so the
+    // recording is still the rubric.
+    let server = server(triage_answers(), 0).await;
+    let dir = scratch("inputs");
+    let rubric = dir.join("rubric.jud");
+    let cases = dir.join("cases.jud");
+    std::fs::copy(TRIAGE, &rubric).unwrap();
+    std::fs::write(&cases, one_triage_case("rubric")).unwrap();
+    let link = scratch("inputs-link").join("alias");
+    std::os::unix::fs::symlink(&dir, &link).unwrap();
+    let before = contents(&dir);
+    for out in [dir.join("."), link] {
+        for extra in [&[][..], &["--refresh"][..]] {
+            let run = record(
+                &server,
+                rubric.to_str().unwrap(),
+                cases.to_str().unwrap(),
+                &out,
+                extra,
+            );
+            let err = stderr(&run);
+            assert_eq!(code(&run), 2, "{} {extra:?}: {err}", out.display());
+            assert!(err.contains("refusing to write"), "{err}");
+            assert!(err.contains("over the rubric"), "{err}");
+            assert_eq!(contents(&dir), before);
+        }
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_hard_link_to_an_input_is_the_input() {
+    // A resolved path does not see a hard link; the file's identity does.
+    let server = server(triage_answers(), 0).await;
+    let dir = scratch("inputs");
+    let rubric = dir.join("rubric.jud");
+    let cases = dir.join("cases.jud");
+    std::fs::copy(TRIAGE, &rubric).unwrap();
+    std::fs::write(&cases, one_triage_case("alias")).unwrap();
+    let out = dir.join("out");
+    std::fs::create_dir(&out).unwrap();
+    let alias = out.join("alias.jud");
+    std::fs::hard_link(&rubric, &alias).unwrap();
+    let before = bytes_of(&[&rubric, &cases, &alias]);
+    for extra in [&[][..], &["--refresh"][..]] {
+        let run = record(
+            &server,
+            rubric.to_str().unwrap(),
+            cases.to_str().unwrap(),
+            &out,
+            extra,
+        );
+        let err = stderr(&run);
+        assert_eq!(code(&run), 2, "{extra:?}: {err}");
+        assert!(
+            err.contains(&format!(
+                "refusing to write {} over the rubric {}",
+                alias.display(),
+                rubric.display()
+            )),
+            "{err}"
+        );
+        assert_eq!(bytes_of(&[&rubric, &cases, &alias]), before);
+        assert_eq!(names(&out), ["alias.jud"]);
+    }
+}
+
+#[tokio::test]
+async fn the_refresh_hint_does_not_promise_what_it_does_not_do() {
+    // The refusal of a directory with a file that is not a recording names
+    // --refresh as the way out; it must also say what that costs, which is
+    // every file named after a case.
+    let out = scratch("record");
+    std::fs::copy(TRIAGE, out.join("not-a-recording.jud")).unwrap();
+    let none = server(triage_answers(), 0).await;
+    let run = record(&none, TRIAGE, TRIAGE_CASES, &out, &[]);
+    assert_eq!(code(&run), 2, "{}", stderr(&run));
+    assert!(
+        stderr(&run).contains("replace any file named after a case"),
+        "{}",
+        stderr(&run)
+    );
+}
+
+// ---- stale and duplicate recordings ----------------------------------------
+
+/// That `dir` answers every case of `cases` over the triage rubric (the
+/// post-condition of a successful `record`: whatever stale files the
+/// directory held, a replay of it finds an answer for each case).
+fn assert_answers_every_case(dir: &Path, cases: &str) {
+    let eval = jud(
+        &["eval", TRIAGE, cases, "--replay", dir.to_str().unwrap()],
+        "",
+        &[],
+    );
+    assert_eq!(
+        code(&eval),
+        0,
+        "record succeeded, but the directory cannot answer every case: {}",
+        stderr(&eval)
+    );
+}
+
+/// A copy of the calibration recordings in which the recording of `case` is
+/// edited to name an option its request never offered, and moved to
+/// `DIR/<moved_to>.jud` (or left in its file when `None`). With `twin`, the
+/// original is kept beside it under that name.
+fn with_stale(case: &str, moved_to: Option<&str>, twin: Option<&str>) -> std::path::PathBuf {
+    let dir = copy_dir(support::RECORDINGS);
+    let file = dir.join(format!("{case}.jud"));
+    let original = std::fs::read_to_string(&file).unwrap();
+    assert!(original.contains("choice: "), "{case} is a Choice");
+    let stale = original
+        .replace("choice: billing", "choice: legal")
+        .replace("choice: account", "choice: legal")
+        .replace("choice: technical", "choice: legal");
+    assert_ne!(stale, original, "{case} was edited");
+    if let Some(twin) = twin {
+        std::fs::write(dir.join(format!("{twin}.jud")), &original).unwrap();
+    }
+    if let Some(moved) = moved_to {
+        std::fs::remove_file(&file).unwrap();
+        std::fs::write(dir.join(format!("{moved}.jud")), stale).unwrap();
+    } else {
+        std::fs::write(&file, stale).unwrap();
+    }
+    dir
+}
+
+#[tokio::test]
+async fn a_stale_recording_under_another_name_is_refused_before_any_call() {
+    // `receipt` is the fourth request; the three before it are recorded.
+    // Writing receipt.jud beside the stale file would leave two files for
+    // one request, and which of them a replay reads is the order of their
+    // names, so nothing is asked.
+    let dir = with_stale("receipt", Some("zz-stale-copy"), None);
+    let before = contents(&dir);
+    let server = server(triage_answers(), 0).await;
+    let run = record(&server, TRIAGE, TRIAGE_CASES, &dir, &[]);
+    let err = stderr(&run);
+    assert_eq!(code(&run), 2, "{err}");
+    assert!(stdout(&run).is_empty());
+    assert!(
+        err.contains(&format!(
+            "{}/zz-stale-copy.jud records this request and no longer fits the questions (",
+            dir.display()
+        )),
+        "{err}"
+    );
+    // The reason is the file's own: the option that is not offered.
+    assert!(err.contains("legal"), "{err}");
+    assert!(
+        err.contains("delete or move it, then record again"),
+        "{err}"
+    );
+    assert_eq!(contents(&dir), before, "nothing was written");
+
+    // The remedy the message names works: with the file gone, the request is
+    // asked once, and the directory then answers every case.
+    std::fs::remove_file(dir.join("zz-stale-copy.jud")).unwrap();
+    let again = self::server(triage_answers(), 1).await;
+    let run = record(&again, TRIAGE, TRIAGE_CASES, &dir, &[]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    assert!(
+        stderr(&run).contains("recorded receipt"),
+        "{}",
+        stderr(&run)
+    );
+    assert_answers_every_case(&dir, TRIAGE_CASES);
+}
+
+#[tokio::test]
+async fn a_stale_recording_in_the_file_the_case_takes_is_replaced_in_place() {
+    // The same stale recording under the case's own name is the file this
+    // run writes: no second file results, so it is replaced as always.
+    let dir = with_stale("receipt", None, None);
+    let server = server(triage_answers(), 1).await;
+    let run = record(&server, TRIAGE, TRIAGE_CASES, &dir, &[]);
+    let err = stderr(&run);
+    assert_eq!(code(&run), 0, "{err}");
+    assert!(err.contains("replaced receipt (stale)"), "{err}");
+    assert!(!err.contains("warning"), "one file per request: {err}");
+    let fixed = std::fs::read_to_string(dir.join("receipt.jud")).unwrap();
+    assert!(!fixed.contains("choice: legal"), "{fixed}");
+    assert_answers_every_case(&dir, TRIAGE_CASES);
+}
+
+#[tokio::test]
+async fn a_stale_file_of_its_own_beside_a_valid_twin_is_replaced_and_the_twin_reported() {
+    // `aa-twin.jud` still answers the request; `receipt.jud` (read later,
+    // so the one a replay would use) does not. The file that does not fit
+    // is the one this run writes, so there is nothing to refuse; the twin
+    // is left alone and named.
+    let dir = with_stale("receipt", None, Some("aa-twin"));
+    let server = server(triage_answers(), 1).await;
+    let run = record(&server, TRIAGE, TRIAGE_CASES, &dir, &[]);
+    let err = stderr(&run);
+    assert_eq!(code(&run), 0, "{err}");
+    assert!(err.contains("replaced receipt (stale)"), "{err}");
+    assert_eq!(err.matches("warning").count(), 1, "{err}");
+    assert!(
+        err.contains("aa-twin.jud") && err.contains("receipt.jud"),
+        "{err}"
+    );
+    assert_answers_every_case(&dir, TRIAGE_CASES);
+}
+
+#[tokio::test]
+async fn two_files_that_record_one_request_after_a_rename_are_warned_about() {
+    let first = server(triage_answers(), 7).await;
+    let out = scratch("record");
+    assert_eq!(code(&record(&first, TRIAGE, TRIAGE_CASES, &out, &[])), 0);
+
+    // One case is renamed and every case asked again: the new recording is
+    // written, the old file is not ours to remove, and both now answer the
+    // same request.
+    let text = std::fs::read_to_string(TRIAGE_CASES).unwrap();
+    assert!(text.contains("- id: refund-angry\n"));
+    let renamed = cases_file(&text.replace("- id: refund-angry\n", "- id: refund-angry-v2\n"));
+    let again = self::server(triage_answers(), 7).await;
+    let run = record(&again, TRIAGE, &renamed, &out, &["--refresh"]);
+    let err = stderr(&run);
+    assert_eq!(code(&run), 0, "{err}");
+    assert!(stdout(&run).is_empty());
+    assert_eq!(err.matches("warning").count(), 1, "{err}");
+    let warning = err.lines().find(|l| l.contains("warning")).unwrap();
+    assert!(warning.starts_with("jud: warning: "), "{warning}");
+    assert!(
+        warning.contains("refund-angry-v2.jud") && warning.contains("refund-angry.jud"),
+        "both files are named: {warning}"
+    );
+    assert!(warning.contains("record the same request"), "{warning}");
+    // The warning comes after the run's own tally, and nothing was removed.
+    assert!(err.find("recorded 7, kept 0").unwrap() < err.find("warning").unwrap());
+    assert_eq!(names(&out).len(), 8);
+    assert_answers_every_case(&out, &renamed);
+}
+
+#[tokio::test]
+async fn one_file_per_request_is_not_warned_about() {
+    // A first run, a resumed run, and two cases that share a request (one
+    // file): none leaves two files for a request.
+    let first = server(triage_answers(), 7).await;
+    let out = scratch("record");
+    let run = record(&first, TRIAGE, TRIAGE_CASES, &out, &[]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    assert!(!stderr(&run).contains("warning"), "{}", stderr(&run));
+    let none = server(triage_answers(), 0).await;
+    let resumed = record(&none, TRIAGE, TRIAGE_CASES, &out, &[]);
+    assert!(
+        !stderr(&resumed).contains("warning"),
+        "{}",
+        stderr(&resumed)
+    );
+
+    let cases = cases_file(
+        "apiVersion: jud/v1.3
+kind: Cases
+metadata:
+  name: twins
+spec:
+  rubric: inbox-triage
+  cases:
+    - id: first
+      state: {message: Please refund the duplicate charge.}
+      expect: {desk: billing}
+    - id: second
+      state: {message: Please refund the duplicate charge.}
+      expect: {desk: billing}
+",
+    );
+    let one = server(triage_answers(), 1).await;
+    let single = scratch("record");
+    let run = record(&one, TRIAGE, &cases, &single, &[]);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    assert_eq!(names(&single), ["first.jud"]);
+    assert!(!stderr(&run).contains("warning"), "{}", stderr(&run));
+}
+
+// ---- a closed stderr -------------------------------------------------------
+
+#[tokio::test]
+async fn a_stderr_nobody_reads_does_not_stop_the_run() {
+    // `jud record ... 2>&1 | head -1`: the reader goes away, and every
+    // progress line after it is a write to a closed pipe. Rust's
+    // `eprintln!` panics on that (status 101) after the first paid calls;
+    // the answers are what the run is for, so it carries on and finishes.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(triage_answers())
+                // The first line is written well after the reader is gone.
+                .set_delay(Duration::from_millis(100)),
+        )
+        .expect(7)
+        .mount(&server)
+        .await;
+    let out = scratch("record").join("recordings");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_jud"))
+        .current_dir(support::ROOT)
+        .args(["record", TRIAGE, TRIAGE_CASES, "--out"])
+        .arg(&out)
+        .env_remove("JUD_REPLAY")
+        .env("XDG_CONFIG_HOME", support::config_home())
+        .env("TYPESAFE_API_KEY", "test-key")
+        .env("TYPESAFE_BASE_URL", server.uri())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    drop(child.stderr.take());
+    let output = child.wait_with_output().unwrap();
+    assert_eq!(
+        code(&output),
+        0,
+        "a closed stderr is not a failure (101 is a panic)"
+    );
+    assert!(stdout(&output).is_empty());
+    assert_eq!(names(&out), triage_files());
+}
+
+// ---- credentials in the base URL -------------------------------------------
+
+#[tokio::test]
+async fn credentials_in_the_base_url_reach_neither_a_recording_nor_a_message() {
+    // A base URL with userinfo and a query: the client takes the host and
+    // the path, and what is written into a file meant to be committed, or
+    // printed into a CI log, must not carry either secret.
+    let decorate = |uri: &str| {
+        format!(
+            "{}/?key=abc",
+            uri.replacen("http://", "http://user:s3cret@", 1)
+        )
+    };
+
+    // Userinfo in the URL is sent as Basic credentials, in place of the
+    // key's Bearer header, so this server accepts any authorization.
+    let good = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(triage_answers()))
+        .expect(7)
+        .mount(&good)
+        .await;
+    let out = scratch("record");
+    let url = decorate(&good.uri());
+    let run = jud(
+        &[
+            "record",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--out",
+            out.to_str().unwrap(),
+        ],
+        "",
+        &[
+            ("TYPESAFE_API_KEY", "test-key"),
+            ("TYPESAFE_BASE_URL", &url),
+        ],
+    );
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    for (name, text) in contents(&out) {
+        assert!(!text.contains("s3cret"), "{name}:\n{text}");
+        assert!(!text.contains("key=abc"), "{name}:\n{text}");
+        assert!(!text.contains("user:"), "{name}:\n{text}");
+        // The server is still named, as the host and path it was reached at.
+        assert!(
+            text.contains(&format!("server: {}/\n", good.uri())),
+            "{name}:\n{text}"
+        );
+    }
+    assert!(!stderr(&run).contains("s3cret"), "{}", stderr(&run));
+    assert!(!stderr(&run).contains("key=abc"), "{}", stderr(&run));
+
+    // A run that fails says which server did, and still not how to log in:
+    // once for an answer the server refuses, once for a server that is not
+    // there at all.
+    let refusing = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(401).set_body_json(
+            json!({ "error": { "message": "bad key", "type": "authentication_error" } }),
+        ))
+        .expect(1)
+        .mount(&refusing)
+        .await;
+    let nowhere = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port())
+    };
+    for base in [refusing.uri(), nowhere] {
+        let url = decorate(&base);
+        let failed = jud(
+            &[
+                "record",
+                TRIAGE,
+                TRIAGE_CASES,
+                "--out",
+                scratch("record").to_str().unwrap(),
+            ],
+            "",
+            &[
+                ("TYPESAFE_API_KEY", "test-key"),
+                ("TYPESAFE_BASE_URL", &url),
+            ],
+        );
+        let err = stderr(&failed);
+        assert_eq!(code(&failed), 1, "{err}");
+        assert!(
+            err.contains(&format!("the backend at {base}/ failed")),
+            "{err}"
+        );
+        assert!(!err.contains("s3cret"), "{err}");
+        assert!(!err.contains("key=abc"), "{err}");
+    }
+}
+
+// ---- refusals that come before any call ------------------------------------
+
+#[tokio::test]
+async fn a_case_that_every_when_turns_away_is_refused_before_any_call() {
+    // Both questions are declared with a `when`; the second case's state
+    // satisfies neither, so its request is empty, which the wire refuses.
+    // The first case is fine, so only a refusal made before the first call
+    // spares its answer being paid for.
+    let dir = scratch("gated");
+    let rubric = dir.join("gated.jud");
+    std::fs::write(
+        &rubric,
+        "apiVersion: jud/v1.3
+kind: Rubric
+metadata:
+  name: gated
+spec:
+  questions:
+    wants_human:
+      type: noul
+      instructions: Does the user want a person to take over?
+      when: ask.human
+    urgent:
+      type: noul
+      instructions: Is the message urgent?
+      when: ask.urgency
+",
+    )
+    .unwrap();
+    let cases = cases_file(
+        "apiVersion: jud/v1.3
+kind: Cases
+metadata:
+  name: gated-cases
+spec:
+  rubric: gated
+  cases:
+    - id: asks
+      state: {ask: {human: please, urgency: now}}
+      expect: {wants_human: true}
+    - id: asks-nothing
+      state: {message: hello}
+      expect: {}
+",
+    );
+    let server = server(handoff_answers(), 0).await;
+    let out = dir.join("recordings");
+    let run = record(&server, rubric.to_str().unwrap(), &cases, &out, &[]);
+    let err = stderr(&run);
+    assert_eq!(code(&run), 2, "{err}");
+    assert!(stdout(&run).is_empty());
+    assert!(err.contains("asks-nothing"), "{err}");
+    assert!(err.contains("every `when` fails"), "{err}");
+    assert!(!out.exists(), "a refusal makes nothing");
+}
+
+#[tokio::test]
+async fn a_label_on_a_turn_that_does_not_ask_its_question_is_refused_before_any_call() {
+    // `wants_human` is asked only once the conversation has a second turn,
+    // yet the case labels it from turn 1 and `greeted` from turn 0. Binding
+    // reads the whole conversation, where the question is asked, and
+    // accepts it; the first turn alone does not ask the question, so the
+    // label can never be graded there. The whole conversation before it is
+    // fine, and is not asked either.
+    let dir = scratch("conv");
+    let rubric = dir.join("conv.jud");
+    std::fs::write(
+        &rubric,
+        "apiVersion: jud/v1.3
+kind: Rubric
+metadata:
+  name: conv
+spec:
+  questions:
+    wants_human:
+      type: noul
+      instructions: Does the user want a person to take over?
+      when: \"1.text\"
+    greeted:
+      type: noul
+      instructions: Did the user greet the assistant?
+",
+    )
+    .unwrap();
+    let cases = cases_file(
+        "apiVersion: jud/v1.3
+kind: Cases
+metadata:
+  name: conv-cases
+spec:
+  rubric: conv
+  cases:
+    - id: whole
+      state:
+        - {role: user, text: Hello}
+        - {role: user, text: Hello again}
+      expect:
+        greeted: true
+    - id: talk
+      state:
+        - {role: user, text: Hello}
+        - {role: user, text: A person please}
+      expect:
+        wants_human: {from_turn: 1}
+        greeted: {from_turn: 0}
+",
+    );
+    // The documents bind: `jud check` accepts them.
+    let check = jud(&["check", rubric.to_str().unwrap(), &cases], "", &[]);
+    assert_eq!(code(&check), 0, "{}{}", stdout(&check), stderr(&check));
+
+    let server = server(handoff_answers(), 0).await;
+    let out = dir.join("recordings");
+    let run = record(&server, rubric.to_str().unwrap(), &cases, &out, &[]);
+    let err = stderr(&run);
+    assert_eq!(code(&run), 2, "{err}");
+    assert!(stdout(&run).is_empty());
+    assert!(err.contains("case talk"), "{err}");
+    assert!(err.contains("wants_human"), "{err}");
+    assert!(err.contains("not asked"), "{err}");
+    assert!(!out.exists(), "a refusal makes nothing");
+}
+
+#[test]
+fn the_help_says_record_always_asks_the_backend_and_spends_calls() {
+    let help = jud(&["record", "--help"], "", &[]);
+    assert_eq!(code(&help), 0, "{}", stderr(&help));
+    // clap wraps long lines; compare the words.
+    let text = stdout(&help)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(
+        text.contains("always asks the configured backend"),
+        "{text}"
+    );
+    assert!(text.contains("never reads `JUD_REPLAY`"), "{text}");
+    assert!(text.contains("spends calls"), "{text}");
 }
