@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-08
+
 ### Fixed
 
 - `jud completion zsh` completes a subcommand's own arguments. The script
