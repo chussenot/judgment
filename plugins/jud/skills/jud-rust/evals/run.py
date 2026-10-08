@@ -219,7 +219,7 @@ def run_one(ev, out_dir, model, reference):
         with open(module_file, encoding="utf-8") as f:
             source = f.read()
         if spec.get("no_include_str"):
-            check("rubric embedded, no include_str!", "include_str!" not in source)
+            check("rubric embedded in SOURCE as a raw string", re.search(r'const SOURCE: &str = r#*"', source))
         else:
             check("rubric read with include_str!", "include_str!" in source)
         crate = check_crate(base, ws, ev, env)

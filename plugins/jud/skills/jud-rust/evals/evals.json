@@ -187,7 +187,7 @@
         "new_files": [
           "src/triage.rs"
         ],
-        "drift": false,
+        "drift": true,
         "no_include_str": true
       },
       "expectations": [
