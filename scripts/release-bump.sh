@@ -6,7 +6,9 @@
 #
 # - Cargo.toml: the [package] version.
 # - Cargo.lock: the crate's own entry, through cargo, never by hand.
-# - README.md: the `judgment = "MAJOR.MINOR"` line of the install snippet.
+# - README.md and the pages tests/docs_examples.rs holds to it: every
+#   `judgment = ` dependency line names MAJOR.MINOR; then docs/llms-full.txt,
+#   which copies those pages, is generated again.
 # - CHANGELOG.md: the "## [Unreleased]" section becomes "## [NEW] - today" and
 #   a fresh, empty Unreleased section is opened above it. An Unreleased section
 #   with nothing in it fails the bump: a release must say what it contains, and
@@ -40,11 +42,16 @@ mv Cargo.toml.tmp Cargo.toml
 # --- Cargo.lock: let cargo rewrite the crate's own entry.
 cargo update --workspace --quiet
 
-# --- README.md: the install snippet's requirement, major.minor only (a caret
-# requirement, so a patch release changes nothing a reader must copy).
+# --- The dependency lines, major.minor only (a caret requirement, so a patch
+# release changes nothing a reader must copy): `judgment = "X.Y"` and
+# `judgment = { version = "X.Y", ... }`, in every page that shows one. The
+# list is the one tests/docs_examples.rs checks; keep the two together.
 grep -q '^judgment = "[0-9]*\.[0-9]*"$' README.md || die 'README.md has no judgment = "X.Y" install line'
-awk -v v="${version%.*}" '/^judgment = "/ { sub(/"[^"]*"/, "\"" v "\"") } { print }' README.md > README.md.tmp
-mv README.md.tmp README.md
+for page in README.md docs/start/install.md docs/reference/crate.md docs/start/first-decision-rust.md; do
+  [ -f "$page" ] || die "$page is gone; update this list and tests/docs_examples.rs together"
+  sed -E '/^judgment = /s/"[0-9]+\.[0-9]+"/"'"${version%.*}"'"/' "$page" > "$page.tmp"
+  mv "$page.tmp" "$page"
+done
 
 # --- CHANGELOG.md
 grep -q '^## \[Unreleased\]' CHANGELOG.md || die "CHANGELOG.md has no '## [Unreleased]' section"
@@ -74,4 +81,7 @@ awk -v v="$version" -v d="$today" '
 ' CHANGELOG.md > CHANGELOG.md.tmp
 mv CHANGELOG.md.tmp CHANGELOG.md
 
-echo "release-bump: $current -> $version in Cargo.toml, Cargo.lock, README.md and CHANGELOG.md ($today)"
+# --- docs/llms-full.txt copies the pages above; a later hook checks it.
+scripts/gen-llms-txt.sh >/dev/null
+
+echo "release-bump: $current -> $version in Cargo.toml, Cargo.lock, the dependency lines, CHANGELOG.md and llms-full.txt ($today)"
