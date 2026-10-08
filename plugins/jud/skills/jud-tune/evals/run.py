@@ -211,7 +211,7 @@ def run_one(ev, out_dir, model):
         q_before = fingerprints(ws, [f], env)
 
     cmd = ["claude", "-p", ev["prompt"], "--plugin-dir", PLUGIN, "--permission-mode", "acceptEdits",
-           "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--add-dir", tmp, "--allowedTools", *ALLOWED]
+           "--output-format", "stream-json", "--verbose", "--strict-mcp-config", "--add-dir", tmp, "--add-dir", "/tmp", "--allowedTools", *ALLOWED]
     if model:
         cmd += ["--model", model]
     started = time.time()

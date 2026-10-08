@@ -17,9 +17,9 @@ command per Bash call: no shell variable, no `cd`, nothing chained before or
 after it, no redirection into a file. The tool result shows stdout, stderr
 and a non-zero exit status. Read files with the Read tool, edit them with
 the Edit tool. Write nothing into the project but the rubric (with `apply`)
-and the two split files (with `holdout`). A what-if copy goes in a
-temporary directory outside the project (`$TMPDIR`, else `/tmp`), never
-beside the rubric.
+and the two split files (with `holdout`). A what-if copy or a split you
+were not asked to keep goes in a temporary directory of its own outside the
+project, as the skill says, never beside the rubric.
 
 1. **Resolve the arguments.** The rubric and the cases document are
    required. The recordings directory is the one given, else
@@ -30,12 +30,15 @@ beside the rubric.
    before splitting: 48 gives 36 to tune and 12 held out). Skip it only
    for a what-if question about one bar, and then say the numbers are
    tuned on all cases.
+   - With `apply`, keep the split: without `holdout` in the arguments, say
+     that the `tuning` block will name a tuning set the project does not
+     keep, and recommend `holdout` so it does.
    - Split as the skill says. Name the files after the cases file:
      `support-cases.jud` gives `support-cases-tune.jud` and
      `support-cases-holdout.jud`; their `metadata.name` is the cases
      document's name plus `-tune` and `-holdout`. With `holdout` in the
-     arguments, write them beside the cases file; without it, in
-     `$TMPDIR/jud-holdout/` (else `/tmp/jud-holdout/`).
+     arguments, write them beside the cases file; without it, in a
+     temporary directory of their own as the skill says.
    - Check both with the rubric. Then `eval --replay` both, so that a
      state copied wrong shows up as `no recording answers`.
    - Tune on the tuning set.
@@ -73,7 +76,8 @@ beside the rubric.
      values of the gates whose value moves. A gate proposed at its current
      value keeps its value and its note, except a part the run makes stale
      ("a guess"), which becomes what `tune` printed. Only a gate whose
-     proposal you declined gets a `kept at ...:` reason before its note. Give kept gates a reason prepended to their note. Add the
+     proposal you declined gets a `kept at <value>: <reason>;` prefix before
+     its note; a gate proposed at its current value is accepted, not kept. Add the
      `tuning` block exactly as `tune` printed it. Keep every comment.
    - `jud.sh check <rubric> <cases>` must say `0 refused`, with the same
      questions fingerprint as before.

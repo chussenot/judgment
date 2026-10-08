@@ -35,9 +35,9 @@ tool.
    `--refresh`). When any is stale, find what changed: `git diff --
    <rubric> <cases>` as written (no `-C`, no `cd`), or `git log -p -1 --
    <rubric>` for a committed change. Name it in the announcement and the
-   reply, for example "the `queue` question's `account` criterion now says
-   plan changes and trials". All stale means a question changed; some, those
-   cases did.
+   reply, quoting the changed line from the diff (for example "the
+   `severity` question now has five levels"). All stale means a question
+   changed; some, those cases did.
 5. **Read the backend.** `jud.sh config` prints `base_url`, `model`,
    `model_from` and where the key comes from. It never prints the key, and
    neither do you. `model_from: default` means nothing set the model:
@@ -52,17 +52,19 @@ tool.
    file `jud config` names, and that any non-blank word does for a local
    server that ignores it. Then re-run the command. Never
    ask for the key here.
-7. **Announce, then record.** Before the `record` call, send the user this
-   line as a message of its own: `Recording <new> requests (<kept> kept,
+7. **Announce, then record.** This is a gate: the text you write right
+   before the `jud.sh record` call, in the same turn, is this line. Do not
+   call `record` until it is written; saying it in the final reply does not
+   count. The line: `Recording <new> requests (<kept> kept,
    <stale> stale and replaced, in <dir>) to <base_url>, model <model>.`
    Leave out the parts that are zero, and add `, one per turn for <n>
    conversations` when that applies. When any are stale, follow it with the
-   change step 4 found: `Stale because the queue question's account
-   criterion now says plan changes and trials.` Invoking this command is the user
+   change step 4 found: `Stale because <the changed line>.` Invoking this command is the user
    asking for the run, so then run `jud.sh record <rubric> <cases> --out
    <dir>`, with `--refresh` only when asked. If it fails part way, say what
    failed: what was written is kept, and the same command resumes.
-8. **Reply** with the announcement line again, then `record`'s summary line
+8. **Reply** with the announcement line again (as announced, in the past
+   tense), then `record`'s summary line
    (`recorded N, kept M in DIR`). If N differs from what you announced, say
    why. Give the model the recordings name, read from all of them with
    `grep -h "^    model:" <dir>/*.jud` and counted. If there is more than

@@ -36,13 +36,25 @@ written:
   directory.
 - Write nothing into the user's project that the task did not ask for: no
   copy of the rubric, no saved output. A what-if copy (a cases document with
-  one label changed, to measure what the change would do) goes in a
-  temporary directory outside the project (`$TMPDIR`, else `/tmp`), and the
-  reply says it was a copy.
+  one label changed, to measure what the change would do) or a split you
+  were not asked to keep goes in a directory of its own outside the project:
+  the session's scratchpad or temporary directory if the system names one,
+  else `/tmp/jud-<rubric name>-<what>/` (for example
+  `/tmp/jud-support-triage-relabel-refund-request/`). Do not run a command
+  to find `$TMPDIR`. Build the copy with Read then Write only, no `sed`,
+  `cp`, `mkdir` or redirection. If the file already exists, Read it in full
+  before overwriting it, and never run `jud` on a copy this conversation
+  did not write. The reply says it was a copy.
 
 The format and how to write a rubric or cases are the `jud` skill's
 (`${CLAUDE_PLUGIN_ROOT}/skills/jud/SKILL.md`); read it before changing a
 question or a label.
+
+Every reply after `eval` or `tune` ends with the items in "What the reply
+contains" (the last section): one line per question, the shortfall in cases,
+the triage table, coverage counts, and for `tune` the decision table, the
+warnings as printed, and the before and after. Check them off before you
+send it.
 
 ## What costs what, and what invalidates what
 
@@ -188,6 +200,9 @@ the confidence. Then put it in exactly one row:
 | The miss's right answer is an outcome few or no other cases label | **A coverage gap** | Add cases for that outcome before reading anything into the bar. |
 | None of the above: the label is right, the question is clear, and the model is confidently wrong once | **The model** | Record it as a known miss. One such case does not move a bar or justify rewriting a question. |
 
+Each miss has exactly one cause in the whole reply: a miss triaged as a
+wrong label is not counted again as overlap or a coverage gap later on.
+
 Report the triage as a table (case, question, expected, predicted,
 confidence, cause, proposed action). Propose; do not apply. A label or a
 question is the user's to change, and a question change costs a
@@ -195,8 +210,8 @@ re-recording.
 
 What a proposed fix would do to a bar is measured, never guessed. A
 relabel costs nothing to try. Read the cases document and Write it, with
-only that label changed, to `$TMPDIR/jud-whatif/<file name>` (else
-`/tmp/jud-whatif/`). Run `tune` on the copy against the same recordings,
+only that label changed, to a directory of its own outside the project (see
+"How to run them"). Run `tune` on the copy against the same recordings,
 with the same `--target-accuracy` and `--min-covered` as the proposal you
 are weighing; if you weigh two targets, run the copy at both. Report the
 bar it gives, per target. What a sharper question would do cannot be
@@ -262,8 +277,10 @@ Decide per gate, and say which you decided:
   lowest row of the table that reaches the target. A miss moved it only if
   the next lower row reaches the target once that case counts as right;
   read the row, or measure with a what-if copy. When the bar does not move,
-  name the misses whose confidence lies between the next lower row and the
-  proposed bar (case, expected, predicted, confidence): they hold that row
+  read the next lower row (the one just below the proposed bar: 0.75 under
+  0.80). Its misses are covered minus correct; name exactly that many
+  cases, each with a confidence at or above that row's bar and below the
+  proposed one (case, expected, predicted, confidence). They hold that row
   under the target. Then say what would move it: those cases answered right,
   after a relabel if the label is wrong, after a re-record if the question
   is.
@@ -283,9 +300,18 @@ dozen cases has learned those cases.
 ## Applying a proposal
 
 Apply when the user asked for the bars to be changed: `/jud:tune ...
-apply`, or in so many words ("fix the thresholds", "tune it"). Apply every
-gate you accept, keep the others with a reason, and show the before and
-after. A label or a question is never applied with the bars; propose it
+apply`, or in so many words ("fix the thresholds", "tune it"). That is not a
+request to accept every proposal. Before applying:
+
+1. With 40 or more labelled cases, split first (see "Do not grade on what
+   you tuned on"), tune on the tuning set, and report the held-out numbers.
+2. Run the accept, keep and re-run rules gate by gate. A Choice or Score
+   bar set by misses you triaged as wrong labels or overlapping outcomes is
+   kept, whatever the user asked: a bar cannot fix either. Say so, and
+   propose the label fix or the sharper criterion instead.
+
+Then apply every gate you accept, keep the others with a reason, and show
+the before and after. A label or a question is never applied with the bars; propose it
 separately. When the user only asked what the bars should be, show the edit
 as a unified diff and offer to apply it.
 
@@ -329,8 +355,11 @@ A bar tuned on the same cases it is graded on looks better than it will do.
 Count the labelled cases before splitting. At 40 or more, hold some out:
 48 gives 36 to tune on and 12 held out. Never say there are too few at 40 or
 more. When the user did not ask for split files (`/jud:tune ... holdout`),
-write the two documents to the temporary directory, not the project, and
-still report the held-out numbers. Count each question's outcomes in both
+write the two documents to a temporary directory of their own, not the
+project, and still report the held-out numbers. If bars tuned that way are
+applied, the `tuning` block names a tuning set the project does not keep,
+so a later `eval` on the full cases cannot tell that three quarters of them
+were tuned on: say so, and recommend keeping the split files. Count each question's outcomes in both
 halves, and name the cases behind every held-out count of 3 or fewer: a
 held-out number on 2 billing cases says little about billing.
 
