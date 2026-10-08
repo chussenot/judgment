@@ -181,6 +181,9 @@ the template:
      so a workspace above the directory does not claim it.
    - Write `<dir>/src/lib.rs` as one line,
      `#[path = "<absolute path of the module>"] mod <module>;`.
+   - Write `<dir>/examples/usage.rs` as the header's usage example, its
+     `mod` line replaced by that same `#[path]` line, so the `main` the
+     reply hands over is compiled and linted too.
    - Run these two, one per Bash call, exactly in this shape. Add
      `--target-dir <the user's crate>/target` only when that directory
      already exists (it saves a rebuild); never create one in the project.
@@ -201,9 +204,13 @@ the template:
      line is not one of them, since the `main` below carries it;
    - the whole `main` from the module's header, with its `mod` line,
      runtime attribute, `async` and `Result` return, said to replace the
-     program's `main` (so the `mod` line is not given twice); when the
-     program's `main` is sync or returns `()`, list the lines that change:
-     the attribute, `async`, the `Result` return type and `Ok(())`;
+     `fn main` in `src/main.rs` and to keep the rest of the file (the `mod`
+     line goes at the top, and is not given twice);
+   - when step 6 found `main` sync or returning `()`, a list of what
+     changes in it, every item: the `#[tokio::main(flavor =
+     "current_thread")]` attribute, `async fn`, the return type
+     `Result<(), Box<dyn std::error::Error>>`, `Ok(())` at the end, and
+     that the body's statements move into the new `main`;
    - what the caller owes:
      - with `Offered`, which options it must supply on every request, how
        many at least, and that no supplied key may be one of the
@@ -214,8 +221,12 @@ the template:
        them: a state without them is sent as is;
      - for a conversation, that `decide` takes the turns so far, once per
        turn;
-   - the checks that passed, and that once the `mod` line is in,
-     `cargo test` in their crate runs the module's drift test.
+   - the checks that passed, the throwaway crate's absolute path, and that
+     once the `mod` line is in, `cargo test` in their crate runs the
+     module's drift test (with no crate: once a crate mounts it as step 5
+     says);
+   - embedded, that a retune is followed by `/jud:rust <rubric> embed`
+     again, which regenerates the module in place.
 
    On a regeneration, also say:
    - which questions changed;
@@ -234,7 +245,10 @@ the template:
 ## Names
 
 Rust identifiers are stricter than `.jud` keys. Apply these rules in order,
-and list in the reply every name you had to change.
+and list in the reply every name that differs from the plain
+`snake_case` or `PascalCase` conversion (a keyword, a reserved word, a
+leading digit, a clash, a collision, a level with no letters), each with its
+reason; plain case conversion needs no row.
 
 - **Module name:** the rubric file's stem in `snake_case` (`triage.jud` gives
   `triage`, `support-triage.jud` gives `support_triage`), unless the user

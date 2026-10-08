@@ -8,8 +8,9 @@ Write the Rust module for this rubric:
 $ARGUMENTS
 
 Follow the jud-rust skill: read `${CLAUDE_PLUGIN_ROOT}/skills/jud-rust/SKILL.md`
-and the template it names (`references/triage.rs`, or `references/routing.rs`
-for a rubric with `options_from: request` or `when`) before writing anything.
+and the templates it names (`references/triage.rs`, and `references/routing.rs`
+for `options_from: request` or `when`; step 4 says which parts come from
+which) before writing anything.
 
 Run every `jud` command through `${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh`,
 written out in full, one command per Bash call, with nothing chained to it.
@@ -36,5 +37,6 @@ written out in full, one command per Bash call, with nothing chained to it.
    no other file in the project unless asked: the missing `Cargo.toml`
    lines go in the reply, and the `mod` line only inside the replacement
    `main` the skill's step 8 shows.
-5. Reply as the skill's step 8 says, including what the caller owes and,
-   when an existing module was replaced, what the regeneration changes.
+5. Reply as the skill's step 8 says, every bullet: among them what the
+   caller owes, the lines of a sync `main` that change, and, when an
+   existing module was replaced, what the regeneration changes.

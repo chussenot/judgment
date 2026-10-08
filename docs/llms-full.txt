@@ -1674,8 +1674,10 @@ Each run is held to two kinds of check:
 | 2 | 73 of 74 | 21 of 22 | 8 | cargo's flags before `--`, so clippy checks the throwaway crate; no `target/` in the project; the user's lints copied; `none` becomes `NoneOption` |
 | 3 | 82 of 82 | 23 of 23 | 7 | a Score's fallback read by its text as well as its index; the program's `main` read before it is wired |
 | 4 | 88 of 88 | 25 of 25 | 7 | the `mod` line given once; `level_at_least` read through `reached` |
+| 5 | 88 of 88 | 24 of 25 | 2 | a sync `main`'s changes a bullet of their own; the usage example compiled in the throwaway crate as well as the module |
+| confirm | 38 of 38 (3 scenarios) | spot-checked | not counted | none: every run compiled its usage example and listed a sync `main`'s changes |
 
-Round 2's one missed check was the harness's: it forbade any `include_str!` in the embedded form, which the copy test the skill asks for uses. Round 3's grader found the one defect the scripted checks could not: a retune that gives a Score `fallback: calm` made every deferred answer fail at run time, since the module read levels by index only. Every round cost $2.41 to $2.88 for the 7 runs on Sonnet 5.5, $0.27 to $0.52 each.
+Round 2's one missed check was the harness's: it forbade any `include_str!` in the embedded form, which the copy test the skill asks for uses. Round 3's grader found the one defect the scripted checks could not: a retune that gives a Score `fallback: calm` made every deferred answer fail at run time, since the module read levels by index only. The last two rounds passed every scripted check; round 5's one missed expectation was a sync `main` whose changed lines the reply did not list, and the confirmation round, on the three scenarios with a sync `main`, found every reply listing them. Every round cost $2.41 to $2.88 for the 7 runs on Sonnet 5.5, $0.27 to $0.52 each.
 
 To run them again, with `claude` logged in and `jud` built:
 
