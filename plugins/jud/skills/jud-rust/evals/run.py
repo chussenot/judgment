@@ -143,9 +143,11 @@ def run_one(ev, out_dir, model, reference):
     ws = os.path.join(base, "ws")
     os.makedirs(ws)
     env = dict(os.environ)
-    # A target directory per scenario: several scenarios build a crate
-    # called `app`, and builds of one name sharing a target race.
-    env["CARGO_TARGET_DIR"] = os.path.join(base, "target")
+    # One target directory for every scenario, or the builds fill the disk;
+    # the check crates have names of their own, and incremental builds are
+    # off, which halves what each build leaves behind.
+    env["CARGO_TARGET_DIR"] = os.path.join(out_dir, "target")
+    env["CARGO_INCREMENTAL"] = "0"
     env.pop("JUD_REPLAY", None)
     jud = os.environ.get("JUD") or shutil.which("jud") or sys.exit("run.py: no jud on PATH; set JUD")
     env["PATH"] = os.path.dirname(os.path.abspath(jud)) + os.pathsep + env["PATH"]
@@ -234,10 +236,12 @@ def run_one(ev, out_dir, model, reference):
             edited = re.sub(r"(\n\s+(?:instructions|question): )(\S[^\n]*)", r"\1\2 Edited.", original, count=1)
             with open(rubric, "w", encoding="utf-8") as f:
                 f.write(edited)
+            os.utime(module_file)  # the edit must be rebuilt, not read from a cache
             code, out = cargo(["test", "--quiet", f"{mod['name']}::tests"], crate, env)
             with open(rubric, "w", encoding="utf-8") as f:
                 f.write(original)
-            check("module test fails when a question drifts", edited != original and code != 0, "" if code else out)
+            failed = code != 0 and "FAILED" in out
+            check("module test fails when a question drifts", edited != original and failed, "" if failed else out)
 
     if not reference:
         ran_cargo = any(t["name"] == "Bash" and re.search(r"\bcargo (test|check|clippy)\b", str(t.get("input", {}).get("command", ""))) for t in tools)
