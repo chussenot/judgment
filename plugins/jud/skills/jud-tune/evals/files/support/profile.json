@@ -1,0 +1,25 @@
+{
+  "model": "mock-jev-1",
+  "seed": "support",
+  "accuracy": 0.94,
+  "per_question": {
+    "urgency": 0.8
+  },
+  "answer": {
+    "refund-request": {
+      "queue": "billing"
+    },
+    "status-down": {
+      "needs_reply": true
+    },
+    "upgrade-plan": {
+      "queue": "billing"
+    },
+    "seat-invoice": {
+      "queue": "account"
+    },
+    "trial-end": {
+      "queue": "billing"
+    }
+  }
+}

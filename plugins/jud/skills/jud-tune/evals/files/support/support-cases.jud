@@ -1,0 +1,402 @@
+# Labelled tickets for support.jud. Two labels in here are wrong on purpose
+# (the battle test checks that /jud:eval finds them); see the notes.
+apiVersion: jud/v1.3
+kind: Cases
+metadata:
+  name: support-triage-cases
+  description: 'Labelled tickets for support.jud: 48 cases, every queue and urgency level.'
+spec:
+  rubric: support-triage
+  cases:
+  - id: double-charge
+    state:
+      subject: Charged twice this month
+      body: My card was charged twice for the March invoice. Please refund one.
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: high
+  - id: invoice-vat
+    state:
+      subject: VAT number on invoice
+      body: Can you add our VAT number FR12345678901 to future invoices?
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: low
+  - id: refund-annual
+    state:
+      subject: Refund for annual plan
+      body: We cancelled the annual plan two days after renewal; can we get a refund?
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: normal
+  - id: card-expired
+    state:
+      subject: Update payment card
+      body: Our card expires next week, how do I put in the new one?
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: normal
+  - id: price-question
+    state:
+      subject: Price for 40 seats
+      body: What would 40 seats cost per month on the Team plan?
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: low
+  - id: failed-payment
+    state:
+      subject: Payment failed, service suspended?
+      body: We got a failed-payment email and the dashboard says the workspace will be suspended tomorrow.
+        Please help, the whole team relies on it.
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: critical
+  - id: invoice-copy
+    state:
+      subject: Copy of invoice
+      body: Could you send me a PDF of last month's invoice?
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: low
+  - id: wrong-currency
+    state:
+      subject: Billed in USD
+      body: We are in Germany but the invoice is in USD. Can it be EUR?
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: normal
+  - id: charge-unknown
+    state:
+      subject: Unknown charge
+      body: There is a charge of 49 EUR on our statement I do not recognise. What is it for?
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: high
+  - id: coupon
+    state:
+      subject: Coupon not applied
+      body: The coupon SPRING20 was not applied to my order.
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: normal
+  - id: tax-exempt
+    state:
+      subject: Tax exemption
+      body: We are a non-profit; how do we get tax-exempt invoices?
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: low
+  - id: api-500
+    state:
+      subject: API returns 500
+      body: Since 9am every call to /v2/orders returns HTTP 500. Production is down.
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: critical
+  - id: export-csv
+    state:
+      subject: CSV export empty
+      body: The CSV export downloads a file with only the header row.
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: normal
+  - id: webhook-delay
+    state:
+      subject: Webhooks delayed
+      body: Webhooks arrive 20 minutes late since yesterday.
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: high
+  - id: slack-integration
+    state:
+      subject: Slack integration
+      body: How do I connect the Slack integration to a private channel?
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: low
+  - id: mobile-crash
+    state:
+      subject: App crashes on Android
+      body: The Android app crashes when I open a report. Version 4.2.
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: high
+  - id: slow-dashboard
+    state:
+      subject: Dashboard slow
+      body: The dashboard takes about 30 seconds to load in the mornings.
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: normal
+  - id: sso-error
+    state:
+      subject: SAML error
+      body: Our users get 'invalid SAML response' when signing in through Okta, nobody can work.
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: critical
+  - id: api-docs
+    state:
+      subject: Pagination in API
+      body: Is there cursor pagination on the /v2/customers endpoint?
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: low
+  - id: typo-ui
+    state:
+      subject: Typo in settings page
+      body: 'Small thing: ''recieve'' is misspelled on the settings page.'
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: low
+  - id: data-missing
+    state:
+      subject: Data missing after import
+      body: We imported 2,000 contacts and only 1,200 show up.
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: high
+  - id: timezone-bug
+    state:
+      subject: Wrong times in reports
+      body: All times in the weekly report are one hour off since the clock change.
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: normal
+  - id: upload-fails
+    state:
+      subject: Upload fails
+      body: Uploading a 30 MB file fails at 99% every time.
+    expect:
+      needs_reply: true
+      queue: technical
+      urgency: normal
+  - id: reset-password
+    state:
+      subject: Password reset email
+      body: I never get the password reset email.
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: high
+  - id: add-seat
+    state:
+      subject: Add a user
+      body: How do I invite a new colleague to our workspace?
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: low
+  - id: close-account
+    state:
+      subject: Close our account
+      body: Please close our account and delete our data.
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: normal
+  - id: change-owner
+    state:
+      subject: Change workspace owner
+      body: Our admin left the company; we need to make me the owner.
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: high
+  - id: 2fa-lost
+    state:
+      subject: Lost 2FA phone
+      body: I lost my phone and cannot sign in with two-factor. Locked out.
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: high
+  - id: rename-workspace
+    state:
+      subject: Rename workspace
+      body: Can we rename the workspace from Acme Ltd to Acme Group?
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: low
+  - id: remove-user
+    state:
+      subject: Remove a user
+      body: Please remove jane@example.com, she left last week.
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: normal
+  - id: email-change
+    state:
+      subject: Change login email
+      body: I want to log in with my new email address.
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: normal
+  - id: locked-out-all
+    state:
+      subject: Everyone locked out
+      body: All 30 of our users were logged out and cannot sign back in. We cannot work.
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: critical
+  - id: upgrade-plan
+    state:
+      subject: Move to Business plan
+      body: We want to move from Team to Business this month. What changes for our invoices?
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: normal
+    note: Plan changes are account work; the invoice question rides along. The billing/account line is
+      argued about.
+  - id: downgrade-plan
+    state:
+      subject: Downgrade
+      body: How do I go down to the Starter plan at renewal?
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: low
+  - id: thanks
+    state:
+      subject: 'Re: fixed'
+      body: Thanks, that solved it!
+    expect:
+      needs_reply: false
+      queue: none_of_these
+      urgency: low
+  - id: ooo
+    state:
+      subject: 'Automatic reply: out of office'
+      body: I am out of the office until Monday with limited access to email.
+    expect:
+      needs_reply: false
+      queue: none_of_these
+      urgency: low
+  - id: newsletter
+    state:
+      subject: Our spring newsletter
+      body: Read about our new features this spring!
+    expect:
+      needs_reply: false
+      queue: none_of_these
+      urgency: low
+  - id: spam-crypto
+    state:
+      subject: Earn 10x with crypto
+      body: Click here to earn ten times your money.
+    expect:
+      needs_reply: false
+      queue: none_of_these
+      urgency: low
+  - id: receipt-auto
+    state:
+      subject: Your payment receipt
+      body: This is an automated receipt for your payment of 49.00 EUR. Do not reply.
+    expect:
+      needs_reply: false
+      queue: none_of_these
+      urgency: low
+  - id: feedback-praise
+    state:
+      subject: Love the new editor
+      body: Just wanted to say the new editor is great. No question.
+    expect:
+      needs_reply: false
+      queue: none_of_these
+      urgency: low
+  - id: cc-loop
+    state:
+      subject: 'Re: Re: meeting notes'
+      body: Adding support in cc for visibility.
+    expect:
+      needs_reply: false
+      queue: none_of_these
+      urgency: low
+  - id: job-application
+    state:
+      subject: Application for designer role
+      body: Please find my CV attached for the designer position.
+    expect:
+      needs_reply: false
+      queue: none_of_these
+      urgency: low
+  - id: survey-reply
+    state:
+      subject: 'Re: How did we do?'
+      body: 5 stars.
+    expect:
+      needs_reply: false
+      queue: none_of_these
+      urgency: low
+  - id: vendor-pitch
+    state:
+      subject: Partnership opportunity
+      body: We help SaaS companies grow their SEO. Want a call?
+    expect:
+      needs_reply: false
+      queue: none_of_these
+      urgency: low
+  - id: refund-request
+    state:
+      subject: Need a refund
+      body: I was charged for a seat we removed last month. Please refund it.
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: normal
+    note: 'A charge for a removed seat is a refund request: billing.'
+  - id: status-down
+    state:
+      subject: Is the service down?
+      body: Nothing loads for anyone in our office, the status page says all green. We are stuck.
+    expect:
+      needs_reply: false
+      queue: technical
+      urgency: critical
+    note: An outage report needs a reply.
+  - id: seat-invoice
+    state:
+      subject: Seats on the invoice
+      body: We removed three users but the invoice still shows ten seats.
+    expect:
+      needs_reply: true
+      queue: billing
+      urgency: normal
+    note: 'Argued: seats are account work, the invoice is billing. Labelled billing because the complaint
+      is the amount.'
+  - id: trial-end
+    state:
+      subject: Trial ending
+      body: Our trial ends tomorrow; what happens to our data if we do not pay?
+    expect:
+      needs_reply: true
+      queue: account
+      urgency: normal
+    note: Argued between billing and account; labelled account because it is about the workspace's fate.

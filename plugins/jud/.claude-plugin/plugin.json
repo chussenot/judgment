@@ -1,8 +1,8 @@
 {
   "name": "jud",
   "displayName": "jud",
-  "description": "Write, review and fix .jud documents (a Rubric with its policy, the Cases it is graded on, a Recording) and check them with the judgment crate's own reader: a skill, and the /jud:rubric, /jud:cases and /jud:check commands.",
-  "version": "0.1.0",
+  "description": "Write, review, fix, measure and tune .jud documents (a Rubric with its policy, the Cases it is graded on, a Recording) with the judgment crate's own reader and jud command: two skills, and the /jud:rubric, /jud:cases, /jud:check, /jud:record, /jud:eval and /jud:tune commands.",
+  "version": "0.2.0",
   "author": {
     "name": "Clément Hussenot",
     "url": "https://github.com/chussenot"
@@ -10,5 +10,5 @@
   "homepage": "https://github.com/chussenot/judgment/blob/main/docs/guides/use-the-claude-code-plugin.md",
   "repository": "https://github.com/chussenot/judgment",
   "license": "MIT",
-  "keywords": ["jud", "rubric", "judgment", "typesafe", "system-one", "calibration"]
+  "keywords": ["jud", "rubric", "judgment", "typesafe", "system-one", "calibration", "tuning", "evaluation"]
 }

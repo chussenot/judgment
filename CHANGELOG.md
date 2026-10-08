@@ -6,6 +6,23 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The Claude Code plugin (`plugins/jud/`, now 0.2.0) measures and tunes
+  rubrics as well as writing them: a `jud-tune` skill and three commands.
+  `/jud:record` says how many calls a run spends, to which backend and model,
+  before running `jud record`, and resumes what a directory already holds.
+  `/jud:eval` grades the recordings and triages every miss into a wrong
+  label, an ambiguous question, the bar's job, a coverage gap or the model,
+  proposing each fix without applying it. `/jud:tune` decides gate by gate
+  whether to take what `jud tune` proposes (never a bar of 0 on a handful of
+  cases, never a bar that absorbs a wrong label), and with `apply` writes it
+  into the rubric in place with its comments kept, then shows each gate
+  before and after; with `holdout` it tunes on three quarters of the cases and
+  reports the rest. The commands were battle-tested headless (`claude -p
+  --plugin-dir`) against a mock System One server that knows the labels
+  (`plugins/jud/skills/jud-tune/evals/`); no test calls a real API.
+
 ## [0.11.1] - 2026-10-08
 
 ### Fixed

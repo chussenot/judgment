@@ -1,0 +1,477 @@
+{
+  "skill_name": "jud-tune",
+  "about": "Each eval runs one prompt through `claude -p --plugin-dir plugins/jud` in a fresh workspace (run.py). `setup` builds the workspace: files copied from the repository, recordings made beforehand against the mock server, edits applied after recording. `mock` starts mock_system_one.py for the run; without it the base URL points at a closed port, so no eval can reach a real API. `checks` are verified by run.py; `expectations` are graded by a reader of the reply and the transcript. `new_files` lists the files a run may create; any other new file in the workspace fails the run.",
+  "evals": [
+    {
+      "id": "eval-triage-replay",
+      "prompt": "/jud:eval triage.jud triage-cases.jud recordings",
+      "setup": {
+        "copy": {
+          "triage.jud": "examples/jud/triage.jud",
+          "triage-cases.jud": "examples/jud/triage-cases.jud",
+          "recordings/": "examples/recordings/jud_calibration/"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "triage.jud",
+          "triage-cases.jud",
+          "recordings/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Reports each question's accuracy with its 95% interval and says 7 cases are too few to support a bar",
+        "Triages both misses on the case `receipt` with a cause from the skill's table and a proposed action",
+        "Says the desk miss at confidence 0.40 is under the gate's 0.45 bar, so the gate defers it (the bar's job)",
+        "Counts labels per outcome and names at least one coverage gap (an option, level or `false` few or no cases label)",
+        "Ends with ranked next steps and changes no file"
+      ]
+    },
+    {
+      "id": "tune-triage-apply",
+      "prompt": "/jud:tune triage.jud triage-cases.jud recordings apply",
+      "setup": {
+        "copy": {
+          "triage.jud": "examples/jud/triage.jud",
+          "triage-cases.jud": "examples/jud/triage-cases.jud",
+          "recordings/": "examples/recordings/jud_calibration/"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "triage-cases.jud",
+          "recordings/*"
+        ],
+        "changed": [
+          "triage.jud"
+        ],
+        "jud_check": [
+          [
+            "triage.jud",
+            "triage-cases.jud"
+          ]
+        ],
+        "questions_unchanged": "triage.jud",
+        "comments_kept": "triage.jud",
+        "yaml": [
+          {
+            "file": "triage.jud",
+            "path": "spec.policy.tone.confidence",
+            "op": "ne",
+            "value": 0.0
+          },
+          {
+            "file": "triage.jud",
+            "path": "spec.policy.desk.fallback",
+            "op": "eq",
+            "value": "none_of_these"
+          },
+          {
+            "file": "triage.jud",
+            "path": "spec.tuning.cases",
+            "op": "cases_fingerprint",
+            "value": "triage-cases.jud"
+          },
+          {
+            "file": "triage.jud",
+            "path": "spec.tuning.model",
+            "op": "eq",
+            "value": "jev-1.13.0"
+          }
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Gives a decision per gate (accept, keep, or re-run) with a one-line reason",
+        "Keeps tone's written bar instead of the proposed 0.00, says why (a bar of 0 on 6 cases defers nothing), and gives the kept gate a note saying so",
+        "Writes the tuning block as `jud tune` printed it, without inventing a value",
+        "Shows each gate's acts, defers and accuracy when acted before and after",
+        "Passes on the thin-data warning in plain words and says how many more cases would make the bars trustworthy"
+      ]
+    },
+    {
+      "id": "record-support",
+      "prompt": "/jud:record support.jud support-cases.jud",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        }
+      },
+      "mock": {
+        "cases": [
+          "support-cases.jud"
+        ],
+        "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud"
+        ],
+        "exists": [
+          {
+            "glob": "recordings/support-triage/*.jud",
+            "count": 48
+          }
+        ],
+        "mock_requests": 48,
+        "new_files": [
+          "recordings/support-triage/*"
+        ]
+      },
+      "expectations": [
+        "Says before recording that the run will make 48 requests, to which backend and with which model",
+        "Never prints the API key's value",
+        "Reports `recorded 48, kept 0` and the model the recordings name",
+        "Offers /jud:eval as the next step"
+      ]
+    },
+    {
+      "id": "record-resume",
+      "prompt": "/jud:record support.jud support-cases.jud recordings/support-triage",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/support-triage",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json",
+          "fail_at": 31
+        }
+      },
+      "mock": {
+        "cases": [
+          "support-cases.jud"
+        ],
+        "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud"
+        ],
+        "exists": [
+          {
+            "glob": "recordings/support-triage/*.jud",
+            "count": 48
+          }
+        ],
+        "mock_requests": 18,
+        "new_files": [
+          "recordings/support-triage/*"
+        ]
+      },
+      "expectations": [
+        "Notices that 30 recordings already exist and says only about 18 requests are new",
+        "Runs record without --refresh, so the 30 recordings are kept",
+        "Reports `recorded 18, kept 30`"
+      ]
+    },
+    {
+      "id": "eval-support-misses",
+      "prompt": "/jud:eval support.jud support-cases.jud recordings/support-triage",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/support-triage",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud",
+          "recordings/support-triage/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Flags `refund-request`'s queue label (account) as probably wrong, proposing billing, and cites the case's own note",
+        "Flags `status-down`'s needs_reply label (false) as probably wrong: an outage report needs a reply",
+        "Identifies the billing/account confusion (upgrade-plan, seat-invoice, trial-end) as overlapping outcomes or an ambiguous criterion, and proposes sharpening the criteria (which means re-recording)",
+        "Puts the low-confidence urgency misses (adjacent levels, around 0.5 to 0.6) on the bar or on overlapping levels, not on the labels",
+        "Does not change any label or file itself"
+      ]
+    },
+    {
+      "id": "tune-support-propose",
+      "prompt": "/jud:tune support.jud support-cases.jud recordings/support-triage",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/support-triage",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud",
+          "recordings/support-triage/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Does not accept queue's proposed 0.80 as is: it covers 15 of 48 cases, and the misses it absorbs include a wrong label and the billing/account overlap",
+        "Shows the coverage trade-off of a lower --target-accuracy for queue (it ran tune again, or read the table)",
+        "Gives a decision table: gate, primitive, now, proposed, decision, reason",
+        "Shows the exact edit it would make and offers to apply it, without changing any file"
+      ]
+    },
+    {
+      "id": "tune-support-holdout-apply",
+      "prompt": "/jud:tune support.jud support-cases.jud recordings/support-triage apply holdout",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/support-triage",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "support-cases.jud",
+          "recordings/support-triage/*"
+        ],
+        "changed": [
+          "support.jud"
+        ],
+        "exists": [
+          {
+            "glob": "support-cases-tune.jud",
+            "count": 1
+          },
+          {
+            "glob": "support-cases-holdout.jud",
+            "count": 1
+          }
+        ],
+        "jud_check": [
+          [
+            "support.jud",
+            "support-cases-tune.jud"
+          ],
+          [
+            "support.jud",
+            "support-cases-holdout.jud"
+          ],
+          [
+            "support.jud",
+            "support-cases.jud"
+          ]
+        ],
+        "questions_unchanged": "support.jud",
+        "comments_kept": "support.jud",
+        "yaml": [
+          {
+            "file": "support.jud",
+            "path": "spec.tuning.cases",
+            "op": "cases_fingerprint",
+            "value": "support-cases-tune.jud"
+          },
+          {
+            "file": "support.jud",
+            "path": "spec.policy.queue.fallback",
+            "op": "eq",
+            "value": "none_of_these"
+          },
+          {
+            "file": "support.jud",
+            "path": "spec.policy.urgency.level_at_least",
+            "op": "exists"
+          }
+        ],
+        "split_disjoint": [
+          "support-cases-tune.jud",
+          "support-cases-holdout.jud",
+          "support-cases.jud"
+        ],
+        "mock_requests": 0,
+        "new_files": [
+          "support-cases-tune.jud",
+          "support-cases-holdout.jud"
+        ]
+      },
+      "expectations": [
+        "Writes a tuning set and a held-out set whose cases together are the original 48 with no case in both, every queue option in both",
+        "Tunes on the tuning set and reports the held-out gate numbers as the ones to expect",
+        "Edits the rubric in place, keeps its comments, and keeps or adjusts queue's bar with a reason instead of taking a bar that covers a handful of cases",
+        "Shows before and after"
+      ]
+    },
+    {
+      "id": "stale-after-question-edit",
+      "prompt": "/jud:eval support.jud support-cases.jud recordings/support-triage",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/support-triage",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+        },
+        "edit": [
+          {
+            "file": "support.jud",
+            "old": "account: login, passwords, users and seats, plan changes, closing the account",
+            "new": "account: login, passwords, users and seats, plan changes and trials, closing the account"
+          }
+        ]
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud",
+          "recordings/support-triage/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Explains that the recordings no longer answer the rubric because a question changed (the queue criteria), not that something is broken",
+        "Says re-recording costs 48 calls and offers /jud:record with --refresh (or record into a new directory)",
+        "Does not edit any recording, does not revert the rubric, and spends no call"
+      ]
+    },
+    {
+      "id": "record-no-key",
+      "prompt": "/jud:record support.jud support-cases.jud",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        }
+      },
+      "mock": {
+        "cases": [
+          "support-cases.jud"
+        ],
+        "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+      },
+      "env": {
+        "unset": [
+          "TYPESAFE_API_KEY"
+        ]
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud"
+        ],
+        "exists": [
+          {
+            "glob": "recordings/support-triage/*.jud",
+            "count": 0
+          }
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Stops before recording because no key is set, and says how to set one (TYPESAFE_API_KEY, or api_key in the configuration file)",
+        "Mentions that a local server that ignores the key still needs a non-blank one",
+        "Never asks the user to paste the key into the conversation"
+      ]
+    },
+    {
+      "id": "record-conversation",
+      "prompt": "/jud:record handoff.jud handoff-cases.jud",
+      "setup": {
+        "copy": {
+          "handoff.jud": "examples/jud/handoff.jud",
+          "handoff-cases.jud": "examples/jud/handoff-cases.jud"
+        }
+      },
+      "mock": {
+        "cases": [
+          "handoff-cases.jud"
+        ]
+      },
+      "checks": {
+        "unchanged": [
+          "handoff.jud",
+          "handoff-cases.jud"
+        ],
+        "exists": [
+          {
+            "glob": "recordings/handoff/*.jud",
+            "count": 6
+          }
+        ],
+        "mock_requests": 6,
+        "new_files": [
+          "recordings/handoff/*"
+        ]
+      },
+      "expectations": [
+        "Says before recording that the 2 conversation cases are recorded once per turn, 6 requests in all",
+        "Reports `recorded 6, kept 0`"
+      ]
+    },
+    {
+      "id": "natural-language-fix",
+      "prompt": "Our support.jud sends too many tickets to the wrong queue. The recordings from last week are in recordings/support-triage. Can you figure out why and fix the thresholds? Don't call the model again.",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/support-triage",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "support-cases.jud",
+          "recordings/support-triage/*"
+        ],
+        "jud_check": [
+          [
+            "support.jud",
+            "support-cases.jud"
+          ]
+        ],
+        "questions_unchanged": "support.jud",
+        "comments_kept": "support.jud",
+        "skill_loaded": "jud-tune",
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Loads the jud-tune skill without being told to",
+        "Explains that the wrong-queue tickets come from a wrong label (refund-request) and the billing/account overlap, which a bar cannot fix, and proposes the label fix and a sharper criterion",
+        "If it changes a bar, it changes only the policy (and the tuning block as tune printed it), keeps comments, and shows before and after; it does not change any label or question without asking"
+      ]
+    }
+  ]
+}
