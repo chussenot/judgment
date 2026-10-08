@@ -163,6 +163,29 @@ fn main() -> ExitCode {
     }
 }
 
+/// clap's zsh script declares the optional RUBRIC before the subcommand, so
+/// in `jud eval <TAB>` zsh takes `eval` for the rubric and never reaches the
+/// subcommand's arguments. One slot instead, offering a subcommand or a
+/// file, and the dispatch reads the subcommand from that first slot.
+/// ponytail: text surgery on `clap_complete`'s output; if a `clap_complete`
+/// upgrade changes these lines the replacements no-op and
+/// `tests/jud_cli.rs` fails on the old layout.
+fn zsh_subcommand_first(script: &str) -> String {
+    script
+        .lines()
+        .filter(|l| !l.starts_with("'::rubric -- "))
+        .map(|l| match l {
+            "\":: :_jud_commands\" \\" => "\":: :{_jud_commands; _files}\" \\".to_owned(),
+            _ => l
+                .replace("words=($line[2] ", "words=($line[1] ")
+                .replace("jud-command-$line[2]:", "jud-command-$line[1]:")
+                .replace("case $line[2] in", "case $line[1] in"),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
+}
+
 /// Where a subcommand's options go, for the one mistake clap's own message
 /// does not explain: `jud --replay DIR eval RUBRIC CASES`.
 const REPLAY_AFTER: &str =
@@ -236,7 +259,11 @@ fn completion(shell: clap_complete::Shell) -> ExitCode {
     let name = command.get_name().to_owned();
     let mut script = Vec::new();
     clap_complete::generate(shell, &mut command, name, &mut script);
-    match out::result(&String::from_utf8_lossy(&script)) {
+    let mut script = String::from_utf8_lossy(&script).into_owned();
+    if shell == clap_complete::Shell::Zsh {
+        script = zsh_subcommand_first(&script);
+    }
+    match out::result(&script) {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => failure.report(),
     }

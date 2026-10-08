@@ -570,6 +570,31 @@ fn the_completion_script_offers_every_subcommand_and_flag_the_binary_has() {
     }
 }
 
+/// The names being in the script is not enough: clap's zsh script put the
+/// optional RUBRIC before the subcommand, so `jud eval <TAB>` read `eval` as
+/// the rubric and never completed eval's own arguments. The subcommand slot
+/// must be the first positional, offering subcommands and files, and the
+/// dispatch must read it from there.
+#[test]
+fn the_zsh_script_completes_a_subcommand_s_own_arguments() {
+    let home = config_home();
+    let out = jud(&["completion", "zsh"], "", &[], &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let script = stdout(&out);
+    assert!(
+        !script.contains("'::rubric -- "),
+        "a rubric slot before the subcommand"
+    );
+    assert!(
+        script.contains("\":: :{_jud_commands; _files}\""),
+        "the first slot offers subcommands and files"
+    );
+    assert!(
+        script.contains("case $line[1] in") && !script.contains("$line[2]"),
+        "the dispatch reads the subcommand from the first slot"
+    );
+}
+
 /// A shell clap cannot generate for is a usage error that names the ones it
 /// can, as is no shell at all; neither is a backend failure.
 #[test]
