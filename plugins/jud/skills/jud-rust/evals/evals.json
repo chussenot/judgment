@@ -209,12 +209,19 @@
           "rubrics/triage.jud": "examples/jud/triage.jud",
           "src/triage.rs": "examples/jud/triage.rs"
         },
-        "edit": [
+        "prepare": [
           {
             "file": "src/triage.rs",
             "old": "include_str!(\"triage.jud\")",
             "new": "include_str!(\"../rubrics/triage.jud\")"
           },
+          {
+            "file": "src/triage.rs",
+            "old": "examples/jud/triage.jud",
+            "new": "rubrics/triage.jud"
+          }
+        ],
+        "edit": [
           {
             "file": "rubrics/triage.jud",
             "old": "        account: Sign-in, passwords, personal details, closing an account\n",

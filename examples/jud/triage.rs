@@ -61,12 +61,12 @@ pub const QUESTIONS_FINGERPRINT: &str =
 /// [`Error::Rubric`] when [`SOURCE`] is not a valid rubric, which the test
 /// below rules out.
 pub fn rubric() -> Result<&'static Rubric, Error> {
-    static RUBRIC: OnceLock<Rubric> = OnceLock::new();
-    if let Some(rubric) = RUBRIC.get() {
+    static PARSED: OnceLock<Rubric> = OnceLock::new();
+    if let Some(rubric) = PARSED.get() {
         return Ok(rubric);
     }
     let parsed = Rubric::parse(SOURCE)?;
-    Ok(RUBRIC.get_or_init(|| parsed))
+    Ok(PARSED.get_or_init(|| parsed))
 }
 
 /// Which desk should take `message`?

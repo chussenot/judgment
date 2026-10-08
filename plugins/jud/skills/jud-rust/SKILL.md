@@ -123,7 +123,9 @@ the template:
    templates do), and carries a complete usage example with the module's
    real names: the `mod` line, a `main` that builds the backend and the
    state, calls `decide`, and matches on every variant of one enum (with
-   no Choice or Score, branches on a Noul's `yes`). Every name the example
+   no Choice or Score, branches on a Noul's `yes`). When a Score's gate
+   has `level_at_least`, the example reads `reached: Some(true)` rather
+   than comparing with a level, so the bar stays in the rubric. Every name the example
    binds is used, so it compiles under `-D warnings` when pasted. With no
    crate, its `mod` line is the mounting line of step 5.
 
@@ -156,8 +158,11 @@ the template:
    ```
 
    The default `http` feature gives `judgment::Client`. A program that only
-   replays or uses `Fake` can turn it off. Add `mod <module>;` to `main.rs` or
-   `lib.rs` only when asked; otherwise show the line.
+   replays or uses `Fake` can turn it off; when the program's `judgment`
+   line turns default features off, say that the example's `Client` needs
+   `http`. Add `mod <module>;` to `main.rs` or `lib.rs` only when asked;
+   otherwise the line appears in the reply only inside the `main` of step
+   8, never as a separate instruction, so it is not added twice.
 7. **Verify** in a throwaway crate that mounts the module where you wrote
    it. A module that no `mod` line names is not compiled by `cargo check` in
    the user's crate, and the user's `main.rs` is not yours to edit. So:
@@ -192,7 +197,8 @@ the template:
    - the file written and the `include_str!` path (or that the YAML is
      embedded, and that a retune then needs regeneration);
    - every name you had to change, and why;
-   - the `Cargo.toml` lines still missing (or that none are);
+   - the `Cargo.toml` lines still missing (or that none are); the `mod`
+     line is not one of them, since the `main` below carries it;
    - the whole `main` from the module's header, with its `mod` line,
      runtime attribute, `async` and `Result` return, said to replace the
      program's `main` (so the `mod` line is not given twice); when the
@@ -273,7 +279,7 @@ and list in the reply every name you had to change.
 |---|---|
 | a Noul | `YesNo { yes, probability }` field. `yes` is the gate's decision at its threshold (and `strict`), not `probability >= 0.5`. |
 | a Choice, static options | `#[derive(Copy, Eq, Hash)] enum` with a variant per key in rubric order, `ALL`, `key()`, and a `from_key` that returns `Error::Unexpected` for a key it does not know; field `Gated<Enum>`. |
-| a Choice, `options_from: request` | an enum with a variant per static key and `Supplied(String)` (not `Copy`). `from_key` returns `Self`: any key the response names was offered (`Response::verify`). There is a `Vec<(String, String)>` field for it in `Offered`, a `match` arm for it in `Offered::supplied`, and an `offered` parameter on `questions` and `decide`. |
+| a Choice, `options_from: request` | an enum with a variant per static key and `Supplied(String)` (not `Copy`). `from_key` returns `Self`: any key the response names was offered (`Response::verify`). There is a `Vec<(String, String)>` field for it in `Offered`, an entry for it in the `(id, options)` array `Offered::supplied` loops over, and an `offered` parameter on `questions` and `decide`. |
 | a Score | an enum with a variant per level, lowest first, deriving `PartialOrd, Ord` so `>=` compares levels, plus `ALL`, `label()` and `from_level(&str)` (an index or a level's text, as a fallback may name it), tested by `levels_read_by_index_and_by_text`; field `Gated<Enum>`. |
 | `when: <path>` | the field is `Option<...>`, read with `verdicts.get(id).map(...).transpose()?`. Its doc comment says it is `None` when the path is absent, null or empty. |
 | `part_when` | nothing in the types: the part is sent or not by `lower`. |

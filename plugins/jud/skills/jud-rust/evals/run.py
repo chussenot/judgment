@@ -76,13 +76,20 @@ def setup_workspace(spec, ws):
             text = f.read()
         with open(target, "w", encoding="utf-8") as f:
             f.write(fill(text) if dest.endswith("Cargo.toml") else text)
+    # `prepare` shapes what the user had committed; `edit` is the change
+    # they made since, left uncommitted.
+    apply_edits(ws, spec.get("prepare", []))
     git = ["git", "-c", "user.name=eval", "-c", "user.email=eval@example.com"]
     subprocess.run(["git", "init", "-q"], cwd=ws, check=True)
     with open(os.path.join(ws, ".gitignore"), "w", encoding="utf-8") as f:
         f.write("target/\nCargo.lock\n")
     subprocess.run(git + ["add", "-A"], cwd=ws, check=True)
     subprocess.run(git + ["commit", "-q", "-m", "before the session"], cwd=ws, check=True)
-    for edit in spec.get("edit", []):
+    apply_edits(ws, spec.get("edit", []))
+
+
+def apply_edits(ws, edits):
+    for edit in edits:
         path = os.path.join(ws, edit["file"])
         with open(path, encoding="utf-8") as f:
             text = f.read()

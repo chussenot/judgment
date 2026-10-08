@@ -33,7 +33,8 @@ written out in full, one command per Bash call, with nothing chained to it.
    Run, one per Bash call, `cargo test --manifest-path <dir>/Cargo.toml`
    and `cargo clippy --manifest-path <dir>/Cargo.toml --all-targets -- -D warnings`
    (cargo's flags before `--`), and fix the module until both pass. Change
-   no other file in the project unless asked: the `Cargo.toml` lines and
-   the `mod` line go in the reply.
+   no other file in the project unless asked: the missing `Cargo.toml`
+   lines go in the reply, and the `mod` line only inside the replacement
+   `main` the skill's step 8 shows.
 5. Reply as the skill's step 8 says, including what the caller owes and,
    when an existing module was replaced, what the regeneration changes.
