@@ -136,12 +136,15 @@ impl Tone {
         }
     }
 
-    fn from_index(index: &str) -> Result<Self, Error> {
-        index
+    /// A level by its index, as a verdict names it, or by its text, as a
+    /// policy's `fallback` may: the index first, as the rubric reads it.
+    fn from_level(level: &str) -> Result<Self, Error> {
+        level
             .parse::<usize>()
             .ok()
             .and_then(|i| Self::ALL.get(i).copied())
-            .ok_or_else(|| Error::unexpected("tone", index))
+            .or_else(|| Self::ALL.into_iter().find(|l| l.label() == level))
+            .ok_or_else(|| Error::unexpected("tone", level))
     }
 }
 
@@ -231,7 +234,7 @@ pub fn read(asked: &Questions, response: &Response) -> Result<Decision, Error> {
     Ok(Decision {
         actionable: yes_no("actionable", verdict("actionable")?)?,
         desk: gated("desk", verdict("desk")?, Desk::from_key)?,
-        tone: gated("tone", verdict("tone")?, Tone::from_index)?,
+        tone: gated("tone", verdict("tone")?, Tone::from_level)?,
     })
 }
 
@@ -266,8 +269,9 @@ fn yes_no(id: &'static str, verdict: &Verdict) -> Result<YesNo, Error> {
     }
 }
 
-/// A Choice's verdict names an option key, a Score's a level index; `parse`
-/// turns either into this module's type.
+/// A Choice's verdict names an option key, a Score's a level index (its
+/// fallback may name the level's text); `parse` turns either into this
+/// module's type.
 fn gated<T>(
     id: &'static str,
     verdict: &Verdict,
@@ -408,6 +412,17 @@ mod tests {
             "tone's levels are not {:?}",
             Tone::ALL.map(Tone::label)
         );
+        Ok(())
+    }
+
+    /// A Score's fallback may name a level by its text, a verdict by its
+    /// index: both read.
+    #[test]
+    fn levels_read_by_index_and_by_text() -> Result<(), Error> {
+        for (index, level) in Tone::ALL.into_iter().enumerate() {
+            assert_eq!(Tone::from_level(&index.to_string())?, level);
+            assert_eq!(Tone::from_level(level.label())?, level);
+        }
         Ok(())
     }
 }

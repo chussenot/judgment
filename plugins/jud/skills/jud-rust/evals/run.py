@@ -224,6 +224,8 @@ def run_one(ev, out_dir, model, reference):
             check("rubric embedded in SOURCE as a raw string", re.search(r'const SOURCE: &str = r#*"', source))
         else:
             check("rubric read with include_str!", "include_str!" in source)
+        if re.search(r"fn label\(self\)", source):
+            check("a Score reads its level by index or text", "fn from_level(" in source and "levels_read_by_index_and_by_text" in source)
         crate = check_crate(base, ws, ev, env)
         code, out = cargo(["test", "--quiet"], crate, env)
         check("module test and hidden scenario test pass", code == 0, out if code else "")

@@ -33,7 +33,8 @@
         "Writes src/triage.rs with include_str!(\"../rubrics/triage.jud\")",
         "Runs the module's test and clippy in a throwaway crate before replying, says they passed, and says that `cargo test` in the crate runs the drift test once the mod line is in",
         "Replies with the Cargo.toml lines, the `mod triage;` line and a usage example with the real names (Desk, Tone, decide), without editing Cargo.toml or main.rs",
-        "The module's header carries a complete usage example and quotes no threshold or band bar"
+        "The module's header carries a complete usage example and quotes no threshold or band bar",
+        "Reads Tone with from_level, which takes an index or a level's text, and keeps the levels_read_by_index_and_by_text test"
       ]
     },
     {
@@ -96,7 +97,8 @@
       "expectations": [
         "With no Rust crate in the project, writes handoff.rs beside the rubric with include_str!(\"handoff.jud\")",
         "Verifies it in a throwaway crate outside the project and leaves nothing behind in the project",
-        "Says the state is the conversation so far and decide is called once per turn"
+        "Says the state is the conversation so far and decide is called once per turn",
+        "The main it shows mounts the module with the #[path] line a crate made later needs, not a bare `mod handoff;`"
       ]
     },
     {
@@ -160,7 +162,7 @@
       "expectations": [
         "Loads the jud-rust skill without being told to",
         "Makes `reason` an Option because of its `when: message`",
-        "Shows the whole main from the module's header (runtime attribute, async, Result) and says what changes in the app's sync main"
+        "Reads the app's main.rs, shows the whole main from the module's header as a replacement, and lists the lines that change in the app's sync main"
       ]
     },
     {

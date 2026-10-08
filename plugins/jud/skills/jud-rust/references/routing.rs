@@ -145,12 +145,15 @@ impl Tone {
         }
     }
 
-    fn from_index(index: &str) -> Result<Self, Error> {
-        index
+    /// A level by its index, as a verdict names it, or by its text, as a
+    /// policy's `fallback` may: the index first, as the rubric reads it.
+    fn from_level(level: &str) -> Result<Self, Error> {
+        level
             .parse::<usize>()
             .ok()
             .and_then(|i| Self::ALL.get(i).copied())
-            .ok_or_else(|| Error::unexpected("tone", index))
+            .or_else(|| Self::ALL.into_iter().find(|l| l.label() == level))
+            .ok_or_else(|| Error::unexpected("tone", level))
     }
 }
 
@@ -195,7 +198,7 @@ pub struct Offered {
     pub desk: Vec<(String, String)>,
     /// The customer's open tickets, for `duplicate_of`: at least one
     /// whenever the state has `customer.open_tickets`, when the question is
-    /// asked, and none keyed `none`; ignored otherwise.
+    /// asked, and none keyed `none`, which is refused even when it is not.
     pub duplicate_of: Vec<(String, String)>,
 }
 
@@ -309,7 +312,7 @@ pub fn read(asked: &Questions, response: &Response) -> Result<Decision, Error> {
     let verdict = |id: &'static str| verdicts.get(id).ok_or(Error::Missing(id));
     Ok(Decision {
         desk: gated("desk", verdict("desk")?, |key| Ok(Desk::from_key(key)))?,
-        tone: gated("tone", verdict("tone")?, Tone::from_index)?,
+        tone: gated("tone", verdict("tone")?, Tone::from_level)?,
         duplicate_of: verdicts
             .get("duplicate_of")
             .map(|v| gated("duplicate_of", v, |key| Ok(DuplicateOf::from_key(key))))
@@ -354,8 +357,9 @@ fn yes_no(id: &'static str, verdict: &Verdict) -> Result<YesNo, Error> {
     }
 }
 
-/// A Choice's verdict names an option key, a Score's a level index; `parse`
-/// turns either into this module's type.
+/// A Choice's verdict names an option key, a Score's a level index (its
+/// fallback may name the level's text); `parse` turns either into this
+/// module's type.
 fn gated<T>(
     id: &'static str,
     verdict: &Verdict,
@@ -497,6 +501,17 @@ mod tests {
             "tone's levels are not {:?}",
             Tone::ALL.map(Tone::label)
         );
+        Ok(())
+    }
+
+    /// A Score's fallback may name a level by its text, a verdict by its
+    /// index: both read.
+    #[test]
+    fn levels_read_by_index_and_by_text() -> Result<(), Error> {
+        for (index, level) in Tone::ALL.into_iter().enumerate() {
+            assert_eq!(Tone::from_level(&index.to_string())?, level);
+            assert_eq!(Tone::from_level(level.label())?, level);
+        }
         Ok(())
     }
 }

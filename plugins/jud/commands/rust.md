@@ -24,10 +24,10 @@ written out in full, one command per Bash call, with nothing chained to it.
    `embed` in the arguments, embed the YAML instead of `include_str!`, as
    the skill's embedded form says (a retune then needs a regeneration, and
    a test holds the copy to the file).
-3. Name, map and write the module exactly as the skill says. Overwrite an
-   existing module only if its header says it was generated from this
-   rubric (the same path, and the same `include_str!` target). Otherwise
-   stop and ask. A regeneration writes the module afresh, not by patching.
+3. Name, map and write the module exactly as the skill says. An existing
+   module at the path is regenerated or left alone by the skill's step 5
+   rule (its `include_str!` target decides); a regeneration writes the
+   module afresh, not by patching.
 4. Verify as the skill says: in a throwaway crate outside the project,
    written with the Write tool, that mounts the module with `#[path = ...]`.
    Run, one per Bash call, `cargo test --manifest-path <dir>/Cargo.toml`
