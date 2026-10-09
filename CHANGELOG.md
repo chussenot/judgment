@@ -24,6 +24,13 @@ All notable changes to the `judgment` crate. The format follows
   bound. The mock System One server gains `collapse` and `confidence`
   profile keys, and a new `jud-tune` scenario uses them.
 
+### Fixed
+
+- `/jud:rust` no longer writes a `Cargo.lock` (or a `target/`) into the
+  user's crate when that crate already mounts the module: it runs `cargo
+  test` there only when a lock file exists, with a target directory outside
+  the project.
+
 ### Added
 
 - The Claude Code plugin (now 0.3.0) turns a rubric into a typed Rust module:
