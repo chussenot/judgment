@@ -10,19 +10,25 @@ All notable changes to the `judgment` crate. The format follows
 
 - `jud eval` reports, per question, its answers by outcome (how many labels
   name each, how often the model gave it, how often rightly), the majority
-  label with its share, and three signals: `no_better_than_majority`,
-  `collapsed` and `defers_nearly_all`, each a `warning:` line in the text and
-  a code in the new `outcomes`, `majority` and `signals` keys of `--json`
-  (decision 0022). They are what the tuning skill computed by hand on the
-  first real-world run (#46).
+  label with its share, and five signals: `no_better_than_majority`,
+  `collapsed`, `never_answered`, `defers_most` and `defers_nearly_all`, each a
+  `warning:` line in the text and a code in the new `outcomes`, `majority`
+  and `signals` keys of `--json`, none read from fewer than ten answers. The
+  thresholds they were read with are the new `signal_rules` key, so a report
+  says which it used (decision 0022). They are what the tuning skill
+  computed by hand on the first real-world run (#46).
 - `jud record --dry-run` says what a run would do and does nothing: the
   requests, how many the directory answers, which are to ask or replace,
   the backend and model, whether a key is set, and the time at the median
-  pace of the recordings already there. No key, no call, no file.
+  pace of the recordings already there. No key, no call, no file. It counts
+  two cases that lower to one request once, and refuses what the run would
+  refuse before its first call.
 - `jud split CASES [--every N] [--out DIR]` writes a tuning set and a
   held-out set, every Nth case held out, each case copied as read so the
   recordings over the whole set answer both. It writes over nothing and
-  warns when a label one half has is missing from the other.
+  warns when a label one half has is missing from the other. A `from_turn`
+  label counts as the turns it labels, and with `--rubric RUBRIC` a Score
+  level written as its index and as its text is one level.
 
 ### Changed
 

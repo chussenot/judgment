@@ -1,6 +1,6 @@
 ---
 title: 0022 jud reports what the tuning loop counted by hand
-description: Accepted and implemented; after a real-world run, three additions move into the jud command what the tuning skill and its users computed by hand. jud eval reports each question's answers by outcome, its majority label and three signals (no better than the majority, collapsed, a gate that defers nearly all); jud record --dry-run says what a run would ask, of whom and for how long; jud split writes a tuning set and a held-out set verbatim. Why the command and not the skill, the thresholds chosen, and what it costs.
+description: Accepted and implemented; after a real-world run, three additions move into the jud command what the tuning skill and its users computed by hand. jud eval reports each question's answers by outcome, its majority label and its signals (no better than the majority, collapsed, an outcome never answered, a gate that defers most or nearly all) with the thresholds they were read with; jud record --dry-run says what a run would ask, of whom and for how long; jud split writes a tuning set and a held-out set, each case copied as read. Why the command and not the skill, the thresholds chosen, and what it costs.
 status: accepted
 date: 2026-10-09
 decision-makers: [platform engineering]
@@ -45,15 +45,23 @@ Option 2.
 
 ### `jud eval`: outcomes, majority and signals
 
-Each question's block gains, for every outcome the question offers (`yes` and `no`, a Choice's options in order, a Score's levels), how many labels name it, how often the model answered it on a labelled case, and how often rightly; the majority label and its share; and one `warning:` line per signal. `--json` carries them as `outcomes`, `majority` and `signals`, the last a list of codes:
+Each question's block gains, for every outcome the question offers (`yes` and `no`, a Choice's options in order, a Score's levels), how many labels name it, how often the model answered it on a labelled case, and how often rightly; the majority label and its share; and one `warning:` line per signal. `--json` carries them as `outcomes`, `majority` and `signals`, the last a list of codes, and the thresholds as `signal_rules`:
 
 | Code | Raised when | Read from |
 |---|---|---|
-| `no_better_than_majority` | the accuracy's 95 % interval reaches down to the majority's share | any labelled count |
+| `no_better_than_majority` | the accuracy's 95 % interval reaches down to the majority's share, and the labels name more than one outcome | ten labelled answers or more |
 | `collapsed` | one answer takes at least 0.8 of the labelled answers and at least 0.2 more than the largest share any label has | ten labelled answers or more |
+| `never_answered` | an outcome at least 3 labels name is never the model's answer | ten labelled answers or more |
+| `defers_most` | the gate defers at least 0.5 of the answers it sees, and less than 0.9 | ten answers or more |
 | `defers_nearly_all` | the gate defers at least 0.9 of the answers it sees | ten answers or more |
 
-The margin in `collapsed` keeps a model that rightly answers a set that is 90 % `no` from being called collapsed. The minimum of ten keeps a share read off a handful of answers from raising either share-based signal; `no_better_than_majority` needs no minimum, because a wide interval is what it reports.
+The margin in `collapsed` keeps a model that rightly answers a set that is 90 % `no` from being called collapsed. The minimum of ten keeps a share read off a handful of answers from raising any signal.
+
+Three of these were changed in review, from what a live run against `jev-1.13.0` and the mock's profiles showed:
+
+- **`no_better_than_majority` waits for ten labels.** Without a minimum it fired on nearly every small set, perfect scores included: on the seven triage cases `tone` scored 6 of 6 and was flagged, since a Wilson interval on six answers cannot clear a 0.67 majority. A perfect model needs ten cases to clear a 0.71 majority and thirty-five to clear 0.9. A question whose labels are all one outcome is never flagged: nothing can beat 1.0.
+- **`never_answered` covers the collapse a skewed set hides.** A model that always said `yes` to a set that is 37 of 42 `yes` answered one outcome 0.12 more often than the labels named it, under the 0.2 margin, so `collapsed` stayed silent, and only `no 5/0/0` in the outcomes line showed it.
+- **`defers_most` at 0.5.** On the live support recordings, the bar `jud tune` proposed for `urgency` (0.90) deferred 36 of 48 answers, and 0.97 deferred 38: a capable model's confident tail puts a bad bar between a half and nine tenths, which `defers_nearly_all` never sees. The Wikimedia gate, 90 of 93 on a small model always unsure, is what the 0.9 line was drawn from.
 
 ### `jud record --dry-run`
 
@@ -61,7 +69,7 @@ Reads what a run reads, the documents bound, every request lowered and the direc
 
 ### `jud split CASES [--every N] [--out DIR]`
 
-Writes `STEM-tune.jud` and `STEM-holdout.jud`, the Nth, 2Nth, ... case held out (4 by default), each case copied as read so the recordings made over the whole set answer both halves. It refuses an existing file and the input, so it writes over nothing, and warns when a label one half has is missing from the other. On the Wikimedia cases its halves have exactly the fingerprints of the split the skill had made by hand.
+Writes `STEM-tune.jud` and `STEM-holdout.jud`, the Nth, 2Nth, ... case held out (4 by default), each case copied as read (its values; comments are not kept) so the recordings made over the whole set answer both halves. It refuses an existing file and the input, so it writes over nothing, and warns when a label one half has is missing from the other. A `from_turn` label counts as the turns it labels; with `--rubric`, a Score level written as its index and as its text is one level. On the Wikimedia cases its halves have exactly the fingerprints of the split the skill had made by hand.
 
 ## Pros and cons of the options
 
@@ -73,6 +81,6 @@ Writes `STEM-tune.jud` and `STEM-holdout.jud`, the Nth, 2Nth, ... case held out 
 
 ## More information
 
-The thresholds are constants in `src/bin/jud/eval.rs` and named on [the command line reference](../../reference/cli.md#the-text-report); a change to one changes when a code is raised, which is a change of meaning under [Stability](../../reference/stability.md). The skill that used to compute these, `plugins/jud/skills/jud-tune`, now reads them from the report.
+The thresholds are constants in `src/bin/jud/eval.rs`, named on [the command line reference](../../reference/cli.md#the-text-report) and written into every JSON report as `signal_rules`; a change to one changes when a code is raised, which is a change of meaning under [Stability](../../reference/stability.md), and two reports read under different ones say so in their own data. The skill that used to compute these, `plugins/jud/skills/jud-tune`, now reads them from the report.
 
 Confirmed in `tests/jud_eval.rs` (the outcomes add up to `labelled` and `correct`, the documented keys, a collapse and a deferring gate raised against a server that always gives one answer), the signal unit tests in `src/bin/jud/eval.rs` (a skewed set answered rightly is no collapse, nothing raised under ten answers), `tests/jud_record.rs` (a dry run counts, names stale recordings, writes nothing and needs no key), and `tests/jud_split.rs` (the halves put back in order are the whole set, recordings over the whole set answer both, nothing is written over).

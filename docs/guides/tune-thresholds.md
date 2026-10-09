@@ -33,7 +33,6 @@ actionable
   outcomes, labelled/answered/right: yes 5/6/5, no 2/1/1
   majority yes, 5 of 7 (0.71)
   gate: acts on 7 of 7, defers 0, accuracy when acted 1.00
-  warning: not shown to beat always answering yes (0.71): the interval reaches down to 0.49
 
 desk
   labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)
@@ -48,7 +47,6 @@ tone
   outcomes, labelled/answered/right: calm 4/4/4, annoyed 1/1/1, angry 1/1/1
   majority calm, 4 of 6 (0.67)
   gate: acts on 7 of 7, defers 0, accuracy when acted 1.00
-  warning: not shown to beat always answering calm (0.67): the interval reaches down to 0.61
 
 model misses (2)
   actionable  receipt: expected no, predicted yes, confidence 0.52
@@ -63,10 +61,14 @@ The report is on stdout and nothing else is. Read a block from the top.
 - **Outcomes** count, for each answer the question offers, how many labels name it, how often the model gave it on a labelled case, and how often rightly: `yes 5/6/5` is five `yes` labels, six `yes` answers, five of them right. A Score's levels are shown by their text. An outcome no case labels shows `0/…`, which is a gap in the cases, and an outcome the model answers far more often than the labels name it is where its misses come from.
 - **Majority** is the commonest label and its share: what a model that always gave that one answer would score. Accuracy means something only above it.
 - **The gate line** is the policy's, not the model's. It says how many answers the gate acted on rather than deferred, and how often the policy's own verdict was right among those.
-- **Warnings** name what to read first. `not shown to beat always answering …` means the accuracy's interval reaches down to the majority's share: on these cases the model has not shown it does better than a constant, and on seven cases it cannot. `collapsed` means one answer takes at least 80 % of the model's answers, 20 points more than any label's share: the model is not telling the outcomes apart, and no bar or relabel fixes that. `the gate defers N of M` means the gate defers nine answers in ten or more, so the question is in effect handed to its fallback. The last two are read only from ten answers or more.
+- **Warnings** name what to read first, and none is read from fewer than ten answers: on seven cases this report has none. Its thresholds are in the JSON report's `signal_rules`.
+  - `not shown to beat always answering …`: the accuracy's interval reaches down to the majority's share, so the model has not shown it does better than a constant. Not raised when every label is the same outcome. Under ten cases even a perfect score could not clear a common majority (at 0.71 it takes ten, at 0.9 thirty-five), which is why it waits.
+  - `collapsed`: one answer takes at least 80 % of the model's answers, 20 points more than any label's share. The model is not telling the outcomes apart, and no bar or relabel fixes that.
+  - `never answered: …`: an outcome that three labels or more name is never the model's answer. On a skewed set a model that always gives the commonest answer is not a collapse by the rule above (always `yes` on a set that is 88 % `yes`), and this is the line that names it.
+  - `the gate defers N of M`: the gate defers half the answers or more (`defers_most`), or nine in ten or more (`defers_nearly_all`), so that much of the question's traffic goes to its fallback, or to a person. A bar read off a capable model's confident tail lands at the first more often than the second.
 - **Model misses** lists each answer the model got wrong, by case.
 
-`--json` carries the same as data: per question `outcomes`, `majority` and `signals` (`no_better_than_majority`, `collapsed`, `defers_nearly_all`), so a script or an agent reads them rather than counting ([the JSON report](../reference/cli.md#the-json-report)).
+`--json` carries the same as data: per question `outcomes`, `majority` and `signals` (`no_better_than_majority`, `collapsed`, `never_answered`, `defers_most`, `defers_nearly_all`), and the thresholds they were read with in `signal_rules`, so a script or an agent reads them rather than counting ([the JSON report](../reference/cli.md#the-json-report)).
 
 The model's accuracy and the policy's can differ. The `receipt` case is a miss for `actionable`: the recorded answer is 0.52, which is a yes, and the label says no. The gate's threshold is 0.55, so the policy says no and is right, and `accuracy when acted` is 1.00. The model's own reading decides a miss: a Noul at 0.5, a Choice by its pick, a Score by its most probable level.
 
@@ -214,12 +216,12 @@ The questions' fingerprint is unchanged. The policy fingerprint moved, which is 
 A bar tuned on the cases it is graded on looks better than it will do. With 40 labelled cases or more, tune on most of them and grade on the rest. `jud split` writes the two halves beside the cases, holding out every fourth one by default:
 
 ```sh
-jud split cases.jud               # cases-tune.jud and cases-holdout.jud
+jud split --rubric rubric.jud cases.jud   # cases-tune.jud and cases-holdout.jud
 jud tune rubric.jud cases-tune.jud --replay recordings/
 jud eval rubric.jud cases-holdout.jud --replay recordings/
 ```
 
-Each case is copied as read, so the recordings made over the whole set answer both halves and nothing is asked again. The command prints each half's labels per question and warns when one half lacks a label the other has; a held-out number on an outcome the tuning set never saw says little. It never writes over a file, so a second split goes to another `--out` directory. Keep the two files: the `tuning` block `jud tune` prints names the tune half by its fingerprint, and the held-out numbers are the honest ones to quote. The seven triage cases are too few for this, which is why the page above tunes on all of them.
+Each case is copied as read, so the recordings made over the whole set answer both halves and nothing is asked again. The command prints each half's labels per question and warns when one half lacks a label the other has; a held-out number on an outcome the tuning set never saw says little. `--rubric` reads the labels as the rubric does: a Score level written as its index and as its text counts as one level, the labels are checked against the rubric, and they are listed in its order. A conversation's `from_turn` label counts as the turns it labels, `true` from that turn on and `false` before it, with or without the rubric. It never writes over a file, so a second split goes to another `--out` directory. Keep the two files: the `tuning` block `jud tune` prints names the tune half by its fingerprint, and the held-out numbers are the honest ones to quote. The seven triage cases are too few for this, which is why the page above tunes on all of them.
 
 ## When the model moves
 

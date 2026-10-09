@@ -289,7 +289,7 @@ API key: set (config_file)
 time: about 10.7 s a request (median of 88 recordings in recordings/tev1), about 53.6 s for 5
 ```
 
-The `to ask` and `stale` lines appear only when there is a name to give. The model's source is `environment`, `config_file` or `default`; the key's is `environment` or `config_file`, or the line says it is missing and that the run would stop before the first call. The time is the median `elapsed_ms` of the recordings already in `DIR`, so it is the backend's own pace; with none it is unknown until the first request answers. With `--refresh` nothing is counted as kept. The refusals before any call that do not depend on the directory, a document that does not read or bind and a case without an id among them, are status 2 here as in a run.
+The `to ask` and `stale` lines appear only when there is a name to give. The model's source is `environment`, `config_file` or `default`; the key's is `environment` or `config_file`, or the line says it is missing and that the run would stop before the first call. The time is the median `elapsed_ms` of the recordings already in `DIR`, so it is the backend's own pace; with none it is unknown until the first request answers. With `--refresh` nothing is counted as kept. Two cases that lower to one request are counted once to ask and once kept, as a run asks once. The refusals a run makes before any call are status 2 here as in a run: a document that does not read or bind, a case without an id, an `--out` that is a file rather than a directory, and a stale recording that sits in a file the run would not write.
 
 ## `jud eval`
 
@@ -361,7 +361,11 @@ A report holds three things that are not the same number: what the model got rig
 - **The gate.** `acts on A of T, defers D` counts what the rubric's gate for the question does with the T answers that asked it. A Noul's gate never defers, so it acts on every answer. `accuracy when acted` is the accuracy of the policy's own verdicts among the answers the gate acted on and a case labels. A Noul is read at the gate's `threshold` and `strict`, a Choice by the option the verdict names, a Score by the level the policy reads, the one nearest the weighted score. It is not the question's `accuracy`, and moving a bar moves one and not the other.
 - **The outcomes.** For every answer the question offers, in its order (`yes` and `no`, a Choice's options, a Score's levels by their text), how many labels name it, how often the model gave it on a labelled case, and how often rightly. Each count is over the labelled answers, so the labels and the answers each add up to `labelled`. An outcome no case labels shows `0/…`. Options supplied per request follow, as the answers name them.
 - **The majority.** The commonest label, the first in the question's order on a tie, and its share of `labelled`: what always giving that one answer would score.
-- **The warnings.** One line per signal, each read from the numbers above. `not shown to beat always answering OUTCOME (SHARE): the interval reaches down to LOW` when the accuracy's 95 % interval reaches down to the majority's share. `collapsed: the model answered OUTCOME on N of L labelled cases` when one answer takes at least 0.8 of the labelled answers and at least 0.2 more than the largest share any label has. `the gate defers D of T: they all fall back to FALLBACK` (or `nothing acts on them` without a fallback) when the gate defers at least 0.9 of the answers it sees. The last two are read only from ten answers or more.
+- **The warnings.** One line per signal, each read from the numbers above, and none from fewer than ten answers. The thresholds are in the JSON report's `signal_rules`; a change to one is a change of meaning ([stability](stability.md)).
+  - `not shown to beat always answering OUTCOME (SHARE): the interval reaches down to LOW` when the accuracy's 95 % interval reaches down to the majority's share, and the labels name more than one outcome.
+  - `collapsed: the model answered OUTCOME on N of L labelled cases; …` when one answer takes at least 0.8 of the labelled answers and at least 0.2 more than the largest share any label has.
+  - `never answered: OUTCOME (N labelled), …; …` when an outcome at least 3 labels name is never the model's answer on a labelled case. A skewed set hides this from `collapsed`: a model that always says `yes` to a set that is 88 % `yes` answers one outcome only 0.12 more often than the labels name it.
+  - `the gate defers D of T: they fall back to FALLBACK` (or `nothing acts on them` without a fallback) when the gate defers at least 0.5 of the answers it sees (`defers_most`) or at least 0.9 (`defers_nearly_all`); one of the two, never both.
 - **The misses.** `model misses` lists the model's own readings that the labels call wrong, one line per miss: question, case, expected, predicted and the model's confidence in what it predicted, which for a Noul is the larger of p and 1 - p. A Noul is `yes` or `no`, a Choice is an option key and a Score is a level index. A miss is not the policy's: a Noul answered 0.52 is a miss against a `false` label, and a gate at 0.55 says no and is right.
 
 ### The JSON report
@@ -410,13 +414,20 @@ A report holds three things that are not the same number: what the model got rig
 | `questions[].majority.level` | string or `null` | A Score level's text. |
 | `questions[].majority.labelled` | integer | Labels that name it. |
 | `questions[].majority.share` | number | `labelled` over the question's `labelled`. |
-| `questions[].signals` | array of strings | In this order, each when raised: `no_better_than_majority`, `collapsed`, `defers_nearly_all`, as [the text report](#the-text-report) defines them; `[]` when none is. |
+| `questions[].signals` | array of strings | In this order, each when raised: `no_better_than_majority`, `collapsed`, `never_answered`, then `defers_most` or `defers_nearly_all`, as [the text report](#the-text-report) defines them; `[]` when none is. |
 | `min_accuracy` | array of objects | One entry per question a `--min-accuracy` flag checks; `[]` without the flag. |
 | `min_accuracy[].question` | string or `null` | The question; `null` when a bare bar found no question with a label. |
 | `min_accuracy[].bar` | number | The bar as given. |
 | `min_accuracy[].labelled` | integer | Labelled answers of the question; 0 when it has none. |
 | `min_accuracy[].accuracy` | number or `null` | The question's `accuracy`. |
 | `min_accuracy[].met` | boolean | `false` when `accuracy` is below the bar or there is none. |
+| `signal_rules` | object | The thresholds the signals were read with, so two reports read under different ones can be told apart. |
+| `signal_rules.min_answers` | integer | The fewest answers any signal is read from: 10. |
+| `signal_rules.collapse_share` | number | The share one answer must take for `collapsed`: 0.8. |
+| `signal_rules.collapse_margin` | number | How far above the largest label share it must be: 0.2. |
+| `signal_rules.never_answered_min` | integer | The fewest labels an outcome needs for `never_answered`: 3. |
+| `signal_rules.defers_most` | number | The deferred share for `defers_most`: 0.5. |
+| `signal_rules.defers_nearly_all` | number | The deferred share for `defers_nearly_all`: 0.9. |
 
 The same report with one question kept and `--min-accuracy desk=0.9`:
 
@@ -510,7 +521,15 @@ The same report with one question kept and `--min-accuracy desk=0.9`:
       "accuracy": 0.8571428571428571,
       "met": false
     }
-  ]
+  ],
+  "signal_rules": {
+    "min_answers": 10,
+    "collapse_share": 0.8,
+    "collapse_margin": 0.2,
+    "never_answered_min": 3,
+    "defers_most": 0.5,
+    "defers_nearly_all": 0.9
+  }
 }
 ```
 
@@ -641,7 +660,7 @@ Status 2: the settings above; a rubric with no gates, since there is nothing to 
 ```text
 Split a Cases document into a tuning set and a held-out set.
 
-Every Nth case (the Nth, the 2Nth, ...) goes to NAME-holdout.jud, the others to NAME-tune.jud, beside CASES or in --out. Cases are copied as read, so recordings made over CASES answer both halves. Prints each half's count, fingerprint and labels per question, and warns about a label one half has and the other lacks. Refuses to write over an existing file.
+Every Nth case (the Nth, the 2Nth, ...) goes to NAME-holdout.jud, the others to NAME-tune.jud, beside CASES or in --out. Cases are copied as read, so recordings made over CASES answer both halves. Prints each half's count, fingerprint and labels per question, and warns about a label one half has and the other lacks. With --rubric, the labels are read as the rubric reads them (a Score's level by its text whether written as text or index), checked against it, and listed in its order. Refuses to write over an existing file.
 
 Usage: jud split [OPTIONS] <CASES>
 
@@ -658,13 +677,16 @@ Options:
       --out <DIR>
           The directory the two halves are written to; CASES's own by default
 
+      --rubric <RUBRIC>
+          The Rubric the cases are for: read the labels as it reads them, so a Score level written as `0` and as `calm` is one level
+
   -h, --help
           Print help (see a summary with '-h')
 ```
 
-Reads `CASES` and writes two new files, `STEM-tune.jud` and `STEM-holdout.jud`, beside it or under `--out` (created when needed), where `STEM` is the name of the `CASES` file without its extension. The Nth case, the 2Nth and so on go to the holdout half, the others to the tune half, in their order. Each case is copied as read, state, labels, options, tags and note, so a recording that answers a case in the whole set answers it in its half, and a split never needs a recording again. The halves are named `NAME-tune` and `NAME-holdout` after the set's `metadata.name`, keep its `spec.rubric`, labels and annotations, and say in `metadata.description` how they were made; each starts with a one-line comment naming its source. A half's fingerprint is over its own cases.
+Reads `CASES` and writes two new files, `STEM-tune.jud` and `STEM-holdout.jud`, beside it or under `--out` (created when needed), where `STEM` is the name of the `CASES` file without its extension. The Nth case, the 2Nth and so on go to the holdout half, the others to the tune half, in their order. Each case is copied as read, state, labels, options, tags and note (its values, not its bytes: comments go, and an anchor is written out), so a recording that answers a case in the whole set answers it in its half, and a split never needs a recording again. The halves are named `NAME-tune` and `NAME-holdout` after the set's `metadata.name`, keep its `spec.rubric`, labels and annotations, and say in `metadata.description` how they were made; each starts with a one-line comment naming its source. A half's fingerprint is over its own cases.
 
-Stdout gives each half's path, name, count and fingerprint, then per question the labels it carries and how many cases carry each. A label one half has and the other lacks is a `jud: warning:` line on stderr, since a held-out number on an outcome the tuning set never saw says little. Status 2, before anything is written: a document that does not read, `--every` under 2, fewer cases than `--every` (nothing would be held out), a half that would be written over the input, or a half's file that already exists. `jud split` asks no backend and needs no key.
+Stdout gives each half's path, name, count and fingerprint, then per question the labels it carries and how many cases carry each. A conversation's `from_turn` label counts as the turns it labels: `true` from that turn on, `false` before it, or `false` throughout for `null`. With `--rubric`, the labels are read as the rubric reads them and listed in its order: a Score level is its text, whether the label wrote the text or the index. Without it, a label is its own word, and a note on stderr says when a level is named by its index. A label one half has and the other lacks is a `jud: warning:` line on stderr, since a held-out number on an outcome the tuning set never saw says little. Status 2, before anything is written: a document that does not read, `--every` under 2, fewer cases than `--every` (nothing would be held out), cases that do not fit the `--rubric` given, a half that would be written over the input, or a half's file that already exists. The two halves are written together or not at all: when the second cannot be written, the first is removed. `jud split` asks no backend and needs no key.
 
 ## `jud completion`
 
@@ -709,6 +731,6 @@ Options:
 | 2 | Wrong before any call, and fixable: no rubric argument, a file that cannot be read, a document that is not valid, cases that do not fit their rubric, stdin that is empty or not one JSON value, a missing API key, a malformed configuration file, an unknown flag or a flag with a bad value, an `--out` that would overwrite an input, a `--min-accuracy` that names no question; for `check`, any document refused. |
 | 3 | `jud eval` only. The evaluation ran, the report is on stdout, and a `--min-accuracy` bar was not met. |
 
-Every failure goes to stderr as `jud: MESSAGE`. A usage error that clap catches prints clap's own `error:` text instead, with status 2. `jud check` is the exception: its refusals are `error` lines in its result on stdout. Stdout carries the command's result and nothing else: the verdicts of a run, the lines of `jud check` and `jud lower`, the JSON of `jud config`, `jud eval`'s report, `jud tune`'s blocks and the completion script. `jud record` prints nothing on stdout. Everything else is a diagnostic and goes to stderr: the progress and tally of `jud record`, the tables and notes of `jud tune`, and the line that says a bar was not met. A pipeline never reads an error as a result. A reader that closes stdout early (`jud check FILE | head -1`) is not an error for any command: nothing panics, and the status is the command's own.
+Every failure goes to stderr as `jud: MESSAGE`. A usage error that clap catches prints clap's own `error:` text instead, with status 2. `jud check` is the exception: its refusals are `error` lines in its result on stdout. Stdout carries the command's result and nothing else: the verdicts of a run, the lines of `jud check` and `jud lower`, the JSON of `jud config`, `jud eval`'s report, `jud tune`'s blocks and the completion script. `jud record` prints nothing on stdout but its `--dry-run` plan, and `jud split` prints its report there. Everything else is a diagnostic and goes to stderr: the progress and tally of `jud record`, the tables and notes of `jud tune`, and the line that says a bar was not met. A pipeline never reads an error as a result. A reader that closes stdout early (`jud check FILE | head -1`) is not an error for any command: nothing panics, and the status is the command's own.
 
 Three commands write files, and nothing else does. `jud record` writes recordings into its `--out` directory. `jud tune --out` writes one rubric file. `jud split` writes two new cases files, and refuses when either exists. None writes over a rubric or a cases document it was given, and `jud tune --out` never writes among the recordings. Every other command, `jud eval` and a plain run among them, writes no file.
