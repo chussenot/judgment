@@ -62,6 +62,7 @@ nav:
           - 0019 A command line for the format, released as a binary: project/decisions/0019-a-command-line-for-the-format.md
           - 0020 How a v1 minor of the .jud format is spelled: project/decisions/0020-how-a-v1-minor-is-spelled.md
           - 0021 Record, evaluate and tune from the command line: project/decisions/0021-record-eval-and-tune-from-the-command-line.md
+          - 0022 jud reports what the tuning loop counted by hand: project/decisions/0022-jud-reports-what-the-tuning-loop-counted-by-hand.md
 
 # Pages link to files outside docs/ (the examples, the README, the CHANGELOG)
 # by relative path, the repository's convention, which GitHub and crates.io

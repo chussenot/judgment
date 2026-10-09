@@ -125,6 +125,20 @@ impl Resolved {
         &self.base_url
     }
 
+    /// Where the model came from: `environment`, `config_file` or `default`.
+    pub(crate) fn model_from(&self) -> String {
+        serde_json::to_value(self.model_from)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .unwrap_or_default()
+    }
+
+    /// Where the key came from: `environment`, `config_file` or `missing`;
+    /// never the key.
+    pub(crate) fn api_key_source(&self) -> &'static str {
+        self.api_key
+    }
+
     /// The crate's client for this backend. A missing key is the one
     /// configuration error a run cannot recover from, so it says where a key
     /// goes.

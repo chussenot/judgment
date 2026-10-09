@@ -40,14 +40,14 @@ project, as the skill says, never beside the rubric.
    - With `apply`, keep the split: without `holdout` in the arguments, say
      that the `tuning` block will name a tuning set the project does not
      keep, and recommend `holdout` so it does.
-   - Split as the skill says. Name the files after the cases file:
-     `support-cases.jud` gives `support-cases-tune.jud` and
-     `support-cases-holdout.jud`; their `metadata.name` is the cases
-     document's name plus `-tune` and `-holdout`. With `holdout` in the
-     arguments, write them beside the cases file; without it, in a
-     temporary directory of their own as the skill says.
-   - Check both with the rubric. Then `eval --replay` both, so that a
-     state copied wrong shows up as `no recording answers`.
+   - Split with `jud.sh split <cases>`, as the skill says: with `holdout`
+     in the arguments beside the cases file (no `--out`); without it,
+     `--out` a temporary directory of its own. It writes
+     `support-cases-tune.jud` and `support-cases-holdout.jud` for
+     `support-cases.jud`, named after the cases document plus `-tune` and
+     `-holdout`, and prints each half's labels; pass on any warning that a
+     half lacks a label.
+   - Check both with the rubric. Then `eval --replay` both.
    - Tune on the tuning set.
 4. **Grade first.** Run `jud.sh eval <rubric> <cases> --replay <dir>
    --json`, on the held-out set too when there is one. This is the

@@ -87,36 +87,42 @@ So fix labels and bars freely; batch question changes, then re-record once.
 ## Before spending calls
 
 `jud record` is the only step that costs money, and it asks the backend
-`jud config` names. Before running it, find out and say:
+`jud config` names. Before running it, ask `jud` what the run would do:
 
-- **How many requests.** One per case, except a conversation (an array
-  state) whose cases label a Noul with `{from_turn: ...}`. Such a
-  conversation is recorded once per entry of the array, `len(state)`
-  requests, assistant entries included.
-- **How many are new.** A recording in `--out DIR` that still answers its
-  request is kept and not asked again; a stale one (its request changed) is
-  asked again and its file replaced. `jud.sh check RUBRIC CASES DIR/*.jud`
-  tells them apart (`fingerprint matches` or `differs`). The cost is the
-  requests minus the matching recordings, or all of them with `--refresh`.
+```sh
+${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh record RUBRIC CASES --out DIR --dry-run
+```
+
+It asks nothing, writes nothing and needs no key, and prints the requests
+(a conversation labelled with `from_turn` counts once per turn), how many
+DIR already answers, the names to ask and the stale ones to replace, the
+backend and model with where the model came from, whether a key is set,
+and the time at the median pace of the recordings already in DIR. Read it
+and say:
+
+- **How many requests, and how many are new.** The run asks the `to ask`
+  and `stale` names and keeps the rest; with `--refresh`, all of them.
   When some are stale, find what changed (`git diff -- RUBRIC CASES`, or
   `git log -p -1 -- RUBRIC` for a committed change) and name it.
-- **Which backend and model.** Run `jud.sh config` and read `base_url`,
-  `model` and `model_from`. `model_from: default` means nothing chose the
+- **Which backend and model.** `(from default)` means nothing chose the
   model; `jev-latest` is an alias, and the recordings will name the version
-  that answered. `config` never prints a key, and does not contact the
-  backend.
-- **Whether a key is set.** `TYPESAFE_API_KEY` or `api_key` in the
-  configuration file; any non-blank word for a local server that ignores it.
-  The user sets it outside the conversation: `export TYPESAFE_API_KEY=...`
-  in their shell (or a gitignored `.env` that mise or direnv loads; `jud`
+  that answered.
+- **Whether a key is set.** A missing one stops the run before the first
+  call; any non-blank word does for a local server that ignores it. The
+  user sets it outside the conversation: `export TYPESAFE_API_KEY=...` in
+  their shell (or a gitignored `.env` that mise or direnv loads; `jud`
   itself reads no `.env`), or `api_key` in the configuration file `jud
   config` names. Never print it or ask for it.
-- **How long, on a local server.** A server on the user's machine (Ollama,
-  laya-serve, a `base_url` on `127.0.0.1` or `localhost`) costs no money but
-  wall time: about one model latency per request, a few seconds each on a
-  CPU. Take the latency from `spec.elapsed_ms` of a recording already in
-  DIR (`grep -h elapsed_ms DIR/*.jud`), or say it is unknown until the first
-  request answers. A hosted backend's cost is the calls.
+- **How long.** A server on the user's machine (Ollama, laya-serve, a
+  `base_url` on `127.0.0.1` or `localhost`) costs no money but wall time:
+  quote the `time:` line. A hosted backend's cost is the calls.
+
+A `jud` that refuses `--dry-run` as unknown predates it: count by hand
+then. The requests are one per case, `len(state)` for a conversation
+labelled with `from_turn`; `jud.sh check RUBRIC CASES DIR/*.jud` says which
+recordings still answer (`fingerprint matches`) and which are stale
+(`differs`); `jud.sh config` names the backend, the model and the key's
+source; `spec.elapsed_ms` in a recording gives the pace.
 
 Say the cost to the user before the `record` call: as the Bash call's
 description, which shows on the call, and as text just before it,
@@ -160,14 +166,14 @@ Per question:
   label every question, so the total to add is the largest shortfall, not
   the sum. Then name the outcomes the new cases should label, from the
   coverage count.
-- **Against always giving the commonest answer.** From the coverage counts
-  (below), the majority outcome's share of `labelled` is what a model that
-  always gave that answer would score. Put it beside the accuracy, labelled
-  as yours. A question whose interval reaches down to the share or below it
-  has not shown it beats a constant: say so before anything about bars. With
-  71 of 84 labels `false`, 0.96 is 0.11 better than always answering no,
-  not 0.96 better than nothing; at 0.63 against a share of 0.66 (61 of 93),
-  the model does worse than always answering the commonest level.
+- **`majority OUTCOME, M of L (SHARE)`.** What a model that always gave
+  the commonest label would score (`majority.share` in the JSON). Put it
+  beside the accuracy. A `not shown to beat always answering ...` warning
+  (`no_better_than_majority`) means the interval reaches down to it: say
+  so before anything about bars. With 71 of 84 labels `false`, 0.96 is 0.11
+  better than always answering no, not 0.96 better than nothing; at 0.63
+  against 0.66, the model does worse than always answering the commonest
+  level.
 - **Tuned on these cases?** If the rubric's `spec.tuning.cases` equals the
   `cases.fingerprint` in the JSON, the bars were tuned on the cases being
   graded, so the gate numbers are optimistic (see "Do not grade on what you
@@ -188,24 +194,26 @@ Per question:
   Which side matters is the user's call: a refund sent wrongly costs more
   than a ticket routed to a human.
 
-  A gate that defers nearly every case (about nine in ten or more) is not
-  a bar doing its job; it is a policy that hands the whole question to its
-  `fallback`. Say what that does in production in one line ("every answer
-  falls back to `possible`, so every change goes to a patroller"), and look
-  at confidence when right and when wrong before proposing any other bar.
+  A `the gate defers D of T` warning (`defers_nearly_all`: nine in ten or
+  more) is not a bar doing its job; it is a policy that hands the whole
+  question to its `fallback`, which the warning names. Say what that does
+  in production in one line ("every answer falls back to `possible`, so
+  every change goes to a patroller"), and look at confidence when right and
+  when wrong before proposing any other bar.
 - **`model misses`.** Every case where the model's answer differs from the
   label, with its confidence. A Noul's is the probability of its answer; a
   Score's levels are printed as indices, 0 being the first level in
   `criteria`, so map them to names first. Triage every one (next section).
-- **What the model answers, all cases together.** Count each answer the
-  model gave: a miss's `predicted`, plus, per outcome, its labelled count
-  minus its misses (those were answered right, with the label). When one
-  answer takes most of them (a Choice answering `content` 75 times in 82,
-  a Score staying at level 0), the question has collapsed: the model is not
-  telling the outcomes apart, and the misses are one cause, not many. Say
-  so first, with the counts, then triage the rows under it. No bar and no
-  relabel fixes a collapse; a sharper question, outcomes the state can tell
-  apart, or another model can.
+- **`outcomes, labelled/answered/right`.** Per outcome (`outcomes` in the
+  JSON): how many labels name it, how often the model gave it on a labelled
+  case, how often rightly. An outcome answered far more often than it is
+  labelled is where the misses come from; one labelled `0` is never tested.
+  A `collapsed` warning means one answer takes most of them while the labels
+  are spread (a Choice answering `content` 71 times in 78, a Score staying
+  at level 0): the model is not telling the outcomes apart, and the misses
+  are one cause, not many. Say so first, with the counts the warning gives,
+  then triage the rows under it. No bar and no relabel fixes a collapse; a
+  sharper question, outcomes the state can tell apart, or another model can.
 
 `--min-accuracy 0.9` (or `desk=0.95`) makes `eval` exit with status 3 when a
 question's accuracy falls short. That is how a rubric is held in CI: the
@@ -271,14 +279,16 @@ cases and recordings untouched.
 
 ## Coverage
 
-`jud eval` does not count labels per outcome; count them from the cases
-document. For each question, list how many cases label each option, each
-level, `true` and `false` (or each `from_turn`). Name the cases behind every
-count of 3 or fewer (`none_of_these 2: thanks, receipt`). Each question's
-counts add up to its `labelled` in the eval JSON; if they do not, recount
-before reporting. After a proposed relabel, move exactly the relabelled
-cases from one outcome to the other. After a split, count the tuning set
-and the held-out set apart. Say nothing about what an outcome's cases are
+`jud eval` counts the labels per outcome: the first number of each
+`outcomes` entry, every outcome the question offers listed, a `0` included.
+Quote those counts; they add up to `labelled` by construction. Two things
+it does not give, which come from the cases document: the names of the
+cases behind every count of 3 or fewer (`none_of_these 2: thanks,
+receipt`), and, for a conversation labelled with `from_turn`, which turn
+each case names (`eval` counts that question per turn, as `yes` and `no`).
+After a proposed relabel, move exactly the relabelled cases from one
+outcome to the other. After a split, `jud split` prints each half's label
+counts, or `eval` each half. Say nothing about what an outcome's cases are
 like that the named cases do not show. Flag:
 
 - an outcome no case labels, so the model is never tested on it;
@@ -442,17 +452,27 @@ were tuned on: say so, and recommend keeping the split files. Count each questio
 halves, and name the cases behind every held-out count of 3 or fewer: a
 held-out number on 2 billing cases says little about billing.
 
-1. Split the cases into two documents: a tuning set and a held-out set,
-   every outcome in both. Take every fourth case into the held-out set
-   unless the user has a better split. Give each document its own
-   `metadata.name`, and name the files after the cases file
-   (`support-cases.jud` gives `support-cases-tune.jud` and
-   `support-cases-holdout.jud`). `jud` has no split command: copy each case
-   block verbatim. Then check that the two counts add up to the original,
-   `jud.sh check` each with the rubric, and `eval --replay` each. The
-   states are unchanged, so the recordings already in DIR answer both and
-   nothing is re-recorded; a state copied wrong shows as `no recording
-   answers`.
+1. Split with `jud`, which holds out every fourth case and copies each one
+   as read:
+
+   ```sh
+   ${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh split CASES --out DIR
+   ```
+
+   `DIR` is the cases file's own directory when the user asked for split
+   files (leave `--out` out), else a temporary directory of its own. It
+   writes `STEM-tune.jud` and `STEM-holdout.jud` (`support-cases.jud` gives
+   `support-cases-tune.jud` and `support-cases-holdout.jud`), each with its
+   own `metadata.name`, prints each half's count, fingerprint and labels per
+   question, and warns on stderr when one half lacks a label the other has:
+   pass that warning on. It refuses to write over a file; never delete one
+   to make room without the user's say. `--every N` holds out every Nth
+   case when the user wants another share. The states are unchanged, so
+   the recordings already in DIR answer both halves and nothing is
+   re-recorded. A `jud` that refuses `split` as unknown predates it: then
+   write the two documents by copying each case block verbatim, every
+   fourth into the held-out set, and check that the counts add up and that
+   `eval --replay` answers each.
 2. Tune on the tuning set and apply.
 3. Grade the tuned rubric on the held-out set with
    `eval --replay DIR`. Its gate numbers are the honest ones: put them

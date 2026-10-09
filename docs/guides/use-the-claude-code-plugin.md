@@ -135,7 +135,7 @@ The pages were rewritten between rounds from what the graders found. A round on 
 
 Every scripted check passed in the final round: 109 of 109, at $4.61 for the 14 runs on Sonnet 5.5, $0.15 to $0.76 each. The confirmation round re-ran the six scenarios its fixes touched, and the two its own fixes touched were run once more, all checks passing. Two weaknesses remain, both in the replies' prose rather than in what the commands do:
 
-- **Contradicted claims.** Their number swings between rounds (2 to 20) with no trend after round 3. Most are arithmetic done by hand on label counts, which `jud eval --json` does not yet report per outcome.
+- **Contradicted claims.** Their number swings between rounds (2 to 20) with no trend after round 3. Most were arithmetic done by hand on label counts; `jud eval` now reports them per outcome, with the majority and its signals ([decision 0022](../project/decisions/0022-jud-reports-what-the-tuning-loop-counted-by-hand.md)), and the skill reads them instead of counting.
 - **The cost announcement.** A model writes it reliably as the `record` call's description, and less reliably as text before the call, so the check accepts either.
 
 To run them again, with `claude` logged in and `jud` built:

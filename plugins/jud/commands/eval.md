@@ -63,9 +63,14 @@ no file.
      broken, only out of date. Give no accuracy or bar advice until there
      are recordings that answer. Do not edit recordings or revert the
      rubric.
-5. **Coverage.** Read the cases document. Per question, count the cases
-   labelling each outcome, and name the cases behind every count of 3 or
-   fewer. Each question's counts add up to its `labelled`; recount if not.
+5. **Coverage and signals.** Each question's `outcomes` gives the labels
+   per outcome, every outcome listed; quote those counts. Name the cases
+   behind every count of 3 or fewer from the cases document. Read
+   `majority` beside the accuracy, and put each of the question's
+   `signals` (`no_better_than_majority`, `collapsed`, `defers_nearly_all`)
+   first in its line, as the skill says. A `jud` whose report has no
+   `outcomes` predates them: then count the labels from the cases document,
+   and the answers from `misses` plus the right ones.
 6. **Triage every miss.** Read the case's state and note and the question's
    criteria, then put the miss in one row of the skill's triage table. A
    Score miss is printed as level indices; map them to level names first.

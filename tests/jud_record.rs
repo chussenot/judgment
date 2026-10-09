@@ -1390,3 +1390,105 @@ fn the_help_says_record_always_asks_the_backend_and_spends_calls() {
     assert!(text.contains("never reads `JUD_REPLAY`"), "{text}");
     assert!(text.contains("spends calls"), "{text}");
 }
+
+/// `--dry-run` reads what a run reads and says what it would do: the
+/// requests, how many the directory answers, which are to be asked, the
+/// backend, the key, and the time at the directory's own pace. It needs no
+/// key, asks nothing and writes nothing.
+#[test]
+fn a_dry_run_counts_what_a_run_would_ask_and_asks_nothing() {
+    let dir = copy_dir(support::RECORDINGS);
+    std::fs::remove_file(dir.join("receipt.jud")).unwrap();
+    let before = contents(&dir);
+    let out = support::jud(
+        &[
+            "record",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--out",
+            dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    let text = stdout(&out);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(
+        text.starts_with(&format!(
+            "7 requests: 6 already recorded in {}, 1 to ask (0 replacing a stale recording)\nto ask: receipt\n",
+            dir.display()
+        )),
+        "{text}"
+    );
+    assert!(
+        text.contains("backend https://api.typesafe.ai, model jev-latest (from default)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("API key: missing; the run would stop before the first call"),
+        "{text}"
+    );
+    assert!(
+        text.contains("time: about "),
+        "the recordings carry their time: {text}"
+    );
+    assert_eq!(contents(&dir), before, "a dry run writes nothing");
+}
+
+/// A stale recording is counted as one to replace, and named.
+#[test]
+fn a_dry_run_names_a_stale_recording_it_would_replace() {
+    let dir = with_stale("receipt", None, None);
+    let out = support::jud(
+        &[
+            "record",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--out",
+            dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    let text = stdout(&out);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(text.contains("6 already recorded"), "{text}");
+    assert!(
+        text.contains("1 to ask (1 replacing a stale recording)"),
+        "{text}"
+    );
+    assert!(text.contains("stale, to replace: receipt\n"), "{text}");
+}
+
+/// Into a directory that is not there: every request to ask, the time
+/// unknown, and the directory still not there afterwards.
+#[test]
+fn a_dry_run_into_a_new_directory_creates_nothing() {
+    let parent = support::scratch("dry-run");
+    let dir = parent.join("not-yet");
+    let out = support::jud(
+        &[
+            "record",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--out",
+            dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    let text = stdout(&out);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(
+        text.starts_with("7 requests: 0 already recorded in "),
+        "{text}"
+    );
+    assert!(
+        text.contains("time: unknown until the first request answers"),
+        "{text}"
+    );
+    assert!(!dir.exists(), "a dry run creates no directory");
+}

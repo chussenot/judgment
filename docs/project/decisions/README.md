@@ -2,7 +2,7 @@
 title: Decisions
 description: The architecture decision records that govern the judgment crate's design, how they are numbered, how a record is written, and what has moved since each was accepted.
 status: current
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-09
 tags: [judgment, decisions, adr, madr]
 ---
 
@@ -23,6 +23,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0019](0019-a-command-line-for-the-format.md) | A command line for the format, released as a binary | accepted |
 | [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | proposed |
 | [0021](0021-record-eval-and-tune-from-the-command-line.md) | Record, evaluate and tune from the command line | accepted |
+| [0022](0022-jud-reports-what-the-tuning-loop-counted-by-hand.md) | jud reports what the tuning loop counted by hand | accepted |
 
 ## Status notes
 
@@ -40,6 +41,7 @@ Records are not edited after acceptance; a fact that has moved since is noted he
 - 0018 says any change of the format, additive or not, takes a new `apiVersion` that a reader of the earlier one refuses. [Stability](../../reference/stability.md), on 2026-10-06, promises that a `v1` minor only adds and that readers accept every `v1` document for at least twelve months after a later minor is published; a reader of a later minor therefore reads earlier `v1` documents, and only a change of meaning takes a new major. How the minor is spelled is [0020](0020-how-a-v1-minor-is-spelled.md), proposed. Nothing moves in the code until it is accepted: one minor exists and the reader reads it exactly.
 
 - 0021 extends the command [0019](0019-a-command-line-for-the-format.md) defined: three subcommands (`record`, `eval`, `tune`), exit status 3 for `jud eval` alone, and two places that write files (`jud record --out` and `jud tune --out`). 0019 stands: its statuses 0, 1 and 2 keep their meaning, and `jud RUBRIC` still evaluates one state from stdin. 0021 was accepted on 2026-10-08, when the subcommands were implemented; its "As implemented" section records what the implementation settled, and where it differs from the proposal the implementation is the contract.
+- 0022 adds to 0021's commands without changing them: per-outcome counts, a majority and three signals in `jud eval`, `jud record --dry-run`, and a fourth subcommand, `jud split`, a third place that writes files.
 
 ## Writing a record
 

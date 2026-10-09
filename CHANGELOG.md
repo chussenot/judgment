@@ -6,6 +6,24 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `jud eval` reports, per question, its answers by outcome (how many labels
+  name each, how often the model gave it, how often rightly), the majority
+  label with its share, and three signals: `no_better_than_majority`,
+  `collapsed` and `defers_nearly_all`, each a `warning:` line in the text and
+  a code in the new `outcomes`, `majority` and `signals` keys of `--json`
+  (decision 0022). They are what the tuning skill computed by hand on the
+  first real-world run (#46).
+- `jud record --dry-run` says what a run would do and does nothing: the
+  requests, how many the directory answers, which are to ask or replace,
+  the backend and model, whether a key is set, and the time at the median
+  pace of the recordings already there. No key, no call, no file.
+- `jud split CASES [--every N] [--out DIR]` writes a tuning set and a
+  held-out set, every Nth case held out, each case copied as read so the
+  recordings over the whole set answer both. It writes over nothing and
+  warns when a label one half has is missing from the other.
+
 ### Changed
 
 - The Claude Code plugin (now 0.3.1) carries what a first real-world run

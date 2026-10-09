@@ -24,43 +24,44 @@ tool.
    cases document.
 2. **Check.** `jud.sh check <rubric> <cases>` must say `0 refused`. A refusal
    means the requests cannot be built: report it, offer `/jud:check`, stop.
-3. **Count the requests.** One per case. A conversation whose cases label a
-   Noul with `{from_turn: ...}` is recorded once per entry of its state
-   array (`len(state)`, assistant entries included); sum over the cases.
-4. **Count what is kept.** If the directory has recordings, run
-   `jud.sh check <rubric> <cases> <dir>/*.jud`. A recording with
-   `fingerprint matches` is kept; one with `fingerprint differs` is stale:
-   `record` asks that case again and replaces the file. So the new requests
-   are the total minus the matching recordings (the total with
-   `--refresh`). When any is stale, find what changed: `git diff --
-   <rubric> <cases>` as written (no `-C`, no `cd`), or `git log -p -1 --
-   <rubric>` for a committed change. Name it in the announcement and the
-   reply, quoting the changed line from the diff (for example "the
-   `severity` question now has five levels"). All stale means a question
-   changed; some, those cases did.
-5. **Read the backend.** `jud.sh config` prints `base_url`, `model`,
-   `model_from` and where the key comes from. It never prints the key, and
-   neither do you. `model_from: default` means nothing set the model:
-   `jev-latest` is an alias, and the recordings will name the version that
-   answered. `jud config` does not contact the backend; do not probe it
-   yourself.
-6. **Stop if there is no key.** If `api_key` shows none, stop and report
-   everything steps 1 to 5 found (directory, requests, kept, new, base_url,
-   model) in one reply. Say that the key is set outside this conversation:
-   `export TYPESAFE_API_KEY=...` in the shell (or a gitignored `.env` that
-   mise or direnv loads; `jud` reads no `.env` itself), or `api_key` in the
-   file `jud config` names, and that any non-blank word does for a local
-   server that ignores it. Then re-run the command. Never
-   ask for the key here.
+3. **Plan the run.** `jud.sh record <rubric> <cases> --out <dir> --dry-run`
+   (with `--refresh` when asked) asks nothing, writes nothing and needs no
+   key. It prints the requests (a conversation labelled with `from_turn`
+   counts once per turn), how many `<dir>` already answers, the names to
+   ask and the stale ones it would replace, the backend and model with the
+   model's source, whether a key is set, and the time at the pace of the
+   recordings already there. Take every count and name in the
+   announcement from it. A `jud` that refuses `--dry-run` predates it:
+   then count by hand as the skill says ("Before spending calls").
+4. **Name what made recordings stale.** When the plan lists stale ones,
+   find what changed: `git diff -- <rubric> <cases>` as written (no `-C`,
+   no `cd`), or `git log -p -1 -- <rubric>` for a committed change. Name it
+   in the announcement and the reply, quoting the changed line from the
+   diff (for example "the `severity` question now has five levels"). All
+   stale means a question changed; some, those cases did.
+5. **Read the backend from the plan.** `(from default)` means nothing set
+   the model: `jev-latest` is an alias, and the recordings will name the
+   version that answered. Neither the plan nor `jud config` prints the key
+   or contacts the backend; never print the key, and do not probe the
+   backend yourself.
+6. **Stop if there is no key.** If the plan says `API key: missing`, stop
+   and report what it found (directory, requests, kept, to ask, stale,
+   backend, model, time) in one reply. Say that the key is set outside
+   this conversation: `export TYPESAFE_API_KEY=...` in the shell (or a
+   gitignored `.env` that mise or direnv loads; `jud` reads no `.env`
+   itself), or `api_key` in the file `jud config` names, and that any
+   non-blank word does for a local server that ignores it. Then re-run the
+   command. Never ask for the key here.
 7. **Announce, then record.** This is a gate. The `jud.sh record` Bash
    call carries this line as its description, so the cost shows on the
    call before it runs. If you write any text between the last check
-   (`git diff`, `jud config`) and the call, it is this line. Saying it only
+   (the plan, `git diff`) and the call, it is this line. Saying it only
    in the final reply does not count. The line: `Recording <new> requests (<kept> kept,
    <stale> stale and replaced, in <dir>) to <base_url>, model <model>.`
    Leave out the parts that are zero (with nothing kept or stale, the
    parenthesis is just `(in <dir>)`), and add `, one per turn for <n>
-   conversations` when that applies. When any are stale, the line goes on
+   conversations` when that applies, and the plan's time (`, about 9 s
+   each, 14 min`) when it gives one. When any are stale, the line goes on
    with the change step 4 found, in the description too: `Stale because
    <the changed line>.` Invoking this command is the user
    asking for the run, so then run `jud.sh record <rubric> <cases> --out

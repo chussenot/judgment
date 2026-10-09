@@ -225,6 +225,32 @@ fn the_configuration_page_shows_jud_config_with_nothing_set() {
     );
 }
 
+/// The record guide's dry run is what `jud record --dry-run` prints for the
+/// screening documents, which have no recordings, with no key. It writes
+/// nothing: the directory it names is not there afterwards.
+#[test]
+fn the_record_guide_shows_a_dry_run() {
+    let label = "jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out recordings/screening --dry-run";
+    assert_transcript(
+        "docs/guides/record-replay-and-test.md",
+        label,
+        &[
+            "record",
+            "examples/jud/screening.jud",
+            "examples/jud/screening-cases.jud",
+            "--out",
+            "recordings/screening",
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    assert!(
+        !Path::new(ROOT).join("recordings").exists(),
+        "a dry run creates no directory"
+    );
+}
+
 #[test]
 fn the_guides_show_what_jud_check_prints() {
     assert_transcript(

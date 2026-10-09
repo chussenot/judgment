@@ -2,7 +2,7 @@
 title: Record, replay and test
 description: How to test a decision with no key and no network, with the Fake backend that refuses an answer the question could not produce, the Recorder and Replay pair keyed by the request's content, jud --replay for a rubric on the command line, and jud record to answer a rubric's labelled cases once and keep the answers.
 status: current
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-09
 tags: [judgment, testing, fake, replay, recordings, record, how-to]
 ---
 
@@ -95,6 +95,21 @@ A state nobody recorded is a backend failure (status 1, `no recording`); a direc
 `jud record` answers every case of a Cases document once and keeps each answer as a `.jud` recording. It is the command that spends calls to keep the answers: a plain run and `jud eval` without `--replay` ask a backend too, and keep nothing. It needs a backend and a key, which a server that ignores the bearer takes as any non-blank word ([Configure a backend](configure-a-backend.md)). It always asks the configured backend. It has no `--replay` and never replays from `JUD_REPLAY`: a non-empty value is ignored, and an empty one is refused as everywhere else ([Replay](../reference/configuration.md#replay)). Every flag is in [The jud command line](../reference/cli.md#jud-record).
 
 `jud record`, `jud eval` and `jud tune` arrived after 0.10.4; pin a release that lists them in [the changelog](../../CHANGELOG.md).
+
+Before spending anything, `--dry-run` says what the run would do: how many requests, which the directory already answers, which backend and model would be asked, whether a key is set, and how long it would take at the pace of the recordings already there. It asks nothing, writes nothing and needs no key:
+
+```sh
+jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out recordings/screening --dry-run
+```
+
+<!-- transcript: jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out recordings/screening --dry-run -->
+```text
+4 requests: 0 already recorded in recordings/screening, 4 to ask (0 replacing a stale recording)
+to ask: charged-twice, cancelled-last-week, how-does-billing-work, furious-outage
+backend https://api.typesafe.ai, model jev-latest (from default)
+API key: missing; the run would stop before the first call (a local server that ignores it takes any word)
+time: unknown until the first request answers (no recording in the directory to read it from)
+```
 
 The repository's `refund-screening` documents have no recordings, so recording them needs a key:
 
