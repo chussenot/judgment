@@ -1,7 +1,7 @@
 //! `jud RUBRIC`: the state on stdin, the rubric from the file, the verdicts
 //! on stdout. Every step is the library's: `Rubric::parse`, `Rubric::lower`
-//! with no supplied options, the client's `answer` (or `Replay`'s, over a
-//! directory of recordings), `Rubric::apply`.
+//! with the options `--options` or `--options-file` supply, the client's
+//! `answer` (or `Replay`'s, over a directory of recordings), `Rubric::apply`.
 
 use std::io::Read;
 use std::path::Path;
@@ -13,8 +13,29 @@ use serde_json::Value;
 use crate::backend::{Backend, Failure};
 use crate::tools;
 
-pub(crate) fn run(path: &str, replay: Option<&Path>) -> ExitCode {
-    match evaluate(path, replay) {
+/// Where the supplied options come from: `--options` inline, `--options-file`,
+/// or neither (clap refuses both).
+#[derive(Clone, Copy)]
+pub(crate) struct OptionsArg<'a> {
+    pub(crate) inline: Option<&'a str>,
+    pub(crate) file: Option<&'a str>,
+}
+
+impl OptionsArg<'_> {
+    fn read(self) -> Result<Supplied, Failure> {
+        let parsed = match (self.inline, self.file) {
+            (Some(json), _) => tools::parse_supplied(json, "--options"),
+            (None, Some(path)) => std::fs::read_to_string(path)
+                .map_err(|e| format!("cannot read options file {path}: {e}"))
+                .and_then(|text| tools::parse_supplied(&text, path)),
+            (None, None) => Ok(Supplied::default()),
+        };
+        parsed.map_err(Failure::Usage)
+    }
+}
+
+pub(crate) fn run(path: &str, replay: Option<&Path>, options: OptionsArg<'_>) -> ExitCode {
+    match evaluate(path, replay, options) {
         Ok(verdicts) => match crate::out::result(&format!("{verdicts}\n")) {
             Ok(()) => ExitCode::SUCCESS,
             Err(failure) => failure.report(),
@@ -53,13 +74,31 @@ fn read_state() -> Result<Value, Failure> {
     })
 }
 
-fn evaluate(path: &str, replay: Option<&Path>) -> Result<String, Failure> {
+fn evaluate(path: &str, replay: Option<&Path>, options: OptionsArg<'_>) -> Result<String, Failure> {
     let rubric = read_rubric(path)?;
+    // Before stdin and the backend: a malformed options argument is wrong
+    // whatever the state, and needs no key to say so.
+    let supplied = options.read()?;
     let state = read_state()?;
     let backend = Backend::open(replay)?;
-    let questions = rubric.lower(&state, &Supplied::default()).map_err(|e| {
+    let questions = rubric.lower(&state, &supplied).map_err(|e| {
+        let wants: Vec<&str> = rubric
+            .questions
+            .iter()
+            .filter(|(_, q)| q.options_from.is_some())
+            .map(|(id, _)| id.as_str())
+            .collect();
+        let hint = if supplied.is_empty() && !wants.is_empty() {
+            format!(
+                " ({} take{} options per request: pass them with --options or --options-file)",
+                wants.join(", "),
+                if wants.len() == 1 { "s" } else { "" }
+            )
+        } else {
+            String::new()
+        };
         Failure::Usage(format!(
-            "the rubric does not lower for this state: {e} (a Choice with `options_from: request` needs options jud cannot supply yet)"
+            "the rubric does not lower for this state: {e}{hint}"
         ))
     })?;
     let response = backend.answer(&state, &questions)?;

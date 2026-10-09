@@ -93,6 +93,18 @@ struct Cli {
     /// never replays, it writes recordings with --out.
     #[arg(long, env = "JUD_REPLAY", value_name = "DIR", value_hint = ValueHint::DirPath)]
     replay: Option<PathBuf>,
+    /// The options of each Choice the rubric marks `options_from: request`,
+    /// as a JSON object: question id, then option key to description.
+    ///
+    /// They are asked in the order given, before the question's static
+    /// options; options for a question that does not take them, or under a
+    /// key it already offers, are refused. The tools an agent may call, the
+    /// desks staffed now: what changes from one request to the next.
+    #[arg(long, value_name = "JSON", conflicts_with = "options_file")]
+    options: Option<String>,
+    /// --options, read from a file.
+    #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath)]
+    options_file: Option<String>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -156,7 +168,14 @@ fn main() -> ExitCode {
             Failure::Usage(format!("{word} is a subcommand, not a rubric. {REPLAY_AFTER}"))
                 .report()
         }
-        (None, Some(path)) => run::run(&path, replay.as_deref()),
+        (None, Some(path)) => run::run(
+            &path,
+            replay.as_deref(),
+            run::OptionsArg {
+                inline: cli.options.as_deref(),
+                file: cli.options_file.as_deref(),
+            },
+        ),
         // `arg_required_else_help` prints the help only for an empty command
         // line; a `--replay` or a `JUD_REPLAY` alone is an argument, so this
         // arm is reached with nothing to run and says so.

@@ -263,6 +263,16 @@ pub(crate) struct Lower {
     cases: Option<String>,
 }
 
+/// Supplied options as `jud lower --options` and `jud RUBRIC --options`
+/// take them: a JSON object of question id to option key to description,
+/// in the order the model is to see them. `what` names the source in the
+/// message.
+pub(crate) fn parse_supplied(json: &str, what: &str) -> Result<Supplied, String> {
+    serde_json::from_str(json).map_err(|e| {
+        format!("{what} is not a JSON object of question key to option key to text: {e}")
+    })
+}
+
 pub(crate) fn lower(args: &Lower) -> Fallible<bool> {
     let rubric = read_document(&args.rubric, "Rubric", Rubric::parse)?;
     let state: Option<Value> = match (&args.state, &args.state_file) {
@@ -277,9 +287,7 @@ pub(crate) fn lower(args: &Lower) -> Fallible<bool> {
         (None, None) => None,
     };
     let options: Supplied = match &args.options {
-        Some(json) => serde_json::from_str(json).map_err(|e| {
-            format!("--options is not a JSON object of question key to option key to text: {e}")
-        })?,
+        Some(json) => parse_supplied(json, "--options")?,
         None => Supplied::default(),
     };
     let cases: Option<Cases> = match &args.cases {
