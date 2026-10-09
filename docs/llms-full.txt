@@ -3896,7 +3896,7 @@ The unit and integration tests never leave the process: wiremock for the client,
 | `mise run live:pplx` | Perplexity's [pplx-decider-v1.1-27b](https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b) through the `autojev-serve` its checkpoint ships, on `PPLX_URL` (default `http://127.0.0.1:8010`), model `autojev-qwen3.8-27b` by default | a CUDA GPU with about 49 GiB for the weights; the snapshot's `source/` installed with its `requirements.txt`, then `AUTOJEV_CHECKPOINT=<snapshot> PORT=8010 autojev-serve`. `PPLX_API_KEY` when the server sets `AUTOJEV_API_KEY`, which also runs the bearer test |
 | `mise run live:clef` | Cloudflare's Clef on Workers AI through `tools/systemone/serve.py`, `clef` by default and `CLEF_MODEL=clef-flash` for the 9B | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`; spends a handful of model calls |
 
-Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate.
+Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate; against the hosted API an unset profile stops the run instead, since its pins are what a run there is for. What each profile pins is on its server's page: [the hosted API](hosted-typesafe.md), [Laya](laya-typed-decisions.md), [autojev-serve](autojev-serve.md).
 
 Every body a test reads as sent, a success, a refusal or the model list, is also checked against the vendored OpenAPI document (below), and the verdict printed: which component it was held to, and every field that fails, down to the answer kind's own branch. The client decodes into types that tolerate more than the document allows, so a server can pass every other test and still send what the contract does not; this is where that shows. A status the document does not list (only 200 and 422 are) is named as such: the hosted API's 400 and laya-serve's 413 are refusals the client handles, not bodies the document describes. A success body that fails the document fails the run on the profiles that hold their server to it, `typesafe` and `autojev`; on the others it is reported, until a run shows the server holds.
 
@@ -4218,7 +4218,64 @@ TYPESAFE_BASE_URL=http://127.0.0.1:8000 TYPESAFE_MODEL=typed-decisions TYPESAFE_
   cargo run -p judgment --example typed_decisions -- /tmp/typed-decisions-test.jsonl --record /tmp/laya-full --json
 ```
 
-`--test-threads=1` keeps the tests from queueing behind each other on a single-worker server. Expect the first request to a checkpoint to include its load time, and the benchmark to take about a quarter of an hour on four cores. The test that sends `jev-latest` makes the router load the English checkpoint beside the fine-tuned one (843 MB more), so the server needs memory for both. Point `JUDGMENT_LIVE_BASE_URL` at port 8099 to run the suite against the shim.
+`--test-threads=1` keeps the tests from queueing behind each other on a single-worker server. Expect the first request to a checkpoint to include its load time, and the benchmark to take about a quarter of an hour on four cores. The test that sends `jev-latest` makes the router load the English checkpoint beside the fine-tuned one (843 MB more), so the server needs memory for both. Point `JUDGMENT_LIVE_BASE_URL` at port 8099, with `JUDGMENT_LIVE_PROFILE=generic`, to run the suite against the shim: it refuses 256 options with a 400 and answers the over-budget state after truncating it, where the `laya` profile pins laya-serve's 413s.
+
+
+<!-- source: docs/project/verification/autojev-serve.md -->
+
+
+# Against autojev-serve
+
+Perplexity's [pplx-decider-v1.1-27b](https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b) is a decision model, a classifier with a 255-row decision head, not a chat model. Its checkpoint ships its own HTTP server, `autojev-serve`, which serves `POST /v1/systemone` and `GET /v1/models`. `mise run live:pplx` runs the live tests against it with `JUDGMENT_LIVE_PROFILE=autojev`; this page is what that profile pins and where each pin comes from.
+
+The short answer: the wire holds. Every body the server sent conforms to the vendored OpenAPI document, refusals included. Where it differs from the hosted API is where the document is silent: which requests it refuses, and with which status.
+
+## What was tested, and with what
+
+| | |
+|---|---|
+| Server | `autojev/server.py` from the checkpoint's `source/` (the FastAPI app reports version 0.2.0), run unchanged |
+| Model | Not the real one: it needs a CUDA GPU with about 49 GiB for its weights, and the run had none. `answer()`, `options()` and `describe()` from the checkpoint's `model.py` ran unchanged; only the network was replaced, by deterministic logits hashed from each row |
+| Machine | 4 CPUs, 15 GB, no GPU, in the development container |
+| Date | 2026-10-09 |
+| Profiles | `autojev` and `generic`, model `autojev-qwen3.8-27b`; `autojev` again with the model named `jev-latest` |
+
+Everything the server decides before the model runs is the real server's: request validation, the status of each refusal, the body shapes, the aliases, the model list, the bearer check. What depends on the model is not shown here: accuracy, calibration, the confidence formulas, and what the real tokenizer does past its window.
+
+## What the server does
+
+| Request | autojev-serve | The hosted API |
+|---|---|---|
+| The three primitives, a structured level, an option with no description | 200, conforming to `SystemOneResponse` | 200 |
+| 256 options | 422, `HTTPValidationError` (`Dictionary should have at most 255 items`) | 400, `at most 255` |
+| 11 levels | 422, `HTTPValidationError` (`List should have at most 10 items`) | 400 |
+| One option | 200, probability 1 | 200, probability 1 |
+| One level | 422, `HTTPValidationError` (`List should have at least 2 items`) | 200 |
+| An empty question id | 200, answered under the key `""` | 400, `cannot be empty` |
+| A state of about 40,000 tokens | answered: no budget is checked before the model | 400, `max_tokens_exceeded` |
+| An unknown extra body field | 422, `Extra inputs are not permitted` | 400, `Invalid request.` |
+| `GET /v1/models` | 200, conforming to `ModelMetadataList`: `autojev`, `autojev-qwen3.8-27b`, `jev-1.13.0`, `jev-latest`, `jev-preview` | 200 |
+| A wrong bearer token, with `AUTOJEV_API_KEY` set | 401 | 401 |
+
+Two things the hosted API sends and this server does not are both allowed by the document: a Noul answer with no `confidence` (`NoulAnswer` requires only `noul` and `type`) and `output_tokens` always 0.
+
+## Why the profile, and not the model name
+
+The server answers to `jev-latest`, `jev-preview` and `jev-1.13.0` as well as its own names. The live tests used to take any model whose name starts with `jev` for the hosted API and assert its status codes, so a run under an alias failed on 422 against 400. The tests now take the server from `JUDGMENT_LIVE_PROFILE` ([How the crate is checked](method.md)), and the same run passes under `jev-latest`. Name the model `autojev-qwen3.8-27b` anyway, so a recording or a report does not say Jev.
+
+## What is still open
+
+A run on a GPU with the real weights: the decisions themselves, the confidence the model gives, and the over-budget state, which the real tokenizer may truncate or refuse. That run belongs on this page, with the checkpoint's revision.
+
+## How to repeat it
+
+```sh
+# on a CUDA host, with the snapshot's source/ installed with its requirements.txt
+AUTOJEV_CHECKPOINT=<snapshot> PORT=8010 autojev-serve
+
+# from the crate's root: the live tests under the autojev profile
+PPLX_URL=http://127.0.0.1:8010 mise run live:pplx
+```
 
 
 <!-- source: docs/project/research/system-one-client-libraries.md -->

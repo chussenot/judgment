@@ -37,7 +37,9 @@ All notable changes to the `judgment` crate. The format follows
   budget) a behaviour is asserted on the profile it was observed on and
   printed on the others; laya-serve 0.3.24's statuses, as its verification
   record has them, and autojev-serve's are now pinned too. Unset, the
-  profile is `generic`.
+  profile is `generic`, except against the hosted API, where it stops the
+  run. `docs/project/verification/autojev-serve.md` records what the
+  autojev profile pins and how it was observed.
 - `jud` names every `TYPESAFE_*` or `JUD_*` variable it does not read
   (`JUD_BASE_URL`, `TYPESAFE_MODEL`): one line on stderr before it asks a
   server, saying what it reads instead and which model and server it is
