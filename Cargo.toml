@@ -168,6 +168,11 @@ required-features = ["cli"]
 name = "jud_tune"
 required-features = ["cli"]
 
+# `jud split` (decision 0022).
+[[test]]
+name = "jud_split"
+required-features = ["cli"]
+
 # The three together, and the command line's guidance: what `record` writes
 # is what `eval` and `tune` read (decision 0021).
 [[test]]
