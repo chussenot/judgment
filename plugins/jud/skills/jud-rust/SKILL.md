@@ -205,7 +205,11 @@ the template:
    - the whole `main` from the module's header, with its `mod` line,
      runtime attribute, `async` and `Result` return, said to replace the
      `fn main` in `src/main.rs` and to keep the rest of the file (the `mod`
-     line goes at the top, and is not given twice);
+     line goes at the top, and is not given twice). When step 6 found the
+     module already mounted from the crate's `src/lib.rs` (`pub mod
+     <module>;`), a binary or an example reaches it through the library:
+     give the `main` with `use <crate>::<module>;` (the package name with
+     `-` turned to `_`) in place of the `mod` line, and say so;
    - when step 6 found `main` sync or returning `()`, a list of what
      changes in it, every item: the `#[tokio::main(flavor =
      "current_thread")]` attribute, `async fn`, the return type
@@ -221,6 +225,10 @@ the template:
        them: a state without them is sent as is;
      - for a conversation, that `decide` takes the turns so far, once per
        turn;
+     - that every `decide` is one request to the backend, as slow as the
+       model (seconds on a CPU): a caller that feeds it a stream or a batch
+       bounds how many are in flight and what waits, and samples rather
+       than queue without end when states arrive faster than answers;
    - the checks that passed, the throwaway crate's absolute path, and that
      once the `mod` line is in, `cargo test` in their crate runs the
      module's drift test (with no crate: once a crate mounts it as step 5

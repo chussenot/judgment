@@ -111,11 +111,19 @@ So fix labels and bars freely; batch question changes, then re-record once.
   in their shell (or a gitignored `.env` that mise or direnv loads; `jud`
   itself reads no `.env`), or `api_key` in the configuration file `jud
   config` names. Never print it or ask for it.
+- **How long, on a local server.** A server on the user's machine (Ollama,
+  laya-serve, a `base_url` on `127.0.0.1` or `localhost`) costs no money but
+  wall time: about one model latency per request, a few seconds each on a
+  CPU. Take the latency from `spec.elapsed_ms` of a recording already in
+  DIR (`grep -h elapsed_ms DIR/*.jud`), or say it is unknown until the first
+  request answers. A hosted backend's cost is the calls.
 
 Say the cost to the user before the `record` call: as the Bash call's
 description, which shows on the call, and as text just before it,
 for example `Recording 18 requests (30 already in recordings/support) to
-https://api.typesafe.ai, model jev-latest.` A final reply after the run is
+https://api.typesafe.ai, model jev-latest.`, or, on a local server,
+`Recording 93 requests to http://127.0.0.1:11434, model tev1:0.8b, about
+9 s each (14 min).` A final reply after the run is
 too late. If the user asked for this run in so many words (`/jud:record`
 does), run it after that message; otherwise stop at the count and ask. A
 run that fails part way keeps what it wrote, so the same command resumes.
@@ -152,6 +160,14 @@ Per question:
   label every question, so the total to add is the largest shortfall, not
   the sum. Then name the outcomes the new cases should label, from the
   coverage count.
+- **Against always giving the commonest answer.** From the coverage counts
+  (below), the majority outcome's share of `labelled` is what a model that
+  always gave that answer would score. Put it beside the accuracy, labelled
+  as yours. A question whose interval reaches down to the share or below it
+  has not shown it beats a constant: say so before anything about bars. With
+  71 of 84 labels `false`, 0.96 is 0.11 better than always answering no,
+  not 0.96 better than nothing; at 0.63 against a share of 0.66 (61 of 93),
+  the model does worse than always answering the commonest level.
 - **Tuned on these cases?** If the rubric's `spec.tuning.cases` equals the
   `cases.fingerprint` in the JSON, the bars were tuned on the cases being
   graded, so the gate numbers are optimistic (see "Do not grade on what you
@@ -171,10 +187,25 @@ Per question:
   gate's `fallback`, or to a person. Raising a bar trades acts for accuracy.
   Which side matters is the user's call: a refund sent wrongly costs more
   than a ticket routed to a human.
+
+  A gate that defers nearly every case (about nine in ten or more) is not
+  a bar doing its job; it is a policy that hands the whole question to its
+  `fallback`. Say what that does in production in one line ("every answer
+  falls back to `possible`, so every change goes to a patroller"), and look
+  at confidence when right and when wrong before proposing any other bar.
 - **`model misses`.** Every case where the model's answer differs from the
   label, with its confidence. A Noul's is the probability of its answer; a
   Score's levels are printed as indices, 0 being the first level in
   `criteria`, so map them to names first. Triage every one (next section).
+- **What the model answers, all cases together.** Count each answer the
+  model gave: a miss's `predicted`, plus, per outcome, its labelled count
+  minus its misses (those were answered right, with the label). When one
+  answer takes most of them (a Choice answering `content` 75 times in 82,
+  a Score staying at level 0), the question has collapsed: the model is not
+  telling the outcomes apart, and the misses are one cause, not many. Say
+  so first, with the counts, then triage the rows under it. No bar and no
+  relabel fixes a collapse; a sharper question, outcomes the state can tell
+  apart, or another model can.
 
 `--min-accuracy 0.9` (or `desk=0.95`) makes `eval` exit with status 3 when a
 question's accuracy falls short. That is how a rubric is held in CI: the
@@ -200,6 +231,7 @@ the confidence. Then put it in exactly one row:
 | A Noul whose probability falls on the label's side of `threshold` (0.52 under a 0.55 threshold, labelled no) | **The bar's job** | Nothing: a threshold never defers, it decides, and here it decides the label. Say so. |
 | Confidence is high, the label is right, and the criteria could be read the model's way | **The question is ambiguous** | Propose a sharper criterion: name the deciding detail. This changes the request, so re-record after. |
 | Confidence is high, the label is right, and the deciding fact is not in the state | **The question asks what the model cannot see** | The fact belongs in the state, computed by the caller, or the question should not be asked: `when: <state path>` asks it only when that path is present in the state. `when` cannot name another question or depend on its answer. |
+| Most of the model's answers to the question, right or wrong, are one option or level ("What the model answers" above) | **The question has collapsed** | Not a bar and not a label. Sharpen every outcome against the others, move what the state's machine-written fields already decide into code, split the question into narrower ones, or try another model. Re-record. |
 | Several misses swap the same two options or adjacent levels | **The outcomes overlap** | Sharpen both criteria against each other, merge the options, or use fewer levels. Re-record. |
 | The miss's right answer is an outcome few or no other cases label | **A coverage gap** | Add cases for that outcome before reading anything into the bar. |
 | None of the above: the label is right, the question is clear, and the model is confidently wrong once | **The model** | Record it as a known miss. One such case does not move a bar or justify rewriting a question. |
@@ -225,7 +257,17 @@ only that label changed, to a directory of its own outside the project (see
 with the same `--target-accuracy` and `--min-covered` as the proposal you
 are weighing; if you weigh two targets, run the copy at both. Report the
 bar it gives, per target. What a sharper question would do cannot be
-measured without re-recording: say so instead of giving a number.
+measured from the recordings, which answered the old question: say so
+instead of giving a number. It can be measured by recording again, which
+is the user's call. When they ask for it (or the backend is a local server,
+whose cost is only time, and they asked to investigate), measure on a
+subset: Write an edited copy of the rubric and a cases document holding a
+few cases per outcome to a directory of their own outside the project,
+announce the requests as for `record`, record them into a recordings
+directory of their own, and `eval` the copy. Report it as a subset of N
+cases with the change named ("`content` moved last, 18 cases: still 3
+right"), never as the rubric's accuracy, and leave the project's rubric,
+cases and recordings untouched.
 
 ## Coverage
 
@@ -453,10 +495,12 @@ their question first, then give the items. One triage row per line under
 case), and counts for every question. Items 1, 6
 (for `eval` alone) and 7 depend on what was done. In this order:
 
-1. The cost, before anything was spent (`record`), and what was spent.
-2. One line per question: accuracy with its interval, whether confidence
-   separates right from wrong, what the gate does (acts, defers, accuracy
-   when acted).
+1. The cost, before anything was spent (`record`), and what was spent:
+   calls, or time on a local server.
+2. One line per question: accuracy with its interval beside the majority
+   outcome's share, whether confidence separates right from wrong, what
+   the gate does (acts, defers, accuracy when acted), and, first, a
+   collapse or a gate that defers nearly everything when there is one.
 3. Whether the labelled count supports a bar, and how many more cases each
    question needs, for which outcomes.
 4. The triage table, a row for every miss.

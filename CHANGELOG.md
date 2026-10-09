@@ -6,6 +6,24 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The Claude Code plugin (now 0.3.1) carries what a first real-world run
+  taught it (#46): a rubric over Wikimedia's recentchange stream, 93 cases
+  captured from it, recorded and tuned against `tev1:0.8b` on Ollama, and a
+  Rust loop judging the live stream. `jud-tune` now reports each question
+  against always giving its commonest answer, names a question that has
+  collapsed onto one answer, flags a gate that defers nearly every case,
+  states a local server's cost as time, and allows an announced subset
+  experiment on a copy to measure a question change. The `jud` skill and
+  `/jud:rubric` ask for the field each answer is read from and leave to code
+  what machine-written fields decide; `/jud:cases` keeps captured states
+  verbatim and labels from the best evidence, an outcome known later
+  included. `jud-rust` gives the `use` path for a module mounted from
+  `lib.rs` and says that every `decide` is one request a stream caller must
+  bound. The mock System One server gains `collapse` and `confidence`
+  profile keys, and a new `jud-tune` scenario uses them.
+
 ### Added
 
 - The Claude Code plugin (now 0.3.0) turns a rubric into a typed Rust module:

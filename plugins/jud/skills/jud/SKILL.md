@@ -161,6 +161,18 @@ round trip.
 - **Facts the application has stay in code.** Whether the plan is enterprise,
   whether the order is older than a week: computed by the caller, put in the
   state, never asked of the model.
+- **Read real states before writing a Choice.** Look at a sample of what the
+  application really sends. Fields a program wrote (status codes, enums, a
+  type or namespace, a summary a tool generates such as `/* wbsetlabel-add */`)
+  often decide most outcomes outright: map those in code and ask the model
+  only about what they leave open. A small model asked to sort what a
+  lookup table could sort tends to collapse onto one option.
+- **The evidence must be in the state.** For each question, name the field
+  the answer would be read from. If it is not in the state (a question about
+  an edit's content over an event that carries no diff, about a ticket's
+  history over the last message alone), the model can only guess: say what
+  the caller must add to the state, and leave the question out until it
+  does. Instructions cannot make up for a missing field.
 - **Be honest in the policy.** A hand-written rubric has no `tuning` block,
   and a `threshold: 0.5` with no `note` says "a guess" plainly. A `note` on a
   gate says why the bar is where it is. Do not invent a `tuning` block, a
@@ -183,7 +195,18 @@ they cover anything. That is the writer's job.
   label that question, and the reader refuses it.
 - **Take real states.** The keys the application really sends, in their real
   shape, so that a `when` behaves in the cases as it will in production. An
-  invented state tests an invented request.
+  invented state tests an invented request. When the states come from
+  captured data (a log, a stream, an export) and there are dozens, generate
+  the document from the capture with a script rather than retyping them,
+  check that every `state` equals its source byte for byte after parsing,
+  and then run `jud check`; a state edited on the way tests a request
+  production never sends.
+- **Label from the best evidence, not only from the state.** The label is
+  the truth, so take it from wherever the truth is known: an outcome learned
+  later (the edit was reverted, the ticket was refunded), the full record
+  the state was cut from. The model sees only the state; that is the point
+  of grading it. Say where the labels came from in `metadata.description`,
+  and in a case's `note` when one piece of evidence decided it.
 - **Cover the outcomes.** Every option of a Choice and every level of a Score
   should be the right answer at least once, including the way out: the
   `none_of_these` option, the lowest level, the `false` of a Noul. A set with
