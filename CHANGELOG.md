@@ -6,6 +6,20 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `mise run live:pplx` runs the ignored live tests against Perplexity's
+  pplx-decider-v1.1-27b through the `autojev-serve` its checkpoint ships,
+  which serves `/v1/systemone` (`PPLX_URL`, default
+  `http://127.0.0.1:8010`; `PPLX_API_KEY` also runs the bearer test). The
+  model itself needs a GPU with about 49 GiB free; the server's wire was
+  checked with the checkpoint's own `server.py` and `answer()` over a
+  stand-in network, where all fifteen live tests pass, with and without a
+  key. Its departures from the hosted API: a 422 where Jev answers 400, a
+  Noul answer with no `confidence`, `output_tokens` always 0, and the
+  aliases `jev-latest` and `jev-1.13.0`, so name the model
+  `autojev-qwen3.8-27b` to keep reports and tests from taking it for Jev.
+
 ## [0.12.0] - 2026-10-09
 
 ### Added
