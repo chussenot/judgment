@@ -43,12 +43,12 @@ jud rubric.jud < state.json
 
 The client appends `v1/systemone` under the base URL's path, with or without a trailing slash, as the official SDKs do. Before that was fixed it dropped the last path segment, so `https://openrouter.ai/api` reached `https://openrouter.ai/v1/systemone`; a gateway under a path is the case it got wrong.
 
-What differs from the hosted API, from [OpenRouter's guide for TypeSafe's SDKs](https://openrouter.ai/docs/guides/community/typesafe-sdk):
+What differs from the hosted API, as [OpenRouter's guide for TypeSafe's SDKs](https://openrouter.ai/docs/guides/community/typesafe-sdk) and its [Decisions API reference](https://openrouter.ai/docs/api/api-reference/alphadecisions/submit-a-decisions-questions-and-answers-request) document it; no live run has confirmed it yet:
 
 - **Model names.** `jev-latest` is routed as `~typesafe/jev-latest` and `jev-1.13` as `typesafe/jev-1.13`; the response's `model` is OpenRouter's dated id, `typesafe/jev-1.13-20260917` say. Log it, as with any server: thresholds are tuned per version.
 - **Cost.** Every response carries `usage.cost` in US dollars, read into `Usage::cost`, which the observer's `on_usage` sees.
-- **Request id.** There is no `x-typesafe-request-id`; the body's `id` (`gen-dec-…`, OpenRouter's generation id) becomes `Response::request_id`, and stays in `Response::extra` with `provider`.
-- **Credit.** A balance that runs out is a 402, `Error::PaymentRequired`, not retried.
+- **Request id.** The documented response carries its generation id in the body (`id`, `gen-dec-…`), and no `x-typesafe-request-id` is documented. When the header is absent, the body's `id` becomes `Response::request_id`, after the checks the header gets, and stays in `Response::extra` with `provider`.
+- **Credit.** OpenRouter documents a 402 for a balance that runs out on its Decisions API; the client reads a 402 as `Error::PaymentRequired`, not retried, on any path.
 - **The model list.** `GET /api/v1/models` is OpenRouter's own catalogue, not TypeSafe's list, so `Client::list_models` fails to decode there. Nothing else in the crate calls it.
 
 OpenRouter also serves the same body at `POST /api/alpha/decisions`, its Decisions API, which it marks alpha; the System One path is the one TypeSafe's SDKs, and this client, are pointed at. `mise run live:openrouter` runs the live tests against it with `OPENROUTER_API_KEY` from `.env`; no run is recorded yet ([Compatible servers and models](../project/research/compatible-servers-and-models.md)).

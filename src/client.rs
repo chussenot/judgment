@@ -599,7 +599,7 @@ impl Client {
                 .extra
                 .get("id")
                 .and_then(Value::as_str)
-                .map(str::to_owned);
+                .and_then(|id| usable_request_id(id, "body id"));
             record_request_id(body_id.as_deref());
             body_id
         };
@@ -913,12 +913,23 @@ fn resolve_api_key(
 /// `to_str` refuses non-ASCII, CR, LF and DEL but lets a tab through, so one
 /// left inside the value after trimming is refused here.
 fn read_request_id(headers: &HeaderMap) -> Option<String> {
-    let v = headers.get(REQUEST_ID_HEADER)?.to_str().ok()?.trim();
+    usable_request_id(
+        headers.get(REQUEST_ID_HEADER)?.to_str().ok()?,
+        "x-typesafe-request-id",
+    )
+}
+
+/// `id` trimmed, when it is fit to log, record and quote: not empty, no
+/// control character, at most [`REQUEST_ID_MAX_LEN`] bytes. The header and
+/// a body's `id` pass the same checks, since both end up on the span, in
+/// the response and in a recording. `source` names it in the debug line.
+fn usable_request_id(id: &str, source: &str) -> Option<String> {
+    let v = id.trim();
     if v.is_empty() || v.bytes().any(|b| b.is_ascii_control()) {
         return None;
     }
     if v.len() > REQUEST_ID_MAX_LEN {
-        tracing::debug!(len = v.len(), "x-typesafe-request-id ignored: too long");
+        tracing::debug!(len = v.len(), source, "request id ignored: too long");
         return None;
     }
     Some(v.to_owned())

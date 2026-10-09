@@ -79,7 +79,9 @@ All notable changes to the `judgment` crate. The format follows
   `v1/systemone` onto it as a relative URL, so `https://openrouter.ai/api`
   reached `https://openrouter.ai/v1/systemone`, and any gateway served under
   a path got a 404. The path is now kept, with or without the trailing
-  slash, as the official SDKs keep it.
+  slash, as the official SDKs keep it. A base that only worked because its
+  last segment was dropped (`https://api.typesafe.ai/v1`, which reached
+  `/v1/systemone`) now reaches `/v1/v1/systemone`; drop that segment.
 
 ## [0.12.0] - 2026-10-09
 

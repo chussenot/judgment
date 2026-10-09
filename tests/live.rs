@@ -165,12 +165,6 @@ impl Profile {
         panic!("JUDGMENT_LIVE_PROFILE={name}: one of {}", known.join(", "))
     }
 
-    /// Whether a body this server sends is asserted to conform to the
-    /// OpenAPI document, or only checked and printed. Asserted where a run
-    /// found it held: the document is the hosted API's own, and
-    /// autojev-serve's bodies held on 2026-10-09
-    /// (`docs/project/verification/autojev-serve.md`). laya-serve's have not been
-    /// checked yet, so they are reported until a run shows they hold.
     /// Whether `GET /v1/models` answers with something other than the
     /// documented list, so that the client's decode error is the expected
     /// outcome and the body is not held to the document. `OpenRouter` serves
@@ -179,6 +173,12 @@ impl Profile {
         self == Self::OpenRouter
     }
 
+    /// Whether a body this server sends is asserted to conform to the
+    /// OpenAPI document, or only checked and printed. Asserted where a run
+    /// found it held: the document is the hosted API's own, and
+    /// autojev-serve's bodies held on 2026-10-09
+    /// (`docs/project/verification/autojev-serve.md`). laya-serve's have not been
+    /// checked yet, so they are reported until a run shows they hold.
     fn holds_to_the_schema(self) -> bool {
         matches!(self, Self::Typesafe | Self::Autojev)
     }

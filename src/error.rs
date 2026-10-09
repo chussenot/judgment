@@ -71,8 +71,9 @@ pub enum Error {
         request_id: Option<String>,
     },
     /// The account cannot pay for the call (HTTP 402): `OpenRouter`'s
-    /// "Insufficient credits", which its System One API answers when the
-    /// balance runs out. Not retried, and kept apart from
+    /// "Insufficient credits", documented for its Decisions API when the
+    /// balance runs out and not yet observed on its System One path. Not
+    /// retried, and kept apart from
     /// [`Error::PermissionDenied`] because neither a new key nor the
     /// account's access fixes it: credit does.
     #[error("payment required (402): {detail}{}", request_id_suffix(.request_id.as_deref()))]

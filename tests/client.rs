@@ -2044,3 +2044,35 @@ async fn a_base_url_path_is_kept_with_or_without_the_trailing_slash() {
             .unwrap_or_else(|e| panic!("{suffix}: {e}"));
     }
 }
+
+/// A body `id` passes the checks the header does before it becomes the
+/// request id: empty, holding a control character, or longer than 256
+/// bytes, it is dropped rather than put on the span, the response and a
+/// recording; trimmed otherwise.
+#[tokio::test]
+async fn a_body_id_unfit_to_log_is_not_the_request_id() {
+    let long = "g".repeat(257);
+    for (id, expected) in [
+        ("", None),
+        ("gen-dec-1\nX-Injected: yes", None),
+        (long.as_str(), None),
+        ("  gen-dec-2  ", Some("gen-dec-2")),
+    ] {
+        let server = MockServer::start().await;
+        let mut body = openrouter_body();
+        body["id"] = json!(id);
+        Mock::given(method("POST"))
+            .and(path("/api/v1/systemone"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(&server)
+            .await;
+        let mut q = Questions::new();
+        q.noul("refund", "Is the customer asking for money back?", None)
+            .unwrap();
+        let response = openrouter_client(&server)
+            .system_one(&"s", &q)
+            .await
+            .unwrap();
+        assert_eq!(response.request_id.as_deref(), expected, "{id:?}");
+    }
+}
