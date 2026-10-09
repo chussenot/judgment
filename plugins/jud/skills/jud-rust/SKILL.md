@@ -190,8 +190,13 @@ the template:
      - `cargo test --manifest-path <dir>/Cargo.toml`, which must run and
        pass `<module>::tests::the_module_matches_the_rubric`;
      - `cargo clippy --manifest-path <dir>/Cargo.toml --all-targets -- -D warnings`.
-   - When the user's crate already has the `mod` line, also run
-     `cargo test --manifest-path <the user's Cargo.toml>`.
+   - When the user's crate already has the `mod` line (in `main.rs`, or
+     `pub mod` in `lib.rs`) and a `Cargo.lock`, also run
+     `cargo test --manifest-path <the user's Cargo.toml> --target-dir <dir>/target`
+     (its own `target` when `<the user's crate>/target` already exists).
+     Without a `Cargo.lock` do not: cargo would write one into the project.
+     Say instead that `cargo test` in their crate runs the drift test, and
+     that its first run creates the lock file.
 
    Fix every error in the module. Never add an `allow` to get past a lint,
    other than the module's own `dead_code`. Leave the throwaway crate out of

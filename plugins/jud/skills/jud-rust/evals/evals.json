@@ -68,7 +68,7 @@
       },
       "expectations": [
         "Writes src/triage.rs with include_str!(\"../rubrics/triage.jud\")",
-        "Notices that src/lib.rs already declares `pub mod triage;` and runs `cargo test` in the crate as well as in the throwaway crate",
+        "Notices that src/lib.rs already declares `pub mod triage;`, and, the crate having no Cargo.lock, does not run `cargo test` in it (that would write one) but says that `cargo test` there runs the drift test",
         "Gives the replacement `main` with `use app::triage;` (the module reached through the library) rather than a second `mod triage;`, and says why",
         "Says that each `decide` is one request to the backend, so a caller feeding it a stream bounds what waits",
         "Edits neither Cargo.toml, src/main.rs nor src/lib.rs"
