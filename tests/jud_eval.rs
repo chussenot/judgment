@@ -130,8 +130,10 @@ fn triage_with_desk_bar(bar: &str) -> String {
 
 /// The line `jud eval` writes before asking a server: the model, the
 /// server and where its URL came from (the environment, in these tests).
-fn asking(server: &str, cases: usize) -> String {
-    format!("asking jev-latest at {server} for up to {cases} cases (base URL from environment)\n")
+fn asking(server: &str, requests: usize) -> String {
+    format!(
+        "asking jev-latest at {server} for up to {requests} requests (base URL from environment)\n"
+    )
 }
 
 #[test]

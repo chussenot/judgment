@@ -118,10 +118,10 @@ export TYPESAFE_API_KEY=...
 jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out recordings/screening
 ```
 
-The cases are asked one at a time, in order. The first line names the model and the server before anything is asked, so a run aimed at the wrong server can be stopped with nothing paid ([Variables jud does not read](../reference/configuration.md#variables-jud-does-not-read)). Each line after it goes to stderr as its case is recorded, then a tally; stdout stays empty. The times are the calls' own, in milliseconds; those shown came from a local test server.
+The cases are asked one at a time, in order. The first line names the model and the server before anything is asked, so a run aimed at the wrong server can be stopped before it has paid for every request ([What `jud record` prints](../reference/cli.md#what-it-prints)). Each line after it goes to stderr as its case is recorded, then a tally; stdout stays empty. The times are the calls' own, in milliseconds; those shown came from a local test server, which `TYPESAFE_BASE_URL` pointed at.
 
 ```text
-asking jev-latest at https://api.typesafe.ai for up to 4 cases (base URL from default)
+asking jev-latest at http://127.0.0.1:8000 for up to 4 requests (base URL from environment)
 recorded charged-twice (1/4, 2 ms)
 recorded cancelled-last-week (2/4, 1 ms)
 recorded how-does-billing-work (3/4, 1 ms)
@@ -129,10 +129,10 @@ recorded furious-outage (4/4, 1 ms)
 recorded 4, kept 0 in recordings/screening
 ```
 
-Run it again and nothing is asked:
+Run it again and nothing is asked, though the first line still counts every request the cases plan, before the directory is read:
 
 ```text
-asking jev-latest at https://api.typesafe.ai for up to 4 cases (base URL from default)
+asking jev-latest at http://127.0.0.1:8000 for up to 4 requests (base URL from environment)
 kept charged-twice
 kept cancelled-last-week
 kept how-does-billing-work

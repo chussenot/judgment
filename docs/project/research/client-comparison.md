@@ -73,7 +73,7 @@ Two choices on this grid are judgment's alone and deliberate. The budget is off 
 
 | Crate | Fake behind a trait | Fake refuses an unfit answer | Record and replay | Contract test against the OpenAPI document | Evaluation metrics | Live tests and servers verified |
 |---|---|---|---|---|---|---|
-| **judgment** | ✓ | ✓ | ✓ keyed by a content hash | ✓ requests, fakes, 61 recordings, examples | ✓ accuracy with Wilson interval, Brier, ECE | ✓ 15 ignored; hosted API and Laya recorded, Ollama task |
+| **judgment** | ✓ | ✓ | ✓ keyed by a content hash | ✓ requests, fakes, 61 recordings, examples | ✓ accuracy with Wilson interval, Brier, ECE | ✓ 16 ignored; hosted API and Laya recorded, Ollama task |
 | kunobi-decision | ✓ behind a feature | ✓ | ✗ | ✗ | ✗ | ✗ none shipped in the package |
 | typesafe-sdk | ✗ a wiremock helper | – | ✗ | ✗ | ✗ | ✗ examples run live behind an env var |
 | typesafeai-sdk | ✗ | – | ✗ | ✗ | ✗ | ✗ |

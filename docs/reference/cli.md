@@ -259,9 +259,10 @@ The refusals under [the case commands](#the-case-commands) apply as well.
 
 ### What it prints
 
-Stdout is empty. Stderr carries one line per request, then the tally. It needs a key, so what follows is plain text from a second run against a server, after one recording was deleted and another edited by hand so that it no longer fits its questions:
+Stdout is empty. Stderr carries a line naming the model and the server, then one line per request, then the tally. It needs a key, so what follows is plain text from a second run against a server, after one recording was deleted and another edited by hand so that it no longer fits its questions:
 
 ```text
+asking jev-latest at http://127.0.0.1:8000 for up to 7 requests (base URL from environment)
 replaced refund-angry (stale)
 recorded thanks (2/7, 1 ms)
 kept login-loop
@@ -272,7 +273,7 @@ kept invoice-vat
 recorded 2, kept 5 in recordings
 ```
 
-A line for each of `recorded NAME (N/TOTAL, MS ms)`, `kept NAME` and `replaced NAME (stale)`, then `recorded R, kept K in DIR`, where a replaced recording counts as recorded. When two files in `DIR` record one request, a `jud: warning:` line names them, since a replay answers from one of them.
+First `asking MODEL at URL for up to N requests (base URL from SOURCE)`, before anything is asked, where `SOURCE` is `environment`, `config file` or `default`. An unset base URL is the hosted API, so a run pointed at the wrong server, by a misspelt variable say, can be stopped before it has paid for every request; it is a line and not a prompt, so a script never waits on it. `N` counts every request planned, those the directory already answers included, which is why it says "up to". Then a line for each of `recorded NAME (N/TOTAL, MS ms)`, `kept NAME` and `replaced NAME (stale)`, then `recorded R, kept K in DIR`, where a replaced recording counts as recorded. When two files in `DIR` record one request, a `jud: warning:` line names them, since a replay answers from one of them.
 
 A call that fails stops the run at that case with status 1. The message names the case, its position, how many were recorded and kept before it, and `DIR`. The recordings already written stay, and the next run resumes from them. Exit status: 0 when every request has a recording, written or kept; 1 when a call failed or a recording could not be written; 2 for a refusal.
 
@@ -323,6 +324,8 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 ```
+
+Against a server, before the first call, eval writes the same line to stderr that `jud record` does ([What it prints](#what-it-prints)): `asking MODEL at URL for up to N requests (base URL from SOURCE)`. A replay writes nothing there.
 
 Reads `RUBRIC`, `CASES` and, with `--replay DIR` or `JUD_REPLAY`, the recordings in `DIR`; the flag overrides the variable. Writes nothing, against a server too: use [`jud record`](#jud-record) to keep what a server answered. Without a replay it asks the configured backend once per request and needs a key. With one it needs no key and no network.
 
@@ -720,7 +723,7 @@ Options:
 | `JUD_REPLAY` | the commands that take `--replay` ([which ones](configuration.md#replay)) | A directory of recordings to answer from instead of a server; `--replay` overrides it |
 | `XDG_CONFIG_HOME` | the same commands | Moves the configuration file's directory |
 
-[Configuration](configuration.md) has the precedence, the file and what an empty value means.
+[Configuration](configuration.md) has the precedence, the file and what an empty value means. Any other `TYPESAFE_*` or `JUD_*` variable that is set is named on stderr before a command asks a server, since a misspelt one would otherwise send the run to the hosted API ([Variables jud does not read](configuration.md#variables-jud-does-not-read)).
 
 ## Exit status
 
