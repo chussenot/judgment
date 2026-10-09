@@ -170,7 +170,9 @@ Per question:
   the commonest label would score (`majority.share` in the JSON). Put it
   beside the accuracy. A `not shown to beat always answering ...` warning
   (`no_better_than_majority`) means the interval reaches down to it: say
-  so before anything about bars. With 71 of 84 labels `false`, 0.96 is 0.11
+  so before anything about bars. It is never raised under ten labels, where
+  even a perfect score cannot clear a common majority: on fewer, compare the
+  two numbers yourself and say the count is too small to tell them apart. With 71 of 84 labels `false`, 0.96 is 0.11
   better than always answering no, not 0.96 better than nothing; at 0.63
   against 0.66, the model does worse than always answering the commonest
   level.
@@ -194,12 +196,15 @@ Per question:
   Which side matters is the user's call: a refund sent wrongly costs more
   than a ticket routed to a human.
 
-  A `the gate defers D of T` warning (`defers_nearly_all`: nine in ten or
-  more) is not a bar doing its job; it is a policy that hands the whole
-  question to its `fallback`, which the warning names. Say what that does
-  in production in one line ("every answer falls back to `possible`, so
-  every change goes to a patroller"), and look at confidence when right and
-  when wrong before proposing any other bar.
+  A `the gate defers D of T` warning is not a bar doing its job. At nine in
+  ten or more (`defers_nearly_all`) the policy hands the whole question to
+  its `fallback`, which the warning names; at half or more
+  (`defers_most`) it hands over most of it. Say what that does in production
+  in one line ("every answer falls back to `possible`, so every change goes
+  to a patroller"), and look at confidence when right and when wrong before
+  proposing any other bar. A bar `jud tune` proposes can land here: before
+  accepting one, check what share it defers, and refuse a bar that would
+  raise either code unless the user asked for that coverage.
 - **`model misses`.** Every case where the model's answer differs from the
   label, with its confidence. A Noul's is the probability of its answer; a
   Score's levels are printed as indices, 0 being the first level in
@@ -214,6 +219,10 @@ Per question:
   are one cause, not many. Say so first, with the counts the warning gives,
   then triage the rows under it. No bar and no relabel fixes a collapse; a
   sharper question, outcomes the state can tell apart, or another model can.
+  A `never answered: ...` warning (`never_answered`) names outcomes three
+  labels or more ask for that the model never gives. On a skewed set it is
+  the collapse `collapsed` cannot see (always `yes` on a set that is 88 %
+  `yes`); read it the same way, and name the outcomes it lists.
 
 `--min-accuracy 0.9` (or `desk=0.95`) makes `eval` exit with status 3 when a
 question's accuracy falls short. That is how a rubric is held in CI: the

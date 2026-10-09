@@ -77,6 +77,9 @@ the template:
   or `$(...)`. A chained command is denied where a plain one is allowed.
 - cargo's own flags (`--manifest-path`, `--target-dir`, `--all-targets`)
   go before `--`; only what clippy reads (`-D warnings`) goes after it.
+- Do not probe the environment for cargo settings (`env`, `printenv`,
+  `echo $CARGO_TARGET_DIR`): the target directory step 7 names is the
+  one to pass, and cargo honours any setting the session already has.
 - Create and change files only with the Write and Edit tools, never with
   `mkdir`, `cp`, `sed`, `cat >` or `echo >`. Write creates the directories.
 - The user's `main.rs`, `lib.rs` and `Cargo.toml` are theirs: change them

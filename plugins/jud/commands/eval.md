@@ -67,7 +67,8 @@ no file.
    per outcome, every outcome listed; quote those counts. Name the cases
    behind every count of 3 or fewer from the cases document. Read
    `majority` beside the accuracy, and put each of the question's
-   `signals` (`no_better_than_majority`, `collapsed`, `defers_nearly_all`)
+   `signals` (`no_better_than_majority`, `collapsed`, `never_answered`,
+   `defers_most`, `defers_nearly_all`)
    first in its line, as the skill says. A `jud` whose report has no
    `outcomes` predates them: then count the labels from the cases document,
    and the answers from `misses` plus the right ones.
