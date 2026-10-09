@@ -27,7 +27,8 @@
 //! validation body names as [`ValidationIssue`]s and the code a hosted-API
 //! 400 carries as `detail.error_type`; 401 is [`Error::Unauthorized`] and
 //! 403 [`Error::PermissionDenied`], apart because a new key does not fix
-//! it; 429 is [`Error::RateLimited`] and 529 [`Error::Overloaded`] once the
+//! it; 402 is [`Error::PaymentRequired`], `OpenRouter`'s answer when the
+//! credit runs out; 429 is [`Error::RateLimited`] and 529 [`Error::Overloaded`] once the
 //! policy stopped; anything else is [`Error::Http`], a 404 included, since
 //! neither path carries a resource id and a 404 is always a base URL that
 //! is not the API or a server without the path.
@@ -383,7 +384,11 @@ impl ClientBuilder {
         self
     }
 
-    /// Override the base URL (for tests or a proxy).
+    /// Override the base URL (for tests, a proxy or another server). The
+    /// endpoint paths are appended under it, path included, as the
+    /// official SDKs append them: `https://openrouter.ai/api` reaches
+    /// `https://openrouter.ai/api/v1/systemone`, with or without the
+    /// trailing slash.
     #[must_use]
     pub fn base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = url.into();
@@ -444,7 +449,14 @@ impl ClientBuilder {
     /// [`default_header`](Self::default_header) is [`Error::ReservedHeader`].
     pub fn build(self) -> Result<Client> {
         let api_key = resolve_api_key(self.api_key, || std::env::var(API_KEY_ENV))?;
-        let base_url = Url::parse(&self.base_url).map_err(|e| Error::Url(e.to_string()))?;
+        let mut base_url = Url::parse(&self.base_url).map_err(|e| Error::Url(e.to_string()))?;
+        // `Url::join` replaces the last path segment of a base without a
+        // trailing slash, so `…/api` would reach `…/v1/systemone` and lose
+        // the prefix a gateway (OpenRouter's `/api`) serves under.
+        if !base_url.path().ends_with('/') {
+            let path = format!("{}/", base_url.path());
+            base_url.set_path(&path);
+        }
         for name in self.headers.keys() {
             refuse_reserved_header(name)?;
         }
@@ -578,8 +590,19 @@ impl Client {
         record_request_id(reply.request_id.as_deref());
         let mut response: Response = reply.decode()?;
         // The field means the header: a body key of the same name is
-        // overwritten, with `None` when the header was absent.
-        response.request_id = reply.request_id;
+        // overwritten. Without the header, a server's own id for the call in
+        // the body (`OpenRouter`'s generation id) is the handle there is.
+        response.request_id = if let Some(header) = reply.request_id {
+            Some(header)
+        } else {
+            let body_id = response
+                .extra
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            record_request_id(body_id.as_deref());
+            body_id
+        };
         // Key and kind are the server's strings (`verify` walks only the asked
         // ids), hence escaped and cut.
         for (id, answer) in &response.answers {
@@ -710,6 +733,10 @@ fn classify(
             detail: error_detail(&body).detail,
             request_id,
         },
+        402 => Error::PaymentRequired {
+            detail: error_detail(&body).detail,
+            request_id,
+        },
         429 => Error::RateLimited {
             attempts,
             retry_after,
@@ -744,8 +771,9 @@ impl ErrorBody {
     }
 }
 
-/// The message, the validation issues and the code of a 400, 403 or 422
-/// body, for [`Error::InvalidRequest`] and [`Error::PermissionDenied`].
+/// The message, the validation issues and the code of a 400, 402, 403 or 422
+/// body, for [`Error::InvalidRequest`], [`Error::PermissionDenied`] and
+/// [`Error::PaymentRequired`].
 ///
 /// The message's field order is the Python SDK's (`extract_message` in its
 /// `errors.py`); the issues are parsed whatever supplies the message, so

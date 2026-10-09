@@ -887,7 +887,7 @@ async fn every_http_error_carries_the_request_id_in_its_value_and_message() {
     let server = MockServer::start().await;
     let c = client(&server, RetryPolicy::none());
     let q = one_noul();
-    for status in [400_u16, 401, 403, 422, 429, 529, 404, 500] {
+    for status in [400_u16, 401, 402, 403, 422, 429, 529, 404, 500] {
         let id = format!("req_{status}");
         Mock::given(method("POST"))
             .respond_with(
@@ -902,6 +902,7 @@ async fn every_http_error_carries_the_request_id_in_its_value_and_message() {
         let variant_fits = match status {
             400 => matches!(err, Error::InvalidRequest { status: 400, .. }),
             401 => matches!(err, Error::Unauthorized { .. }),
+            402 => matches!(err, Error::PaymentRequired { .. }),
             403 => matches!(err, Error::PermissionDenied { .. }),
             422 => matches!(err, Error::InvalidRequest { status: 422, .. }),
             429 => matches!(err, Error::RateLimited { attempts: 1, .. }),
@@ -1848,4 +1849,198 @@ async fn a_403_for_a_request_without_a_key_reads_the_server_s_message() {
         "{err:?}"
     );
     assert!(!err.is_request_too_large());
+}
+
+// ---------------------------------------------------------------------------
+// OpenRouter's System One API (https://openrouter.ai/api/v1/systemone)
+// ---------------------------------------------------------------------------
+
+/// `OpenRouter`'s documented response, verbatim
+/// (<https://openrouter.ai/docs/guides/community/typesafe-sdk>, "Request and
+/// response format"): TypeSafe's shape plus `id`, `provider` and
+/// `usage.cost`, and `model` the dated `OpenRouter` id, not the one asked for.
+fn openrouter_body() -> serde_json::Value {
+    json!({
+        "id": "gen-dec-1789738314-X5e5eKGQdvR9rblyX250",
+        "model": "typesafe/jev-1.13-20260917",
+        "provider": "TypeSafe",
+        "answers": {
+            "refund": { "type": "noul", "noul": 0.98 }
+        },
+        "usage": { "input_tokens": 275, "output_tokens": 20, "cost": 0.00003 }
+    })
+}
+
+/// The base URL `OpenRouter` documents for TypeSafe's SDKs is
+/// `https://openrouter.ai/api`, which the SDKs extend with `/v1/systemone`
+/// as this client does: a server mounted under `/api` stands in for it.
+fn openrouter_client(server: &MockServer) -> Client {
+    Client::builder()
+        .api_key("sk-or-test")
+        .base_url(format!("{}/api", server.uri()))
+        .retry(fast_retries(2))
+        .timeout(Duration::from_secs(2))
+        .build()
+        .unwrap()
+}
+
+/// The whole `OpenRouter` response is read: the answers through their
+/// handles, the dated model, the cost in `usage.cost`, `id` and `provider`
+/// in `extra`, and `id` as the request id since `OpenRouter` sends no
+/// `x-typesafe-request-id`.
+#[tokio::test]
+async fn an_openrouter_response_is_read_with_its_cost_and_generation_id() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/systemone"))
+        .and(header("authorization", "Bearer sk-or-test"))
+        .and(body_partial_json(json!({ "model": "jev-latest" })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(openrouter_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut q = Questions::new();
+    let refund = q
+        .noul("refund", "Is the customer asking for money back?", None)
+        .unwrap();
+    let response = openrouter_client(&server)
+        .system_one(&"I was charged twice for my subscription.", &q)
+        .await
+        .unwrap();
+    assert!(response.get(&refund).unwrap().is_yes(0.9));
+    assert_eq!(response.model, "typesafe/jev-1.13-20260917");
+    assert_eq!(
+        response.usage,
+        Usage {
+            input_tokens: 275,
+            output_tokens: 20,
+            cost: Some(0.000_03),
+        }
+    );
+    assert_eq!(
+        response.request_id.as_deref(),
+        Some("gen-dec-1789738314-X5e5eKGQdvR9rblyX250")
+    );
+    assert_eq!(response.extra["provider"], "TypeSafe");
+    assert_eq!(
+        response.extra["id"],
+        "gen-dec-1789738314-X5e5eKGQdvR9rblyX250"
+    );
+}
+
+/// The header stays the request id when there is one: a body `id` never
+/// replaces it.
+#[tokio::test]
+async fn the_request_id_header_wins_over_a_body_id() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/systemone"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header(REQUEST_ID_HEADER, "req-from-header")
+                .set_body_json(openrouter_body()),
+        )
+        .mount(&server)
+        .await;
+    let mut q = Questions::new();
+    q.noul("refund", "Is the customer asking for money back?", None)
+        .unwrap();
+    let response = openrouter_client(&server)
+        .system_one(&"s", &q)
+        .await
+        .unwrap();
+    assert_eq!(response.request_id.as_deref(), Some("req-from-header"));
+}
+
+/// A cost that is not a number costs the caller the figure, never the
+/// response; a server without `usage.cost` reads as `None`, and a recording
+/// of it is written without the key.
+#[test]
+fn a_cost_is_read_when_it_is_a_number_and_written_only_when_present() {
+    let read = |usage: serde_json::Value| -> Usage { serde_json::from_value(usage).unwrap() };
+    assert_eq!(
+        read(json!({ "input_tokens": 1, "output_tokens": 0, "cost": "0.1" })).cost,
+        None
+    );
+    assert_eq!(
+        read(json!({ "input_tokens": 1, "output_tokens": 0, "cost": null })).cost,
+        None
+    );
+    assert_eq!(
+        read(json!({ "input_tokens": 1, "output_tokens": 0 })).cost,
+        None
+    );
+    assert_eq!(
+        read(json!({ "input_tokens": 1, "output_tokens": 0, "cost": 0.5 })).cost,
+        Some(0.5)
+    );
+    let written = serde_json::to_value(Usage {
+        input_tokens: 1,
+        output_tokens: 0,
+        cost: None,
+    })
+    .unwrap();
+    assert_eq!(written, json!({ "input_tokens": 1, "output_tokens": 0 }));
+}
+
+/// `OpenRouter`'s 402, documented on its decisions API with this body, is
+/// `Error::PaymentRequired` with its message, and is not retried: credit,
+/// not time, fixes it.
+#[tokio::test]
+async fn an_openrouter_402_is_payment_required_and_not_retried() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/systemone"))
+        .respond_with(ResponseTemplate::new(402).set_body_json(json!({
+            "error": { "code": 402, "message": "Insufficient credits. Add more using https://openrouter.ai/credits" }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut q = Questions::new();
+    q.noul("refund", "Is the customer asking for money back?", None)
+        .unwrap();
+    let err = openrouter_client(&server)
+        .system_one(&"s", &q)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::PaymentRequired { detail, .. } if detail.starts_with("Insufficient credits")),
+        "{err:?}"
+    );
+    assert!(
+        err.to_string()
+            .starts_with("payment required (402): Insufficient credits"),
+        "{err}"
+    );
+}
+
+/// A base URL with a path is a prefix the endpoints go under, with or
+/// without the trailing slash, as the SDKs treat it; without the slash the
+/// prefix used to be dropped, which sent `https://openrouter.ai/api` to
+/// `https://openrouter.ai/v1/systemone`.
+#[tokio::test]
+async fn a_base_url_path_is_kept_with_or_without_the_trailing_slash() {
+    for suffix in ["/api", "/api/", "/gateway/typesafe"] {
+        let server = MockServer::start().await;
+        let expected = format!("{}/v1/systemone", suffix.trim_end_matches('/'));
+        Mock::given(method("POST"))
+            .and(path(expected.as_str()))
+            .respond_with(ResponseTemplate::new(200).set_body_json(openrouter_body()))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = Client::builder()
+            .api_key("k")
+            .base_url(format!("{}{suffix}", server.uri()))
+            .build()
+            .unwrap();
+        let mut q = Questions::new();
+        q.noul("refund", "Is the customer asking for money back?", None)
+            .unwrap();
+        client
+            .system_one(&"s", &q)
+            .await
+            .unwrap_or_else(|e| panic!("{suffix}: {e}"));
+    }
 }

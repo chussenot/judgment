@@ -2,7 +2,8 @@
 //! fixes each variant rather than by HTTP status, because a caller picks a
 //! remedy from the error alone: configuration ([`Error::MissingApiKey`],
 //! [`Error::InvalidApiKey`], [`Error::Unauthorized`],
-//! [`Error::PermissionDenied`]), request ([`Error::InvalidRequest`],
+//! [`Error::PermissionDenied`]), billing ([`Error::PaymentRequired`]),
+//! request ([`Error::InvalidRequest`],
 //! [`Error::InvalidQuestion`], [`Error::DuplicateQuestionId`],
 //! [`Error::ReservedHeader`], [`Error::ReservedField`], [`Error::Url`]),
 //! transient ([`Error::RateLimited`], [`Error::Overloaded`]), transport and
@@ -67,6 +68,18 @@ pub enum Error {
         /// The server's message, or the body truncated when it has none.
         detail: String,
         /// TypeSafe's `x-typesafe-request-id`, when the response had one.
+        request_id: Option<String>,
+    },
+    /// The account cannot pay for the call (HTTP 402): `OpenRouter`'s
+    /// "Insufficient credits", which its System One API answers when the
+    /// balance runs out. Not retried, and kept apart from
+    /// [`Error::PermissionDenied`] because neither a new key nor the
+    /// account's access fixes it: credit does.
+    #[error("payment required (402): {detail}{}", request_id_suffix(.request_id.as_deref()))]
+    PaymentRequired {
+        /// The server's message, or the body truncated when it has none.
+        detail: String,
+        /// The response's request id, when it had one.
         request_id: Option<String>,
     },
     /// The API refused the request body (HTTP 400, 413 or 422). Not
@@ -334,6 +347,7 @@ impl Error {
         match self {
             Self::Unauthorized { request_id }
             | Self::PermissionDenied { request_id, .. }
+            | Self::PaymentRequired { request_id, .. }
             | Self::InvalidRequest { request_id, .. }
             | Self::RateLimited { request_id, .. }
             | Self::Overloaded { request_id, .. }
@@ -499,7 +513,7 @@ mod tests {
 
     /// The variants built from an HTTP error response, with the message
     /// each reads without an id.
-    fn http_variants(request_id: Option<&str>) -> [(Error, &'static str); 8] {
+    fn http_variants(request_id: Option<&str>) -> [(Error, &'static str); 9] {
         let id = || request_id.map(str::to_owned);
         [
             (
@@ -512,6 +526,13 @@ mod tests {
                     request_id: id(),
                 },
                 "permission denied (403): model not enabled",
+            ),
+            (
+                Error::PaymentRequired {
+                    detail: "Insufficient credits".into(),
+                    request_id: id(),
+                },
+                "payment required (402): Insufficient credits",
             ),
             (
                 Error::InvalidRequest {

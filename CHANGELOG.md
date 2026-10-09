@@ -8,6 +8,19 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- Jev through OpenRouter's System One API is a backend: base URL
+  `https://openrouter.ai/api`, an OpenRouter key. `Usage::cost` holds the
+  `usage.cost` it sends, in US dollars (`None` from a server that sends
+  none, and left out of a recording then); its generation id (`gen-dec-…`)
+  becomes `Response::request_id` when there is no `x-typesafe-request-id`;
+  its 402 for a balance that has run out is the new
+  `Error::PaymentRequired`, not retried. `mise run live:openrouter` runs the
+  live tests against it with `OPENROUTER_API_KEY`, under a new `openrouter`
+  profile that expects its `GET /v1/models` to be OpenRouter's own
+  catalogue; an unprofiled run against `openrouter.ai` stops before it
+  asks, as one against the hosted API does. Checked against a stand-in
+  built from OpenRouter's documented shapes; no live run is recorded yet.
+
 - `mise run live:pplx` runs the ignored live tests against Perplexity's
   pplx-decider-v1.1-27b through the `autojev-serve` its checkpoint ships,
   which serves `/v1/systemone` (`PPLX_URL`, default
@@ -56,6 +69,17 @@ All notable changes to the `judgment` crate. The format follows
   `jev-latest`, is not. `mise run live:typesafe` sets the `typesafe`
   profile; a hand run against the hosted API sets
   `JUDGMENT_LIVE_PROFILE=typesafe` to keep its pins.
+- **Breaking:** `Usage` has a third field, `cost: Option<f64>`, and is no
+  longer `Eq` (it stays `PartialEq`, `Copy` and `Default`). A `Usage { .. }`
+  literal adds `cost: None`.
+
+### Fixed
+
+- A base URL with a path lost its last segment: the client joined
+  `v1/systemone` onto it as a relative URL, so `https://openrouter.ai/api`
+  reached `https://openrouter.ai/v1/systemone`, and any gateway served under
+  a path got a 404. The path is now kept, with or without the trailing
+  slash, as the official SDKs keep it.
 
 ## [0.12.0] - 2026-10-09
 

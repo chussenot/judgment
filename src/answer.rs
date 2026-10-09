@@ -370,13 +370,20 @@ fn string_or_none<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<S
     })
 }
 
+/// A number as itself, anything else as `None`: for `usage.cost`, which the
+/// documented body does not have, so a server's odd value costs the caller
+/// the figure, never the response.
+fn number_or_none<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f64>, D::Error> {
+    Ok(Value::deserialize(deserializer)?.as_f64())
+}
+
 /// Token usage for one request. Output tokens are free; input tokens are billed.
 ///
 /// A count the server did not report reads as zero, which leaves a counter
 /// or a sum right; more tolerant than the OpenAPI document (both counts
 /// required) and the Python SDK (`usage` has no default). A negative,
 /// fractional or string count is still [`Error::Decode`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub struct Usage {
     /// Tokens in `state` plus all questions.
     #[serde(default, deserialize_with = "null_as_default")]
@@ -384,6 +391,17 @@ pub struct Usage {
     /// Tokens in the answers.
     #[serde(default, deserialize_with = "null_as_default")]
     pub output_tokens: u64,
+    /// What the call cost in US dollars, when the server says: `OpenRouter`
+    /// sends `usage.cost` on every System One response; TypeSafe's own API
+    /// does not, and neither does the OpenAPI document. A value that is not
+    /// a number reads as `None`. Serialised only when present, so a
+    /// recording of a server without it is unchanged.
+    #[serde(
+        default,
+        deserialize_with = "number_or_none",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub cost: Option<f64>,
 }
 
 /// The full response to one evaluation.
@@ -406,8 +424,11 @@ pub struct Response {
     /// TypeSafe's request id for this call, from the `x-typesafe-request-id`
     /// response header, the one link to TypeSafe's own logs
     /// (`docs/concepts/how-judgment-works.md`); the client sets it after decoding, over any body
-    /// `request_id`. `None` from a [`crate::Fake`] or a server without the
-    /// header; serialised only when present, so a recording keeps it. A body
+    /// `request_id`. Without the header, the body's top-level `id` when it
+    /// is a string: `OpenRouter`'s generation id (`gen-dec-…`), the handle
+    /// its support asks for, which stays in [`Response::extra`] too. `None`
+    /// from a [`crate::Fake`] or a server with neither; serialised only
+    /// when present, so a recording keeps it. A body
     /// `request_id` that is not a string reads as `None` rather than failing
     /// the response, since the documented body has no such field.
     #[serde(
@@ -1316,7 +1337,7 @@ mod tests {
             json!({ "model": "m", "answers": {}, "usage": null }),
             json!({ "model": "m", "answers": {}, "usage": {} }),
             json!({ "model": "m", "answers": {},
-                    "usage": { "input_tokens": null, "output_tokens": null, "cost": 1.7e-5 } }),
+                    "usage": { "input_tokens": null, "output_tokens": null, "cost": null } }),
         ];
         for body in bodies {
             let r: Response = decode(&body).unwrap();
@@ -1330,7 +1351,8 @@ mod tests {
             r.usage,
             Usage {
                 input_tokens: 7,
-                output_tokens: 0
+                output_tokens: 0,
+                cost: None,
             }
         );
         // Written back, a defaulted usage is explicit zeros.
@@ -1405,7 +1427,8 @@ mod tests {
             r.usage,
             Usage {
                 input_tokens: 400,
-                output_tokens: 60
+                output_tokens: 60,
+                cost: Some(0.000_02),
             }
         );
         let Answer::Choice { probabilities, .. } = &r.answers["department"] else {

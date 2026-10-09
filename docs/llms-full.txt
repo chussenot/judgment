@@ -480,6 +480,28 @@ jud config                         # "api_key": "environment", base URL and mode
 
 A key in the file is accepted for a machine where the environment is awkward to set, with the usual caution about a secret on disk. A run with no key is refused before any call, with status 2, naming the variable and the file. In Rust, `Client::from_env()?` reads the same variable.
 
+## Jev through OpenRouter
+
+OpenRouter serves Jev behind TypeSafe's own wire, billed to an OpenRouter account: its System One API is `POST https://openrouter.ai/api/v1/systemone`, so the base URL is `https://openrouter.ai/api` and the key is an [OpenRouter key](https://openrouter.ai/settings/keys).
+
+```sh
+export TYPESAFE_BASE_URL=https://openrouter.ai/api
+export TYPESAFE_API_KEY=sk-or-...  # an OpenRouter key, not a TypeSafe one
+jud rubric.jud < state.json
+```
+
+The client appends `v1/systemone` under the base URL's path, with or without a trailing slash, as the official SDKs do. Before that was fixed it dropped the last path segment, so `https://openrouter.ai/api` reached `https://openrouter.ai/v1/systemone`; a gateway under a path is the case it got wrong.
+
+What differs from the hosted API, from [OpenRouter's guide for TypeSafe's SDKs](https://openrouter.ai/docs/guides/community/typesafe-sdk):
+
+- **Model names.** `jev-latest` is routed as `~typesafe/jev-latest` and `jev-1.13` as `typesafe/jev-1.13`; the response's `model` is OpenRouter's dated id, `typesafe/jev-1.13-20260917` say. Log it, as with any server: thresholds are tuned per version.
+- **Cost.** Every response carries `usage.cost` in US dollars, read into `Usage::cost`, which the observer's `on_usage` sees.
+- **Request id.** There is no `x-typesafe-request-id`; the body's `id` (`gen-dec-…`, OpenRouter's generation id) becomes `Response::request_id`, and stays in `Response::extra` with `provider`.
+- **Credit.** A balance that runs out is a 402, `Error::PaymentRequired`, not retried.
+- **The model list.** `GET /api/v1/models` is OpenRouter's own catalogue, not TypeSafe's list, so `Client::list_models` fails to decode there. Nothing else in the crate calls it.
+
+OpenRouter also serves the same body at `POST /api/alpha/decisions`, its Decisions API, which it marks alpha; the System One path is the one TypeSafe's SDKs, and this client, are pointed at. `mise run live:openrouter` runs the live tests against it with `OPENROUTER_API_KEY` from `.env`; no run is recorded yet ([Compatible servers and models](../project/research/compatible-servers-and-models.md)).
+
 ## Ollama on your machine
 
 Open-weight decision models speak the wire, and Ollama 0.35 or later serves them; the first example is [tev1](https://ollama.com/library/tev1) at 0.8B parameters, 811 MB, which runs on a CPU.
@@ -3087,6 +3109,7 @@ The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCri
 |---|---|---|
 | Configuration | `MissingApiKey`, `InvalidApiKey`, `Url`, `ReservedHeader`, `ReservedField` | fix the builder's input; refused before any call |
 | Request refused | `Unauthorized`, `PermissionDenied`, `InvalidRequest`, `InvalidQuestion`, `DuplicateQuestionId` | fix the key, the permission or the question |
+| Account out of credit | `PaymentRequired` (a 402, OpenRouter's "Insufficient credits") | add credit; a retry or a new key does not help |
 | Transient, after the retries | `RateLimited`, `Overloaded`, `Http` | retry later, fall back, or raise the policy |
 | Transport | `Transport`, `ResponseTooLarge` | the network, the server, or the body cap |
 | Decode | `Decode`, `Io`, `InvalidRecording`, `NoRecording` | a body or a file the crate cannot read, or a request nobody recorded |
@@ -3655,6 +3678,7 @@ The builder refuses before sending what the HTTP API reference page says the ser
 |---|---|---|---|
 | 400, 413, 422 | `InvalidRequest`, `status` tells them apart | no | a retry cannot fix a body |
 | 401 | `Unauthorized` | no | a new key fixes it |
+| 402 | `PaymentRequired` | no | credit does; neither a new key nor the account's access |
 | 403 | `PermissionDenied` | no | a new key does not; the account's access does |
 | 408 | `Http` once retries stop | yes | transient by definition |
 | 429 | `RateLimited`, with the server's wait | yes | the account's rate limit |
@@ -3664,7 +3688,7 @@ The builder refuses before sending what the HTTP API reference page says the ser
 | 2xx that does not decode | `Decode`, reported as `decode` | never | the loop counted the 2xx as a success, so the client must report the failure itself |
 | 2xx that fails `verify` | an answer-fit error, reported as `unfit` | never | the call was billed, so its usage is reported first |
 
-**Reading a 400, 403 or 422 body** follows the Python SDK's order: the message is the first non-empty string of `error`, `error.message`, `message`, `detail` as a string, `detail.message`; then the issues of a `detail` list joined as `path: msg; …`; then the code; then the raw body, truncated to 2,000 bytes. The code is the first non-empty string of `detail.error_type`, `error.type`, `error_type`, `type`, and is kept as `InvalidRequest::kind` because the hosted API sometimes sends a code and nothing else (`max_tokens_exceeded`). The three shapes the hosted API uses, none of them in the OpenAPI document, are in the [hosted API record](verification/hosted-typesafe.md). Where the crate departs from the SDK on purpose: an empty string does not win over the next field; only a leading `body` location segment is dropped, since dropping every one would hide a question whose id is `body`; a non-JSON body is quoted truncated rather than kept whole. A validation issue's `input` and `ctx` are never read because `input` can echo a piece of the state.
+**Reading a 400, 402, 403 or 422 body** follows the Python SDK's order: the message is the first non-empty string of `error`, `error.message`, `message`, `detail` as a string, `detail.message`; then the issues of a `detail` list joined as `path: msg; …`; then the code; then the raw body, truncated to 2,000 bytes. The code is the first non-empty string of `detail.error_type`, `error.type`, `error_type`, `type`, and is kept as `InvalidRequest::kind` because the hosted API sometimes sends a code and nothing else (`max_tokens_exceeded`). The three shapes the hosted API uses, none of them in the OpenAPI document, are in the [hosted API record](verification/hosted-typesafe.md). Where the crate departs from the SDK on purpose: an empty string does not win over the next field; only a leading `body` location segment is dropped, since dropping every one would hide a question whose id is `body`; a non-JSON body is quoted truncated rather than kept whole. A validation issue's `input` and `ctx` are never read because `input` can echo a piece of the state.
 
 **The request id** (`x-typesafe-request-id`) is read in the client, not in the shared loop, so the loop carries no vendor's header name. It is the last attempt's, there is none after a transport failure, and a value that is empty, not printable ASCII or longer than 256 bytes is ignored, so what reaches a span or an error message is bounded. The body's `request_id` key, if a server sends one, is overwritten by the header.
 
@@ -3885,17 +3909,18 @@ The unit and integration tests never leave the process: wiremock for the client,
 
 ## Does a real server speak the wire this way?
 
-`tests/live.rs` holds sixteen `#[ignore]` tests that run the three primitives, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Five tasks run them:
+`tests/live.rs` holds sixteen `#[ignore]` tests that run the three primitives, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Six tasks run them:
 
 | Task | Against | Needs |
 |---|---|---|
 | `mise run live:typesafe` | the hosted API, `jev-latest` by default | `TYPESAFE_API_KEY` in `.env`; spends a handful of model calls |
+| `mise run live:openrouter` | Jev through OpenRouter's System One API, base URL `https://openrouter.ai/api` (or `OPENROUTER_BASE_URL`), `jev-latest` by default | `OPENROUTER_API_KEY` in `.env`; spends a handful of model calls, billed to the OpenRouter account |
 | `mise run live:laya` | `laya-serve` on `LAYA_URL` (default `http://127.0.0.1:8000`) | a running server; [the Laya record](laya-typed-decisions.md) says how to start one |
 | `mise run live:ollama` | Ollama's `/v1/systemone` on `OLLAMA_URL` (default `http://127.0.0.1:11434`) with `tev1:0.8b`, or `OLLAMA_MODEL=clef` or `clef-flash` for Cloudflare's models | Ollama 0.35 or later and `ollama pull tev1:0.8b`; that model runs on a CPU, Clef wants a GPU (0.35.1 for `ollama pull clef`) |
 | `mise run live:pplx` | Perplexity's [pplx-decider-v1.1-27b](https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b) through the `autojev-serve` its checkpoint ships, on `PPLX_URL` (default `http://127.0.0.1:8010`), model `autojev-qwen3.8-27b` by default | a CUDA GPU with about 49 GiB for the weights; the snapshot's `source/` installed with its `requirements.txt`, then `AUTOJEV_CHECKPOINT=<snapshot> PORT=8010 autojev-serve`. `PPLX_API_KEY` when the server sets `AUTOJEV_API_KEY`, which also runs the bearer test |
 | `mise run live:clef` | Cloudflare's Clef on Workers AI through `tools/systemone/serve.py`, `clef` by default and `CLEF_MODEL=clef-flash` for the 9B | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`; spends a handful of model calls |
 
-Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate; against the hosted API an unset profile stops the run instead, since its pins are what a run there is for. What each profile pins is on its server's page: [the hosted API](hosted-typesafe.md), [Laya](laya-typed-decisions.md), [autojev-serve](autojev-serve.md).
+Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `openrouter`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate; against the hosted API an unset profile stops the run instead, since its pins are what a run there is for. What each profile pins is on its server's page: [the hosted API](hosted-typesafe.md), [Laya](laya-typed-decisions.md), [autojev-serve](autojev-serve.md).
 
 Every body a test reads as sent, a success, a refusal or the model list, is also checked against the vendored OpenAPI document (below), and the verdict printed: which component it was held to, and every field that fails, down to the answer kind's own branch. The client decodes into types that tolerate more than the document allows, so a server can pass every other test and still send what the contract does not; this is where that shows. A status the document does not list (only 200 and 422 are) is named as such: the hosted API's 400 and laya-serve's 413 are refusals the client handles, not bodies the document describes. A success body that fails the document fails the run on the profiles that hold their server to it, `typesafe` and `autojev`; on the others it is reported, until a run shows the server holds.
 
@@ -4335,7 +4360,7 @@ The Python SDK reference, 0.7.1, fixes the client behaviour the crate claims to 
 - **Tolerance.** An answer whose `type` the SDK does not know is logged and skipped; `usage` fields are optional, "None when the API did not report it"; unknown fields are ignored. The crate, as of 0.1, fails the whole response on an unknown answer kind and requires `usage`. Every non-TypeSafe server in the survey exercised at least one of those: jigor returns no `usage`, zev adds answer fields, Laya adds three.
 - **Escape hatches.** Per-call `model`, `retry`, `timeout`, `extra_headers` and `extra_body` (shallow-merged, for fields such as `beam_width`), and `response_model` for a typed struct of answers. The crate has none of the per-call overrides and no way to send a field it does not know.
 - **Key hygiene.** The key is trimmed; an empty key, one with internal whitespace, control or non-ASCII characters is rejected before any request; an explicit empty key does not fall back to the environment. The crate filters blank keys and reports a bad one as a URL error.
-- **Gateways.** OpenRouter (`https://openrouter.ai/api`, model `~typesafe/jev-latest`) and Vercel's AI gateway (`https://ai-gateway.vercel.sh/typesafe`, model `typesafe-ai/jev`) are documented `base_url` targets. `fuzzy-jev` shows OpenRouter's response adds `id`, `provider` and `usage.cost`, so the tolerance above is what makes a gateway work.
+- **Gateways.** OpenRouter (`https://openrouter.ai/api`, model `~typesafe/jev-latest`) and Vercel's AI gateway (`https://ai-gateway.vercel.sh/typesafe`, model `typesafe-ai/jev`) are documented `base_url` targets. `fuzzy-jev` shows OpenRouter's response adds `id`, `provider` and `usage.cost`, so the tolerance above is what makes a gateway work. (Correction, 2026-10-09: it was not enough. This client dropped the last segment of a base URL's path, so both gateways' base URLs reached `/v1/systemone` at the host's root; the client now keeps the path, [Configure a backend](../../guides/configure-a-backend.md#jev-through-openrouter).)
 - **Confidence.** The reference gives the Choice confidence formula as approximately `(n·pmax − 1)/(n − 1)`, marked as a demonstration, and says a Noul has none. Useful for a `Fake` that wants realistic confidences; not a contract.
 
 ## Ranked: what to change in judgment
@@ -4439,6 +4464,7 @@ What a consumer can point the crate at, as of 2026-10-06. "Verified" means this 
 | `autojev-serve`, pplx-decider-v1.1-27b's own server | local, CUDA GPU with about 49 GiB | `autojev-qwen3.8-27b`, also answering to `jev-latest`, `jev-preview` and `jev-1.13.0` | 422 for 256 options, 11 levels or one level where the hosted API answers 400 or 200; an empty question id answered; no token budget in front of the model; Noul answers carry no `confidence`, `output_tokens` is 0 | partly: the server, with a stand-in for the network, [2026-10-09](../verification/autojev-serve.md); the real model not yet |
 | Decider 1.8 (`pip install decider-ai`) | local, GPU | decider-2b, 2b-vision, 4b, 12b, 35b-a3b | serves `/v1/systemone` with continuous batching; temperature scaled by option count since 1.8.0; no byte-identical reproduction across runs | no |
 | OpenDecider 0.6 | local, CPU, CUDA or Apple Silicon | nano (400M encoder), small (4B), medium-td (30B), large-td (80B) | serves `/v1/systemone`; 26 options per question; nano scores 0.796 on typed-decisions against Laya's fine-tuned 0.766 | no |
+| OpenRouter System One API | hosted, `https://openrouter.ai/api` | `jev-latest` (`~typesafe/jev-latest`), `typesafe/jev-1.13` | TypeSafe's body and answers plus `id`, `provider` and `usage.cost`; the response names the dated model (`typesafe/jev-1.13-20260917`); no `x-typesafe-request-id`; 402 when the credit runs out; its `GET /v1/models` is OpenRouter's catalogue; the same body is also served at `/api/alpha/decisions` | partly: the client against a stand-in built from the documented shapes, 2026-10-09 ([Configure a backend](../../guides/configure-a-backend.md#jev-through-openrouter)); `mise run live:openrouter` not yet run |
 | Perplexity Decisions API | hosted | `pplx-decider-v1-27b` | TypeSafe's primitives (choice, noul, score), 255 options, 250k context, images in the state, $0.04 per million input tokens, weights Apache 2.0 | no; the strongest candidate for a second hosted provider |
 | Cloudflare Workers AI | hosted | `clef` (27B), `clef-flash` (9B) | TypeSafe's body and answers, `model` set to `clef` or `clef-flash`, 64 questions per request, images and video in the state; but at one exact URL per model (`/accounts/{account}/ai/run/@cf/cloudflare/{model}`, no `/v1/systemone`, no model list) and inside Cloudflare's `{"result", "success", "errors"}` envelope, so a `base_url` alone does not reach it: `tools/systemone/serve.py cloudflare` maps the path and unwraps the envelope; weights Apache 2.0, self-hosted with Transformers, vLLM or SGLang at about 54 GB (Clef) or 18 GB (Clef-flash) of GPU memory | no: `mise run live:clef`, or `OLLAMA_MODEL=clef mise run live:ollama` for the same weights locally |
 | Fastino GLiDE | hosted, closed | GLiDE | 40k context, optional reasoning mode; wire compatibility not confirmed | no |

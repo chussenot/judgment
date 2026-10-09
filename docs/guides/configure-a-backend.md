@@ -1,9 +1,9 @@
 ---
 title: Configure a backend
-description: How to point the jud command, the examples and the crate's client at the hosted TypeSafe API, at Ollama on your machine, at laya-serve, at Clef on Workers AI, at any other server that speaks the wire, or at a model on Google Cloud; and what each local server does differently from the hosted API.
+description: How to point the jud command, the examples and the crate's client at the hosted TypeSafe API, at Jev through OpenRouter, at Ollama on your machine, at laya-serve, at Clef on Workers AI, at any other server that speaks the wire, or at a model on Google Cloud; and what each local server does differently from the hosted API.
 status: current
-last_reviewed: 2026-10-07
-tags: [judgment, jud, configuration, typesafe, ollama, laya, clef, cloudflare, google-cloud, how-to]
+last_reviewed: 2026-10-09
+tags: [judgment, jud, configuration, typesafe, openrouter, ollama, laya, clef, cloudflare, google-cloud, how-to]
 ---
 
 # Configure a backend
@@ -30,6 +30,28 @@ jud config                         # "api_key": "environment", base URL and mode
 ```
 
 A key in the file is accepted for a machine where the environment is awkward to set, with the usual caution about a secret on disk. A run with no key is refused before any call, with status 2, naming the variable and the file. In Rust, `Client::from_env()?` reads the same variable.
+
+## Jev through OpenRouter
+
+OpenRouter serves Jev behind TypeSafe's own wire, billed to an OpenRouter account: its System One API is `POST https://openrouter.ai/api/v1/systemone`, so the base URL is `https://openrouter.ai/api` and the key is an [OpenRouter key](https://openrouter.ai/settings/keys).
+
+```sh
+export TYPESAFE_BASE_URL=https://openrouter.ai/api
+export TYPESAFE_API_KEY=sk-or-...  # an OpenRouter key, not a TypeSafe one
+jud rubric.jud < state.json
+```
+
+The client appends `v1/systemone` under the base URL's path, with or without a trailing slash, as the official SDKs do. Before that was fixed it dropped the last path segment, so `https://openrouter.ai/api` reached `https://openrouter.ai/v1/systemone`; a gateway under a path is the case it got wrong.
+
+What differs from the hosted API, from [OpenRouter's guide for TypeSafe's SDKs](https://openrouter.ai/docs/guides/community/typesafe-sdk):
+
+- **Model names.** `jev-latest` is routed as `~typesafe/jev-latest` and `jev-1.13` as `typesafe/jev-1.13`; the response's `model` is OpenRouter's dated id, `typesafe/jev-1.13-20260917` say. Log it, as with any server: thresholds are tuned per version.
+- **Cost.** Every response carries `usage.cost` in US dollars, read into `Usage::cost`, which the observer's `on_usage` sees.
+- **Request id.** There is no `x-typesafe-request-id`; the body's `id` (`gen-dec-…`, OpenRouter's generation id) becomes `Response::request_id`, and stays in `Response::extra` with `provider`.
+- **Credit.** A balance that runs out is a 402, `Error::PaymentRequired`, not retried.
+- **The model list.** `GET /api/v1/models` is OpenRouter's own catalogue, not TypeSafe's list, so `Client::list_models` fails to decode there. Nothing else in the crate calls it.
+
+OpenRouter also serves the same body at `POST /api/alpha/decisions`, its Decisions API, which it marks alpha; the System One path is the one TypeSafe's SDKs, and this client, are pointed at. `mise run live:openrouter` runs the live tests against it with `OPENROUTER_API_KEY` from `.env`; no run is recorded yet ([Compatible servers and models](../project/research/compatible-servers-and-models.md)).
 
 ## Ollama on your machine
 
