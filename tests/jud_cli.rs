@@ -869,3 +869,218 @@ fn a_closed_stdout_never_panics_the_reader_commands() {
         assert!(!err.contains("panicked"), "jud {args:?}: {err}");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Options supplied per request (`options_from: request`)
+// ---------------------------------------------------------------------------
+
+const ROUTING: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/jud/routing.jud");
+const ROUTING_STATE: &str = r#"{"message": {"text": "I was charged twice, refund me"}, "customer": {"open_tickets": ["T-1042"]}}"#;
+/// Listed against the alphabet, so an order that came out sorted fails.
+const ROUTING_OPTIONS: &str = r#"{"desk": {"zebra": "Payments and refunds", "alpha": "Login and access"}, "duplicate_of": {"T-1042": "Charge dispute opened yesterday"}}"#;
+
+/// A server answering the routing rubric's three questions for
+/// [`ROUTING_STATE`], once.
+async fn routing_backend() -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "jev-1.13.0",
+            "answers": {
+                "desk": { "type": "choice", "choice": "zebra",
+                          "probabilities": { "zebra": 0.9, "alpha": 0.05, "none_of_these": 0.05 },
+                          "confidence": 0.85 },
+                "tone": { "type": "score", "score": 1.0,
+                          "legend": { "0": "calm", "1": "annoyed", "2": "angry", "3": "abusive" },
+                          "probabilities": { "0": 0.1, "1": 0.8, "2": 0.1, "3": 0.0 },
+                          "confidence": 0.7 },
+                "duplicate_of": { "type": "choice", "choice": "T-1042",
+                                  "probabilities": { "T-1042": 0.9, "none": 0.1 },
+                                  "confidence": 0.8 }
+            },
+            "usage": { "input_tokens": 400, "output_tokens": 40 }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    server
+}
+
+/// The keys of `question`'s criteria in the order the request body has them.
+fn sent_option_order(body: &[u8], question: &str, keys: &[&str]) -> Vec<String> {
+    let text = std::str::from_utf8(body).unwrap();
+    let at = text
+        .find(&format!("\"{question}\""))
+        .unwrap_or_else(|| panic!("{question} not in {text}"));
+    let mut found: Vec<(usize, String)> = keys
+        .iter()
+        .map(|k| {
+            let i = text[at..]
+                .find(&format!("\"{k}\""))
+                .unwrap_or_else(|| panic!("{k} not after {question} in {text}"));
+            (i, (*k).to_owned())
+        })
+        .collect();
+    found.sort();
+    found.into_iter().map(|(_, k)| k).collect()
+}
+
+/// A Choice whose options change per request, the tools an agent may call
+/// or the desks staffed now, is asked over what `--options` supplies, in
+/// the order supplied and before the rubric's static options; the policy
+/// then reads the answer as it reads any other.
+#[tokio::test]
+async fn supplied_options_are_asked_in_order_before_the_static_ones() {
+    let server = routing_backend().await;
+    let uri = server.uri();
+    let out = jud(
+        &[ROUTING, "--options", ROUTING_OPTIONS],
+        ROUTING_STATE,
+        &[
+            ("TYPESAFE_API_KEY", "test-key"),
+            ("TYPESAFE_BASE_URL", &uri),
+        ],
+        &config_home(),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let verdicts: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(verdicts["desk"]["key"], "zebra", "{verdicts}");
+    assert_eq!(verdicts["duplicate_of"]["key"], "T-1042", "{verdicts}");
+
+    let requests = server.received_requests().await.unwrap();
+    let body = &requests[0].body;
+    assert_eq!(
+        sent_option_order(body, "desk", &["zebra", "alpha", "none_of_these"]),
+        ["zebra", "alpha", "none_of_these"]
+    );
+    let sent: Value = serde_json::from_slice(body).unwrap();
+    assert_eq!(
+        sent["questions"]["desk"]["criteria"]["zebra"],
+        "Payments and refunds"
+    );
+    assert_eq!(
+        sent["questions"]["duplicate_of"]["criteria"]["T-1042"],
+        "Charge dispute opened yesterday"
+    );
+}
+
+/// `--options-file` reads the same object from a file, for option lists too
+/// long for a command line.
+#[tokio::test]
+async fn options_from_a_file_are_the_same_as_inline() {
+    let server = routing_backend().await;
+    let uri = server.uri();
+    let home = config_home();
+    let file = home.join("options.json");
+    std::fs::write(&file, ROUTING_OPTIONS).unwrap();
+    let out = jud(
+        &[ROUTING, "--options-file", file.to_str().unwrap()],
+        ROUTING_STATE,
+        &[
+            ("TYPESAFE_API_KEY", "test-key"),
+            ("TYPESAFE_BASE_URL", &uri),
+        ],
+        &home,
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(
+        sent_option_order(
+            &requests[0].body,
+            "desk",
+            &["zebra", "alpha", "none_of_these"]
+        ),
+        ["zebra", "alpha", "none_of_these"]
+    );
+}
+
+/// What cannot be asked is refused before any call, with status 2: no
+/// options for a rubric that needs them (the message names the questions
+/// and the flags), options that are not JSON, options for a question that
+/// does not take them, and both flags at once.
+#[tokio::test]
+async fn options_that_cannot_be_asked_are_refused_before_any_call() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let uri = server.uri();
+    let env = [
+        ("TYPESAFE_API_KEY", "test-key"),
+        ("TYPESAFE_BASE_URL", uri.as_str()),
+    ];
+    let home = config_home();
+
+    let none = jud(&[ROUTING], ROUTING_STATE, &env, &home);
+    assert_eq!(none.status.code(), Some(2), "{}", stderr(&none));
+    let message = stderr(&none);
+    assert!(
+        message.contains("desk, duplicate_of take options per request")
+            && message.contains("--options or --options-file"),
+        "{message}"
+    );
+
+    // Options for one question and not the other: the one left out is named.
+    let partial = jud(
+        &[ROUTING, "--options", r#"{"desk": {"a": "A", "b": "B"}}"#],
+        ROUTING_STATE,
+        &env,
+        &home,
+    );
+    assert_eq!(partial.status.code(), Some(2), "{}", stderr(&partial));
+    assert!(
+        stderr(&partial).contains("(duplicate_of takes options per request"),
+        "{}",
+        stderr(&partial)
+    );
+
+    let malformed = jud(&[ROUTING, "--options", "{nope"], ROUTING_STATE, &env, &home);
+    assert_eq!(malformed.status.code(), Some(2));
+    assert!(
+        stderr(&malformed).contains("--options is not a JSON object"),
+        "{}",
+        stderr(&malformed)
+    );
+
+    let wrong_question = jud(
+        &[ROUTING, "--options", r#"{"tone": {"a": "A", "b": "B"}}"#],
+        ROUTING_STATE,
+        &env,
+        &home,
+    );
+    assert_eq!(wrong_question.status.code(), Some(2));
+    assert!(
+        stderr(&wrong_question).contains("does not take options from the request"),
+        "{}",
+        stderr(&wrong_question)
+    );
+
+    let both = jud(
+        &[ROUTING, "--options", "{}", "--options-file", "x.json"],
+        ROUTING_STATE,
+        &env,
+        &home,
+    );
+    assert_eq!(both.status.code(), Some(2));
+    assert!(
+        stderr(&both).contains("cannot be used with"),
+        "{}",
+        stderr(&both)
+    );
+
+    let missing_file = jud(
+        &[ROUTING, "--options-file", "/nonexistent/o.json"],
+        ROUTING_STATE,
+        &env,
+        &home,
+    );
+    assert_eq!(missing_file.status.code(), Some(2));
+    assert!(
+        stderr(&missing_file).contains("cannot read options file /nonexistent/o.json"),
+        "{}",
+        stderr(&missing_file)
+    );
+}

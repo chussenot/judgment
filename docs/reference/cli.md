@@ -44,6 +44,14 @@ Options:
 
           [env: JUD_REPLAY=]
 
+      --options <JSON>
+          The options of each Choice the rubric marks `options_from: request`, as a JSON object: question id, then option key to description.
+
+          They are asked in the order given, before the question's static options; options for a question that does not take them, or under a key it already offers, are refused. The tools an agent may call, the desks staffed now: what changes from one request to the next.
+
+      --options-file <PATH>
+          --options, read from a file
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -66,7 +74,15 @@ under --replay; 2 wrong before any call: the invocation, a file, the state or
 the configuration; 3 `jud eval` only: a --min-accuracy gate was not met.
 ```
 
-The state is read from stdin to the end and parsed as one JSON value ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)); empty input, invalid JSON and a stream of several values are refused with status 2. A rubric whose Choice takes its options from the request (`options_from: request`) cannot be evaluated by `jud` and is refused with a message saying so; a case carries its own options, so [the case commands](#the-case-commands) can ask it.
+The state is read from stdin to the end and parsed as one JSON value ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)); empty input, invalid JSON and a stream of several values are refused with status 2. A Choice that takes its options from the request (`options_from: request`) is asked over what `--options` or `--options-file` supplies: a JSON object of question id, then option key to description, the shape a case's `options` has. The options go out in the order given, before the question's static ones, so the order a retriever ranked them in is the order the model reads, not the alphabet's. What cannot be asked is refused with status 2 before any call: no options for a question that needs them (the message names each question that got none, and the flags), options that are not that JSON object, options for a question the rubric does not have, for one that does not take them or under a key it already offers, and fewer than 2 or more than 255 options in all. The options are part of the request, so a recording made with them answers only the same options again under `--replay`. Why the command line carries them, rather than the state, is [decision 0023](../project/decisions/0023-jud-rubric-takes-options-on-the-command-line.md).
+
+```sh
+# routing.jud asks `duplicate_of` only when the state has customer.open_tickets
+cat message.json | jud examples/jud/routing.jud --options '{
+  "desk": {"payments": "Charges and refunds", "access": "Login and permissions"},
+  "duplicate_of": {"T-1042": "Charge dispute opened yesterday"}
+}'
+```
 
 `--replay` is an option of the command it follows. `jud --replay DIR eval RUBRIC CASES` is refused with status 2 and a message that names where the flag goes. The `--replay` above and `JUD_REPLAY` are those of `jud RUBRIC`; `jud eval` and `jud tune` take their own after the subcommand, and `jud record` takes none.
 
@@ -166,7 +182,7 @@ Arguments:
 Options:
       --state <JSON>       The JSON state, inline
       --state-file <PATH>  The JSON state, read from a file
-      --options <JSON>     Supplied options for `options_from: request` questions, as a JSON object of question key to option key to text
+      --options <JSON>     Supplied options for `options_from: request` questions, as a JSON object: question id, then option key to description
       --cases <FILE>       A Cases document: lower every case it holds against the rubric
   -h, --help               Print help
 ```
