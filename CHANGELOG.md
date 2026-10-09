@@ -8,6 +8,14 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `jud RUBRIC --options JSON` and `--options-file PATH` supply the options
+  of each Choice the rubric marks `options_from: request`: the tools an
+  agent may call, the desks staffed now, whatever changes per request. They
+  are asked in the order given, before the static options, and refused
+  before any call when they cannot be asked. Such a rubric used to be
+  refused by `jud RUBRIC` outright; `jud eval` and `jud record` already
+  took a case's own `options`, and `jud lower` already took `--options`.
+
 - `mise run live:pplx` runs the ignored live tests against Perplexity's
   pplx-decider-v1.1-27b through the `autojev-serve` its checkpoint ships,
   which serves `/v1/systemone` (`PPLX_URL`, default

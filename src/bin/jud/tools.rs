@@ -255,12 +255,22 @@ pub(crate) struct Lower {
     #[arg(long, value_name = "PATH", conflicts_with = "cases", value_hint = ValueHint::FilePath)]
     state_file: Option<String>,
     /// Supplied options for `options_from: request` questions, as a JSON
-    /// object of question key to option key to text.
+    /// object: question id, then option key to description.
     #[arg(long, value_name = "JSON", conflicts_with = "cases")]
     options: Option<String>,
     /// A Cases document: lower every case it holds against the rubric.
     #[arg(long, value_name = "FILE", value_hint = ValueHint::FilePath)]
     cases: Option<String>,
+}
+
+/// Supplied options as `jud lower --options` and `jud RUBRIC --options`
+/// take them: a JSON object of question id to option key to description,
+/// in the order the model is to see them. `what` names the source in the
+/// message.
+pub(crate) fn parse_supplied(json: &str, what: &str) -> Result<Supplied, String> {
+    serde_json::from_str(json).map_err(|e| {
+        format!("{what} is not a JSON object of question id, then option key to description: {e}")
+    })
 }
 
 pub(crate) fn lower(args: &Lower) -> Fallible<bool> {
@@ -277,9 +287,7 @@ pub(crate) fn lower(args: &Lower) -> Fallible<bool> {
         (None, None) => None,
     };
     let options: Supplied = match &args.options {
-        Some(json) => serde_json::from_str(json).map_err(|e| {
-            format!("--options is not a JSON object of question key to option key to text: {e}")
-        })?,
+        Some(json) => parse_supplied(json, "--options")?,
         None => Supplied::default(),
     };
     let cases: Option<Cases> = match &args.cases {
