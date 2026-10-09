@@ -300,8 +300,21 @@ fn the_json_report_has_every_documented_key_and_no_other() {
             "models",
             "questions",
             "requests",
-            "rubric"
+            "rubric",
+            "signal_rules"
         ]
+    );
+    // The thresholds the signals were read with, so a change to one shows.
+    assert_eq!(
+        report["signal_rules"],
+        json!({
+            "min_answers": 10,
+            "collapse_share": 0.8,
+            "collapse_margin": 0.2,
+            "never_answered_min": 3,
+            "defers_most": 0.5,
+            "defers_nearly_all": 0.9
+        })
     );
     assert_eq!(
         keys(&report["rubric"]),
@@ -1391,8 +1404,10 @@ fn the_json_report_counts_outcomes_and_names_the_majority() {
     );
     assert_eq!(actionable["majority"]["outcome"], "yes");
     assert_eq!(actionable["majority"]["labelled"], 5);
-    // 7 cases: the interval (0.49 to 0.97) still reaches the 5 of 7 `yes`.
-    assert_eq!(actionable["signals"], json!(["no_better_than_majority"]));
+    // 7 cases: the interval (0.49 to 0.97) reaches the 5 of 7 `yes`, but
+    // no score on seven cases could clear it, so nothing is raised under
+    // ten labels.
+    assert_eq!(actionable["signals"], json!([]));
 
     // Every option of a Choice is listed in the rubric's order.
     let desk: Vec<&str> = by_id("desk")["outcomes"]
@@ -1429,10 +1444,8 @@ fn the_text_report_shows_outcomes_majority_and_warnings() {
         ),
         "{text}"
     );
-    assert!(
-        text.contains("  warning: not shown to beat always answering yes (0.71): the interval reaches down to 0.49\n"),
-        "{text}"
-    );
+    // Seven cases are too few for the majority check: no warning.
+    assert!(!text.contains("  warning: "), "{text}");
 }
 
 /// A model that gives one answer whatever the case is named as collapsed,
@@ -1480,7 +1493,12 @@ async fn one_answer_for_every_case_is_a_collapse_and_a_gate_that_defers_all_is_n
         .unwrap();
     assert_eq!(
         desk["signals"],
-        json!(["no_better_than_majority", "collapsed", "defers_nearly_all"]),
+        json!([
+            "no_better_than_majority",
+            "collapsed",
+            "never_answered",
+            "defers_nearly_all"
+        ]),
         "{desk}"
     );
 
@@ -1497,7 +1515,11 @@ async fn one_answer_for_every_case_is_a_collapse_and_a_gate_that_defers_all_is_n
         "{text}"
     );
     assert!(
-        text.contains("  warning: the gate defers 12 of 12: they all fall back to none_of_these\n"),
+        text.contains("  warning: the gate defers 12 of 12: they fall back to none_of_these\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("  warning: never answered: technical (3 labelled), account (3 labelled), none_of_these (3 labelled); the model does not give them, whatever the bar\n"),
         "{text}"
     );
 }
