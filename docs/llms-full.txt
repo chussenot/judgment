@@ -3555,7 +3555,7 @@ mise tasks            # the rest
 
 `mise run check` runs, in CI's order: `cargo fmt --check`, `cargo clippy --all-targets --all-features` with warnings denied, a build and check of every target without the `http` feature (`check:minimal`), `cargo test --all-features` (unit, wiremock, example, doc and documentation tests, no network), `cargo doc` with broken links as errors, and the documentation checks below. The pre-commit hooks (`prek`, configured in `.pre-commit-config.yaml`) run the fast file-level checks and verify the commit message; the pre-push hook runs the tests.
 
-Tests never call a real API: wiremock for the client, `Fake` and recordings for everything above it. The exceptions are the ignored live tests in `tests/live.rs` (`mise run live:typesafe`, `live:ollama`, `live:laya`, `live:clef`), whose results are recorded under [verification](verification/method.md), and `tests/openapi_drift.rs`, which refreshes the vendored OpenAPI document.
+Tests never call a real API: wiremock for the client, `Fake` and recordings for everything above it. The exceptions are the ignored live tests in `tests/live.rs` (`mise run live:typesafe`, `live:ollama`, `live:laya`, `live:clef`, `live:pplx`), whose results are recorded under [verification](verification/method.md), and `tests/openapi_drift.rs`, which refreshes the vendored OpenAPI document.
 
 ## Tracking work
 
@@ -3870,13 +3870,14 @@ The unit and integration tests never leave the process: wiremock for the client,
 
 ## Does a real server speak the wire this way?
 
-`tests/live.rs` holds fifteen `#[ignore]` tests that run the three primitives, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Four tasks run them:
+`tests/live.rs` holds fifteen `#[ignore]` tests that run the three primitives, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Five tasks run them:
 
 | Task | Against | Needs |
 |---|---|---|
 | `mise run live:typesafe` | the hosted API, `jev-latest` by default | `TYPESAFE_API_KEY` in `.env`; spends a handful of model calls |
 | `mise run live:laya` | `laya-serve` on `LAYA_URL` (default `http://127.0.0.1:8000`) | a running server; [the Laya record](laya-typed-decisions.md) says how to start one |
 | `mise run live:ollama` | Ollama's `/v1/systemone` on `OLLAMA_URL` (default `http://127.0.0.1:11434`) with `tev1:0.8b`, or `OLLAMA_MODEL=clef` or `clef-flash` for Cloudflare's models | Ollama 0.35 or later and `ollama pull tev1:0.8b`; that model runs on a CPU, Clef wants a GPU (0.35.1 for `ollama pull clef`) |
+| `mise run live:pplx` | Perplexity's [pplx-decider-v1.1-27b](https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b) through the `autojev-serve` its checkpoint ships, on `PPLX_URL` (default `http://127.0.0.1:8010`), model `autojev-qwen3.8-27b` by default | a CUDA GPU with about 49 GiB for the weights; the snapshot's `source/` installed with its `requirements.txt`, then `AUTOJEV_CHECKPOINT=<snapshot> PORT=8010 autojev-serve`. `PPLX_API_KEY` when the server sets `AUTOJEV_API_KEY`, which also runs the bearer test |
 | `mise run live:clef` | Cloudflare's Clef on Workers AI through `tools/systemone/serve.py`, `clef` by default and `CLEF_MODEL=clef-flash` for the 9B | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`; spends a handful of model calls |
 
 A run that passes, or that finds a departure, becomes a page under `docs/project/verification/` naming the server, its release and the date. None of these runs in CI: the gate stays offline, and a key in CI would be a secret the repository does not need.

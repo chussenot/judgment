@@ -212,6 +212,19 @@ JUDGMENT_LIVE_BASE_URL="${LAYA_URL:-http://127.0.0.1:8000}" JUDGMENT_LIVE_MODEL=
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 
+[tasks."live:pplx"]
+description = "The ignored live tests against Perplexity's pplx-decider-v1.1-27b served by its own autojev-serve on PPLX_URL (default http://127.0.0.1:8010; a CUDA GPU with about 49 GiB free); PPLX_API_KEY when the server sets AUTOJEV_API_KEY, which also runs the bearer test"
+run = '''
+set -eu
+base="${PPLX_URL:-http://127.0.0.1:8010}"
+curl -sSf -m 5 -o /dev/null "$base/health" || { echo "no autojev-serve at $base; start it from the checkpoint with AUTOJEV_CHECKPOINT=<snapshot> PORT=8010 autojev-serve (docs/project/verification/method.md)" >&2; exit 1; }
+if [ -n "${PPLX_API_KEY:-}" ]; then
+  export JUDGMENT_LIVE_API_KEY="$PPLX_API_KEY" JUDGMENT_LIVE_AUTH_BASE_URL="$base" JUDGMENT_LIVE_AUTH_API_KEY="$PPLX_API_KEY"
+fi
+JUDGMENT_LIVE_BASE_URL="$base" JUDGMENT_LIVE_MODEL="${PPLX_MODEL:-autojev-qwen3.8-27b}" \
+  cargo test --test live -- --ignored --nocapture --test-threads=1
+'''
+
 # ---------------------------------------------------------------------------
 # Planning (beads)
 # ---------------------------------------------------------------------------

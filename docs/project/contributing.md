@@ -21,7 +21,7 @@ mise tasks            # the rest
 
 `mise run check` runs, in CI's order: `cargo fmt --check`, `cargo clippy --all-targets --all-features` with warnings denied, a build and check of every target without the `http` feature (`check:minimal`), `cargo test --all-features` (unit, wiremock, example, doc and documentation tests, no network), `cargo doc` with broken links as errors, and the documentation checks below. The pre-commit hooks (`prek`, configured in `.pre-commit-config.yaml`) run the fast file-level checks and verify the commit message; the pre-push hook runs the tests.
 
-Tests never call a real API: wiremock for the client, `Fake` and recordings for everything above it. The exceptions are the ignored live tests in `tests/live.rs` (`mise run live:typesafe`, `live:ollama`, `live:laya`, `live:clef`), whose results are recorded under [verification](verification/method.md), and `tests/openapi_drift.rs`, which refreshes the vendored OpenAPI document.
+Tests never call a real API: wiremock for the client, `Fake` and recordings for everything above it. The exceptions are the ignored live tests in `tests/live.rs` (`mise run live:typesafe`, `live:ollama`, `live:laya`, `live:clef`, `live:pplx`), whose results are recorded under [verification](verification/method.md), and `tests/openapi_drift.rs`, which refreshes the vendored OpenAPI document.
 
 ## Tracking work
 
