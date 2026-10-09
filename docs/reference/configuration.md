@@ -35,17 +35,13 @@ flowchart TD
 
 ### Variables jud does not read
 
-An unset base URL means the hosted API, so a misspelt variable (`JUD_BASE_URL` for `TYPESAFE_BASE_URL`) would send paid calls there without a word, and `TYPESAFE_MODEL`, which the examples read, would leave the command on `jev-latest`. Every `TYPESAFE_*` or `JUD_*` variable set in the environment that is none of the three above is therefore named: before a command asks a server, one line on stderr per variable, saying what the command reads instead and which model and server it is asking; and in `jud config`, as `ignored_environment`. Only names are shown, never values, since a misspelt key variable holds a key. Under a replay nothing is asked, so nothing is named.
+An unset base URL means the hosted API, so a misspelt variable (`JUD_BASE_URL` for `TYPESAFE_BASE_URL`) would send paid calls there without a word, and `TYPESAFE_MODEL`, which the examples read, would leave the command on the configured model, `jev-latest` by default. Every `TYPESAFE_*` or `JUD_*` variable set in the environment that is none of the three above is therefore named: before a command asks a server, and in `jud record --dry-run`, which is where a run's target is checked, one line on stderr per variable, saying what the command reads instead and which model and server it is asking; and in `jud config`, as `ignored_environment`. Only names are shown, never values, since a misspelt key variable holds a key. Under a replay nothing is asked, so nothing is named.
 
 ```text
 jud: JUD_BASE_URL is set but jud does not read it (it reads TYPESAFE_BASE_URL, TYPESAFE_API_KEY and JUD_REPLAY, and the model from `model` in /home/me/.config/jud/config.yaml); asking jev-latest at https://api.typesafe.ai, the base URL from default
 ```
 
-`jud record` and `jud eval`, which ask a server once per case, also say before the first call which model and server they are asking and where the base URL came from, so a run aimed at the wrong server can be stopped before it has paid for every case:
-
-```text
-asking jev-latest at https://api.typesafe.ai for up to 7 cases (base URL from default)
-```
+`jud record` and `jud eval` also name the model and the server before their first call, whatever is set ([What `jud record` prints](cli.md#what-it-prints)).
 
 ### The file
 

@@ -8,9 +8,9 @@ tags: [judgment, typesafe, jev, compatibility, verification]
 
 # Against the hosted TypeSafe API
 
-The [judgment crate](../../../README.md) is tested against mocks of TypeSafe's wire and the vendored OpenAPI document. A mock and a schema both encode what someone believed about the wire; only the server can contradict that belief. The [Laya run](laya-typed-decisions.md) checked the crate against a second implementation of System One, but no TypeSafe key was available then, so the hosted API itself had answered this client only once, through the triage questions of the application it was extracted from (2026-09-23). That run proved one application's questions round-trip; it did not exercise the crate's edges: structured Score levels, null option descriptions, an unknown extra field, the model list, a wrong key.
+The [judgment crate](../../../README.md) is tested against mocks of TypeSafe's wire and the vendored OpenAPI document. A mock and a schema both encode what someone believed about the wire; only the server can contradict that belief. The [Laya run](laya-typed-decisions.md) checked the crate against a second implementation of System One, but no TypeSafe key was available then, so the hosted API itself had answered this client only once, through a set of triage questions (2026-09-23). That run proved those questions round-trip; it did not exercise the crate's edges: structured Score levels, null option descriptions, an unknown extra field, the model list, a wrong key.
 
-This page records the run that did. All ten tests in `tests/live.rs`, the same file the Laya run used, passed against `https://api.typesafe.ai` with a real key on 2026-10-03; five more, written from the probes [below](#beyond-the-test-file), passed the same day, and `mise run live:typesafe` runs all fifteen.
+This page records the run that did. All ten tests in `tests/live.rs`, the same file the Laya run used, passed against `https://api.typesafe.ai` with a real key on 2026-10-03; five more, written from the probes [below](#beyond-the-test-file), passed the same day. `mise run live:typesafe` runs them all under the `typesafe` profile, with a sixteenth added since, which holds every success body to the published document ([How the crate is checked](method.md)).
 
 ## What was tested, and with what
 
@@ -69,9 +69,9 @@ The OpenAPI drift test ran the same day: the vendored document is the live one, 
 
 ## What this does and does not establish
 
-It establishes that the crate's wire matches the hosted API on every edge the live tests cover, with no change to the crate. Together with the 2026-09-23 triage run, it means both the crate's general surface and one application's production questions have been answered by Jev at least once.
+It establishes that the crate's wire matches the hosted API on every edge the live tests cover, with no change to the crate. Together with the 2026-09-23 triage run, it means both the crate's general surface and a set of production triage questions have been answered by Jev at least once.
 
-It does not establish anything about thresholds or accuracy on alerts: that needs labelled history replayed through `judgment::eval`. And `jev-latest` is an alias. When it moves past `jev-1.13.0`, the answers these tests and the committed recordings saw may change without any code changing; pin the model once thresholds are tuned, and repeat this run when the alias moves.
+It does not establish anything about thresholds or accuracy on your own questions: that needs labelled history replayed through `judgment::eval`. And `jev-latest` is an alias. When it moves past `jev-1.13.0`, the answers these tests and the committed recordings saw may change without any code changing; pin the model once thresholds are tuned, and repeat this run when the alias moves.
 
 ## Repeating the run
 

@@ -46,6 +46,7 @@ nav:
           - How the crate is checked: project/verification/method.md
           - Against the hosted TypeSafe API: project/verification/hosted-typesafe.md
           - Against Laya typed-decisions: project/verification/laya-typed-decisions.md
+          - Against autojev-serve: project/verification/autojev-serve.md
       - Research:
           - System One client libraries: project/research/system-one-client-libraries.md
           - Compatible servers and models: project/research/compatible-servers-and-models.md

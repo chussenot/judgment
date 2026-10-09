@@ -126,7 +126,7 @@ async fn the_first_run_asks_every_case_once_and_writes_one_recording_each() {
     let err = stderr(&run);
     assert!(
         err.starts_with(&format!(
-            "asking jev-latest at {} for up to 7 cases (base URL from environment)\n",
+            "asking jev-latest at {} for up to 7 requests (base URL from environment)\n",
             server.uri()
         )),
         "{err}"

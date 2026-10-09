@@ -143,6 +143,9 @@ fn plan_only(args: &Record) -> Result<String, Failure> {
         .collect();
     refuse_inputs(args, &planned)?;
     let resolved = crate::config::resolve().map_err(|e| Failure::Usage(e.to_string()))?;
+    // A dry run is where the target is checked, so it names what the run
+    // would ignore as the run does.
+    resolved.warn_ignored_environment();
     // The run's `create_dir_all` fails on a path that is a file: so does
     // the plan, with the run's words.
     if args.out.exists() && !args.out.is_dir() {

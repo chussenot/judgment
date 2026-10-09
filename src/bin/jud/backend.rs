@@ -146,18 +146,20 @@ impl Backend {
         }
     }
 
-    /// Before a run that asks a server once per case (`jud record`, `jud
-    /// eval`): one line naming the model and the server, and where the
+    /// Before a run that asks a server once per request (`jud record`,
+    /// `jud eval`): one line naming the model and the server, and where the
     /// base URL came from, so a run aimed at the wrong server, the hosted
-    /// API by default, can be stopped before it has paid for every case.
-    /// Nothing under a replay, which costs nothing.
-    pub(crate) fn announce(&self, cases: usize) {
+    /// API by default, can be stopped before it has paid for every request.
+    /// The count is of the requests planned, before `jud record` knows
+    /// which its directory already answers, hence "up to". Nothing under a
+    /// replay, which costs nothing.
+    pub(crate) fn announce(&self, requests: usize) {
         if let Kind::Server { resolved, .. } = &self.kind {
             crate::out::note!(
-                "asking {} at {} for up to {cases} case{} (base URL from {})",
+                "asking {} at {} for up to {requests} request{} (base URL from {})",
                 resolved.model(),
                 public_url(resolved.base_url()),
-                if cases == 1 { "" } else { "s" },
+                if requests == 1 { "" } else { "s" },
                 resolved.base_url_from().replace('_', " ")
             );
         }

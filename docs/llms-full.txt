@@ -1004,10 +1004,10 @@ export TYPESAFE_API_KEY=...
 jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out recordings/screening
 ```
 
-The cases are asked one at a time, in order. The first line names the model and the server before anything is asked, so a run aimed at the wrong server can be stopped with nothing paid ([Variables jud does not read](../reference/configuration.md#variables-jud-does-not-read)). Each line after it goes to stderr as its case is recorded, then a tally; stdout stays empty. The times are the calls' own, in milliseconds; those shown came from a local test server.
+The cases are asked one at a time, in order. The first line names the model and the server before anything is asked, so a run aimed at the wrong server can be stopped before it has paid for every request ([What `jud record` prints](../reference/cli.md#what-it-prints)). Each line after it goes to stderr as its case is recorded, then a tally; stdout stays empty. The times are the calls' own, in milliseconds; those shown came from a local test server, which `TYPESAFE_BASE_URL` pointed at.
 
 ```text
-asking jev-latest at https://api.typesafe.ai for up to 4 cases (base URL from default)
+asking jev-latest at http://127.0.0.1:8000 for up to 4 requests (base URL from environment)
 recorded charged-twice (1/4, 2 ms)
 recorded cancelled-last-week (2/4, 1 ms)
 recorded how-does-billing-work (3/4, 1 ms)
@@ -1015,10 +1015,10 @@ recorded furious-outage (4/4, 1 ms)
 recorded 4, kept 0 in recordings/screening
 ```
 
-Run it again and nothing is asked:
+Run it again and nothing is asked, though the first line still counts every request the cases plan, before the directory is read:
 
 ```text
-asking jev-latest at https://api.typesafe.ai for up to 4 cases (base URL from default)
+asking jev-latest at http://127.0.0.1:8000 for up to 4 requests (base URL from environment)
 kept charged-twice
 kept cancelled-last-week
 kept how-does-billing-work
@@ -2032,9 +2032,10 @@ The refusals under [the case commands](#the-case-commands) apply as well.
 
 ### What it prints
 
-Stdout is empty. Stderr carries one line per request, then the tally. It needs a key, so what follows is plain text from a second run against a server, after one recording was deleted and another edited by hand so that it no longer fits its questions:
+Stdout is empty. Stderr carries a line naming the model and the server, then one line per request, then the tally. It needs a key, so what follows is plain text from a second run against a server, after one recording was deleted and another edited by hand so that it no longer fits its questions:
 
 ```text
+asking jev-latest at http://127.0.0.1:8000 for up to 7 requests (base URL from environment)
 replaced refund-angry (stale)
 recorded thanks (2/7, 1 ms)
 kept login-loop
@@ -2045,7 +2046,7 @@ kept invoice-vat
 recorded 2, kept 5 in recordings
 ```
 
-A line for each of `recorded NAME (N/TOTAL, MS ms)`, `kept NAME` and `replaced NAME (stale)`, then `recorded R, kept K in DIR`, where a replaced recording counts as recorded. When two files in `DIR` record one request, a `jud: warning:` line names them, since a replay answers from one of them.
+First `asking MODEL at URL for up to N requests (base URL from SOURCE)`, before anything is asked, where `SOURCE` is `environment`, `config file` or `default`. An unset base URL is the hosted API, so a run pointed at the wrong server, by a misspelt variable say, can be stopped before it has paid for every request; it is a line and not a prompt, so a script never waits on it. `N` counts every request planned, those the directory already answers included, which is why it says "up to". Then a line for each of `recorded NAME (N/TOTAL, MS ms)`, `kept NAME` and `replaced NAME (stale)`, then `recorded R, kept K in DIR`, where a replaced recording counts as recorded. When two files in `DIR` record one request, a `jud: warning:` line names them, since a replay answers from one of them.
 
 A call that fails stops the run at that case with status 1. The message names the case, its position, how many were recorded and kept before it, and `DIR`. The recordings already written stay, and the next run resumes from them. Exit status: 0 when every request has a recording, written or kept; 1 when a call failed or a recording could not be written; 2 for a refusal.
 
@@ -2096,6 +2097,8 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 ```
+
+Against a server, before the first call, eval writes the same line to stderr that `jud record` does ([What it prints](#what-it-prints)): `asking MODEL at URL for up to N requests (base URL from SOURCE)`. A replay writes nothing there.
 
 Reads `RUBRIC`, `CASES` and, with `--replay DIR` or `JUD_REPLAY`, the recordings in `DIR`; the flag overrides the variable. Writes nothing, against a server too: use [`jud record`](#jud-record) to keep what a server answered. Without a replay it asks the configured backend once per request and needs a key. With one it needs no key and no network.
 
@@ -2493,7 +2496,7 @@ Options:
 | `JUD_REPLAY` | the commands that take `--replay` ([which ones](configuration.md#replay)) | A directory of recordings to answer from instead of a server; `--replay` overrides it |
 | `XDG_CONFIG_HOME` | the same commands | Moves the configuration file's directory |
 
-[Configuration](configuration.md) has the precedence, the file and what an empty value means.
+[Configuration](configuration.md) has the precedence, the file and what an empty value means. Any other `TYPESAFE_*` or `JUD_*` variable that is set is named on stderr before a command asks a server, since a misspelt one would otherwise send the run to the hosted API ([Variables jud does not read](configuration.md#variables-jud-does-not-read)).
 
 ## Exit status
 
@@ -2541,17 +2544,13 @@ flowchart TD
 
 ### Variables jud does not read
 
-An unset base URL means the hosted API, so a misspelt variable (`JUD_BASE_URL` for `TYPESAFE_BASE_URL`) would send paid calls there without a word, and `TYPESAFE_MODEL`, which the examples read, would leave the command on `jev-latest`. Every `TYPESAFE_*` or `JUD_*` variable set in the environment that is none of the three above is therefore named: before a command asks a server, one line on stderr per variable, saying what the command reads instead and which model and server it is asking; and in `jud config`, as `ignored_environment`. Only names are shown, never values, since a misspelt key variable holds a key. Under a replay nothing is asked, so nothing is named.
+An unset base URL means the hosted API, so a misspelt variable (`JUD_BASE_URL` for `TYPESAFE_BASE_URL`) would send paid calls there without a word, and `TYPESAFE_MODEL`, which the examples read, would leave the command on the configured model, `jev-latest` by default. Every `TYPESAFE_*` or `JUD_*` variable set in the environment that is none of the three above is therefore named: before a command asks a server, and in `jud record --dry-run`, which is where a run's target is checked, one line on stderr per variable, saying what the command reads instead and which model and server it is asking; and in `jud config`, as `ignored_environment`. Only names are shown, never values, since a misspelt key variable holds a key. Under a replay nothing is asked, so nothing is named.
 
 ```text
 jud: JUD_BASE_URL is set but jud does not read it (it reads TYPESAFE_BASE_URL, TYPESAFE_API_KEY and JUD_REPLAY, and the model from `model` in /home/me/.config/jud/config.yaml); asking jev-latest at https://api.typesafe.ai, the base URL from default
 ```
 
-`jud record` and `jud eval`, which ask a server once per case, also say before the first call which model and server they are asking and where the base URL came from, so a run aimed at the wrong server can be stopped before it has paid for every case:
-
-```text
-asking jev-latest at https://api.typesafe.ai for up to 7 cases (base URL from default)
-```
+`jud record` and `jud eval` also name the model and the server before their first call, whatever is set ([What `jud record` prints](cli.md#what-it-prints)).
 
 ### The file
 
@@ -3896,7 +3895,7 @@ The unit and integration tests never leave the process: wiremock for the client,
 | `mise run live:pplx` | Perplexity's [pplx-decider-v1.1-27b](https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b) through the `autojev-serve` its checkpoint ships, on `PPLX_URL` (default `http://127.0.0.1:8010`), model `autojev-qwen3.8-27b` by default | a CUDA GPU with about 49 GiB for the weights; the snapshot's `source/` installed with its `requirements.txt`, then `AUTOJEV_CHECKPOINT=<snapshot> PORT=8010 autojev-serve`. `PPLX_API_KEY` when the server sets `AUTOJEV_API_KEY`, which also runs the bearer test |
 | `mise run live:clef` | Cloudflare's Clef on Workers AI through `tools/systemone/serve.py`, `clef` by default and `CLEF_MODEL=clef-flash` for the 9B | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`; spends a handful of model calls |
 
-Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate.
+Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate; against the hosted API an unset profile stops the run instead, since its pins are what a run there is for. What each profile pins is on its server's page: [the hosted API](hosted-typesafe.md), [Laya](laya-typed-decisions.md), [autojev-serve](autojev-serve.md).
 
 Every body a test reads as sent, a success, a refusal or the model list, is also checked against the vendored OpenAPI document (below), and the verdict printed: which component it was held to, and every field that fails, down to the answer kind's own branch. The client decodes into types that tolerate more than the document allows, so a server can pass every other test and still send what the contract does not; this is where that shows. A status the document does not list (only 200 and 422 are) is named as such: the hosted API's 400 and laya-serve's 413 are refusals the client handles, not bodies the document describes. A success body that fails the document fails the run on the profiles that hold their server to it, `typesafe` and `autojev`; on the others it is reported, until a run shows the server holds.
 
@@ -3946,9 +3945,9 @@ The live tests show that one server, on one day, accepted and answered what the 
 
 # Against the hosted TypeSafe API
 
-The [judgment crate](../../../README.md) is tested against mocks of TypeSafe's wire and the vendored OpenAPI document. A mock and a schema both encode what someone believed about the wire; only the server can contradict that belief. The [Laya run](laya-typed-decisions.md) checked the crate against a second implementation of System One, but no TypeSafe key was available then, so the hosted API itself had answered this client only once, through the triage questions of the application it was extracted from (2026-09-23). That run proved one application's questions round-trip; it did not exercise the crate's edges: structured Score levels, null option descriptions, an unknown extra field, the model list, a wrong key.
+The [judgment crate](../../../README.md) is tested against mocks of TypeSafe's wire and the vendored OpenAPI document. A mock and a schema both encode what someone believed about the wire; only the server can contradict that belief. The [Laya run](laya-typed-decisions.md) checked the crate against a second implementation of System One, but no TypeSafe key was available then, so the hosted API itself had answered this client only once, through a set of triage questions (2026-09-23). That run proved those questions round-trip; it did not exercise the crate's edges: structured Score levels, null option descriptions, an unknown extra field, the model list, a wrong key.
 
-This page records the run that did. All ten tests in `tests/live.rs`, the same file the Laya run used, passed against `https://api.typesafe.ai` with a real key on 2026-10-03; five more, written from the probes [below](#beyond-the-test-file), passed the same day, and `mise run live:typesafe` runs all fifteen.
+This page records the run that did. All ten tests in `tests/live.rs`, the same file the Laya run used, passed against `https://api.typesafe.ai` with a real key on 2026-10-03; five more, written from the probes [below](#beyond-the-test-file), passed the same day. `mise run live:typesafe` runs them all under the `typesafe` profile, with a sixteenth added since, which holds every success body to the published document ([How the crate is checked](method.md)).
 
 ## What was tested, and with what
 
@@ -4007,9 +4006,9 @@ The OpenAPI drift test ran the same day: the vendored document is the live one, 
 
 ## What this does and does not establish
 
-It establishes that the crate's wire matches the hosted API on every edge the live tests cover, with no change to the crate. Together with the 2026-09-23 triage run, it means both the crate's general surface and one application's production questions have been answered by Jev at least once.
+It establishes that the crate's wire matches the hosted API on every edge the live tests cover, with no change to the crate. Together with the 2026-09-23 triage run, it means both the crate's general surface and a set of production triage questions have been answered by Jev at least once.
 
-It does not establish anything about thresholds or accuracy on alerts: that needs labelled history replayed through `judgment::eval`. And `jev-latest` is an alias. When it moves past `jev-1.13.0`, the answers these tests and the committed recordings saw may change without any code changing; pin the model once thresholds are tuned, and repeat this run when the alias moves.
+It does not establish anything about thresholds or accuracy on your own questions: that needs labelled history replayed through `judgment::eval`. And `jev-latest` is an alias. When it moves past `jev-1.13.0`, the answers these tests and the committed recordings saw may change without any code changing; pin the model once thresholds are tuned, and repeat this run when the alias moves.
 
 ## Repeating the run
 
@@ -4218,7 +4217,64 @@ TYPESAFE_BASE_URL=http://127.0.0.1:8000 TYPESAFE_MODEL=typed-decisions TYPESAFE_
   cargo run -p judgment --example typed_decisions -- /tmp/typed-decisions-test.jsonl --record /tmp/laya-full --json
 ```
 
-`--test-threads=1` keeps the tests from queueing behind each other on a single-worker server. Expect the first request to a checkpoint to include its load time, and the benchmark to take about a quarter of an hour on four cores. The test that sends `jev-latest` makes the router load the English checkpoint beside the fine-tuned one (843 MB more), so the server needs memory for both. Point `JUDGMENT_LIVE_BASE_URL` at port 8099 to run the suite against the shim.
+`--test-threads=1` keeps the tests from queueing behind each other on a single-worker server. Expect the first request to a checkpoint to include its load time, and the benchmark to take about a quarter of an hour on four cores. The test that sends `jev-latest` makes the router load the English checkpoint beside the fine-tuned one (843 MB more), so the server needs memory for both. Point `JUDGMENT_LIVE_BASE_URL` at port 8099, with `JUDGMENT_LIVE_PROFILE=generic`, to run the suite against the shim: it refuses 256 options with a 400 and answers the over-budget state after truncating it, where the `laya` profile pins laya-serve's 413s.
+
+
+<!-- source: docs/project/verification/autojev-serve.md -->
+
+
+# Against autojev-serve
+
+Perplexity's [pplx-decider-v1.1-27b](https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b) is a decision model, a classifier with a 255-row decision head, not a chat model. Its checkpoint ships its own HTTP server, `autojev-serve`, which serves `POST /v1/systemone` and `GET /v1/models`. `mise run live:pplx` runs the live tests against it with `JUDGMENT_LIVE_PROFILE=autojev`; this page is what that profile pins and where each pin comes from.
+
+The short answer: the wire holds. Every body the server sent conforms to the vendored OpenAPI document, refusals included. Where it differs from the hosted API is where the document is silent: which requests it refuses, and with which status.
+
+## What was tested, and with what
+
+| | |
+|---|---|
+| Server | `autojev/server.py` from the checkpoint's `source/` (the FastAPI app reports version 0.2.0), run unchanged |
+| Model | Not the real one: it needs a CUDA GPU with about 49 GiB for its weights, and the run had none. `answer()`, `options()` and `describe()` from the checkpoint's `model.py` ran unchanged; only the network was replaced, by deterministic logits hashed from each row |
+| Machine | 4 CPUs, 15 GB, no GPU, in the development container |
+| Date | 2026-10-09 |
+| Profiles | `autojev` and `generic`, model `autojev-qwen3.8-27b`; `autojev` again with the model named `jev-latest` |
+
+Everything the server decides before the model runs is the real server's: request validation, the status of each refusal, the body shapes, the aliases, the model list, the bearer check. What depends on the model is not shown here: accuracy, calibration, the confidence formulas, and what the real tokenizer does past its window.
+
+## What the server does
+
+| Request | autojev-serve | The hosted API |
+|---|---|---|
+| The three primitives, a structured level, an option with no description | 200, conforming to `SystemOneResponse` | 200 |
+| 256 options | 422, `HTTPValidationError` (`Dictionary should have at most 255 items`) | 400, `at most 255` |
+| 11 levels | 422, `HTTPValidationError` (`List should have at most 10 items`) | 400 |
+| One option | 200, probability 1 | 200, probability 1 |
+| One level | 422, `HTTPValidationError` (`List should have at least 2 items`) | 200 |
+| An empty question id | 200, answered under the key `""` | 400, `cannot be empty` |
+| A state of about 40,000 tokens | answered: no budget is checked before the model | 400, `max_tokens_exceeded` |
+| An unknown extra body field | 422, `Extra inputs are not permitted` | 400, `Invalid request.` |
+| `GET /v1/models` | 200, conforming to `ModelMetadataList`: `autojev`, `autojev-qwen3.8-27b`, `jev-1.13.0`, `jev-latest`, `jev-preview` | 200 |
+| A wrong bearer token, with `AUTOJEV_API_KEY` set | 401 | 401 |
+
+Two things the hosted API sends and this server does not are both allowed by the document: a Noul answer with no `confidence` (`NoulAnswer` requires only `noul` and `type`) and `output_tokens` always 0.
+
+## Why the profile, and not the model name
+
+The server answers to `jev-latest`, `jev-preview` and `jev-1.13.0` as well as its own names. The live tests used to take any model whose name starts with `jev` for the hosted API and assert its status codes, so a run under an alias failed on 422 against 400. The tests now take the server from `JUDGMENT_LIVE_PROFILE` ([How the crate is checked](method.md)), and the same run passes under `jev-latest`. Name the model `autojev-qwen3.8-27b` anyway, so a recording or a report does not say Jev.
+
+## What is still open
+
+A run on a GPU with the real weights: the decisions themselves, the confidence the model gives, and the over-budget state, which the real tokenizer may truncate or refuse. That run belongs on this page, with the checkpoint's revision.
+
+## How to repeat it
+
+```sh
+# on a CUDA host, with the snapshot's source/ installed with its requirements.txt
+AUTOJEV_CHECKPOINT=<snapshot> PORT=8010 autojev-serve
+
+# from the crate's root: the live tests under the autojev profile
+PPLX_URL=http://127.0.0.1:8010 mise run live:pplx
+```
 
 
 <!-- source: docs/project/research/system-one-client-libraries.md -->
@@ -4380,6 +4436,7 @@ What a consumer can point the crate at, as of 2026-10-06. "Verified" means this 
 | TypeSafe hosted API | `https://api.typesafe.ai` | `jev-latest`, `jev-preview` | 255 options, 2 to 10 levels; the reference | yes, [2026-10-03](../verification/hosted-typesafe.md) |
 | `laya-serve` (Laya 0.3.24 to 0.3.26) | local, CPU or GPU | three 421M to 322M encoder checkpoints | no `GET /v1/models`; `model` is `laya-rl-agent` for every checkpoint, the checkpoint in `routing`; `confidence` is one minus normalised entropy, not TypeSafe's spread; 413 past 100 options or 50,000 characters of state; seconds per request on CPU | yes, [2026-10-03](../verification/laya-typed-decisions.md) |
 | Ollama 0.35 and later | local | `nimble` (9B), `tev1` (4B), `tev1:0.8b`; `clef` (27B) and `clef-flash` (9B) since 0.35.1 (2026-10-03) | `/v1/systemone` added 2026-09-28 with the three primitives; its `GET /v1/models` is the OpenAI-shaped list, so `list_models` is expected to fail to decode; bearer ignored; option caps and `confidence` semantics not yet observed | no: the next target, `mise run live:ollama` |
+| `autojev-serve`, pplx-decider-v1.1-27b's own server | local, CUDA GPU with about 49 GiB | `autojev-qwen3.8-27b`, also answering to `jev-latest`, `jev-preview` and `jev-1.13.0` | 422 for 256 options, 11 levels or one level where the hosted API answers 400 or 200; an empty question id answered; no token budget in front of the model; Noul answers carry no `confidence`, `output_tokens` is 0 | partly: the server, with a stand-in for the network, [2026-10-09](../verification/autojev-serve.md); the real model not yet |
 | Decider 1.8 (`pip install decider-ai`) | local, GPU | decider-2b, 2b-vision, 4b, 12b, 35b-a3b | serves `/v1/systemone` with continuous batching; temperature scaled by option count since 1.8.0; no byte-identical reproduction across runs | no |
 | OpenDecider 0.6 | local, CPU, CUDA or Apple Silicon | nano (400M encoder), small (4B), medium-td (30B), large-td (80B) | serves `/v1/systemone`; 26 options per question; nano scores 0.796 on typed-decisions against Laya's fine-tuned 0.766 | no |
 | Perplexity Decisions API | hosted | `pplx-decider-v1-27b` | TypeSafe's primitives (choice, noul, score), 255 options, 250k context, images in the state, $0.04 per million input tokens, weights Apache 2.0 | no; the strongest candidate for a second hosted provider |
@@ -4482,7 +4539,7 @@ Two choices on this grid are judgment's alone and deliberate. The budget is off 
 
 | Crate | Fake behind a trait | Fake refuses an unfit answer | Record and replay | Contract test against the OpenAPI document | Evaluation metrics | Live tests and servers verified |
 |---|---|---|---|---|---|---|
-| **judgment** | ✓ | ✓ | ✓ keyed by a content hash | ✓ requests, fakes, 61 recordings, examples | ✓ accuracy with Wilson interval, Brier, ECE | ✓ 15 ignored; hosted API and Laya recorded, Ollama task |
+| **judgment** | ✓ | ✓ | ✓ keyed by a content hash | ✓ requests, fakes, 61 recordings, examples | ✓ accuracy with Wilson interval, Brier, ECE | ✓ 16 ignored; hosted API and Laya recorded, Ollama task |
 | kunobi-decision | ✓ behind a feature | ✓ | ✗ | ✗ | ✗ | ✗ none shipped in the package |
 | typesafe-sdk | ✗ a wiremock helper | – | ✗ | ✗ | ✗ | ✗ examples run live behind an env var |
 | typesafeai-sdk | ✗ | – | ✗ | ✗ | ✗ | ✗ |

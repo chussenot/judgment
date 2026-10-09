@@ -45,14 +45,22 @@ options! {
 const STATE_PAYOUTS: &str =
     "My payouts have been failing for 3 days and nobody answers my tickets.";
 
+/// `JUDGMENT_LIVE_BASE_URL`, read only after the profile is: every request
+/// starts here, so a run the profile stops (the hosted API with none set)
+/// stops before it has sent anything.
+fn base_url() -> String {
+    LazyLock::force(&PROFILE);
+    std::env::var("JUDGMENT_LIVE_BASE_URL")
+        .expect("set JUDGMENT_LIVE_BASE_URL to a System One server (see the file comment)")
+}
+
 fn env_or(name: &str, default: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| default.to_owned())
 }
 
 /// The client under test, or a message that says how to point it somewhere.
 fn client() -> Client {
-    let base_url = std::env::var("JUDGMENT_LIVE_BASE_URL")
-        .expect("set JUDGMENT_LIVE_BASE_URL to a System One server (see the file comment)");
+    let base_url = base_url();
     Client::builder()
         .base_url(base_url)
         .api_key(env_or("JUDGMENT_LIVE_API_KEY", "unused"))
@@ -108,10 +116,22 @@ impl Profile {
         ("generic", Self::Generic),
     ];
 
-    /// `JUDGMENT_LIVE_PROFILE`, or [`Profile::Generic`] when it is unset. A
-    /// name it does not know is a mistake to stop on, not a server to guess.
+    /// `JUDGMENT_LIVE_PROFILE`, or [`Profile::Generic`] when it is unset,
+    /// except against the hosted API, where an unset profile stops the run.
+    /// A name it does not know is a mistake to stop on, not a server to
+    /// guess.
     fn from_env() -> Self {
         let Ok(name) = std::env::var("JUDGMENT_LIVE_PROFILE") else {
+            // The hosted API's pins are what a hand run against it is for;
+            // falling to `generic` there would assert less without a word.
+            let hosted = ["JUDGMENT_LIVE_BASE_URL", "JUDGMENT_LIVE_AUTH_BASE_URL"]
+                .iter()
+                .any(|name| std::env::var(name).is_ok_and(|url| url.contains("api.typesafe.ai")));
+            assert!(
+                !hosted,
+                "the server is the hosted API: set JUDGMENT_LIVE_PROFILE=typesafe \
+                 (or `generic` to assert only what every server owes)"
+            );
             eprintln!(
                 "JUDGMENT_LIVE_PROFILE is not set: the generic profile, which prints where \
                  servers differ, schema verdicts included, and asserts what every server owes"
@@ -128,7 +148,8 @@ impl Profile {
     /// Whether a body this server sends is asserted to conform to the
     /// OpenAPI document, or only checked and printed. Asserted where a run
     /// found it held: the document is the hosted API's own, and
-    /// autojev-serve's bodies held on 2026-10-09. laya-serve's have not been
+    /// autojev-serve's bodies held on 2026-10-09
+    /// (`docs/project/verification/autojev-serve.md`). laya-serve's have not been
     /// checked yet, so they are reported until a run shows they hold.
     fn holds_to_the_schema(self) -> bool {
         matches!(self, Self::Typesafe | Self::Autojev)
@@ -261,8 +282,10 @@ fn check_body(profile: Profile, method: &str, path: &str, status: u16, text: &st
         "schema: {what} does not conform to {schema}:\n  {}",
         failures.join("\n  ")
     );
+    // Only a success is held: the crate decodes it against the document,
+    // where a refusal's body is read for its message and nothing more.
     assert!(
-        !profile.holds_to_the_schema(),
+        !(200..300).contains(&status) || !profile.holds_to_the_schema(),
         "{what}: the {profile:?} profile holds this server to the document"
     );
 }
@@ -422,8 +445,7 @@ async fn a_structured_score_level_is_echoed() {
         ],
     )
     .unwrap();
-    let base_url = std::env::var("JUDGMENT_LIVE_BASE_URL")
-        .expect("set JUDGMENT_LIVE_BASE_URL to a System One server (see the file comment)");
+    let base_url = base_url();
     let state = json!({ "message": STATE_PAYOUTS });
     let model = env_or("JUDGMENT_LIVE_MODEL", "typed-decisions");
     let body = serde_json::to_vec(&Request {
@@ -496,7 +518,7 @@ async fn every_body_the_server_sends_holds_to_the_published_document() {
     let (status, text) = post_raw(&body).await;
     assert_eq!(status, 200, "{text}");
 
-    let base_url = std::env::var("JUDGMENT_LIVE_BASE_URL").unwrap();
+    let base_url = base_url();
     let listed = reqwest::Client::new()
         .get(format!("{}/v1/models", base_url.trim_end_matches('/')))
         .bearer_auth(env_or("JUDGMENT_LIVE_API_KEY", "unused"))
@@ -570,7 +592,7 @@ async fn a_model_name_the_server_does_not_know_is_still_answered() {
     // A client built for the hosted API sends `jev-latest`; a server that
     // routes by name must not fail the request for it. Which checkpoint
     // answered is the server's business; the response says so in `model`.
-    let base_url = std::env::var("JUDGMENT_LIVE_BASE_URL").unwrap();
+    let base_url = base_url();
     let client = Client::builder()
         .base_url(base_url)
         .api_key(env_or("JUDGMENT_LIVE_API_KEY", "unused"))
@@ -689,6 +711,7 @@ async fn the_builder_refuses_what_the_reference_page_forbids() {
 #[tokio::test]
 #[ignore = "needs an authenticating server: JUDGMENT_LIVE_AUTH_BASE_URL"]
 async fn a_wrong_bearer_token_is_unauthorized_and_the_right_one_is_not() {
+    LazyLock::force(&PROFILE);
     let Ok(base_url) = std::env::var("JUDGMENT_LIVE_AUTH_BASE_URL") else {
         eprintln!("skipped: JUDGMENT_LIVE_AUTH_BASE_URL is not set");
         return;
@@ -733,8 +756,7 @@ async fn a_wrong_bearer_token_is_unauthorized_and_the_right_one_is_not() {
 /// bypassing the builder, for the shapes the builder refuses. Returns the
 /// status and the body text.
 async fn post_raw(body: &serde_json::Value) -> (u16, String) {
-    let base_url = std::env::var("JUDGMENT_LIVE_BASE_URL")
-        .expect("set JUDGMENT_LIVE_BASE_URL to a System One server (see the file comment)");
+    let base_url = base_url();
     let response = reqwest::Client::new()
         .post(format!("{}/v1/systemone", base_url.trim_end_matches('/')))
         .bearer_auth(env_or("JUDGMENT_LIVE_API_KEY", "unused"))

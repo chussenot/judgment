@@ -459,6 +459,37 @@ async fn a_variable_jud_does_not_read_is_named_before_the_call() {
     assert!(stdout(&out).contains("TYPESAFE_APIKEY"), "{}", stdout(&out));
 }
 
+/// `jud record --dry-run` is where a run's target is checked, so it names
+/// what the run would ignore, though it asks nothing and needs no key.
+#[test]
+fn a_dry_run_names_a_variable_jud_does_not_read() {
+    let out_dir = std::env::temp_dir().join(format!(
+        "jud-cli-dry-{}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::SeqCst)
+    ));
+    let out = jud(
+        &[
+            "record",
+            RUBRIC,
+            CASES,
+            "--out",
+            out_dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[("JUD_BASE_URL", "http://127.0.0.1:9")],
+        &config_home(),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(
+        stderr(&out).starts_with("jud: JUD_BASE_URL is set but jud does not read it"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(!out_dir.exists(), "a dry run writes nothing");
+}
+
 /// Under a replay nothing is asked or billed, so nothing is named.
 #[test]
 fn a_replay_names_no_variable() {
