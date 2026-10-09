@@ -222,8 +222,9 @@ def run_one(ev, out_dir, model):
         proc.kill()
 
     reply, cost, turns, denials, skills, tools = "", None, None, [], [], []
-    # The text written before the first `jud record` call, to check that the
-    # cost was announced before it was spent.
+    # The text written before the first `jud record` call that spends, to
+    # check that the cost was announced before it was spent. A `--dry-run`
+    # spends nothing: it is how the cost is found, so it may come first.
     said_before_record, recorded, record_description = [], False, ""
     with open(os.path.join(base, "transcript.jsonl"), encoding="utf-8") as t:
         for line in t:
@@ -239,7 +240,7 @@ def run_one(ev, out_dir, model):
                 for block in msg.get("message", {}).get("content", []):
                     if block.get("type") == "text" and not recorded:
                         said_before_record.append(block.get("text", ""))
-                    if block.get("type") == "tool_use" and not recorded and re.search(r"jud(\.sh)?\s+record\b", str(block.get("input", {}).get("command", ""))):
+                    if block.get("type") == "tool_use" and not recorded and re.search(r"jud(\.sh)?\s+record\b", str(block.get("input", {}).get("command", ""))) and "--dry-run" not in str(block.get("input", {}).get("command", "")):
                         recorded = True
                         record_description = str(block.get("input", {}).get("description", ""))
                     if block.get("type") == "tool_use":
@@ -326,7 +327,7 @@ def run_one(ev, out_dir, model):
         n = count_lines(mock_log)
         check(f"mock requests == {spec['mock_requests']}", n == spec["mock_requests"], f"made {n}")
     if spec.get("announce_before_record"):
-        announced = any(re.search(r"Recording \d+ request", t) for t in said_before_record + [record_description])
+        announced = any(re.search(r"Recording \d+ (new )?request", t) for t in said_before_record + [record_description])
         check("cost announced before record", recorded and announced, "" if recorded else "record never ran")
     if "skill_loaded" in spec:
         check(f"skill {spec['skill_loaded']} loaded", any(s and spec["skill_loaded"] in s for s in skills), ", ".join(map(str, skills)))
