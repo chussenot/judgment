@@ -24,6 +24,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | proposed |
 | [0021](0021-record-eval-and-tune-from-the-command-line.md) | Record, evaluate and tune from the command line | accepted |
 | [0022](0022-jud-reports-what-the-tuning-loop-counted-by-hand.md) | jud reports what the tuning loop counted by hand | accepted |
+| [0023](0023-jud-rubric-takes-options-on-the-command-line.md) | jud RUBRIC takes per-request options on the command line | accepted |
 
 ## Status notes
 
@@ -42,6 +43,8 @@ Records are not edited after acceptance; a fact that has moved since is noted he
 
 - 0021 extends the command [0019](0019-a-command-line-for-the-format.md) defined: three subcommands (`record`, `eval`, `tune`), exit status 3 for `jud eval` alone, and two places that write files (`jud record --out` and `jud tune --out`). 0019 stands: its statuses 0, 1 and 2 keep their meaning, and `jud RUBRIC` still evaluates one state from stdin. 0021 was accepted on 2026-10-08, when the subcommands were implemented; its "As implemented" section records what the implementation settled, and where it differs from the proposal the implementation is the contract.
 - 0022 adds to 0021's commands without changing them: per-outcome counts, a majority and three signals in `jud eval`, `jud record --dry-run`, and a fourth subcommand, `jud split`, a third place that writes files.
+- 0019 says options supplied for a Choice that takes them from the request "are left for later". [0023](0023-jud-rubric-takes-options-on-the-command-line.md) settles it: `jud RUBRIC` takes them through `--options` and `--options-file`. 0019 stands otherwise.
+- 0021 says cases carry their options "where stdin cannot". Stdin still cannot; since [0023](0023-jud-rubric-takes-options-on-the-command-line.md) the command line can.
 
 ## Writing a record
 

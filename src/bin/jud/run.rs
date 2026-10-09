@@ -82,20 +82,23 @@ fn evaluate(path: &str, replay: Option<&Path>, options: OptionsArg<'_>) -> Resul
     let state = read_state()?;
     let backend = Backend::open(replay)?;
     let questions = rubric.lower(&state, &supplied).map_err(|e| {
+        // The questions that take options and were given none: the likely
+        // cause whatever the builder's own words, when some were supplied
+        // for one question and not another as much as when none were.
         let wants: Vec<&str> = rubric
             .questions
             .iter()
-            .filter(|(_, q)| q.options_from.is_some())
+            .filter(|(id, q)| q.options_from.is_some() && !supplied.contains_key(id.as_str()))
             .map(|(id, _)| id.as_str())
             .collect();
-        let hint = if supplied.is_empty() && !wants.is_empty() {
+        let hint = if wants.is_empty() {
+            String::new()
+        } else {
             format!(
                 " ({} take{} options per request: pass them with --options or --options-file)",
                 wants.join(", "),
                 if wants.len() == 1 { "s" } else { "" }
             )
-        } else {
-            String::new()
         };
         Failure::Usage(format!(
             "the rubric does not lower for this state: {e}{hint}"

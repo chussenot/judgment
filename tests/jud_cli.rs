@@ -992,6 +992,20 @@ async fn options_that_cannot_be_asked_are_refused_before_any_call() {
         "{message}"
     );
 
+    // Options for one question and not the other: the one left out is named.
+    let partial = jud(
+        &[ROUTING, "--options", r#"{"desk": {"a": "A", "b": "B"}}"#],
+        ROUTING_STATE,
+        &env,
+        &home,
+    );
+    assert_eq!(partial.status.code(), Some(2), "{}", stderr(&partial));
+    assert!(
+        stderr(&partial).contains("(duplicate_of takes options per request"),
+        "{}",
+        stderr(&partial)
+    );
+
     let malformed = jud(&[ROUTING, "--options", "{nope"], ROUTING_STATE, &env, &home);
     assert_eq!(malformed.status.code(), Some(2));
     assert!(

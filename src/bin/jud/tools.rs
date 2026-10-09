@@ -255,7 +255,7 @@ pub(crate) struct Lower {
     #[arg(long, value_name = "PATH", conflicts_with = "cases", value_hint = ValueHint::FilePath)]
     state_file: Option<String>,
     /// Supplied options for `options_from: request` questions, as a JSON
-    /// object of question key to option key to text.
+    /// object: question id, then option key to description.
     #[arg(long, value_name = "JSON", conflicts_with = "cases")]
     options: Option<String>,
     /// A Cases document: lower every case it holds against the rubric.
@@ -269,7 +269,7 @@ pub(crate) struct Lower {
 /// message.
 pub(crate) fn parse_supplied(json: &str, what: &str) -> Result<Supplied, String> {
     serde_json::from_str(json).map_err(|e| {
-        format!("{what} is not a JSON object of question key to option key to text: {e}")
+        format!("{what} is not a JSON object of question id, then option key to description: {e}")
     })
 }
 
