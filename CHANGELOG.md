@@ -15,13 +15,9 @@ All notable changes to the `judgment` crate. The format follows
   model itself needs a GPU with about 49 GiB free; the server's wire was
   checked with the checkpoint's own `server.py` and `answer()` over a
   stand-in network, where all the live tests pass, with and without a
-  key. Its departures from the hosted API: a 422 where Jev answers 400 (256
-  options, 11 levels, and one level, which Jev answers), an empty question
-  id answered where Jev refuses it, no budget in front of the model, a Noul
-  answer with no `confidence` and `output_tokens` always 0 (both allowed by
-  the OpenAPI document), and the aliases `jev-latest` and `jev-1.13.0`, so
-  name the model `autojev-qwen3.8-27b` to keep reports from taking it for
-  Jev.
+  key. Its departures from the hosted API, and why to name the model
+  `autojev-qwen3.8-27b` though it answers to `jev-latest`, are in
+  `docs/project/verification/autojev-serve.md`.
 - The live tests check every body they read as sent, a success, a
   refusal or the model list, against the vendored OpenAPI document and
   print the verdict, down to the field of the answer kind that fails; a
@@ -41,8 +37,8 @@ All notable changes to the `judgment` crate. The format follows
   run. `docs/project/verification/autojev-serve.md` records what the
   autojev profile pins and how it was observed.
 - `jud` names every `TYPESAFE_*` or `JUD_*` variable it does not read
-  (`JUD_BASE_URL`, `TYPESAFE_MODEL`): one line on stderr before it asks a
-  server, saying what it reads instead and which model and server it is
+  (`JUD_BASE_URL`, `TYPESAFE_MODEL`): one line per variable on stderr
+  before it asks a server and in `jud record --dry-run`, saying what it reads instead and which model and server it is
   asking, and `ignored_environment` in `jud config`. An unset base URL is
   the hosted API, so a misspelt variable used to send billed calls there
   without a word. Names only, never values.
@@ -52,7 +48,7 @@ All notable changes to the `judgment` crate. The format follows
 - `jud record` and `jud eval` write one line to stderr before the first
   call to a server, naming the model, the server and where its base URL
   came from (`asking jev-latest at https://api.typesafe.ai for up to
-  7 cases (base URL from default)`). A server run of `jud eval` used to
+  7 requests (base URL from default)`). A server run of `jud eval` used to
   leave stderr empty on success. Nothing changes under `--replay`.
 - The live tests no longer decide from the model name whether the hosted
   API's behaviour is asserted: a model whose name starts with `jev` was
