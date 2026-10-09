@@ -143,6 +143,14 @@ fn plan_only(args: &Record) -> Result<String, Failure> {
         .collect();
     refuse_inputs(args, &planned)?;
     let resolved = crate::config::resolve().map_err(|e| Failure::Usage(e.to_string()))?;
+    // The run's `create_dir_all` fails on a path that is a file: so does
+    // the plan, with the run's words.
+    if args.out.exists() && !args.out.is_dir() {
+        return Err(Failure::Usage(format!(
+            "cannot use {} for the recordings: it is not a directory",
+            args.out.display()
+        )));
+    }
     let present = args.out.is_dir();
     let known = if args.refresh || !present {
         Replay::default()
@@ -158,7 +166,16 @@ fn plan_only(args: &Record) -> Result<String, Failure> {
         .build()
         .map_err(|e| Failure::Backend(format!("cannot start the runtime: {e}")))?;
     let (mut kept, mut to_ask, mut stale) = (0_usize, Vec::new(), Vec::new());
+    let mut stale_steps: Vec<&Planned> = Vec::new();
+    // Two cases that lower to one request are asked once, and the second is
+    // kept from the first's recording (`Session::record_one`): count it so.
+    let mut asked: Vec<String> = Vec::new();
     for step in &planned {
+        let fingerprint = canonical::request_fingerprint(&step.unit.case.state, &step.questions);
+        if asked.contains(&fingerprint) {
+            kept += 1;
+            continue;
+        }
         let held = runtime.block_on(known.answer(
             &step.unit.case.state,
             resolved.model(),
@@ -166,9 +183,19 @@ fn plan_only(args: &Record) -> Result<String, Failure> {
         ));
         match held {
             Ok(_) => kept += 1,
-            Err(Error::NoRecording(_)) => to_ask.push(step.name.as_str()),
-            Err(_) => stale.push(step.name.as_str()),
+            Err(Error::NoRecording(_)) => {
+                to_ask.push(step.name.as_str());
+                asked.push(fingerprint);
+            }
+            Err(_) => {
+                stale.push(step.name.as_str());
+                stale_steps.push(step);
+                asked.push(fingerprint);
+            }
         }
+    }
+    if present {
+        refuse_stale_files(&args.out, &stale_steps)?;
     }
     let times: Vec<u64> = if present {
         recordings::scan(&args.out)
@@ -254,6 +281,35 @@ fn describe_plan(p: &PlanSummary<'_>) -> String {
     lines.join("\n") + "\n"
 }
 
+/// The refusal behind [`Session::refuse_stale_elsewhere`], for the requests
+/// whose recording is stale: shared with `--dry-run`, so the plan refuses
+/// what the run would refuse.
+fn refuse_stale_files(out: &Path, held_stale: &[&Planned]) -> Result<(), Failure> {
+    let mut found: Option<Vec<recordings::Found>> = None;
+    for step in held_stale {
+        let state = &step.unit.case.state;
+        let fingerprint = canonical::request_fingerprint(state, &step.questions);
+        let hash = request_hash(state, &step.questions);
+        let own = recording_path(out, &step.name);
+        let files = found.get_or_insert_with(|| recordings::scan(out));
+        for file in files.iter().filter(|f| {
+            f.path != own
+                && (f.recording.fingerprint.as_deref() == Some(fingerprint.as_str())
+                    || f.recording.request_hash.as_deref() == Some(hash.as_str()))
+        }) {
+            // The file's own reason: a valid twin of a stale recording in
+            // the case's own file is no problem (the run reports it).
+            if let Err(reason) = file.recording.response.verify(&step.questions) {
+                return Err(Failure::Usage(format!(
+                    "{} records this request and no longer fits the questions ({reason}); delete or move it, then record again",
+                    file.path.display()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// The middle value, the lower one of two; `None` for none.
 fn median(times: &[u64]) -> Option<u64> {
     let mut sorted = times.to_vec();
@@ -262,20 +318,21 @@ fn median(times: &[u64]) -> Option<u64> {
 }
 
 /// Milliseconds for a person: `850 ms`, `9.1 s`, `14 min`, `2 h 5 min`.
+/// Each unit is chosen after rounding, so 59.96 s reads `1 min`, never
+/// `60.0 s`, and an hour less a second `1 h 0 min`, never `60 min`.
 fn duration(ms: u64) -> String {
-    match ms {
-        0..1_000 => format!("{ms} ms"),
-        1_000..60_000 => {
-            let tenths = (ms + 50) / 100;
-            format!("{}.{} s", tenths / 10, tenths % 10)
-        }
-        60_000..3_600_000 => format!("{} min", (ms + 30_000) / 60_000),
-        _ => format!(
-            "{} h {} min",
-            ms / 3_600_000,
-            (ms % 3_600_000 + 30_000) / 60_000
-        ),
+    if ms < 1_000 {
+        return format!("{ms} ms");
     }
+    let tenths = (ms + 50) / 100;
+    if tenths < 600 {
+        return format!("{}.{} s", tenths / 10, tenths % 10);
+    }
+    let minutes = (ms + 30_000) / 60_000;
+    if minutes < 60 {
+        return format!("{minutes} min");
+    }
+    format!("{} h {} min", minutes / 60, minutes % 60)
 }
 
 fn record(args: &Record) -> Result<(), Failure> {
@@ -390,32 +447,11 @@ impl Session<'_> {
     /// has; a stale recording in `NAME.jud` itself is the file written
     /// anyway. Nothing is held under `--refresh`, so nothing is refused.
     fn refuse_stale_elsewhere(&self, planned: &[Planned]) -> Result<(), Failure> {
-        let mut found: Option<Vec<recordings::Found>> = None;
-        for step in planned {
-            if !matches!(self.held(step), Held::Stale) {
-                continue;
-            }
-            let state = &step.unit.case.state;
-            let fingerprint = canonical::request_fingerprint(state, &step.questions);
-            let hash = request_hash(state, &step.questions);
-            let own = recording_path(self.out, &step.name);
-            let files = found.get_or_insert_with(|| recordings::scan(self.out));
-            for file in files.iter().filter(|f| {
-                f.path != own
-                    && (f.recording.fingerprint.as_deref() == Some(fingerprint.as_str())
-                        || f.recording.request_hash.as_deref() == Some(hash.as_str()))
-            }) {
-                // The file's own reason: a valid twin of a stale recording in
-                // the case's own file is no problem (the run reports it).
-                if let Err(reason) = file.recording.response.verify(&step.questions) {
-                    return Err(Failure::Usage(format!(
-                        "{} records this request and no longer fits the questions ({reason}); delete or move it, then record again",
-                        file.path.display()
-                    )));
-                }
-            }
-        }
-        Ok(())
+        let stale: Vec<&Planned> = planned
+            .iter()
+            .filter(|step| matches!(self.held(step), Held::Stale))
+            .collect();
+        refuse_stale_files(self.out, &stale)
     }
 
     /// Ask the backend, record the answer and write it; the call's time in
@@ -622,6 +658,12 @@ mod tests {
         assert_eq!(duration(59_949), "59.9 s");
         assert_eq!(duration(14 * 60_000), "14 min");
         assert_eq!(duration(2 * 3_600_000 + 5 * 60_000), "2 h 5 min");
+        // Rounding never shows a unit's own ceiling.
+        assert_eq!(duration(59_950), "1 min");
+        assert_eq!(duration(3_599_000), "1 h 0 min");
+        assert_eq!(duration(7_199_000), "2 h 0 min");
+        assert_eq!(duration(3_570_000), "1 h 0 min");
+        assert_eq!(duration(3_569_999), "59 min");
     }
 
     #[test]

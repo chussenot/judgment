@@ -9,7 +9,9 @@ mod support;
 use std::path::Path;
 
 use judgment::jud::Cases;
-use support::{RECORDINGS, TRIAGE, TRIAGE_CASES, code, jud, scratch, stderr, stdout};
+use support::{
+    HANDOFF, HANDOFF_CASES, RECORDINGS, TRIAGE, TRIAGE_CASES, code, jud, scratch, stderr, stdout,
+};
 
 fn read(path: &Path) -> Cases {
     Cases::parse(&std::fs::read_to_string(path).unwrap()).unwrap()
@@ -138,5 +140,88 @@ fn a_split_that_holds_nothing_out_is_refused() {
         std::fs::read_dir(&dir).unwrap().count(),
         0,
         "nothing written"
+    );
+}
+
+/// A Score level written as its index (`tone: 0`) and as its text (`calm`)
+/// is one level once the rubric is given: counted together, in the levels'
+/// order, and never warned about as a label of its own.
+#[test]
+fn with_the_rubric_a_level_written_as_index_or_text_is_one_level() {
+    let dir = scratch("split-rubric");
+    let out = split(&dir, &["--rubric", TRIAGE]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        text.contains("  tone: calm 4, annoyed 1, angry 1"),
+        "{text}"
+    );
+    assert!(!stderr(&out).contains("tone 0"), "{}", stderr(&out));
+    assert!(!stderr(&out).contains("pass --rubric"), "{}", stderr(&out));
+
+    // Without it, the labels are read as written, and a note says why.
+    let bare = scratch("split-bare");
+    let out = split(&bare, &[]);
+    assert!(stdout(&out).contains("0 1"), "{}", stdout(&out));
+    assert!(
+        stderr(&out).contains("pass --rubric to read it as the level's text"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+/// A rubric the cases do not fit is refused before anything is written.
+#[test]
+fn a_rubric_the_cases_do_not_fit_is_refused() {
+    let dir = scratch("split-wrong-rubric");
+    let out = split(&dir, &["--rubric", HANDOFF]);
+    assert_eq!(code(&out), 2);
+    assert!(stderr(&out).contains("does not fit"), "{}", stderr(&out));
+    assert!(!dir.exists() || std::fs::read_dir(&dir).unwrap().count() == 0);
+}
+
+/// A conversation's `from_turn` labels the turns: `true` from that turn on,
+/// `false` before it. Two conversations whose turns both say yes and no are
+/// no gap, whatever turn each one turns on.
+#[test]
+fn from_turn_labels_are_read_as_the_turns_they_label() {
+    let dir = scratch("split-turns");
+    let out = jud(
+        &[
+            "split",
+            HANDOFF_CASES,
+            "--every",
+            "2",
+            "--out",
+            dir.to_str().unwrap(),
+        ],
+        "",
+        &[],
+    );
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("wants_human: false 1, true 1"), "{text}");
+    assert!(!stderr(&out).contains("from_turn"), "{}", stderr(&out));
+}
+
+/// The description says "every 2nd", not "every 2th", and lists one held-out
+/// case without a trailing ellipsis.
+#[test]
+fn the_description_counts_in_words() {
+    let dir = scratch("split-words");
+    assert_eq!(code(&split(&dir, &["--every", "2"])), 0);
+    let holdout = read(&dir.join("triage-cases-holdout.jud"));
+    let description = holdout.description.unwrap();
+    assert!(
+        description.contains("every 2nd case, cases 2, 4, 6;"),
+        "{description}"
+    );
+    let dir = scratch("split-words-one");
+    assert_eq!(code(&split(&dir, &[])), 0);
+    let holdout = read(&dir.join("triage-cases-holdout.jud"));
+    let description = holdout.description.unwrap();
+    assert!(
+        description.contains("every 4th case, case 4;"),
+        "{description}"
     );
 }
