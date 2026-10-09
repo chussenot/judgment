@@ -180,13 +180,20 @@ fn jud_in(cwd: &Path, args: &[&str], stdin: &str, env: &[(&str, &str)]) -> Outpu
     command
         .current_dir(cwd)
         .args(args)
-        .env_remove("TYPESAFE_API_KEY")
-        .env_remove("TYPESAFE_BASE_URL")
-        .env_remove("JUD_REPLAY")
         .env("XDG_CONFIG_HOME", config_home())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Every `TYPESAFE_*` and `JUD_*` variable, not only the ones jud reads:
+    // any other one adds a warning, or a field to `jud config`, that the page
+    // does not show.
+    for (name, _) in std::env::vars_os() {
+        if let Some(name) = name.to_str()
+            && (name.starts_with("TYPESAFE_") || name.starts_with("JUD_"))
+        {
+            command.env_remove(name);
+        }
+    }
     for (k, v) in env {
         command.env(k, v);
     }

@@ -356,6 +356,7 @@ fn record(args: &Record) -> Result<(), Failure> {
     // would be recorded over one of the documents it was given.
     refuse_inputs(args, &planned)?;
     let backend = Backend::open(None)?;
+    backend.announce(planned.len());
     let known = prepare_directory(&args.out, args.refresh)?;
     let mut session = Session {
         out: &args.out,

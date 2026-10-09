@@ -9,6 +9,13 @@
 //!   cargo test -p judgment --test live -- --ignored --nocapture
 //! ```
 //!
+//! `JUDGMENT_LIVE_PROFILE` names the server (`typesafe`, `laya`, `autojev`
+//! or `generic`, the default): where servers differ, a status code or a
+//! limit, the behaviour is asserted for the server it was observed on and
+//! printed for the others ([`Profile`]). Every body a test reads raw is
+//! checked against the vendored OpenAPI document, and the answer is printed
+//! for any server ([`check_body`]).
+//!
 //! `JUDGMENT_LIVE_API_KEY` defaults to `unused`, which a server that does not
 //! check keys accepts. The bearer test needs a second server that does:
 //! `JUDGMENT_LIVE_AUTH_BASE_URL` and `JUDGMENT_LIVE_AUTH_API_KEY`; it skips
@@ -18,13 +25,14 @@
 //! `docs/project/verification/laya-typed-decisions.md`.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::print_stderr)]
 
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use judgment::{
     Answer, CallOptions, Client, Error, NoulCriteria, Questions, Recorder, Replay, Request,
     SystemOne, options,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 options! {
     enum Department {
@@ -57,6 +65,206 @@ fn client() -> Client {
 
 fn sum(values: impl IntoIterator<Item = f64>) -> f64 {
     values.into_iter().sum()
+}
+
+// ---------------------------------------------------------------------------
+// Which server: what is pinned, and where
+// ---------------------------------------------------------------------------
+
+/// The server under test, named by `JUDGMENT_LIVE_PROFILE`. Servers that
+/// speak the wire still differ where the contract is silent (a refusal's
+/// status, the limits, the budget), so a difference is pinned for the
+/// server it was observed on and printed for the others. The model name
+/// cannot say which server it is: `autojev-serve` answers to `jev-latest`
+/// too, and was once pinned to the hosted API's status codes for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Profile {
+    /// The hosted TypeSafe API (`docs/project/verification/hosted-typesafe.md`).
+    Typesafe,
+    /// `laya-serve` 0.3.24 (`docs/project/verification/laya-typed-decisions.md`).
+    Laya,
+    /// `autojev-serve`, the server pplx-decider-v1.1-27b's checkpoint ships
+    /// (`mise run live:pplx`).
+    Autojev,
+    /// Any other server: outcomes are printed, and only what the crate needs
+    /// of every server is asserted.
+    Generic,
+}
+
+/// The four limits probes of [`the_server_s_limits_match_the_reference_page`].
+#[derive(Debug, Clone, Copy)]
+enum Limit {
+    Options256,
+    Levels11,
+    Options1,
+    Levels1,
+}
+
+impl Profile {
+    const NAMES: [(&'static str, Self); 4] = [
+        ("typesafe", Self::Typesafe),
+        ("laya", Self::Laya),
+        ("autojev", Self::Autojev),
+        ("generic", Self::Generic),
+    ];
+
+    /// `JUDGMENT_LIVE_PROFILE`, or [`Profile::Generic`] when it is unset. A
+    /// name it does not know is a mistake to stop on, not a server to guess.
+    fn from_env() -> Self {
+        let Ok(name) = std::env::var("JUDGMENT_LIVE_PROFILE") else {
+            eprintln!(
+                "JUDGMENT_LIVE_PROFILE is not set: the generic profile, which prints where \
+                 servers differ, schema verdicts included, and asserts what every server owes"
+            );
+            return Self::Generic;
+        };
+        if let Some((_, profile)) = Self::NAMES.iter().find(|(known, _)| *known == name) {
+            return *profile;
+        }
+        let known: Vec<_> = Self::NAMES.iter().map(|(n, _)| *n).collect();
+        panic!("JUDGMENT_LIVE_PROFILE={name}: one of {}", known.join(", "))
+    }
+
+    /// Whether a body this server sends is asserted to conform to the
+    /// OpenAPI document, or only checked and printed. Asserted where a run
+    /// found it held: the document is the hosted API's own, and
+    /// autojev-serve's bodies held on 2026-10-09. laya-serve's have not been
+    /// checked yet, so they are reported until a run shows they hold.
+    fn holds_to_the_schema(self) -> bool {
+        matches!(self, Self::Typesafe | Self::Autojev)
+    }
+
+    /// The status of a limits probe on this server, where one was observed.
+    fn limit_status(self, limit: Limit) -> Option<u16> {
+        match (self, limit) {
+            (Self::Typesafe, Limit::Options256 | Limit::Levels11) => Some(400),
+            (Self::Laya, Limit::Options256) => Some(413),
+            (Self::Autojev, Limit::Options256 | Limit::Levels11 | Limit::Levels1) => Some(422),
+            (Self::Typesafe | Self::Laya | Self::Autojev, _) => Some(200),
+            (Self::Generic, _) => None,
+        }
+    }
+
+    /// The status of a request with an empty question id, where observed.
+    fn empty_id_status(self) -> Option<u16> {
+        match self {
+            Self::Typesafe => Some(400),
+            Self::Laya => Some(422),
+            Self::Autojev => Some(200),
+            Self::Generic => None,
+        }
+    }
+
+    /// The status the over-budget state is refused with, where observed.
+    /// autojev-serve has no budget of its own in front of the model, and
+    /// what its tokenizer does past its window was not observed.
+    fn over_budget_status(self) -> Option<u16> {
+        match self {
+            Self::Typesafe => Some(400),
+            Self::Laya => Some(413),
+            Self::Autojev | Self::Generic => None,
+        }
+    }
+}
+
+/// The profile of this run, read once.
+static PROFILE: LazyLock<Profile> = LazyLock::new(Profile::from_env);
+
+// ---------------------------------------------------------------------------
+// The published contract, held against what the server actually sent
+// ---------------------------------------------------------------------------
+
+/// The vendored OpenAPI document (`tests/contract.rs` says how it is kept).
+static SPEC: LazyLock<Value> =
+    LazyLock::new(|| serde_json::from_str(include_str!("fixtures/typesafe-openapi.json")).unwrap());
+
+/// The component the document gives for `status` on `method path`, or
+/// `None` where it does not list that status: the hosted API's 400 and
+/// laya-serve's 413 are not in it, only 200 and 422 are.
+fn documented_schema(method: &str, path: &str, status: u16) -> Option<String> {
+    SPEC["paths"][path][method]["responses"][status.to_string()]["content"]["application/json"]
+        ["schema"]["$ref"]
+        .as_str()
+        .and_then(|r| r.strip_prefix("#/components/schemas/"))
+        .map(str::to_owned)
+}
+
+/// Every way `body` fails `schema`, one line each. A failing `oneOf` over
+/// the answer kinds fails at the answer as a whole, so the failures of the
+/// branch for the answer's own `type` follow it: they say which field made
+/// it none of the kinds.
+fn violations(schema: &str, body: &Value) -> Vec<String> {
+    fn flatten(error: &jsonschema::ValidationError<'_>, out: &mut Vec<String>) {
+        use jsonschema::error::ValidationErrorKind as Kind;
+        let at = error.instance_path().to_string();
+        let mut message = error.to_string();
+        if let Some((cut, _)) = message.char_indices().nth(160) {
+            message.truncate(cut);
+        }
+        out.push(format!(
+            "{}: {message}",
+            if at.is_empty() { "(root)" } else { &at }
+        ));
+        if let Kind::AnyOf { context }
+        | Kind::OneOfNotValid { context }
+        | Kind::OneOfMultipleValid { context } = error.kind()
+        {
+            // A branch for another kind fails on `type` too; only the
+            // branch for the kind the answer says it is has news.
+            for branch in context {
+                let mut lines = Vec::new();
+                for nested in branch {
+                    flatten(nested, &mut lines);
+                }
+                if !lines
+                    .iter()
+                    .any(|l| l.contains("/type: ") && l.ends_with(" was expected"))
+                {
+                    out.extend(lines);
+                }
+            }
+        }
+    }
+    let validator = jsonschema::draft202012::new(&json!({
+        "$ref": format!("#/components/schemas/{schema}"),
+        "components": SPEC["components"],
+    }))
+    .unwrap();
+    let mut out = Vec::new();
+    for error in validator.iter_errors(body) {
+        flatten(&error, &mut out);
+    }
+    out
+}
+
+/// Checks a body the server sent for `method path` against the document and
+/// prints the verdict. A success body the profile holds to the schema fails
+/// the test when it does not conform: the crate's decoding is written
+/// against it, so a difference there is a contract break, not a quirk. An
+/// error body is checked where its status is documented (422) and printed;
+/// a status the document does not list is named as such.
+fn check_body(profile: Profile, method: &str, path: &str, status: u16, text: &str) {
+    let what = format!("{} {path} {status}", method.to_uppercase());
+    let Some(schema) = documented_schema(method, path, status) else {
+        eprintln!("schema: {what} is a status the document does not list");
+        return;
+    };
+    let failures = match serde_json::from_str::<Value>(text) {
+        Ok(body) => violations(&schema, &body),
+        Err(e) => vec![format!("not JSON: {e}")],
+    };
+    if failures.is_empty() {
+        eprintln!("schema: {what} conforms to {schema}");
+        return;
+    }
+    eprintln!(
+        "schema: {what} does not conform to {schema}:\n  {}",
+        failures.join("\n  ")
+    );
+    assert!(
+        !profile.holds_to_the_schema(),
+        "{what}: the {profile:?} profile holds this server to the document"
+    );
 }
 
 #[tokio::test]
@@ -224,7 +432,7 @@ async fn a_structured_score_level_is_echoed() {
         questions: &q,
     })
     .unwrap();
-    let text = reqwest::Client::new()
+    let sent = reqwest::Client::new()
         .post(format!("{}/v1/systemone", base_url.trim_end_matches('/')))
         .bearer_auth(env_or("JUDGMENT_LIVE_API_KEY", "unused"))
         .header("content-type", "application/json")
@@ -232,12 +440,11 @@ async fn a_structured_score_level_is_echoed() {
         .body(body)
         .send()
         .await
-        .unwrap()
-        .error_for_status()
-        .unwrap()
-        .text()
-        .await
         .unwrap();
+    let status = sent.status().as_u16();
+    let text = sent.text().await.unwrap();
+    check_body(*PROFILE, "post", "/v1/systemone", status, &text);
+    assert_eq!(status, 200, "{text}");
     let response: judgment::Response = serde_json::from_str(&text).unwrap();
     match &response.answers["severity"] {
         Answer::Score { legend, .. } => {
@@ -246,6 +453,63 @@ async fn a_structured_score_level_is_echoed() {
         other => eprintln!("not a score: {}", serde_json::to_string(other).unwrap()),
     }
     response.verify(&q).unwrap();
+}
+
+#[tokio::test]
+#[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
+async fn every_body_the_server_sends_holds_to_the_published_document() {
+    // The client decodes into the crate's types, which tolerate more than
+    // the document allows (`tests/contract.rs`, "The pinned gaps"), so a
+    // server can pass every other test here and still send what the
+    // contract does not. This sends the request shapes the builders produce
+    // and checks the bodies themselves, plus the model list where it is
+    // served. How each check ends is printed for every server; the profiles
+    // that hold their server to the document fail on a difference.
+    let mut q = Questions::new();
+    q.choice::<Department>("department", "Which team should handle `message`?")
+        .unwrap();
+    q.noul(
+        "urgent",
+        "Does `message` convey urgency?",
+        Some(NoulCriteria::new(
+            "The customer needs an answer today",
+            "It can wait",
+        )),
+    )
+    .unwrap();
+    q.noul("angry", "Is the writer of `message` angry?", None)
+        .unwrap();
+    q.score(
+        "severity",
+        "How severe is the problem in `message`?",
+        ["cosmetic", "degraded", "blocked"],
+    )
+    .unwrap();
+    let state = json!({ "message": STATE_PAYOUTS });
+    let model = requested_model();
+    let body = serde_json::to_value(Request {
+        state: &state,
+        model: &model,
+        questions: &q,
+    })
+    .unwrap();
+    let (status, text) = post_raw(&body).await;
+    assert_eq!(status, 200, "{text}");
+
+    let base_url = std::env::var("JUDGMENT_LIVE_BASE_URL").unwrap();
+    let listed = reqwest::Client::new()
+        .get(format!("{}/v1/models", base_url.trim_end_matches('/')))
+        .bearer_auth(env_or("JUDGMENT_LIVE_API_KEY", "unused"))
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await
+        .unwrap();
+    let status = listed.status().as_u16();
+    let text = listed.text().await.unwrap();
+    // A 404 is a list not served (`the_model_list_is_either_served_or_absent`).
+    if status != 404 {
+        check_body(*PROFILE, "get", "/v1/models", status, &text);
+    }
 }
 
 #[tokio::test]
@@ -460,9 +724,9 @@ async fn a_wrong_bearer_token_is_unauthorized_and_the_right_one_is_not() {
 // ---------------------------------------------------------------------------
 // Past the builder: what the hosted API does with what the crate refuses, and
 // what repeats and formulas show. Added after the 2026-10-03 probe run
-// (docs/project/verification/hosted-typesafe.md, "Beyond the test file"). Where the hosted
-// API's behaviour is pinned, the pin applies when the requested or answering
-// model is a Jev; another server's behaviour is printed, not asserted.
+// (docs/project/verification/hosted-typesafe.md, "Beyond the test file").
+// A behaviour is pinned for the profiles it was observed on ([`Profile`])
+// and printed for the others.
 // ---------------------------------------------------------------------------
 
 /// Posts `body` to the live server's `/v1/systemone` exactly as given,
@@ -481,12 +745,9 @@ async fn post_raw(body: &serde_json::Value) -> (u16, String) {
         .await
         .unwrap();
     let status = response.status().as_u16();
-    (status, response.text().await.unwrap())
-}
-
-/// Whether `model` names a hosted Jev, whose behaviour these tests pin.
-fn is_jev(model: &str) -> bool {
-    model.starts_with("jev")
+    let text = response.text().await.unwrap();
+    check_body(*PROFILE, "post", "/v1/systemone", status, &text);
+    (status, text)
 }
 
 fn requested_model() -> String {
@@ -502,10 +763,10 @@ async fn the_server_s_limits_match_the_reference_page() {
     // the server's and the lower ones the crate's alone (the rustdoc of
     // `question`, `# Limits are checked here`). laya-serve's own upper
     // limits are lower (100 options, as a 413) and it answers one option or
-    // one level too, so the outcomes are printed for any server and
-    // asserted on the hosted API only.
+    // one level too; autojev-serve refuses 11 levels and one level as a 422.
+    // Each outcome is printed, and asserted where its profile observed it.
     let model = requested_model();
-    let hosted = is_jev(&model);
+    let profile = *PROFILE;
     let state = json!({ "message": STATE_PAYOUTS });
     let options = |n: usize| -> serde_json::Value {
         (0..n)
@@ -523,39 +784,41 @@ async fn the_server_s_limits_match_the_reference_page() {
         (
             "256 options",
             json!({ "c": { "type": "choice", "instructions": "Which?", "criteria": options(256) } }),
-            true,
+            Limit::Options256,
         ),
         (
             "11 levels",
             json!({ "s": { "type": "score", "instructions": "How bad?", "criteria": levels(11) } }),
-            true,
+            Limit::Levels11,
         ),
         (
             "1 option",
             json!({ "c": { "type": "choice", "instructions": "Which?", "criteria": options(1) } }),
-            false,
+            Limit::Options1,
         ),
         (
             "1 level",
             json!({ "s": { "type": "score", "instructions": "How bad?", "criteria": levels(1) } }),
-            false,
+            Limit::Levels1,
         ),
     ];
-    for (what, questions, past_the_limit) in cases {
+    for (what, questions, limit) in cases {
         let (status, text) =
             post_raw(&json!({ "model": model, "state": state, "questions": questions })).await;
         eprintln!(
             "{what}: {status} {}",
             text.chars().take(160).collect::<String>()
         );
-        if !hosted {
+        let Some(expected) = profile.limit_status(limit) else {
+            continue;
+        };
+        assert_eq!(status, expected, "{what} on {profile:?}: {text}");
+        if profile != Profile::Typesafe {
             continue;
         }
-        if past_the_limit {
-            assert_eq!(status, 400, "{what}: {text}");
+        if status == 400 {
             assert!(text.contains("at most"), "{what}: {text}");
         } else {
-            assert_eq!(status, 200, "{what}: {text}");
             let response: judgment::Response = serde_json::from_str(&text).unwrap();
             let answer = response.answers.values().next().unwrap();
             // Two arms with one body: the bindings differ in type.
@@ -582,8 +845,9 @@ async fn the_server_s_limits_match_the_reference_page() {
 #[tokio::test]
 #[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
 async fn an_empty_question_id_is_refused_by_the_server_too() {
-    // The builder refuses it (`question` unit tests); this is the server's
-    // half of the reason: a 400 that says `Question key cannot be empty.`
+    // The builder refuses it (`question` unit tests); this is the hosted
+    // API's half of the reason: a 400 that says `Question key cannot be
+    // empty.` laya-serve refuses it as a 422; autojev-serve answers it.
     let model = requested_model();
     let (status, text) = post_raw(&json!({
         "model": model,
@@ -592,8 +856,11 @@ async fn an_empty_question_id_is_refused_by_the_server_too() {
     }))
     .await;
     eprintln!("empty id: {status} {text}");
-    if is_jev(&model) {
-        assert_eq!(status, 400, "{text}");
+    let profile = *PROFILE;
+    if let Some(expected) = profile.empty_id_status() {
+        assert_eq!(status, expected, "empty id on {profile:?}: {text}");
+    }
+    if profile == Profile::Typesafe {
         assert!(text.contains("cannot be empty"), "{text}");
     }
 }
@@ -679,7 +946,7 @@ async fn confidence_follows_the_documented_formulas_on_jev() {
     // The confidence page gives the formulas; the OpenAPI document defines
     // `score` as the expected level. On the hosted API all three held
     // within rounding on 2026-10-03. Laya defines confidence otherwise, so
-    // against it the differences are printed and not asserted; they are
+    // on any other profile the differences are printed and not asserted; they are
     // what `Choice::confidence_from_probabilities` and its Score siblings
     // exist to show.
     let mut q = Questions::new();
@@ -713,7 +980,7 @@ async fn confidence_follows_the_documented_formulas_on_jev() {
         s.value,
         s.expected_value()
     );
-    if is_jev(&response.model) {
+    if *PROFILE == Profile::Typesafe {
         assert!(choice_gap <= 0.015, "choice confidence off by {choice_gap}");
         assert!(score_gap <= 0.02, "score confidence off by {score_gap}");
         assert!(
@@ -730,20 +997,28 @@ async fn a_state_over_the_budget_is_refused_as_too_large() {
     // API answers 400 `{"detail": {"error_type": "max_tokens_exceeded"}}`,
     // no message, which the client keeps as `kind`; laya-serve answers 413
     // `{"detail": "state too large (50600 > 50000 chars)"}` at its 50,000
-    // characters. Both are `Error::is_request_too_large`. The request is
+    // characters. Both are `Error::is_request_too_large`; autojev-serve
+    // answered it, having no budget in front of its model. The request is
     // about 500 KB; nothing is billed for a refused body.
     let noise = vec!["lorem ipsum dolor sit amet consectetur adipiscing elit ".repeat(20); 450];
     let state = json!({ "message": STATE_PAYOUTS, "noise": noise });
     let mut q = Questions::new();
     q.noul("urgent", "Does `message` convey urgency?", None)
         .unwrap();
-    let hosted = is_jev(&requested_model());
+    let profile = *PROFILE;
+    let expected = profile.over_budget_status();
     match client().system_one(&state, &q).await {
         Err(err @ Error::InvalidRequest { .. }) => {
             eprintln!("over budget: {err}");
-            if hosted {
+            if let Some(expected) = expected {
                 assert!(
-                    matches!(&err, Error::InvalidRequest { status: 400, kind: Some(kind), .. } if kind == "max_tokens_exceeded"),
+                    matches!(&err, Error::InvalidRequest { status, .. } if *status == expected),
+                    "{profile:?} refuses it with {expected}: {err:?}"
+                );
+            }
+            if profile == Profile::Typesafe {
+                assert!(
+                    matches!(&err, Error::InvalidRequest { kind: Some(kind), .. } if kind == "max_tokens_exceeded"),
                     "{err:?}"
                 );
             }
@@ -752,13 +1027,17 @@ async fn a_state_over_the_budget_is_refused_as_too_large() {
         Ok(response) => {
             eprintln!("over budget: answered by {}", response.model);
             assert!(
-                !is_jev(&response.model),
-                "Jev answered 40,000 tokens of state"
+                expected.is_none(),
+                "{profile:?} refuses it with {expected:?}, and {} answered it",
+                response.model
             );
         }
         Err(other) => {
             eprintln!("over budget: {other}");
-            assert!(!hosted, "the hosted API answered something else: {other}");
+            assert!(
+                expected.is_none(),
+                "{profile:?} refuses it with {expected:?}: {other}"
+            );
         }
     }
 }

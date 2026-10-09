@@ -14,11 +14,50 @@ All notable changes to the `judgment` crate. The format follows
   `http://127.0.0.1:8010`; `PPLX_API_KEY` also runs the bearer test). The
   model itself needs a GPU with about 49 GiB free; the server's wire was
   checked with the checkpoint's own `server.py` and `answer()` over a
-  stand-in network, where all fifteen live tests pass, with and without a
-  key. Its departures from the hosted API: a 422 where Jev answers 400, a
-  Noul answer with no `confidence`, `output_tokens` always 0, and the
-  aliases `jev-latest` and `jev-1.13.0`, so name the model
-  `autojev-qwen3.8-27b` to keep reports and tests from taking it for Jev.
+  stand-in network, where all the live tests pass, with and without a
+  key. Its departures from the hosted API: a 422 where Jev answers 400 (256
+  options, 11 levels, and one level, which Jev answers), an empty question
+  id answered where Jev refuses it, no budget in front of the model, a Noul
+  answer with no `confidence` and `output_tokens` always 0 (both allowed by
+  the OpenAPI document), and the aliases `jev-latest` and `jev-1.13.0`, so
+  name the model `autojev-qwen3.8-27b` to keep reports from taking it for
+  Jev.
+- The live tests check every body they read as sent, a success, a
+  refusal or the model list, against the vendored OpenAPI document and
+  print the verdict, down to the field of the answer kind that fails; a
+  status the document does not list (the hosted API's 400, laya-serve's
+  413) is named as such. A success body that does not conform fails the
+  run against the hosted API and autojev-serve, and is reported for any
+  other server. A new test, `every_body_the_server_sends_holds_to_the_published_document`,
+  sends the request shapes the builders produce and fetches the model
+  list for it.
+- `JUDGMENT_LIVE_PROFILE` (`typesafe`, `laya`, `autojev`, `generic`) names
+  the server the live tests run against, and each `mise run live:*` task
+  sets its own. Where servers differ (a refusal's status, the limits, the
+  budget) a behaviour is asserted on the profile it was observed on and
+  printed on the others; laya-serve 0.3.24's statuses, as its verification
+  record has them, and autojev-serve's are now pinned too. Unset, the
+  profile is `generic`.
+- `jud` names every `TYPESAFE_*` or `JUD_*` variable it does not read
+  (`JUD_BASE_URL`, `TYPESAFE_MODEL`): one line on stderr before it asks a
+  server, saying what it reads instead and which model and server it is
+  asking, and `ignored_environment` in `jud config`. An unset base URL is
+  the hosted API, so a misspelt variable used to send billed calls there
+  without a word. Names only, never values.
+
+### Changed
+
+- `jud record` and `jud eval` write one line to stderr before the first
+  call to a server, naming the model, the server and where its base URL
+  came from (`asking jev-latest at https://api.typesafe.ai for up to
+  7 cases (base URL from default)`). A server run of `jud eval` used to
+  leave stderr empty on success. Nothing changes under `--replay`.
+- The live tests no longer decide from the model name whether the hosted
+  API's behaviour is asserted: a model whose name starts with `jev` was
+  taken for the hosted API, which `autojev-serve`, answering to
+  `jev-latest`, is not. `mise run live:typesafe` sets the `typesafe`
+  profile; a hand run against the hosted API sets
+  `JUDGMENT_LIVE_PROFILE=typesafe` to keep its pins.
 
 ## [0.12.0] - 2026-10-09
 

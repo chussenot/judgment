@@ -2,7 +2,7 @@
 title: Against the hosted TypeSafe API
 description: The judgment crate's live tests run against api.typesafe.ai with a real key, what each one showed about the hosted wire that the mocks and the Laya run could not, what probing past the builder's limits taught (three 400 shapes, the token budget, non-determinism at two decimals, the confidence formulas) and what the crate changed for it, and how to repeat the check with one task.
 status: current
-last_reviewed: 2026-10-03
+last_reviewed: 2026-10-09
 tags: [judgment, typesafe, jev, compatibility, verification]
 ---
 
@@ -86,6 +86,6 @@ Without mise, the same run is:
 ```sh
 JUDGMENT_LIVE_BASE_URL=https://api.typesafe.ai JUDGMENT_LIVE_API_KEY="$TYPESAFE_API_KEY" \
 JUDGMENT_LIVE_AUTH_BASE_URL=https://api.typesafe.ai JUDGMENT_LIVE_AUTH_API_KEY="$TYPESAFE_API_KEY" \
-JUDGMENT_LIVE_MODEL=jev-latest \
+JUDGMENT_LIVE_MODEL=jev-latest JUDGMENT_LIVE_PROFILE=typesafe \
   cargo test -p judgment --test live -- --ignored --nocapture --test-threads=1
 ```

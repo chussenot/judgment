@@ -94,6 +94,9 @@ impl Backend {
             let client = resolved
                 .client()
                 .map_err(|e| Failure::Usage(e.to_string()))?;
+            // Before any call: a misspelt variable is why a run would ask a
+            // server it was not meant to.
+            resolved.warn_ignored_environment();
             Kind::Server { client, resolved }
         };
         Ok(Self {
@@ -140,6 +143,23 @@ impl Backend {
                         "a recording under {dir} matches this state and rubric but cannot answer it: {other}"
                     )),
                 }),
+        }
+    }
+
+    /// Before a run that asks a server once per case (`jud record`, `jud
+    /// eval`): one line naming the model and the server, and where the
+    /// base URL came from, so a run aimed at the wrong server, the hosted
+    /// API by default, can be stopped before it has paid for every case.
+    /// Nothing under a replay, which costs nothing.
+    pub(crate) fn announce(&self, cases: usize) {
+        if let Kind::Server { resolved, .. } = &self.kind {
+            crate::out::note!(
+                "asking {} at {} for up to {cases} case{} (base URL from {})",
+                resolved.model(),
+                public_url(resolved.base_url()),
+                if cases == 1 { "" } else { "s" },
+                resolved.base_url_from().replace('_', " ")
+            );
         }
     }
 

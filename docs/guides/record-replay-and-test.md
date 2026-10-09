@@ -118,9 +118,10 @@ export TYPESAFE_API_KEY=...
 jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out recordings/screening
 ```
 
-The cases are asked one at a time, in order. Each line below goes to stderr as its case is recorded, then a tally; stdout stays empty. The times are the calls' own, in milliseconds; those shown came from a local test server.
+The cases are asked one at a time, in order. The first line names the model and the server before anything is asked, so a run aimed at the wrong server can be stopped with nothing paid ([Variables jud does not read](../reference/configuration.md#variables-jud-does-not-read)). Each line after it goes to stderr as its case is recorded, then a tally; stdout stays empty. The times are the calls' own, in milliseconds; those shown came from a local test server.
 
 ```text
+asking jev-latest at https://api.typesafe.ai for up to 4 cases (base URL from default)
 recorded charged-twice (1/4, 2 ms)
 recorded cancelled-last-week (2/4, 1 ms)
 recorded how-does-billing-work (3/4, 1 ms)
@@ -131,6 +132,7 @@ recorded 4, kept 0 in recordings/screening
 Run it again and nothing is asked:
 
 ```text
+asking jev-latest at https://api.typesafe.ai for up to 4 cases (base URL from default)
 kept charged-twice
 kept cancelled-last-week
 kept how-does-billing-work

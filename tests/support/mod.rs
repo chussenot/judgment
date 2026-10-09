@@ -85,6 +85,9 @@ pub fn command(args: &[&str]) -> Command {
         .env_remove("TYPESAFE_BASE_URL")
         .env_remove("JUD_REPLAY")
         .env("XDG_CONFIG_HOME", config_home());
+    for variable in own_variables() {
+        command.env_remove(variable);
+    }
     for variable in PROXY_VARIABLES {
         command.env_remove(variable);
     }
@@ -92,6 +95,16 @@ pub fn command(args: &[&str]) -> Command {
         .env("NO_PROXY", "127.0.0.1,localhost")
         .env("no_proxy", "127.0.0.1,localhost");
     command
+}
+
+/// Every `TYPESAFE_*` and `JUD_*` variable in this process: the ones jud
+/// reads would point a run at the developer's server or key, and any other
+/// one makes jud warn that it does not read it.
+pub fn own_variables() -> Vec<String> {
+    std::env::vars_os()
+        .filter_map(|(name, _)| name.into_string().ok())
+        .filter(|name| name.starts_with("TYPESAFE_") || name.starts_with("JUD_"))
+        .collect()
 }
 
 /// Run `jud ARGS` with `stdin`, as [`command`] sets it up, plus whatever

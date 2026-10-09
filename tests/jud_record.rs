@@ -121,8 +121,16 @@ async fn the_first_run_asks_every_case_once_and_writes_one_recording_each() {
     // no temporary file survives a successful run.
     assert_eq!(names(&out), triage_files());
 
-    // Progress, one line per case, and the tally.
+    // The server and the model first, before anything is paid for; then
+    // progress, one line per case, and the tally.
     let err = stderr(&run);
+    assert!(
+        err.starts_with(&format!(
+            "asking jev-latest at {} for up to 7 cases (base URL from environment)\n",
+            server.uri()
+        )),
+        "{err}"
+    );
     assert!(err.contains("recorded refund-angry (1/7, "), "{err}");
     assert!(err.contains("recorded invoice-vat (7/7, "), "{err}");
     assert!(err.contains(" ms)"), "{err}");
