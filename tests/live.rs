@@ -94,6 +94,12 @@ enum Profile {
     /// `autojev-serve`, the server pplx-decider-v1.1-27b's checkpoint ships
     /// (`mise run live:pplx`).
     Autojev,
+    /// Jev through `OpenRouter`'s System One API, base URL
+    /// `https://openrouter.ai/api` (`mise run live:openrouter`). Its model
+    /// list is `OpenRouter`'s own catalogue, which the client cannot decode;
+    /// nothing else of it has been observed yet, so every other difference
+    /// is printed.
+    OpenRouter,
     /// Any other server: outcomes are printed, and only what the crate needs
     /// of every server is asserted.
     Generic,
@@ -109,11 +115,19 @@ enum Limit {
 }
 
 impl Profile {
-    const NAMES: [(&'static str, Self); 4] = [
+    const NAMES: [(&'static str, Self); 5] = [
         ("typesafe", Self::Typesafe),
         ("laya", Self::Laya),
         ("autojev", Self::Autojev),
+        ("openrouter", Self::OpenRouter),
         ("generic", Self::Generic),
+    ];
+
+    /// The hosts whose calls are billed, so that a run against one without
+    /// a profile stops before it asks, and the profile each takes.
+    const BILLED: [(&'static str, &'static str); 2] = [
+        ("api.typesafe.ai", "typesafe"),
+        ("openrouter.ai", "openrouter"),
     ];
 
     /// `JUDGMENT_LIVE_PROFILE`, or [`Profile::Generic`] when it is unset,
@@ -122,16 +136,22 @@ impl Profile {
     /// guess.
     fn from_env() -> Self {
         let Ok(name) = std::env::var("JUDGMENT_LIVE_PROFILE") else {
-            // The hosted API's pins are what a hand run against it is for;
+            // A billed server's pins are what a hand run against it is for;
             // falling to `generic` there would assert less without a word.
-            let hosted = ["JUDGMENT_LIVE_BASE_URL", "JUDGMENT_LIVE_AUTH_BASE_URL"]
+            let urls: Vec<String> = ["JUDGMENT_LIVE_BASE_URL", "JUDGMENT_LIVE_AUTH_BASE_URL"]
                 .iter()
-                .any(|name| std::env::var(name).is_ok_and(|url| url.contains("api.typesafe.ai")));
-            assert!(
-                !hosted,
-                "the server is the hosted API: set JUDGMENT_LIVE_PROFILE=typesafe \
-                 (or `generic` to assert only what every server owes)"
-            );
+                .filter_map(|name| std::env::var(name).ok())
+                .collect();
+            if let Some((host, profile)) = Self::BILLED
+                .iter()
+                .find(|(host, _)| urls.iter().any(|url| url.contains(host)))
+            {
+                panic!(
+                    "the server is {host}, whose calls are billed: set \
+                     JUDGMENT_LIVE_PROFILE={profile} (or `generic` to assert only what every \
+                     server owes)"
+                );
+            }
             eprintln!(
                 "JUDGMENT_LIVE_PROFILE is not set: the generic profile, which prints where \
                  servers differ, schema verdicts included, and asserts what every server owes"
@@ -143,6 +163,14 @@ impl Profile {
         }
         let known: Vec<_> = Self::NAMES.iter().map(|(n, _)| *n).collect();
         panic!("JUDGMENT_LIVE_PROFILE={name}: one of {}", known.join(", "))
+    }
+
+    /// Whether `GET /v1/models` answers with something other than the
+    /// documented list, so that the client's decode error is the expected
+    /// outcome and the body is not held to the document. `OpenRouter` serves
+    /// its own model catalogue at that path, as its TypeSafe-SDK guide says.
+    fn model_list_is_foreign(self) -> bool {
+        self == Self::OpenRouter
     }
 
     /// Whether a body this server sends is asserted to conform to the
@@ -162,7 +190,7 @@ impl Profile {
             (Self::Laya, Limit::Options256) => Some(413),
             (Self::Autojev, Limit::Options256 | Limit::Levels11 | Limit::Levels1) => Some(422),
             (Self::Typesafe | Self::Laya | Self::Autojev, _) => Some(200),
-            (Self::Generic, _) => None,
+            (Self::OpenRouter | Self::Generic, _) => None,
         }
     }
 
@@ -172,7 +200,7 @@ impl Profile {
             Self::Typesafe => Some(400),
             Self::Laya => Some(422),
             Self::Autojev => Some(200),
-            Self::Generic => None,
+            Self::OpenRouter | Self::Generic => None,
         }
     }
 
@@ -183,7 +211,7 @@ impl Profile {
         match self {
             Self::Typesafe => Some(400),
             Self::Laya => Some(413),
-            Self::Autojev | Self::Generic => None,
+            Self::Autojev | Self::OpenRouter | Self::Generic => None,
         }
     }
 }
@@ -528,8 +556,9 @@ async fn every_body_the_server_sends_holds_to_the_published_document() {
         .unwrap();
     let status = listed.status().as_u16();
     let text = listed.text().await.unwrap();
-    // A 404 is a list not served (`the_model_list_is_either_served_or_absent`).
-    if status != 404 {
+    // A 404 is a list not served (`the_model_list_is_either_served_or_absent`),
+    // and a foreign list is a catalogue the document does not describe.
+    if status != 404 && !PROFILE.model_list_is_foreign() {
         check_body(*PROFILE, "get", "/v1/models", status, &text);
     }
 }
@@ -568,7 +597,8 @@ async fn the_model_list_is_either_served_or_absent() {
     // the HTTP API reference page leaves it out and a compatible server may
     // not serve it (laya-serve does not, 0.3.24 included). Either outcome is
     // acceptable; what is not is anything other than a clean success or a
-    // clean 404.
+    // clean 404, apart from a gateway that serves its own catalogue at the
+    // path (OpenRouter), whose list the client cannot decode by design.
     match client().list_models().await {
         Ok(models) => {
             assert!(!models.is_empty());
@@ -582,6 +612,9 @@ async fn the_model_list_is_either_served_or_absent() {
             );
         }
         Err(Error::Http { status: 404, .. }) => eprintln!("GET /v1/models: 404, not served"),
+        Err(err @ Error::Decode { .. }) if PROFILE.model_list_is_foreign() => {
+            eprintln!("GET /v1/models: the server's own catalogue, as expected: {err}");
+        }
         Err(other) => panic!("unexpected: {other}"),
     }
 }

@@ -2,7 +2,7 @@
 title: The crate
 description: The judgment crate as a dependency; its features and what each compiles, its modules with a link to the rustdoc of each, the error groups, the limits and the defaults.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-09
 tags: [judgment, crate, features, modules, errors, reference]
 ---
 
@@ -59,6 +59,7 @@ The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCri
 |---|---|---|
 | Configuration | `MissingApiKey`, `InvalidApiKey`, `Url`, `ReservedHeader`, `ReservedField` | fix the builder's input; refused before any call |
 | Request refused | `Unauthorized`, `PermissionDenied`, `InvalidRequest`, `InvalidQuestion`, `DuplicateQuestionId` | fix the key, the permission or the question |
+| Account out of credit | `PaymentRequired` (a 402, OpenRouter's "Insufficient credits") | add credit; a retry or a new key does not help |
 | Transient, after the retries | `RateLimited`, `Overloaded`, `Http` | retry later, fall back, or raise the policy |
 | Transport | `Transport`, `ResponseTooLarge` | the network, the server, or the body cap |
 | Decode | `Decode`, `Io`, `InvalidRecording`, `NoRecording` | a body or a file the crate cannot read, or a request nobody recorded |

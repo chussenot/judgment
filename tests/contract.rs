@@ -69,7 +69,7 @@
 //! that adds a kind fails there.
 //!
 //! Three tests drive the client over wiremock and need the `http` feature;
-//! the other eight build and run under `--no-default-features`, which is why
+//! the other nine build and run under `--no-default-features`, which is why
 //! request bodies there are assembled with `json!` rather than through
 //! `judgment::Request` (defined in the client module).
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_lines)]
@@ -592,6 +592,7 @@ fn fitting_fake(questions: &Questions) -> Fake {
     let mut fake = Fake::new().model("jev-1.13.0").usage(Usage {
         input_tokens: 881,
         output_tokens: 122,
+        cost: None,
     });
     for (id, question) in questions.iter() {
         fake = match question {
@@ -1154,7 +1155,8 @@ fn the_schema_examples_decode_through_the_crate() {
         response.usage,
         Usage {
             input_tokens: 120,
-            output_tokens: 12
+            output_tokens: 12,
+            cost: None,
         }
     );
     assert!(response.get(&handle).unwrap().is_yes(0.9));
@@ -1438,4 +1440,37 @@ fn a_failure_message_is_cut_on_a_character_boundary() {
             listed(&failures)
         );
     }
+}
+
+/// `OpenRouter`'s System One API, the response its TypeSafe-SDK guide
+/// documents, verbatim: TypeSafe's shape plus `id`, `provider` and
+/// `usage.cost`, which the document allows (no component closes its
+/// properties). It conforms, decodes, keeps the cost and the extras, and
+/// verifies against the question it answers.
+#[test]
+fn openrouters_documented_response_conforms_and_decodes() {
+    let body = json!({
+        "id": "gen-dec-1789738314-X5e5eKGQdvR9rblyX250",
+        "model": "typesafe/jev-1.13-20260917",
+        "provider": "TypeSafe",
+        "answers": {
+            "refund": { "type": "noul", "noul": 0.98 }
+        },
+        "usage": { "input_tokens": 275, "output_tokens": 20, "cost": 0.00003 }
+    });
+    assert_conforms(
+        &response_schema(),
+        &body,
+        "OpenRouter's documented response",
+    );
+    let response: Response = serde_json::from_value(body).unwrap();
+    assert_eq!(response.usage.cost, Some(0.000_03));
+    assert_eq!(
+        response.extra.keys().collect::<Vec<_>>(),
+        ["id", "provider"]
+    );
+    let mut q = Questions::new();
+    q.noul("refund", "Is the customer asking for money back?", None)
+        .unwrap();
+    response.verify(&q).unwrap();
 }

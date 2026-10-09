@@ -176,6 +176,19 @@ JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-typesafe}" \
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 
+[tasks."live:openrouter"]
+description = "The ignored live tests against Jev through OpenRouter's System One API (https://openrouter.ai/api, model jev-latest, which OpenRouter routes to ~typesafe/jev-latest); needs OPENROUTER_API_KEY in .env and spends a few model calls, billed to the OpenRouter account"
+run = '''
+set -eu
+: "${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY (in .env) to run the live tests against OpenRouter}"
+base="${OPENROUTER_BASE_URL:-https://openrouter.ai/api}"
+JUDGMENT_LIVE_BASE_URL="$base" JUDGMENT_LIVE_API_KEY="$OPENROUTER_API_KEY" \
+JUDGMENT_LIVE_AUTH_BASE_URL="$base" JUDGMENT_LIVE_AUTH_API_KEY="$OPENROUTER_API_KEY" \
+JUDGMENT_LIVE_MODEL="${OPENROUTER_MODEL:-jev-latest}" \
+JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-openrouter}" \
+  cargo test --test live -- --ignored --nocapture --test-threads=1
+'''
+
 [tasks."live:ollama"]
 description = "The ignored live tests against Ollama's /v1/systemone on OLLAMA_URL (default http://127.0.0.1:11434; Ollama 0.35 or later, `ollama pull tev1:0.8b` first); OLLAMA_MODEL picks another decision model (nimble, tev1, and clef or clef-flash on 0.35.1)"
 run = '''

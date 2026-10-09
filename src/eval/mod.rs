@@ -556,6 +556,7 @@ mod tests {
             usage: Usage {
                 input_tokens: 1,
                 output_tokens: 2,
+                cost: None,
             },
             request_id: None,
             extra: BTreeMap::from([("routing".to_owned(), json!({ "model": "typed-decisions" }))]),

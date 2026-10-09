@@ -2,7 +2,7 @@
 title: System One client libraries
 description: A survey of the twenty-five community Rust clients for the TypeSafe System One wire, the official Python and JavaScript SDKs and the live OpenAPI document, what each did that judgment 0.1 did not, the ranked changes worth making to the crate, the ones rejected and why, and what judgment 0.2.0 shipped of them.
 status: current
-last_reviewed: 2026-10-04
+last_reviewed: 2026-10-09
 tags: [research, judgment, typesafe, rust, sdk]
 ---
 
@@ -61,7 +61,7 @@ The Python SDK reference, 0.7.1, fixes the client behaviour the crate claims to 
 - **Tolerance.** An answer whose `type` the SDK does not know is logged and skipped; `usage` fields are optional, "None when the API did not report it"; unknown fields are ignored. The crate, as of 0.1, fails the whole response on an unknown answer kind and requires `usage`. Every non-TypeSafe server in the survey exercised at least one of those: jigor returns no `usage`, zev adds answer fields, Laya adds three.
 - **Escape hatches.** Per-call `model`, `retry`, `timeout`, `extra_headers` and `extra_body` (shallow-merged, for fields such as `beam_width`), and `response_model` for a typed struct of answers. The crate has none of the per-call overrides and no way to send a field it does not know.
 - **Key hygiene.** The key is trimmed; an empty key, one with internal whitespace, control or non-ASCII characters is rejected before any request; an explicit empty key does not fall back to the environment. The crate filters blank keys and reports a bad one as a URL error.
-- **Gateways.** OpenRouter (`https://openrouter.ai/api`, model `~typesafe/jev-latest`) and Vercel's AI gateway (`https://ai-gateway.vercel.sh/typesafe`, model `typesafe-ai/jev`) are documented `base_url` targets. `fuzzy-jev` shows OpenRouter's response adds `id`, `provider` and `usage.cost`, so the tolerance above is what makes a gateway work.
+- **Gateways.** OpenRouter (`https://openrouter.ai/api`, model `~typesafe/jev-latest`) and Vercel's AI gateway (`https://ai-gateway.vercel.sh/typesafe`, model `typesafe-ai/jev`) are documented `base_url` targets. `fuzzy-jev` shows OpenRouter's response adds `id`, `provider` and `usage.cost`, so the tolerance above is what makes a gateway work. (Correction, 2026-10-09: it was not enough. This client dropped the last segment of a base URL's path, so both gateways' base URLs reached `/v1/systemone` at the host's root; the client now keeps the path, [Configure a backend](../../guides/configure-a-backend.md#jev-through-openrouter).)
 - **Confidence.** The reference gives the Choice confidence formula as approximately `(n·pmax − 1)/(n − 1)`, marked as a demonstration, and says a Noul has none. Useful for a `Fake` that wants realistic confidences; not a contract.
 
 ## Ranked: what to change in judgment

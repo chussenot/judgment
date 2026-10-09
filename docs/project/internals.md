@@ -2,7 +2,7 @@
 title: Internals
 description: The rules the code applies that the rustdoc states only once, with the reason behind each; the client's key check, status classification and error-body reading, the per-call options, the retry loop's edges, the backends, the tolerant decoder, what the response check leaves unchecked, the observer, the recordings and metrics, the .jud reader, and the bounded proofs.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-09
 tags: [judgment, internals, implementation, decoding, errors, retries, eval, jud, kani]
 ---
 
@@ -26,6 +26,7 @@ The builder refuses before sending what the HTTP API reference page says the ser
 |---|---|---|---|
 | 400, 413, 422 | `InvalidRequest`, `status` tells them apart | no | a retry cannot fix a body |
 | 401 | `Unauthorized` | no | a new key fixes it |
+| 402 | `PaymentRequired` | no | credit does; neither a new key nor the account's access |
 | 403 | `PermissionDenied` | no | a new key does not; the account's access does |
 | 408 | `Http` once retries stop | yes | transient by definition |
 | 429 | `RateLimited`, with the server's wait | yes | the account's rate limit |
@@ -35,7 +36,7 @@ The builder refuses before sending what the HTTP API reference page says the ser
 | 2xx that does not decode | `Decode`, reported as `decode` | never | the loop counted the 2xx as a success, so the client must report the failure itself |
 | 2xx that fails `verify` | an answer-fit error, reported as `unfit` | never | the call was billed, so its usage is reported first |
 
-**Reading a 400, 403 or 422 body** follows the Python SDK's order: the message is the first non-empty string of `error`, `error.message`, `message`, `detail` as a string, `detail.message`; then the issues of a `detail` list joined as `path: msg; …`; then the code; then the raw body, truncated to 2,000 bytes. The code is the first non-empty string of `detail.error_type`, `error.type`, `error_type`, `type`, and is kept as `InvalidRequest::kind` because the hosted API sometimes sends a code and nothing else (`max_tokens_exceeded`). The three shapes the hosted API uses, none of them in the OpenAPI document, are in the [hosted API record](verification/hosted-typesafe.md). Where the crate departs from the SDK on purpose: an empty string does not win over the next field; only a leading `body` location segment is dropped, since dropping every one would hide a question whose id is `body`; a non-JSON body is quoted truncated rather than kept whole. A validation issue's `input` and `ctx` are never read because `input` can echo a piece of the state.
+**Reading a 400, 402, 403 or 422 body** follows the Python SDK's order: the message is the first non-empty string of `error`, `error.message`, `message`, `detail` as a string, `detail.message`; then the issues of a `detail` list joined as `path: msg; …`; then the code; then the raw body, truncated to 2,000 bytes. The code is the first non-empty string of `detail.error_type`, `error.type`, `error_type`, `type`, and is kept as `InvalidRequest::kind` because the hosted API sometimes sends a code and nothing else (`max_tokens_exceeded`). The three shapes the hosted API uses, none of them in the OpenAPI document, are in the [hosted API record](verification/hosted-typesafe.md). Where the crate departs from the SDK on purpose: an empty string does not win over the next field; only a leading `body` location segment is dropped, since dropping every one would hide a question whose id is `body`; a non-JSON body is quoted truncated rather than kept whole. A validation issue's `input` and `ctx` are never read because `input` can echo a piece of the state.
 
 **The request id** (`x-typesafe-request-id`) is read in the client, not in the shared loop, so the loop carries no vendor's header name. It is the last attempt's, there is none after a transport failure, and a value that is empty, not printable ASCII or longer than 256 bytes is ignored, so what reaches a span or an error message is bounded. The body's `request_id` key, if a server sends one, is overwritten by the header.
 

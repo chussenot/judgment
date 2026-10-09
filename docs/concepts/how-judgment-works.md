@@ -2,7 +2,7 @@
 title: How judgment works
 description: The mechanisms behind the crate's guarantees, typed handles from a question to its answer, the response check every backend applies, the path of one call through the modules, the retry loop with the official SDKs' defaults, the error grouping and the request id, and what the crate deliberately does not do.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-09
 tags: [judgment, design, typesafe, retries, concepts]
 ---
 
@@ -101,7 +101,7 @@ The reasons for each default, and a table of where the crate matches the SDKs an
 
 ## Errors and the request id
 
-Errors are grouped by what fixes them rather than by status code ([The crate](../reference/crate.md#errors)). A 400 or a 422 is `InvalidRequest` with the server's message and the fields it names as `ValidationIssue`s with dotted paths, plus the server's machine-readable `kind` when the body carries one. A 403 is `PermissionDenied`, apart from a 401, because a new key does not fix it. A malformed API key is `InvalidApiKey` when the client is built, before any request, and no message quotes the key. The client follows no redirect, as the Python SDK follows none: a 3xx is `Error::Http` with that status, because the API never redirects its two paths, and following one would send a gateway header, and on a 307 or 308 the caller's state, to wherever the redirect names.
+Errors are grouped by what fixes them rather than by status code ([The crate](../reference/crate.md#errors)). A 400 or a 422 is `InvalidRequest` with the server's message and the fields it names as `ValidationIssue`s with dotted paths, plus the server's machine-readable `kind` when the body carries one. A 403 is `PermissionDenied`, apart from a 401, because a new key does not fix it; a 402 is `PaymentRequired`, apart from both, because credit does. A malformed API key is `InvalidApiKey` when the client is built, before any request, and no message quotes the key. The client follows no redirect, as the Python SDK follows none: a 3xx is `Error::Http` with that status, because the API never redirects its two paths, and following one would send a gateway header, and on a 307 or 308 the caller's state, to wherever the redirect names.
 
 TypeSafe identifies a call by an `x-typesafe-request-id` response header. It is the one link from a failed call or a surprising answer to the server's own logs, and the client keeps it in four places:
 
@@ -109,7 +109,7 @@ TypeSafe identifies a call by an `x-typesafe-request-id` response header. It is 
 |---|---|
 | `Error::request_id()` | every error that came from an HTTP response, a 2xx whose body does not decode included |
 | a ` [request_id …]` suffix on the error's message | the same errors, so a log line that keeps only the message still has it |
-| `Response::request_id` | every successful response |
+| `Response::request_id` | every successful response; without the header, the body's top-level `id` when it passes the header's checks (OpenRouter's generation id, `gen-dec-…`) |
 | the `request_id` field of the `typesafe.evaluate` and `typesafe.list_models` spans | every call |
 
 It is the last attempt's id when the call was retried, and there is none after a transport failure. It is optional everywhere, because the published OpenAPI document lists no response headers and a compatible server may not send one ([Laya does not](../project/verification/laya-typed-decisions.md#what-the-two-servers-do-differently)); the hosted API sends it on every 2xx and 4xx ([hosted API](../project/verification/hosted-typesafe.md)).
