@@ -2,7 +2,7 @@
 title: How the crate is checked
 description: The three checks that stand between the crate's mocks and a real server, the ignored live tests, the benchmark replay and the contract test against the vendored OpenAPI document, what each one can and cannot establish, and how to run them against the hosted API, Laya, Ollama or Clef on Workers AI.
 status: current
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-09
 tags: [judgment, verification, contract, openapi, live-tests]
 ---
 
@@ -12,7 +12,7 @@ The unit and integration tests never leave the process: wiremock for the client,
 
 ## Does a real server speak the wire this way?
 
-`tests/live.rs` holds fifteen `#[ignore]` tests that run the three primitives, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Five tasks run them:
+`tests/live.rs` holds sixteen `#[ignore]` tests that run the three primitives, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Five tasks run them:
 
 | Task | Against | Needs |
 |---|---|---|
@@ -21,6 +21,10 @@ The unit and integration tests never leave the process: wiremock for the client,
 | `mise run live:ollama` | Ollama's `/v1/systemone` on `OLLAMA_URL` (default `http://127.0.0.1:11434`) with `tev1:0.8b`, or `OLLAMA_MODEL=clef` or `clef-flash` for Cloudflare's models | Ollama 0.35 or later and `ollama pull tev1:0.8b`; that model runs on a CPU, Clef wants a GPU (0.35.1 for `ollama pull clef`) |
 | `mise run live:pplx` | Perplexity's [pplx-decider-v1.1-27b](https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b) through the `autojev-serve` its checkpoint ships, on `PPLX_URL` (default `http://127.0.0.1:8010`), model `autojev-qwen3.8-27b` by default | a CUDA GPU with about 49 GiB for the weights; the snapshot's `source/` installed with its `requirements.txt`, then `AUTOJEV_CHECKPOINT=<snapshot> PORT=8010 autojev-serve`. `PPLX_API_KEY` when the server sets `AUTOJEV_API_KEY`, which also runs the bearer test |
 | `mise run live:clef` | Cloudflare's Clef on Workers AI through `tools/systemone/serve.py`, `clef` by default and `CLEF_MODEL=clef-flash` for the 9B | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`; spends a handful of model calls |
+
+Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate.
+
+Every body a test reads as sent, a success, a refusal or the model list, is also checked against the vendored OpenAPI document (below), and the verdict printed: which component it was held to, and every field that fails, down to the answer kind's own branch. The client decodes into types that tolerate more than the document allows, so a server can pass every other test and still send what the contract does not; this is where that shows. A status the document does not list (only 200 and 422 are) is named as such: the hosted API's 400 and laya-serve's 413 are refusals the client handles, not bodies the document describes. A success body that fails the document fails the run on the profiles that hold their server to it, `typesafe` and `autojev`; on the others it is reported, until a run shows the server holds.
 
 A run that passes, or that finds a departure, becomes a page under `docs/project/verification/` naming the server, its release and the date. None of these runs in CI: the gate stays offline, and a key in CI would be a secret the repository does not need.
 

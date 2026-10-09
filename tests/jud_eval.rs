@@ -128,6 +128,12 @@ fn triage_with_desk_bar(bar: &str) -> String {
     )
 }
 
+/// The line `jud eval` writes before asking a server: the model, the
+/// server and where its URL came from (the environment, in these tests).
+fn asking(server: &str, cases: usize) -> String {
+    format!("asking jev-latest at {server} for up to {cases} cases (base URL from environment)\n")
+}
+
 #[test]
 fn the_triage_cases_replayed_give_the_accuracies_and_briers_the_calibration_example_prints() {
     let out = triage(&["--json"]);
@@ -945,7 +951,8 @@ async fn without_recordings_it_asks_the_server_once_per_case() {
         ],
     );
     assert_eq!(code(&out), 0, "{}", stderr(&out));
-    assert!(stderr(&out).is_empty(), "{}", stderr(&out));
+    // One line before the first call, naming the server and the model.
+    assert_eq!(stderr(&out), asking(&server.uri(), 7));
     assert_eq!(server.received_requests().await.unwrap().len(), 7);
     let report = report(&out);
     assert_eq!(report["requests"], 7);
@@ -977,7 +984,10 @@ async fn without_recordings_it_asks_the_server_once_per_case() {
     assert_eq!(code(&unmet), 3, "{}", stderr(&unmet));
     assert_eq!(
         stderr(&unmet),
-        "jud: 1 question(s) below --min-accuracy: desk 0.29 < 0.5\n"
+        format!(
+            "{}jud: 1 question(s) below --min-accuracy: desk 0.29 < 0.5\n",
+            asking(&second.uri(), 7)
+        )
     );
 }
 
@@ -1001,10 +1011,12 @@ async fn a_failing_server_is_exit_1_and_stops_at_the_first_failure() {
     assert_eq!(code(&out), 1, "{}", stderr(&out));
     // The failure names the case it stopped at and where it was in the run,
     // since nothing is kept: the first case, of seven, and no other was asked.
+    let message = stderr(&out);
     assert!(
-        stderr(&out).starts_with("jud: case refund-angry (1 of 7): the backend at "),
-        "{}",
-        stderr(&out)
+        message
+            .strip_prefix(&asking(&server.uri(), 7))
+            .is_some_and(|m| m.starts_with("jud: case refund-angry (1 of 7): the backend at ")),
+        "{message}"
     );
     assert!(stdout(&out).is_empty());
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
@@ -1342,10 +1354,12 @@ async fn a_server_that_fails_midway_names_the_case_and_its_place_in_the_run() {
         ],
     );
     assert_eq!(code(&out), 1, "{}", stderr(&out));
+    let message = stderr(&out);
     assert!(
-        stderr(&out).starts_with("jud: case login-loop (3 of 7): the backend at "),
-        "{}",
-        stderr(&out)
+        message
+            .strip_prefix(&asking(&server.uri(), 7))
+            .is_some_and(|m| m.starts_with("jud: case login-loop (3 of 7): the backend at ")),
+        "{message}"
     );
     assert!(stdout(&out).is_empty());
     assert_eq!(server.received_requests().await.unwrap().len(), 3);

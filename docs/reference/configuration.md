@@ -2,7 +2,7 @@
 title: Configuration
 description: Every setting the jud command and the crate's client read, where each comes from, in what order of precedence, and what the defaults are; the configuration file's fields, the output of jud config, and which commands read JUD_REPLAY.
 status: current
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-09
 tags: [judgment, jud, cli, configuration, reference]
 ---
 
@@ -32,6 +32,20 @@ flowchart TD
 | Replay directory | `JUD_REPLAY` | | none; the flag `--replay DIR` overrides the variable; [which commands read it](#replay) |
 
 `TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL` set to an empty or blank value count as unset. `JUD_REPLAY` set to an empty or blank value does not: [Replay](#replay) says what happens. No environment variable names the model for the command; the examples under `examples/` read `TYPESAFE_MODEL` for their `--live` runs, the command does not ([beads issue `judgment-rxl`](../project/contributing.md#tracking-work)).
+
+### Variables jud does not read
+
+An unset base URL means the hosted API, so a misspelt variable (`JUD_BASE_URL` for `TYPESAFE_BASE_URL`) would send paid calls there without a word, and `TYPESAFE_MODEL`, which the examples read, would leave the command on `jev-latest`. Every `TYPESAFE_*` or `JUD_*` variable set in the environment that is none of the three above is therefore named: before a command asks a server, one line on stderr per variable, saying what the command reads instead and which model and server it is asking; and in `jud config`, as `ignored_environment`. Only names are shown, never values, since a misspelt key variable holds a key. Under a replay nothing is asked, so nothing is named.
+
+```text
+jud: JUD_BASE_URL is set but jud does not read it (it reads TYPESAFE_BASE_URL, TYPESAFE_API_KEY and JUD_REPLAY, and the model from `model` in /home/me/.config/jud/config.yaml); asking jev-latest at https://api.typesafe.ai, the base URL from default
+```
+
+`jud record` and `jud eval`, which ask a server once per case, also say before the first call which model and server they are asking and where the base URL came from, so a run aimed at the wrong server can be stopped before it has paid for every case:
+
+```text
+asking jev-latest at https://api.typesafe.ai for up to 7 cases (base URL from default)
+```
 
 ### The file
 
@@ -64,7 +78,7 @@ Prints the resolved backend and where each value came from, as JSON on stdout. T
 }
 ```
 
-`*_from` is `environment`, `config_file` or `default`.
+`*_from` is `environment`, `config_file` or `default`. `ignored_environment`, the [variables jud does not read](#variables-jud-does-not-read) that are set, is there only when there are some.
 
 ### Replay
 

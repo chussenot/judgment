@@ -2,7 +2,7 @@
 title: Against Laya typed-decisions
 description: How the judgment crate was tested against Laya's typed-decisions checkpoint through laya-serve, what each test asserts and why, the decoding bug the first run caught, the benchmark numbers, the 2026-10-03 re-run against laya-serve 0.3.24 and the legend comparison it loosened, and how to repeat the run.
 status: experiment
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-09
 tags: [judgment, typesafe, laya, evaluation, compatibility]
 ---
 
@@ -34,7 +34,7 @@ Laya's README says its payload is schema-identical to Jev's and lists three diff
 The live checks are in `tests/live.rs`. Every one is `#[ignore]`, so the gate stays hermetic and they run only by hand:
 
 ```sh
-JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8000 JUDGMENT_LIVE_MODEL=typed-decisions \
+JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8000 JUDGMENT_LIVE_MODEL=typed-decisions JUDGMENT_LIVE_PROFILE=laya \
   cargo test -p judgment --test live -- --ignored --nocapture
 ```
 
@@ -182,7 +182,7 @@ USE_TF=0 LAYA_MODELS=typed-decisions LAYA_DEVICE=cpu LAYA_PORT=8001 LAYA_API_KEY
 USE_TF=0 .venv/bin/python tools/systemone/serve.py laya --models typed-decisions --port 8099
 
 # the live tests
-JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8000 JUDGMENT_LIVE_MODEL=typed-decisions \
+JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8000 JUDGMENT_LIVE_MODEL=typed-decisions JUDGMENT_LIVE_PROFILE=laya \
 JUDGMENT_LIVE_AUTH_BASE_URL=http://127.0.0.1:8001 JUDGMENT_LIVE_AUTH_API_KEY=secret \
   cargo test -p judgment --test live -- --ignored --nocapture --test-threads=1
 

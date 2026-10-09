@@ -172,6 +172,7 @@ base="${TYPESAFE_BASE_URL:-https://api.typesafe.ai}"
 JUDGMENT_LIVE_BASE_URL="$base" JUDGMENT_LIVE_API_KEY="$TYPESAFE_API_KEY" \
 JUDGMENT_LIVE_AUTH_BASE_URL="$base" JUDGMENT_LIVE_AUTH_API_KEY="$TYPESAFE_API_KEY" \
 JUDGMENT_LIVE_MODEL="${TYPESAFE_DEFAULT_MODEL:-jev-latest}" \
+JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-typesafe}" \
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 
@@ -182,6 +183,7 @@ set -eu
 base="${OLLAMA_URL:-http://127.0.0.1:11434}"
 curl -sSf -m 5 -o /dev/null "$base/api/version" || { echo "no Ollama at $base; start it with 'ollama serve' and pull a decision model ('ollama pull tev1:0.8b')" >&2; exit 1; }
 JUDGMENT_LIVE_BASE_URL="$base" JUDGMENT_LIVE_MODEL="${OLLAMA_MODEL:-tev1:0.8b}" \
+JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-generic}" \
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 
@@ -201,6 +203,7 @@ for _ in $(seq 1 50); do
 done
 JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8099 JUDGMENT_LIVE_MODEL="${CLEF_MODEL:-clef}" \
 JUDGMENT_LIVE_AUTH_BASE_URL=http://127.0.0.1:8098 JUDGMENT_LIVE_AUTH_API_KEY=secret \
+JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-generic}" \
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 
@@ -209,6 +212,7 @@ description = "The ignored live tests against a System One-compatible server on 
 run = '''
 set -eu
 JUDGMENT_LIVE_BASE_URL="${LAYA_URL:-http://127.0.0.1:8000}" JUDGMENT_LIVE_MODEL="${LAYA_MODEL:-typed-decisions}" \
+JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-laya}" \
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 
@@ -222,6 +226,7 @@ if [ -n "${PPLX_API_KEY:-}" ]; then
   export JUDGMENT_LIVE_API_KEY="$PPLX_API_KEY" JUDGMENT_LIVE_AUTH_BASE_URL="$base" JUDGMENT_LIVE_AUTH_API_KEY="$PPLX_API_KEY"
 fi
 JUDGMENT_LIVE_BASE_URL="$base" JUDGMENT_LIVE_MODEL="${PPLX_MODEL:-autojev-qwen3.8-27b}" \
+JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-autojev}" \
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 

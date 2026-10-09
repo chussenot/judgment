@@ -30,18 +30,28 @@ fn config_home() -> PathBuf {
     dir
 }
 
+/// Every `TYPESAFE_*` and `JUD_*` variable in this process: the host's key,
+/// server or recordings, and any other one jud would warn it does not read.
+fn own_variables() -> Vec<String> {
+    std::env::vars_os()
+        .filter_map(|(name, _)| name.into_string().ok())
+        .filter(|name| name.starts_with("TYPESAFE_") || name.starts_with("JUD_"))
+        .collect()
+}
+
 /// Run `jud` with `args`, `stdin` and only the environment given: the
 /// crate's variables are cleared first, so the host's key never leaks in.
 fn jud(args: &[&str], stdin: &str, env: &[(&str, &str)], config_home: &Path) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_jud"));
     command
         .args(args)
-        .env_remove("TYPESAFE_API_KEY")
-        .env_remove("TYPESAFE_BASE_URL")
         .env("XDG_CONFIG_HOME", config_home)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    for name in own_variables() {
+        command.env_remove(name);
+    }
     for (k, v) in env {
         command.env(k, v);
     }
@@ -385,6 +395,84 @@ fn the_default_backend_is_the_hosted_typesafe_api() {
     let text = stdout(&out);
     assert!(text.contains("\"api_key\": \"environment\""), "{text}");
     assert!(!text.contains("sk-secret-value"));
+    // Nothing set that jud does not read, so no list of them.
+    assert!(config.get("ignored_environment").is_none(), "{config}");
+}
+
+/// A misspelt variable is why a run asks a server it was not meant to: with
+/// `JUD_BASE_URL` set in place of `TYPESAFE_BASE_URL`, the hosted API would
+/// be asked and billed without a word. Every `TYPESAFE_*` or `JUD_*`
+/// variable jud does not read is named, by `jud config` and before a call,
+/// and the call still goes where the variables jud does read say.
+#[tokio::test]
+async fn a_variable_jud_does_not_read_is_named_before_the_call() {
+    let server = backend(200, answers(), 1).await;
+    let home = config_home();
+    let uri = server.uri();
+    let env = [
+        ("TYPESAFE_API_KEY", "test-key"),
+        ("TYPESAFE_BASE_URL", uri.as_str()),
+        ("JUD_BASE_URL", "http://127.0.0.1:9"),
+        ("TYPESAFE_MODEL", "jev-preview"),
+    ];
+
+    let out = jud(&["config"], "", &env, &home);
+    let config: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(
+        config["ignored_environment"],
+        json!(["JUD_BASE_URL", "TYPESAFE_MODEL"])
+    );
+
+    let out = jud(&[RUBRIC], STATE, &env, &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(
+        serde_json::from_str::<Value>(&stdout(&out)).unwrap()["desk"]["key"],
+        "billing"
+    );
+    let warnings = stderr(&out);
+    let lines: Vec<&str> = warnings.lines().collect();
+    assert_eq!(lines.len(), 2, "{warnings}");
+    for (line, name) in lines.iter().zip(["JUD_BASE_URL", "TYPESAFE_MODEL"]) {
+        assert!(
+            line.starts_with(&format!("jud: {name} is set but jud does not read it")),
+            "{line}"
+        );
+        assert!(line.contains("TYPESAFE_BASE_URL"), "{line}");
+        // Where the model comes from instead, for `TYPESAFE_MODEL` above all.
+        assert!(line.contains("`model` in "), "{line}");
+        assert!(
+            line.ends_with(&format!(
+                "asking jev-latest at {}, the base URL from environment",
+                server.uri()
+            )),
+            "{line}"
+        );
+    }
+    // The value is never printed: a misspelt key variable holds a key.
+    let out = jud(
+        &["config"],
+        "",
+        &[("TYPESAFE_APIKEY", "sk-secret-value")],
+        &home,
+    );
+    assert!(!stdout(&out).contains("sk-secret-value"));
+    assert!(stdout(&out).contains("TYPESAFE_APIKEY"), "{}", stdout(&out));
+}
+
+/// Under a replay nothing is asked or billed, so nothing is named.
+#[test]
+fn a_replay_names_no_variable() {
+    let root = env!("CARGO_MANIFEST_DIR");
+    let recordings = format!("{root}/examples/recordings/jud_calibration");
+    let recorded = r#"{"message": "This is the third time I'm writing. I was charged twice last month and nobody has refunded me. Fix it today or I cancel."}"#;
+    let out = jud(
+        &["--replay", &recordings, RUBRIC],
+        recorded,
+        &[("JUD_BASE_URL", "http://127.0.0.1:9")],
+        &config_home(),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stderr(&out).is_empty(), "{}", stderr(&out));
 }
 
 #[tokio::test]
@@ -715,12 +803,13 @@ fn the_readme_shows_what_the_binary_prints() {
 /// Run `jud ARGS` with its stdout pipe closed at once, as `jud ... | true`
 /// does, and give the status and what it wrote to stderr.
 fn with_stdout_closed(args: &[&str]) -> (Option<i32>, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_jud"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_jud"));
+    for name in own_variables() {
+        command.env_remove(name);
+    }
+    let mut child = command
         .args(args)
         .current_dir(env!("CARGO_MANIFEST_DIR"))
-        .env_remove("TYPESAFE_API_KEY")
-        .env_remove("TYPESAFE_BASE_URL")
-        .env_remove("JUD_REPLAY")
         .env("XDG_CONFIG_HOME", config_home())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

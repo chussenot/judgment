@@ -5,6 +5,11 @@
 //! wire is selected by its base URL; there is no other switch, because
 //! `SystemOne` is the abstraction and the client already serves every
 //! compatible server.
+//!
+//! Because an unset base URL means the hosted API, a misspelt variable
+//! (`JUD_BASE_URL` for `TYPESAFE_BASE_URL`) sends paid calls there without a
+//! word. Every `TYPESAFE_*` or `JUD_*` variable jud does not read is
+//! therefore named before a server is asked, and in `jud config`.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -17,6 +22,13 @@ use crate::Fallible;
 
 /// The environment variable the examples read for another server.
 pub(crate) const BASE_URL_ENV: &str = "TYPESAFE_BASE_URL";
+/// The environment variable the command line reads for `--replay`.
+const REPLAY_ENV: &str = "JUD_REPLAY";
+/// Every variable under the prefixes below that jud reads; any other one set
+/// is a misspelling or meant for another tool, and is named.
+const READ_ENV: [&str; 3] = [API_KEY_ENV, BASE_URL_ENV, REPLAY_ENV];
+/// The prefixes jud's own variables and the crate's conventions use.
+const OWN_PREFIXES: [&str; 2] = ["TYPESAFE_", "JUD_"];
 /// The per-attempt timeout of a command-line run; a person is waiting.
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
@@ -39,6 +51,17 @@ enum Source {
     Default,
 }
 
+impl Source {
+    /// The name `jud config` prints: `environment`, `config_file` or
+    /// `default`.
+    fn name(self) -> String {
+        serde_json::to_value(self)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .unwrap_or_default()
+    }
+}
+
 /// The backend a run uses, with where each value came from.
 #[derive(Debug, Serialize)]
 pub(crate) struct Resolved {
@@ -53,6 +76,10 @@ pub(crate) struct Resolved {
     api_key: &'static str,
     #[serde(skip)]
     api_key_value: Option<String>,
+    /// `TYPESAFE_*` and `JUD_*` variables that are set and that jud does
+    /// not read; left out of `jud config` when there are none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    ignored_environment: Vec<String>,
 }
 
 /// `$XDG_CONFIG_HOME/jud/config.yaml`, else `$HOME/.config/jud/config.yaml`.
@@ -77,6 +104,19 @@ fn read_file(path: &PathBuf) -> Fallible<Option<File>> {
     serde_saphyr::from_str(&text)
         .map(Some)
         .map_err(|e| format!("{} is not a jud configuration: {e}", path.display()).into())
+}
+
+/// The names of the `TYPESAFE_*` and `JUD_*` variables set in this process
+/// that jud does not read, sorted. Values are never looked at: one may be a
+/// key.
+fn ignored_environment() -> Vec<String> {
+    let mut names: Vec<String> = std::env::vars_os()
+        .filter_map(|(name, _)| name.into_string().ok())
+        .filter(|name| OWN_PREFIXES.iter().any(|p| name.starts_with(p)))
+        .filter(|name| !READ_ENV.contains(&name.as_str()))
+        .collect();
+    names.sort();
+    names
 }
 
 fn env_var(name: &str) -> Option<String> {
@@ -113,6 +153,7 @@ pub(crate) fn resolve() -> Fallible<Resolved> {
         timeout_secs: file.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS),
         api_key,
         api_key_value,
+        ignored_environment: ignored_environment(),
     })
 }
 
@@ -127,10 +168,29 @@ impl Resolved {
 
     /// Where the model came from: `environment`, `config_file` or `default`.
     pub(crate) fn model_from(&self) -> String {
-        serde_json::to_value(self.model_from)
-            .ok()
-            .and_then(|v| v.as_str().map(str::to_owned))
-            .unwrap_or_default()
+        self.model_from.name()
+    }
+
+    /// Where the base URL came from: `environment`, `config_file` or
+    /// `default`.
+    pub(crate) fn base_url_from(&self) -> String {
+        self.base_url_from.name()
+    }
+
+    /// One line on stderr per variable `ignored_environment` found, saying
+    /// which server is asked instead. Nothing when there are none.
+    pub(crate) fn warn_ignored_environment(&self) {
+        for name in &self.ignored_environment {
+            crate::out::note!(
+                "jud: {name} is set but jud does not read it (it reads {BASE_URL_ENV}, \
+                 {API_KEY_ENV} and {REPLAY_ENV}, and the model from `model` in {}); \
+                 asking {} at {}, the base URL from {}",
+                self.config_file,
+                self.model,
+                crate::backend::public_url(&self.base_url),
+                self.base_url_from().replace('_', " ")
+            );
+        }
     }
 
     /// Where the key came from: `environment`, `config_file` or `missing`;

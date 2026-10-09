@@ -1004,9 +1004,10 @@ export TYPESAFE_API_KEY=...
 jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out recordings/screening
 ```
 
-The cases are asked one at a time, in order. Each line below goes to stderr as its case is recorded, then a tally; stdout stays empty. The times are the calls' own, in milliseconds; those shown came from a local test server.
+The cases are asked one at a time, in order. The first line names the model and the server before anything is asked, so a run aimed at the wrong server can be stopped with nothing paid ([Variables jud does not read](../reference/configuration.md#variables-jud-does-not-read)). Each line after it goes to stderr as its case is recorded, then a tally; stdout stays empty. The times are the calls' own, in milliseconds; those shown came from a local test server.
 
 ```text
+asking jev-latest at https://api.typesafe.ai for up to 4 cases (base URL from default)
 recorded charged-twice (1/4, 2 ms)
 recorded cancelled-last-week (2/4, 1 ms)
 recorded how-does-billing-work (3/4, 1 ms)
@@ -1017,6 +1018,7 @@ recorded 4, kept 0 in recordings/screening
 Run it again and nothing is asked:
 
 ```text
+asking jev-latest at https://api.typesafe.ai for up to 4 cases (base URL from default)
 kept charged-twice
 kept cancelled-last-week
 kept how-does-billing-work
@@ -2537,6 +2539,20 @@ flowchart TD
 
 `TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL` set to an empty or blank value count as unset. `JUD_REPLAY` set to an empty or blank value does not: [Replay](#replay) says what happens. No environment variable names the model for the command; the examples under `examples/` read `TYPESAFE_MODEL` for their `--live` runs, the command does not ([beads issue `judgment-rxl`](../project/contributing.md#tracking-work)).
 
+### Variables jud does not read
+
+An unset base URL means the hosted API, so a misspelt variable (`JUD_BASE_URL` for `TYPESAFE_BASE_URL`) would send paid calls there without a word, and `TYPESAFE_MODEL`, which the examples read, would leave the command on `jev-latest`. Every `TYPESAFE_*` or `JUD_*` variable set in the environment that is none of the three above is therefore named: before a command asks a server, one line on stderr per variable, saying what the command reads instead and which model and server it is asking; and in `jud config`, as `ignored_environment`. Only names are shown, never values, since a misspelt key variable holds a key. Under a replay nothing is asked, so nothing is named.
+
+```text
+jud: JUD_BASE_URL is set but jud does not read it (it reads TYPESAFE_BASE_URL, TYPESAFE_API_KEY and JUD_REPLAY, and the model from `model` in /home/me/.config/jud/config.yaml); asking jev-latest at https://api.typesafe.ai, the base URL from default
+```
+
+`jud record` and `jud eval`, which ask a server once per case, also say before the first call which model and server they are asking and where the base URL came from, so a run aimed at the wrong server can be stopped before it has paid for every case:
+
+```text
+asking jev-latest at https://api.typesafe.ai for up to 7 cases (base URL from default)
+```
+
 ### The file
 
 `$XDG_CONFIG_HOME/jud/config.yaml` when `XDG_CONFIG_HOME` is set and not empty, else `$HOME/.config/jud/config.yaml`. Every field is optional; a field the file does not define is refused, and a file that is not valid YAML is a usage error (status 2). An empty file is the same as no file.
@@ -2568,7 +2584,7 @@ Prints the resolved backend and where each value came from, as JSON on stdout. T
 }
 ```
 
-`*_from` is `environment`, `config_file` or `default`.
+`*_from` is `environment`, `config_file` or `default`. `ignored_environment`, the [variables jud does not read](#variables-jud-does-not-read) that are set, is there only when there are some.
 
 ### Replay
 
@@ -3870,7 +3886,7 @@ The unit and integration tests never leave the process: wiremock for the client,
 
 ## Does a real server speak the wire this way?
 
-`tests/live.rs` holds fifteen `#[ignore]` tests that run the three primitives, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Five tasks run them:
+`tests/live.rs` holds sixteen `#[ignore]` tests that run the three primitives, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Five tasks run them:
 
 | Task | Against | Needs |
 |---|---|---|
@@ -3879,6 +3895,10 @@ The unit and integration tests never leave the process: wiremock for the client,
 | `mise run live:ollama` | Ollama's `/v1/systemone` on `OLLAMA_URL` (default `http://127.0.0.1:11434`) with `tev1:0.8b`, or `OLLAMA_MODEL=clef` or `clef-flash` for Cloudflare's models | Ollama 0.35 or later and `ollama pull tev1:0.8b`; that model runs on a CPU, Clef wants a GPU (0.35.1 for `ollama pull clef`) |
 | `mise run live:pplx` | Perplexity's [pplx-decider-v1.1-27b](https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b) through the `autojev-serve` its checkpoint ships, on `PPLX_URL` (default `http://127.0.0.1:8010`), model `autojev-qwen3.8-27b` by default | a CUDA GPU with about 49 GiB for the weights; the snapshot's `source/` installed with its `requirements.txt`, then `AUTOJEV_CHECKPOINT=<snapshot> PORT=8010 autojev-serve`. `PPLX_API_KEY` when the server sets `AUTOJEV_API_KEY`, which also runs the bearer test |
 | `mise run live:clef` | Cloudflare's Clef on Workers AI through `tools/systemone/serve.py`, `clef` by default and `CLEF_MODEL=clef-flash` for the 9B | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`; spends a handful of model calls |
+
+Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate.
+
+Every body a test reads as sent, a success, a refusal or the model list, is also checked against the vendored OpenAPI document (below), and the verdict printed: which component it was held to, and every field that fails, down to the answer kind's own branch. The client decodes into types that tolerate more than the document allows, so a server can pass every other test and still send what the contract does not; this is where that shows. A status the document does not list (only 200 and 422 are) is named as such: the hosted API's 400 and laya-serve's 413 are refusals the client handles, not bodies the document describes. A success body that fails the document fails the run on the profiles that hold their server to it, `typesafe` and `autojev`; on the others it is reported, until a run shows the server holds.
 
 A run that passes, or that finds a departure, becomes a page under `docs/project/verification/` naming the server, its release and the date. None of these runs in CI: the gate stays offline, and a key in CI would be a secret the repository does not need.
 
@@ -4004,7 +4024,7 @@ Without mise, the same run is:
 ```sh
 JUDGMENT_LIVE_BASE_URL=https://api.typesafe.ai JUDGMENT_LIVE_API_KEY="$TYPESAFE_API_KEY" \
 JUDGMENT_LIVE_AUTH_BASE_URL=https://api.typesafe.ai JUDGMENT_LIVE_AUTH_API_KEY="$TYPESAFE_API_KEY" \
-JUDGMENT_LIVE_MODEL=jev-latest \
+JUDGMENT_LIVE_MODEL=jev-latest JUDGMENT_LIVE_PROFILE=typesafe \
   cargo test -p judgment --test live -- --ignored --nocapture --test-threads=1
 ```
 
@@ -4040,7 +4060,7 @@ Laya's README says its payload is schema-identical to Jev's and lists three diff
 The live checks are in `tests/live.rs`. Every one is `#[ignore]`, so the gate stays hermetic and they run only by hand:
 
 ```sh
-JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8000 JUDGMENT_LIVE_MODEL=typed-decisions \
+JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8000 JUDGMENT_LIVE_MODEL=typed-decisions JUDGMENT_LIVE_PROFILE=laya \
   cargo test -p judgment --test live -- --ignored --nocapture
 ```
 
@@ -4188,7 +4208,7 @@ USE_TF=0 LAYA_MODELS=typed-decisions LAYA_DEVICE=cpu LAYA_PORT=8001 LAYA_API_KEY
 USE_TF=0 .venv/bin/python tools/systemone/serve.py laya --models typed-decisions --port 8099
 
 # the live tests
-JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8000 JUDGMENT_LIVE_MODEL=typed-decisions \
+JUDGMENT_LIVE_BASE_URL=http://127.0.0.1:8000 JUDGMENT_LIVE_MODEL=typed-decisions JUDGMENT_LIVE_PROFILE=laya \
 JUDGMENT_LIVE_AUTH_BASE_URL=http://127.0.0.1:8001 JUDGMENT_LIVE_AUTH_API_KEY=secret \
   cargo test -p judgment --test live -- --ignored --nocapture --test-threads=1
 

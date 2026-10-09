@@ -212,6 +212,7 @@ pub(crate) fn answer_all(
     let mut answered = Vec::with_capacity(planned.len());
     let mut missing: Vec<String> = Vec::new();
     let total = planned.len();
+    backend.announce(total);
     for (position, one) in planned.into_iter().enumerate() {
         let name = one.unit.name.clone();
         match answer(backend, loaded, one) {
