@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Args, ValueHint};
+use judgment::Question;
 use judgment::eval::{ECE_BINS, Judgment, QuestionMetrics};
 use judgment::jud::{Rubric, Verdict};
 use serde::Serialize;
@@ -109,10 +110,28 @@ const TOLERANCE: f64 = 1e-9;
 ///       "gate": { "acted", "deferred", "accuracy_when_acted" } | null,
 ///                                        // the POLICY's: what the gate did with
 ///                                        // the answers, see `GateCoverage`
-///       "misses": [ { "case", "expected", "predicted", "confidence" } ]
+///       "misses": [ { "case", "expected", "predicted", "confidence" } ],
 ///                                        // the model's misses, as `correct` counts
+///       "outcomes": [ { "outcome", "level", "labelled", "predicted", "correct" } ],
+///                                        // every outcome the question offers, in
+///                                        // its order, then any other seen: how many
+///                                        // labels name it, how often the model
+///                                        // answered it on a labelled case, how
+///                                        // often rightly; `level` is a Score
+///                                        // level's text, else null
+///       "majority": { "outcome", "level", "labelled", "share" } | null,
+///                                        // the commonest label: what always
+///                                        // giving one answer would score
+///       "signals": [ "no_better_than_majority" | "collapsed" | "never_answered"
+///                    | "defers_most" | "defers_nearly_all" ]
+///                                        // what a reader should look at first,
+///                                        // see `Signal`
 ///     }
 ///   ],
+///   "signal_rules": { "min_answers", "collapse_share", "collapse_margin",
+///                     "never_answered_min", "defers_most", "defers_nearly_all" },
+///                                        // the thresholds the signals were read
+///                                        // with, so a change to one shows
 ///   "min_accuracy": [                    // one per --min-accuracy check, [] without any
 ///     { "question": "desk" | null, "bar", "labelled", "accuracy", "met" }
 ///   ]
@@ -137,6 +156,32 @@ struct Report {
     questions: Vec<QuestionReport>,
     /// The `--min-accuracy` checks, in the order given.
     min_accuracy: Vec<BarCheck>,
+    /// The thresholds the signals were read with.
+    signal_rules: SignalRules,
+}
+
+/// The thresholds behind [`Signal`], written into the JSON report: a change
+/// to one changes what a signal means (`docs/reference/stability.md`), and a
+/// reader comparing two reports sees it here rather than in the code.
+#[derive(Debug, Serialize)]
+struct SignalRules {
+    min_answers: usize,
+    collapse_share: f64,
+    collapse_margin: f64,
+    never_answered_min: usize,
+    defers_most: f64,
+    defers_nearly_all: f64,
+}
+
+impl SignalRules {
+    const IN_USE: Self = Self {
+        min_answers: SIGNAL_MIN,
+        collapse_share: COLLAPSE_SHARE,
+        collapse_margin: COLLAPSE_MARGIN,
+        never_answered_min: NEVER_ANSWERED_MIN,
+        defers_most: DEFER_MOST,
+        defers_nearly_all: DEFER_SHARE,
+    };
 }
 
 /// The rubric, named by what it asks and what reads its answers.
@@ -176,7 +221,92 @@ struct QuestionReport {
     /// `None` when the policy has no gate for it.
     gate: Option<GateCoverage>,
     misses: Vec<Miss>,
+    /// Every outcome the question offers, with its labels and answers.
+    outcomes: Vec<OutcomeCount>,
+    /// The commonest label; `None` while nothing is labelled.
+    majority: Option<Majority>,
+    /// What the numbers above say together, for a reader to see first.
+    signals: Vec<Signal>,
+    /// The gate's fallback, which a gate that defers nearly every answer
+    /// hands the question to. Text only: the JSON reader has the rubric.
+    #[serde(skip)]
+    fallback: Option<String>,
 }
+
+/// One outcome of a question over its labelled answers. The three counts
+/// are over the same answers, so `labelled` and `predicted` each add up to
+/// the question's `labelled`, and `correct` to its `correct`.
+#[derive(Debug, Serialize)]
+struct OutcomeCount {
+    /// In the label's own words: `yes` or `no`, an option key, a level's
+    /// index.
+    outcome: String,
+    /// A Score level's text; `None` for a Noul or a Choice.
+    level: Option<String>,
+    /// Labels that name it.
+    labelled: usize,
+    /// Labelled answers where the model answered it.
+    predicted: usize,
+    /// Of those, the ones the label agrees with.
+    correct: usize,
+}
+
+/// The commonest label of a question, the first in the question's order on
+/// a tie: a model that always gave this answer would score `share`.
+#[derive(Debug, Serialize)]
+struct Majority {
+    outcome: String,
+    level: Option<String>,
+    labelled: usize,
+    share: f64,
+}
+
+/// A pattern in one question's numbers that changes how the rest are read.
+/// Each is computed from the counts above, never from a guess, and named in
+/// the JSON by its `snake_case` code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Signal {
+    /// The accuracy's 95% interval reaches down to the majority's share: on
+    /// these cases the model has not shown it beats always giving the
+    /// commonest answer. Not raised under [`SIGNAL_MIN`] labelled answers,
+    /// where even a perfect score cannot clear a common majority, nor when
+    /// every label is the same outcome.
+    NoBetterThanMajority,
+    /// One answer takes at least [`COLLAPSE_SHARE`] of the model's answers,
+    /// and [`COLLAPSE_MARGIN`] more than the labels give any outcome: the
+    /// model is not telling the outcomes apart. No bar and no relabel fixes
+    /// it. Not raised under [`SIGNAL_MIN`] labelled answers.
+    Collapsed,
+    /// An outcome that at least [`NEVER_ANSWERED_MIN`] labels name is never
+    /// the model's answer: the model cannot give it, which a skewed set hides
+    /// from [`Signal::Collapsed`] (a model that always says `yes` to a set that
+    /// is 88% `yes`). Not raised under [`SIGNAL_MIN`] labelled answers.
+    NeverAnswered,
+    /// The gate defers at least [`DEFER_MOST`] of the answers it sees, and
+    /// less than [`DEFER_SHARE`]: most of the question's traffic goes to its
+    /// fallback, or to a person. Not raised under [`SIGNAL_MIN`] answers.
+    DefersMost,
+    /// The gate defers at least [`DEFER_SHARE`] of the answers it sees, so
+    /// the policy hands the question to its fallback, or to a person. Not
+    /// raised under [`SIGNAL_MIN`] answers.
+    DefersNearlyAll,
+}
+
+/// The share of the model's answers one outcome must take to be a collapse.
+const COLLAPSE_SHARE: f64 = 0.8;
+/// How far above the labels' largest share that answer's share must be, so
+/// a model that rightly answers a set that is 90% `no` is not a collapse.
+const COLLAPSE_MARGIN: f64 = 0.2;
+/// The share of deferred answers that makes a gate defer most of them: a bar
+/// read off a capable model's confident tail lands here, rarely above 0.9.
+const DEFER_MOST: f64 = 0.5;
+/// The share of deferred answers that makes a gate defer nearly all.
+const DEFER_SHARE: f64 = 0.9;
+/// The fewest labels an outcome needs before never answering it is a signal.
+const NEVER_ANSWERED_MIN: usize = 3;
+/// The fewest answers a share-based signal is read from.
+const SIGNAL_MIN: usize = 10;
 
 /// What the policy's gate does with the answers: acts on them, or defers them.
 ///
@@ -303,6 +433,7 @@ impl Report {
             models,
             questions,
             min_accuracy,
+            signal_rules: SignalRules::IN_USE,
         }
     }
 
@@ -339,6 +470,20 @@ fn question_report(
     answered: &[Answered],
 ) -> QuestionReport {
     let metrics = QuestionMetrics::summarise(judgments, ECE_BINS);
+    let outcomes = outcome_counts(rubric, id, judgments);
+    let majority = majority(&outcomes, metrics.labelled);
+    let gate = rubric
+        .policy
+        .gates
+        .contains_key(id)
+        .then(|| coverage(id, answered));
+    let signals = signals(
+        metrics.labelled,
+        metrics.accuracy_interval95,
+        &outcomes,
+        majority.as_ref(),
+        gate.as_ref(),
+    );
     QuestionReport {
         id: id.to_owned(),
         labelled: metrics.labelled,
@@ -349,13 +494,146 @@ fn question_report(
         ece: metrics.ece,
         confidence_when_right: metrics.confidence_when_right,
         confidence_when_wrong: metrics.confidence_when_wrong,
-        gate: rubric
-            .policy
-            .gates
-            .contains_key(id)
-            .then(|| coverage(id, answered)),
+        gate,
         misses: misses(id, answered),
+        outcomes,
+        majority,
+        signals,
+        fallback: rubric.policy.gates.get(id).and_then(|g| g.fallback.clone()),
     }
+}
+
+/// The outcomes a question offers, in its order, each with a Score level's
+/// text: `yes` and `no` for a Noul, the static options for a Choice (options
+/// supplied per request are added as the answers name them), a Score's
+/// levels by index.
+fn offered(rubric: &Rubric, id: &str) -> Vec<(String, Option<String>)> {
+    match rubric.questions.get(id).map(|q| &q.question) {
+        Some(Question::Noul { .. }) => vec![("yes".to_owned(), None), ("no".to_owned(), None)],
+        Some(Question::Choice { criteria, .. }) => {
+            criteria.keys().map(|k| (k.clone(), None)).collect()
+        }
+        Some(Question::Score { criteria, .. }) => criteria
+            .iter()
+            .enumerate()
+            .map(|(i, level)| {
+                let text = level
+                    .as_str()
+                    .map_or_else(|| level.to_string(), str::to_owned);
+                (i.to_string(), Some(text))
+            })
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+/// Per outcome: the labels that name it, the labelled answers that chose it,
+/// and the right ones. Every offered outcome is listed, a count of 0
+/// included, so an outcome no case labels shows as such.
+fn outcome_counts(rubric: &Rubric, id: &str, judgments: &[Judgment]) -> Vec<OutcomeCount> {
+    let mut counts: Vec<OutcomeCount> = offered(rubric, id)
+        .into_iter()
+        .map(|(outcome, level)| OutcomeCount {
+            outcome,
+            level,
+            labelled: 0,
+            predicted: 0,
+            correct: 0,
+        })
+        .collect();
+    let slot = |counts: &mut Vec<OutcomeCount>, outcome: &str| -> usize {
+        if let Some(i) = counts.iter().position(|c| c.outcome == outcome) {
+            return i;
+        }
+        counts.push(OutcomeCount {
+            outcome: outcome.to_owned(),
+            level: None,
+            labelled: 0,
+            predicted: 0,
+            correct: 0,
+        });
+        counts.len() - 1
+    };
+    for judgment in judgments {
+        let Some(expected) = judgment.expected.as_deref() else {
+            continue;
+        };
+        let i = slot(&mut counts, expected);
+        counts[i].labelled += 1;
+        let i = slot(&mut counts, &judgment.predicted);
+        counts[i].predicted += 1;
+        if judgment.correct == Some(true) {
+            counts[i].correct += 1;
+        }
+    }
+    counts
+}
+
+/// The commonest label, the first in order on a tie; `None` with no label.
+fn majority(outcomes: &[OutcomeCount], labelled: usize) -> Option<Majority> {
+    let top = outcomes.iter().filter(|o| o.labelled > 0).fold(
+        None::<&OutcomeCount>,
+        |best, o| match best {
+            Some(b) if b.labelled >= o.labelled => Some(b),
+            _ => Some(o),
+        },
+    )?;
+    Some(Majority {
+        outcome: top.outcome.clone(),
+        level: top.level.clone(),
+        labelled: top.labelled,
+        share: ratio(top.labelled, labelled)?,
+    })
+}
+
+/// The signals one question's numbers raise, in a fixed order.
+fn signals(
+    labelled: usize,
+    interval: Option<(f64, f64)>,
+    outcomes: &[OutcomeCount],
+    majority: Option<&Majority>,
+    gate: Option<&GateCoverage>,
+) -> Vec<Signal> {
+    let mut raised = Vec::new();
+    if labelled >= SIGNAL_MIN
+        && let (Some((low, _)), Some(m)) = (interval, majority)
+        && m.share < 1.0 - TOLERANCE
+        && low <= m.share + TOLERANCE
+    {
+        raised.push(Signal::NoBetterThanMajority);
+    }
+    if labelled >= SIGNAL_MIN {
+        let share = |n: usize| ratio(n, labelled).unwrap_or(0.0);
+        let answered = outcomes
+            .iter()
+            .map(|o| share(o.predicted))
+            .fold(0.0, f64::max);
+        let labels = outcomes
+            .iter()
+            .map(|o| share(o.labelled))
+            .fold(0.0, f64::max);
+        if answered >= COLLAPSE_SHARE - TOLERANCE
+            && answered - labels >= COLLAPSE_MARGIN - TOLERANCE
+        {
+            raised.push(Signal::Collapsed);
+        }
+        if outcomes
+            .iter()
+            .any(|o| o.labelled >= NEVER_ANSWERED_MIN && o.predicted == 0)
+        {
+            raised.push(Signal::NeverAnswered);
+        }
+    }
+    if let Some(g) = gate {
+        let seen = g.acted + g.deferred;
+        let deferred = ratio(g.deferred, seen).unwrap_or(0.0);
+        if seen >= SIGNAL_MIN && deferred >= DEFER_SHARE - TOLERANCE {
+            raised.push(Signal::DefersNearlyAll);
+        } else if seen >= SIGNAL_MIN && deferred >= DEFER_MOST - TOLERANCE {
+            raised.push(Signal::DefersMost);
+        }
+    }
+    raised
 }
 
 /// The labelled answers the model got wrong, in case order. These are the
@@ -563,8 +841,38 @@ impl QuestionReport {
                 fixed(self.confidence_when_wrong, 2)
             )?;
         }
+        if self.labelled > 0 {
+            let counts: Vec<String> = self
+                .outcomes
+                .iter()
+                .map(|o| {
+                    format!(
+                        "{} {}/{}/{}",
+                        shown(&o.outcome, o.level.as_deref()),
+                        o.labelled,
+                        o.predicted,
+                        o.correct
+                    )
+                })
+                .collect();
+            writeln!(
+                f,
+                "  outcomes, labelled/answered/right: {}",
+                counts.join(", ")
+            )?;
+            if let Some(m) = &self.majority {
+                writeln!(
+                    f,
+                    "  majority {}, {} of {} ({:.2})",
+                    shown(&m.outcome, m.level.as_deref()),
+                    m.labelled,
+                    self.labelled,
+                    m.share
+                )?;
+            }
+        }
         match &self.gate {
-            None => writeln!(f, "  gate: none"),
+            None => writeln!(f, "  gate: none")?,
             Some(g) => writeln!(
                 f,
                 "  gate: acts on {} of {}, defers {}, accuracy when acted {}",
@@ -572,9 +880,94 @@ impl QuestionReport {
                 g.acted + g.deferred,
                 g.deferred,
                 fixed(g.accuracy_when_acted, 2)
-            ),
+            )?,
+        }
+        for signal in &self.signals {
+            writeln!(f, "  warning: {}", self.explain(*signal))?;
+        }
+        Ok(())
+    }
+
+    /// One signal in words, with the numbers it was read from.
+    fn explain(&self, signal: Signal) -> String {
+        match signal {
+            Signal::NoBetterThanMajority => {
+                let (Some(m), Some((low, _))) = (&self.majority, self.accuracy_interval95) else {
+                    return "no better than always giving the commonest label".to_owned();
+                };
+                format!(
+                    "not shown to beat always answering {} ({:.2}): the interval reaches down to {low:.2}",
+                    shown(&m.outcome, m.level.as_deref()),
+                    m.share
+                )
+            }
+            Signal::Collapsed => {
+                let top = self
+                    .outcomes
+                    .iter()
+                    .fold(None::<&OutcomeCount>, |best, o| match best {
+                        Some(b) if b.predicted >= o.predicted => Some(b),
+                        _ => Some(o),
+                    });
+                match top {
+                    Some(o) => format!(
+                        "collapsed: the model answered {} on {} of {} labelled cases; no bar or relabel fixes that",
+                        shown(&o.outcome, o.level.as_deref()),
+                        o.predicted,
+                        self.labelled
+                    ),
+                    None => "collapsed onto one answer".to_owned(),
+                }
+            }
+            Signal::NeverAnswered => {
+                let never: Vec<String> = self
+                    .outcomes
+                    .iter()
+                    .filter(|o| o.labelled >= NEVER_ANSWERED_MIN && o.predicted == 0)
+                    .map(|o| {
+                        format!(
+                            "{} ({} labelled)",
+                            shown(&o.outcome, o.level.as_deref()),
+                            o.labelled
+                        )
+                    })
+                    .collect();
+                format!(
+                    "never answered: {}; the model does not give {}, whatever the bar",
+                    never.join(", "),
+                    if never.len() == 1 { "it" } else { "them" }
+                )
+            }
+            Signal::DefersMost | Signal::DefersNearlyAll => {
+                let (deferred, seen) = self
+                    .gate
+                    .as_ref()
+                    .map_or((0, 0), |g| (g.deferred, g.acted + g.deferred));
+                let to = self.fallback.as_deref().map_or_else(
+                    || "nothing acts on them".to_owned(),
+                    |fallback| format!("they fall back to {}", self.fallback_shown(fallback)),
+                );
+                format!("the gate defers {deferred} of {seen}: {to}")
+            }
         }
     }
+
+    /// A fallback as the reader knows it: a Score's level by its text.
+    fn fallback_shown(&self, fallback: &str) -> String {
+        self.outcomes
+            .iter()
+            .find(|o| o.outcome == fallback || o.level.as_deref() == Some(fallback))
+            .map_or_else(
+                || out::plain(fallback),
+                |o| shown(&o.outcome, o.level.as_deref()),
+            )
+    }
+}
+
+/// An outcome for a person: a Score level by its text, anything else by the
+/// label's own word. Either may come from a file, so it is shown as text.
+fn shown(outcome: &str, level: Option<&str>) -> String {
+    out::plain(level.unwrap_or(outcome))
 }
 
 fn plural(n: usize) -> &'static str {
@@ -636,5 +1029,174 @@ pub(crate) fn run(args: &Eval) -> ExitCode {
             ExitCode::from(EXIT_UNMET)
         }
         None => ExitCode::SUCCESS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn count(outcome: &str, labelled: usize, predicted: usize) -> OutcomeCount {
+        OutcomeCount {
+            outcome: outcome.to_owned(),
+            level: None,
+            labelled,
+            predicted,
+            correct: 0,
+        }
+    }
+
+    fn gate(acted: usize, deferred: usize) -> GateCoverage {
+        GateCoverage {
+            acted,
+            deferred,
+            accuracy_when_acted: None,
+        }
+    }
+
+    #[test]
+    fn the_majority_is_the_commonest_label_the_first_on_a_tie() {
+        let outcomes = [count("a", 2, 0), count("b", 3, 0), count("c", 3, 0)];
+        let m = majority(&outcomes, 8).map(|m| (m.outcome, m.labelled));
+        assert_eq!(m, Some(("b".to_owned(), 3)));
+        assert!(majority(&[count("a", 0, 0)], 0).is_none());
+    }
+
+    #[test]
+    fn one_answer_for_labels_spread_wide_is_a_collapse() {
+        // 71 of 78 answers `content` where no label takes more than a third:
+        // the Wikimedia `change_kind` run.
+        let outcomes = [
+            count("content", 22, 71),
+            count("none_of_these", 26, 0),
+            count("metadata", 30, 7),
+        ];
+        let m = majority(&outcomes, 78);
+        let raised = signals(78, Some((0.27, 0.48)), &outcomes, m.as_ref(), None);
+        // `none_of_these`, 26 labels, is never the answer.
+        assert_eq!(
+            raised,
+            [
+                Signal::NoBetterThanMajority,
+                Signal::Collapsed,
+                Signal::NeverAnswered
+            ]
+        );
+    }
+
+    #[test]
+    fn a_model_that_rightly_answers_a_skewed_set_has_not_collapsed() {
+        // 72 of 84 answers `no` where 71 labels are `no`: the answers follow
+        // the labels, so this is no collapse, and the interval clears 0.85.
+        let outcomes = [count("yes", 13, 12), count("no", 71, 72)];
+        let m = majority(&outcomes, 84);
+        assert!(signals(84, Some((0.90, 0.99)), &outcomes, m.as_ref(), None).is_empty());
+    }
+
+    #[test]
+    fn a_gate_that_defers_nine_in_ten_is_flagged_and_a_small_set_is_not() {
+        let outcomes = [count("a", 10, 5), count("b", 10, 5)];
+        let m = majority(&outcomes, 20);
+        let interval = Some((0.7, 0.95));
+        assert_eq!(
+            signals(20, interval, &outcomes, m.as_ref(), Some(&gate(2, 18))),
+            [Signal::DefersNearlyAll]
+        );
+        // Just under nine in ten is most, not nearly all.
+        assert_eq!(
+            signals(20, interval, &outcomes, m.as_ref(), Some(&gate(3, 17))),
+            [Signal::DefersMost]
+        );
+        // Under SIGNAL_MIN answers, no share-based signal is read.
+        let few = [count("a", 4, 9), count("b", 5, 0)];
+        let m = majority(&few, 9);
+        assert!(signals(9, Some((0.3, 0.95)), &few, m.as_ref(), Some(&gate(0, 9))).is_empty());
+    }
+
+    #[test]
+    fn a_gate_that_defers_half_defers_most_and_one_under_half_does_not() {
+        let outcomes = [count("a", 10, 5), count("b", 10, 5)];
+        let m = majority(&outcomes, 20);
+        let interval = Some((0.7, 0.95));
+        // The live run's `urgency` at a 0.90 bar: 36 of 48 deferred.
+        assert_eq!(
+            signals(20, interval, &outcomes, m.as_ref(), Some(&gate(12, 36))),
+            [Signal::DefersMost]
+        );
+        assert_eq!(
+            signals(20, interval, &outcomes, m.as_ref(), Some(&gate(10, 10))),
+            [Signal::DefersMost]
+        );
+        assert!(signals(20, interval, &outcomes, m.as_ref(), Some(&gate(11, 9))).is_empty());
+        assert_eq!(
+            signals(20, interval, &outcomes, m.as_ref(), Some(&gate(1, 9))),
+            [Signal::DefersNearlyAll]
+        );
+    }
+
+    #[test]
+    fn the_majority_check_waits_for_ten_labels_and_a_second_outcome() {
+        // 6 of 6 right on a set that is 4 of 6 `calm`: the interval reaches
+        // 0.61, under 0.67, but no score on six cases could clear it.
+        let six = [
+            count("calm", 4, 4),
+            count("annoyed", 1, 1),
+            count("angry", 1, 1),
+        ];
+        let m = majority(&six, 6);
+        assert!(signals(6, Some((0.61, 1.0)), &six, m.as_ref(), None).is_empty());
+        // Every label the same outcome: always answering it is right, and
+        // nothing can beat 1.0.
+        let one = [count("yes", 40, 40), count("no", 0, 0)];
+        let m = majority(&one, 40);
+        assert!(signals(40, Some((0.91, 1.0)), &one, m.as_ref(), None).is_empty());
+        // At ten labels it is read: 8 of 10 against a majority of 0.7.
+        let ten = [count("yes", 7, 8), count("no", 3, 2)];
+        let m = majority(&ten, 10);
+        assert_eq!(
+            signals(10, Some((0.49, 0.94)), &ten, m.as_ref(), None),
+            [Signal::NoBetterThanMajority]
+        );
+    }
+
+    #[test]
+    fn an_outcome_labelled_and_never_answered_is_flagged_where_collapse_is_not() {
+        // A model that always says `yes` to a set that is 37 of 42 `yes`:
+        // the answers' share is 1.0, only 0.12 above the labels', so no
+        // collapse, but the five `no` labels are never answered.
+        let skewed = [count("yes", 37, 42), count("no", 5, 0)];
+        let m = majority(&skewed, 42);
+        assert_eq!(
+            signals(42, Some((0.75, 0.95)), &skewed, m.as_ref(), None),
+            [Signal::NoBetterThanMajority, Signal::NeverAnswered]
+        );
+        // Two labels never answered are too few to read.
+        let rare = [count("yes", 38, 40), count("no", 2, 0)];
+        let m = majority(&rare, 40);
+        assert!(
+            !signals(40, Some((0.85, 0.99)), &rare, m.as_ref(), None)
+                .contains(&Signal::NeverAnswered)
+        );
+        // Exactly three is enough.
+        let three = [count("a", 20, 23), count("b", 3, 0)];
+        let m = majority(&three, 23);
+        assert!(signals(23, None, &three, m.as_ref(), None).contains(&Signal::NeverAnswered));
+    }
+
+    #[test]
+    fn collapse_reads_its_thresholds_at_their_boundaries() {
+        // 8 of 10 answers one outcome whose labels take 0.6: share 0.8,
+        // margin 0.2, both at the line: raised.
+        let at = [count("a", 6, 8), count("b", 4, 2)];
+        let m = majority(&at, 10);
+        assert!(signals(10, None, &at, m.as_ref(), None).contains(&Signal::Collapsed));
+        // 7 of 10: under the share.
+        let under = [count("a", 5, 7), count("b", 5, 3)];
+        let m = majority(&under, 10);
+        assert!(!signals(10, None, &under, m.as_ref(), None).contains(&Signal::Collapsed));
+        // 8 of 10 against labels at 0.7: under the margin.
+        let close = [count("a", 7, 8), count("b", 3, 2)];
+        let m = majority(&close, 10);
+        assert!(!signals(10, None, &close, m.as_ref(), None).contains(&Signal::Collapsed));
     }
 }

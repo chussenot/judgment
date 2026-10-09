@@ -2,7 +2,7 @@
 title: Stability
 description: What stays the same across versions and for how long, so a document, a recording or a dependency written today keeps working; the jud/v1 format is stable, a minor version only adds, a reader accepts every v1 document for at least twelve months after a later minor is published, fingerprints exclude the envelope and never change for a document's spec, the jud command's exit status, JSON output and file writes are a contract, and the crate's 0.x releases say what they break.
 status: current
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-09
 tags: [judgment, jud, stability, versioning, compatibility, fingerprint, reference]
 ---
 
@@ -41,10 +41,10 @@ The `jud` command follows the crate's version, and its contract is what a script
 
 - **Exit status.** 0, 1, 2 and 3, as [the command line reference](cli.md#exit-status) defines them. Status 3 is `jud eval`'s alone: the evaluation ran and a `--min-accuracy` bar was not met. Statuses 0, 1 and 2 keep their meaning.
 - **Stdout.** The result goes to stdout and every diagnostic to stderr, with the one exception that [the command line reference](cli.md#exit-status) names: `jud check`'s refusals are lines of its result. The result is the verdict JSON of a run ([Verdicts](cli.md#verdicts)) and, for `jud eval --json`, the keys and types of [the JSON report](cli.md#the-json-report). `jud tune` prints the `policy` and `tuning` blocks of the `jud/v1` format, which hold under that format's own promises. The text of `jud eval`'s report, the tables and notes of `jud tune` and the progress of `jud record` are for a person: a script reads `--json` and the exit status.
-- **Files written.** Two commands write files and no other does: `jud record`, into its `--out` directory, and `jud tune --out`, one rubric file. Neither writes over a rubric or a cases document it was given; [the command line reference](cli.md#exit-status) states the rule.
+- **Files written.** Three commands write files and no other does: `jud record`, into its `--out` directory, `jud tune --out`, one rubric file, and `jud split`, two new cases files. None writes over a rubric or a cases document it was given, and `jud split` writes over no file at all; [the command line reference](cli.md#exit-status) states the rule.
 - **Configuration.** What the command reads, and in what order ([Configuration](configuration.md)), including which commands read `JUD_REPLAY`.
 
-Exit status 3, `jud eval`'s `--json` keys and the two places that write files are such additions: they are part of the contract from the release that ships `jud record`, `jud eval` and `jud tune`, and not a break ([decision 0021](../project/decisions/0021-record-eval-and-tune-from-the-command-line.md)).
+Exit status 3, `jud eval`'s `--json` keys and the two places that write files are such additions: they are part of the contract from the release that ships `jud record`, `jud eval` and `jud tune`, and not a break ([decision 0021](../project/decisions/0021-record-eval-and-tune-from-the-command-line.md)). So are `jud split`, the files it writes, and the `outcomes`, `majority`, `signals` and `signal_rules` keys of `jud eval --json` ([decision 0022](../project/decisions/0022-jud-reports-what-the-tuning-loop-counted-by-hand.md)). The thresholds in `signal_rules` decide when a signal is raised, so a change to one is a change of meaning, made only in a minor and listed as breaking; a report carries the thresholds it was read with.
 
 ## In one table
 
@@ -56,4 +56,4 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 | A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good | `jud/v1.3`, decision 0018 |
 | The wire | The vendored OpenAPI document; a change moves the contract test, the CHANGELOG and the README together | crate 0.3.0 |
 | The crate | 0.x: a minor may break and says so; a patch does not | crate 0.3.0 |
-| The `jud` command | Exit status (0 to 3), the verdict JSON, `jud eval`'s `--json` keys, the two places that write files (`jud record --out`, `jud tune --out`) and the configuration: a change to what one means, or removing one, only in a minor, listed as breaking; an addition is listed under Added | crate 0.9.0; status 3, `eval --json` and the file writes from the release that ships `record`, `eval` and `tune` |
+| The `jud` command | Exit status (0 to 3), the verdict JSON, `jud eval`'s `--json` keys, the places that write files (`jud record --out`, `jud tune --out`, `jud split`) and the configuration: a change to what one means, or removing one, only in a minor, listed as breaking; an addition is listed under Added | crate 0.9.0; status 3, `eval --json` and the file writes from the release that ships `record`, `eval` and `tune` |

@@ -38,6 +38,43 @@
       ]
     },
     {
+      "id": "triage-in-library",
+      "prompt": "/jud:rust rubrics/triage.jud",
+      "setup": {
+        "copy": {
+          "Cargo.toml": "plugins/jud/skills/jud-rust/evals/files/app/Cargo.toml",
+          "src/main.rs": "plugins/jud/skills/jud-rust/evals/files/app/src/main.rs",
+          "rubrics/triage.jud": "examples/jud/triage.jud",
+          "src/lib.rs": "plugins/jud/skills/jud-rust/evals/files/lib/src/lib.rs"
+        }
+      },
+      "module": {
+        "path": "src/triage.rs",
+        "name": "triage",
+        "rubric": "rubrics/triage.jud"
+      },
+      "snippet": "\nuse crate::triage::{self, Desk, Gated, Tone};\n\n#[test]\nfn names_and_order() {\n    assert_eq!(Desk::ALL.map(Desk::key), [\"billing\", \"technical\", \"account\", \"none_of_these\"]);\n    assert_eq!(Tone::ALL.map(Tone::label), [\"calm\", \"annoyed\", \"angry\"]);\n    assert!(Tone::Angry > Tone::Calm);\n}\n\n#[tokio::test]\nasync fn decides_with_a_fake() {\n    let state = serde_json::json!({\"message\": \"My invoice is wrong and I am furious\"});\n    let backend = judgment::Fake::new()\n        .noul(\"actionable\", 0.9).unwrap()\n        .choice(\"desk\", [(\"billing\", 0.8), (\"technical\", 0.1), (\"account\", 0.05), (\"none_of_these\", 0.05)], 0.8).unwrap()\n        .score(\"tone\", [0.1, 0.2, 0.7], 0.7).unwrap();\n    let d = triage::decide(&backend, \"jev-latest\", &state).await.unwrap();\n    assert!(d.actionable.yes);\n    assert!(matches!(d.desk, Gated::Act { value: Desk::Billing, .. }));\n    assert!(matches!(d.tone, Gated::Act { value: Tone::Angry, .. }));\n    let backend = judgment::Fake::new()\n        .noul(\"actionable\", 0.5).unwrap()\n        .choice(\"desk\", [(\"billing\", 0.4), (\"technical\", 0.3), (\"account\", 0.2), (\"none_of_these\", 0.1)], 0.4).unwrap()\n        .score(\"tone\", [0.8, 0.1, 0.1], 0.8).unwrap();\n    let d = triage::decide(&backend, \"jev-latest\", &state).await.unwrap();\n    assert!(!d.actionable.yes, \"0.5 is under the 0.55 threshold\");\n    assert_eq!(d.desk.or_fallback(), Some(Desk::NoneOfThese), \"0.4 is under the 0.45 bar\");\n}\n\n#[tokio::test]\nasync fn replays_the_recordings() {\n    let root = std::path::Path::new(\"REPO_ROOT\");\n    let backend = judgment::Replay::open(&root.join(\"examples/recordings/jud_calibration\")).unwrap();\n    let text = std::fs::read_to_string(root.join(\"examples/jud/triage-cases.jud\")).unwrap();\n    for case in &judgment::jud::Cases::parse(&text).unwrap().cases {\n        triage::decide(&backend, \"jev-latest\", &case.state).await.unwrap();\n    }\n}\n",
+      "checks": {
+        "unchanged": [
+          "rubrics/triage.jud",
+          "Cargo.toml",
+          "src/main.rs",
+          "src/lib.rs"
+        ],
+        "new_files": [
+          "src/triage.rs"
+        ],
+        "drift": true
+      },
+      "expectations": [
+        "Writes src/triage.rs with include_str!(\"../rubrics/triage.jud\")",
+        "Notices that src/lib.rs already declares `pub mod triage;`, and, the crate having no Cargo.lock, does not run `cargo test` in it (that would write one) but says that `cargo test` there runs the drift test",
+        "Gives the replacement `main` with `use app::triage;` (the module reached through the library) rather than a second `mod triage;`, and says why",
+        "Says that each `decide` is one request to the backend, so a caller feeding it a stream bounds what waits",
+        "Edits neither Cargo.toml, src/main.rs nor src/lib.rs"
+      ]
+    },
+    {
       "id": "routing-in-crate",
       "prompt": "/jud:rust rubrics/routing.jud",
       "setup": {

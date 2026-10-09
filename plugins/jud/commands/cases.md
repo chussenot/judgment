@@ -16,7 +16,9 @@ its `references/format.md` first, in particular the sections on cases. Then:
    `when` or `part_when`, because a label is only valid for a question the
    case's request actually asks.
 2. Draft the states. Use the keys the application really sends, in their real
-   shape; for a conversation, an array of turns. Cover every outcome at least
+   shape; for a conversation, an array of turns. States taken from captured
+   data stay verbatim: for dozens of them, generate the document from the
+   capture and check each state against its source. Cover every outcome at least
    once: every option of each Choice including the way out, every level of
    each Score including the lowest, both `true` and `false` of each Noul. Add
    the hard ones, the states a labeller would argue about, and give each a
@@ -24,7 +26,9 @@ its `references/format.md` first, in particular the sections on cases. Then:
    write enough to cover the outcomes and say that more are needed before a
    threshold is tuned.
 3. Label only what the case is sure about: a question left out of `expect` is
-   asked and not graded. Labels in the answer's own vocabulary: bare `true` or
+   asked and not graded. Take a label from the best evidence there is, an
+   outcome known later included, and say in the description or the case's
+   `note` where it came from. Labels in the answer's own vocabulary: bare `true` or
    `false` for a Noul (`{from_turn: n}` or `{from_turn: null}` over a
    conversation), an offered option key for a Choice, a level's text or index
    for a Score. For a Choice with `options_from: request`, supply each case's

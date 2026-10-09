@@ -1390,3 +1390,203 @@ fn the_help_says_record_always_asks_the_backend_and_spends_calls() {
     assert!(text.contains("never reads `JUD_REPLAY`"), "{text}");
     assert!(text.contains("spends calls"), "{text}");
 }
+
+/// `--dry-run` reads what a run reads and says what it would do: the
+/// requests, how many the directory answers, which are to be asked, the
+/// backend, the key, and the time at the directory's own pace. It needs no
+/// key, asks nothing and writes nothing.
+#[test]
+fn a_dry_run_counts_what_a_run_would_ask_and_asks_nothing() {
+    let dir = copy_dir(support::RECORDINGS);
+    std::fs::remove_file(dir.join("receipt.jud")).unwrap();
+    let before = contents(&dir);
+    let out = support::jud(
+        &[
+            "record",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--out",
+            dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    let text = stdout(&out);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(
+        text.starts_with(&format!(
+            "7 requests: 6 already recorded in {}, 1 to ask (0 replacing a stale recording)\nto ask: receipt\n",
+            dir.display()
+        )),
+        "{text}"
+    );
+    assert!(
+        text.contains("backend https://api.typesafe.ai, model jev-latest (from default)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("API key: missing; the run would stop before the first call"),
+        "{text}"
+    );
+    assert!(
+        text.contains("time: about "),
+        "the recordings carry their time: {text}"
+    );
+    assert_eq!(contents(&dir), before, "a dry run writes nothing");
+}
+
+/// A stale recording is counted as one to replace, and named.
+#[test]
+fn a_dry_run_names_a_stale_recording_it_would_replace() {
+    let dir = with_stale("receipt", None, None);
+    let out = support::jud(
+        &[
+            "record",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--out",
+            dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    let text = stdout(&out);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(text.contains("6 already recorded"), "{text}");
+    assert!(
+        text.contains("1 to ask (1 replacing a stale recording)"),
+        "{text}"
+    );
+    assert!(text.contains("stale, to replace: receipt\n"), "{text}");
+}
+
+/// Into a directory that is not there: every request to ask, the time
+/// unknown, and the directory still not there afterwards.
+#[test]
+fn a_dry_run_into_a_new_directory_creates_nothing() {
+    let parent = support::scratch("dry-run");
+    let dir = parent.join("not-yet");
+    let out = support::jud(
+        &[
+            "record",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--out",
+            dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    let text = stdout(&out);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(
+        text.starts_with("7 requests: 0 already recorded in "),
+        "{text}"
+    );
+    assert!(
+        text.contains("time: unknown until the first request answers"),
+        "{text}"
+    );
+    assert!(!dir.exists(), "a dry run creates no directory");
+}
+
+/// The run refuses a stale recording that sits in a file it would not write;
+/// so does the dry run, with the same words, rather than plan a run that
+/// would stop before its first call.
+#[test]
+fn a_dry_run_refuses_what_the_run_refuses() {
+    let dir = with_stale("receipt", Some("zz-stale-copy"), None);
+    let before = contents(&dir);
+    let out = support::jud(
+        &[
+            "record",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--out",
+            dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    assert_eq!(code(&out), 2, "{}", stdout(&out));
+    assert!(
+        stderr(&out)
+            .contains("zz-stale-copy.jud records this request and no longer fits the questions"),
+        "{}",
+        stderr(&out)
+    );
+    assert_eq!(contents(&dir), before);
+}
+
+/// Two cases that lower to one request are asked once: the dry run counts
+/// the second as kept, as the run does, and its time is for one call.
+#[test]
+fn a_dry_run_counts_a_repeated_request_once() {
+    let mut cases =
+        judgment::jud::Cases::parse(&std::fs::read_to_string(TRIAGE_CASES).unwrap()).unwrap();
+    let mut twin = cases
+        .cases
+        .iter()
+        .find(|c| c.id.as_deref() == Some("receipt"))
+        .unwrap()
+        .clone();
+    twin.id = Some("receipt-again".to_owned());
+    cases.cases.push(twin);
+    let scratch = support::scratch("dry-run-twins");
+    let path = scratch.join("twins.jud");
+    std::fs::write(&path, cases.to_yaml().unwrap()).unwrap();
+    let dir = copy_dir(support::RECORDINGS);
+    std::fs::remove_file(dir.join("receipt.jud")).unwrap();
+    let out = support::jud(
+        &[
+            "record",
+            TRIAGE,
+            path.to_str().unwrap(),
+            "--out",
+            dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    let text = stdout(&out);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(
+        text.starts_with(&format!(
+            "8 requests: 7 already recorded in {}, 1 to ask (0 replacing a stale recording)\nto ask: receipt\n",
+            dir.display()
+        )),
+        "{text}"
+    );
+}
+
+/// `--out` naming a file: the run cannot create the directory, and the dry
+/// run says so rather than plan it.
+#[test]
+fn a_dry_run_into_a_file_is_refused() {
+    let parent = support::scratch("dry-run-file");
+    let file = parent.join("not-a-dir");
+    std::fs::write(&file, "").unwrap();
+    let out = support::jud(
+        &[
+            "record",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--out",
+            file.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    assert_eq!(code(&out), 2, "{}", stdout(&out));
+    assert!(
+        stderr(&out).contains("is not a directory"),
+        "{}",
+        stderr(&out)
+    );
+}

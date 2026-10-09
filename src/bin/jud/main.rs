@@ -3,7 +3,8 @@
 //! a decision written as a file composes with `jq`, `yq`, `cat` and `curl`;
 //! `check` and `lower` read documents the way the crate does; `record`,
 //! `eval` and `tune` run a rubric over labelled cases, grade the answers and
-//! propose the policy's bars (decision 0021); `config` shows which System One
+//! propose the policy's bars (decision 0021), and `split` holds out a share
+//! of the cases to grade on (decision 0022); `config` shows which System One
 //! backend a run would talk to; `completion` prints a shell completion
 //! script. A thin adapter: parsing, lowering, the call and the policy are the
 //! library's, and the command tree is clap's, so the help, the usage errors
@@ -33,6 +34,7 @@ mod out;
 mod record;
 mod recordings;
 mod run;
+mod split;
 mod tools;
 mod tune;
 
@@ -56,6 +58,7 @@ Examples:
   jud record rubric.jud cases.jud --out recordings/
   jud eval rubric.jud cases.jud --replay recordings/
   jud tune rubric.jud cases.jud --replay recordings/
+  jud split cases.jud          # cases-tune.jud and cases-holdout.jud
 
 Exit status: 0 success; 1 a backend call failed, or a recording is missing
 under --replay; 2 wrong before any call: the invocation, a file, the state or
@@ -117,6 +120,7 @@ enum Command {
     Record(record::Record),
     Eval(eval::Eval),
     Tune(tune::Tune),
+    Split(split::Split),
     /// Print a shell completion script for jud's commands and flags.
     ///
     /// Generated from the same command tree clap parses, so it cannot drift
@@ -141,6 +145,7 @@ fn main() -> ExitCode {
         (Some(Command::Record(args)), _) => record::run(&args),
         (Some(Command::Eval(args)), _) => eval::run(&args),
         (Some(Command::Tune(args)), _) => tune::run(&args),
+        (Some(Command::Split(args)), _) => split::run(&args),
         (Some(Command::Completion { shell }), _) => completion(shell),
         // A subcommand's name in the RUBRIC slot got there because the flag
         // came first: with no `--replay` before it, clap runs the subcommand.

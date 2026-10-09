@@ -548,7 +548,7 @@ fn refused(args: &[&str], env: &[(&str, &str)]) -> String {
     stderr(&out)
 }
 
-const SUBCOMMANDS: &str = "config, check, lower, record, eval, tune, completion";
+const SUBCOMMANDS: &str = "config, check, lower, record, eval, tune, split, completion";
 
 #[test]
 fn a_replay_directory_with_no_rubric_says_a_rubric_is_required() {

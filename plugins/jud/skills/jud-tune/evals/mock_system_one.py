@@ -24,7 +24,15 @@ The profile (JSON, every key optional):
                                              # level's text, true or false
      "confident_wrong": ["desk"],            # wrong answers on these questions
                                              # come with high confidence
+     "collapse": {"desk": "technical"},      # give this answer on every case
+                                             # (a case's own `answer` wins)
+     "confidence": {"tone": [0.2, 0.35]},    # the confidence a Choice or Score
+                                             # reports, whatever it answers (the
+                                             # probabilities are left as they are)
      "fail_at": 3}                           # answer the 3rd request with 400
+
+`collapse` and `confidence` imitate what a small real model did on a real
+rubric: one option for nearly every state, and a Score always below its bar.
 
 This is a test double, not a model: it knows the labels. It exists so that
 `jud record`, `jud eval` and `jud tune` (and the plugin commands that drive
@@ -83,7 +91,7 @@ def truth_of(question, label, turn):
     return levels.index(label) if label in levels else None
 
 
-def answer(question, truth, accuracy, rng, confident_wrong, forced):
+def answer(question, truth, accuracy, rng, confident_wrong, forced, conf_range=None):
     kind = question["type"]
     right = rng.random() < accuracy
     if kind == "noul":
@@ -108,7 +116,8 @@ def answer(question, truth, accuracy, rng, confident_wrong, forced):
             chosen = rng.choice(others)
             conf = rng.uniform(0.8, 0.93) if confident_wrong else rng.uniform(0.3, 0.55)
         probs = spread(keys, chosen, conf, truth, rng)
-        return {"type": "choice", "choice": chosen, "probabilities": probs, "confidence": probs[chosen]}
+        reported = round(rng.uniform(*conf_range), 3) if conf_range else probs[chosen]
+        return {"type": "choice", "choice": chosen, "probabilities": probs, "confidence": reported}
 
     levels = question["criteria"]
     n = len(levels)
@@ -125,7 +134,8 @@ def answer(question, truth, accuracy, rng, confident_wrong, forced):
     probs = spread(keys, str(idx), conf, str(truth) if truth is not None else None, rng, neighbours=True)
     score = round(sum(int(k) * p for k, p in probs.items()), 4)
     legend = {str(i): level for i, level in enumerate(levels)}
-    return {"type": "score", "score": score, "legend": legend, "probabilities": probs, "confidence": probs[str(idx)]}
+    reported = round(rng.uniform(*conf_range), 3) if conf_range else probs[str(idx)]
+    return {"type": "score", "score": score, "legend": legend, "probabilities": probs, "confidence": reported}
 
 
 def spread(keys, chosen, conf, truth, rng, neighbours=False):
@@ -203,9 +213,12 @@ def main():
                 rng = random.Random(hashlib.sha256(f"{seed}|{name}|{qid}|{turn}".encode()).hexdigest())
                 accuracy = profile.get("per_question", {}).get(qid, profile.get("accuracy", 0.85))
                 forced = profile.get("answer", {}).get(name or "", {}).get(qid)
+                if forced is None:
+                    forced = profile.get("collapse", {}).get(qid)
                 truth = truth_of(question, expect.get(qid), turn)
                 wrong_confident = qid in profile.get("confident_wrong", [])
-                answers[qid] = answer(question, truth, accuracy, rng, wrong_confident, forced)
+                conf_range = profile.get("confidence", {}).get(qid)
+                answers[qid] = answer(question, truth, accuracy, rng, wrong_confident, forced, conf_range)
             self.send(200, {"model": model, "answers": answers, "usage": {"input_tokens": 50, "output_tokens": 5}})
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)

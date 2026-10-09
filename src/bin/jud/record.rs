@@ -42,7 +42,8 @@ use crate::recordings;
 /// again, so an interrupted run resumes.
 ///
 /// Record always asks the configured backend and never reads `JUD_REPLAY`, so
-/// a run spends calls.
+/// a run spends calls. --dry-run says how many, to whom and for how long, and
+/// asks nothing.
 #[derive(Args)]
 pub(crate) struct Record {
     /// The Rubric document the cases are for.
@@ -57,9 +58,24 @@ pub(crate) struct Record {
     /// Ask every case again, replacing the recordings already in DIR.
     #[arg(long)]
     pub refresh: bool,
+    /// Ask nothing and write nothing: print what a run would do. The requests,
+    /// how many DIR already answers, which are to be asked or replaced, the
+    /// backend and model it would ask, whether a key is set, and how long the
+    /// run would take at the median time of the recordings in DIR.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 pub(crate) fn run(args: &Record) -> ExitCode {
+    if args.dry_run {
+        return match plan_only(args) {
+            Ok(text) => match crate::out::result(&text) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(failure) => failure.report(),
+            },
+            Err(failure) => failure.report(),
+        };
+    }
     match record(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(failure) => failure.report(),
@@ -103,6 +119,220 @@ struct Session<'a> {
     known: Replay,
     total: usize,
     tally: Tally,
+}
+
+/// `--dry-run`: the run `record` would make, as text for the person about
+/// to pay for it. Everything is read as a run reads it (the documents bound,
+/// every request lowered, the directory's recordings matched by
+/// fingerprint), and nothing is asked, created or written; no key is
+/// needed. The time is the median `elapsed_ms` of the recordings already in
+/// DIR, so it is the backend's own pace, and unknown before the first.
+fn plan_only(args: &Record) -> Result<String, Failure> {
+    let loaded = batch::load(&args.rubric, &args.cases)?;
+    let shared = batch::plan(&loaded)?;
+    let units: Vec<Unit> = shared.iter().map(|p| p.unit.clone()).collect();
+    let names = recording_names(&units, &args.cases)?;
+    let planned: Vec<Planned> = names
+        .into_iter()
+        .zip(shared)
+        .map(|(name, p)| Planned {
+            name,
+            unit: p.unit,
+            questions: p.questions,
+        })
+        .collect();
+    refuse_inputs(args, &planned)?;
+    let resolved = crate::config::resolve().map_err(|e| Failure::Usage(e.to_string()))?;
+    // The run's `create_dir_all` fails on a path that is a file: so does
+    // the plan, with the run's words.
+    if args.out.exists() && !args.out.is_dir() {
+        return Err(Failure::Usage(format!(
+            "cannot use {} for the recordings: it is not a directory",
+            args.out.display()
+        )));
+    }
+    let present = args.out.is_dir();
+    let known = if args.refresh || !present {
+        Replay::default()
+    } else {
+        Replay::open(&args.out).map_err(|e| {
+            Failure::Usage(format!(
+                "cannot read the recordings already in {}: {e}",
+                args.out.display()
+            ))
+        })?
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .map_err(|e| Failure::Backend(format!("cannot start the runtime: {e}")))?;
+    let (mut kept, mut to_ask, mut stale) = (0_usize, Vec::new(), Vec::new());
+    let mut stale_steps: Vec<&Planned> = Vec::new();
+    // Two cases that lower to one request are asked once, and the second is
+    // kept from the first's recording (`Session::record_one`): count it so.
+    let mut asked: Vec<String> = Vec::new();
+    for step in &planned {
+        let fingerprint = canonical::request_fingerprint(&step.unit.case.state, &step.questions);
+        if asked.contains(&fingerprint) {
+            kept += 1;
+            continue;
+        }
+        let held = runtime.block_on(known.answer(
+            &step.unit.case.state,
+            resolved.model(),
+            &step.questions,
+        ));
+        match held {
+            Ok(_) => kept += 1,
+            Err(Error::NoRecording(_)) => {
+                to_ask.push(step.name.as_str());
+                asked.push(fingerprint);
+            }
+            Err(_) => {
+                stale.push(step.name.as_str());
+                stale_steps.push(step);
+                asked.push(fingerprint);
+            }
+        }
+    }
+    if present {
+        refuse_stale_files(&args.out, &stale_steps)?;
+    }
+    let times: Vec<u64> = if present {
+        recordings::scan(&args.out)
+            .iter()
+            .map(|f| f.recording.elapsed_ms)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    Ok(describe_plan(&PlanSummary {
+        out: &args.out,
+        refresh: args.refresh,
+        total: planned.len(),
+        kept,
+        to_ask: &to_ask,
+        stale: &stale,
+        base_url: resolved.base_url(),
+        model: resolved.model(),
+        model_from: &resolved.model_from(),
+        key: resolved.api_key_source(),
+        times: &times,
+    }))
+}
+
+/// What `--dry-run` found, to be put in words.
+struct PlanSummary<'a> {
+    out: &'a Path,
+    refresh: bool,
+    total: usize,
+    kept: usize,
+    to_ask: &'a [&'a str],
+    stale: &'a [&'a str],
+    base_url: &'a str,
+    model: &'a str,
+    model_from: &'a str,
+    key: &'a str,
+    times: &'a [u64],
+}
+
+/// The plan in a few lines: the counts first, then the names, the backend,
+/// the key and the time.
+fn describe_plan(p: &PlanSummary<'_>) -> String {
+    let asked = p.to_ask.len() + p.stale.len();
+    let held = if p.refresh {
+        "--refresh: none kept".to_owned()
+    } else {
+        format!("{} already recorded in {}", p.kept, p.out.display())
+    };
+    let mut lines = vec![format!(
+        "{} request{}: {held}, {asked} to ask ({} replacing a stale recording)",
+        p.total,
+        if p.total == 1 { "" } else { "s" },
+        p.stale.len()
+    )];
+    if !p.to_ask.is_empty() {
+        lines.push(format!("to ask: {}", p.to_ask.join(", ")));
+    }
+    if !p.stale.is_empty() {
+        lines.push(format!("stale, to replace: {}", p.stale.join(", ")));
+    }
+    lines.push(format!(
+        "backend {}, model {} (from {})",
+        crate::out::plain(p.base_url),
+        crate::out::plain(p.model),
+        p.model_from
+    ));
+    lines.push(match p.key {
+        "missing" => "API key: missing; the run would stop before the first call (a local server that ignores it takes any word)".to_owned(),
+        source => format!("API key: set ({source})"),
+    });
+    lines.push(match median(p.times) {
+        Some(ms) if asked > 0 => format!(
+            "time: about {} a request (median of {} recording{} in {}), about {} for {asked}",
+            duration(ms),
+            p.times.len(),
+            if p.times.len() == 1 { "" } else { "s" },
+            p.out.display(),
+            duration(ms.saturating_mul(u64::try_from(asked).unwrap_or(u64::MAX)))
+        ),
+        None if asked > 0 => "time: unknown until the first request answers (no recording in the directory to read it from)".to_owned(),
+        _ => "time: nothing to ask".to_owned(),
+    });
+    lines.join("\n") + "\n"
+}
+
+/// The refusal behind [`Session::refuse_stale_elsewhere`], for the requests
+/// whose recording is stale: shared with `--dry-run`, so the plan refuses
+/// what the run would refuse.
+fn refuse_stale_files(out: &Path, held_stale: &[&Planned]) -> Result<(), Failure> {
+    let mut found: Option<Vec<recordings::Found>> = None;
+    for step in held_stale {
+        let state = &step.unit.case.state;
+        let fingerprint = canonical::request_fingerprint(state, &step.questions);
+        let hash = request_hash(state, &step.questions);
+        let own = recording_path(out, &step.name);
+        let files = found.get_or_insert_with(|| recordings::scan(out));
+        for file in files.iter().filter(|f| {
+            f.path != own
+                && (f.recording.fingerprint.as_deref() == Some(fingerprint.as_str())
+                    || f.recording.request_hash.as_deref() == Some(hash.as_str()))
+        }) {
+            // The file's own reason: a valid twin of a stale recording in
+            // the case's own file is no problem (the run reports it).
+            if let Err(reason) = file.recording.response.verify(&step.questions) {
+                return Err(Failure::Usage(format!(
+                    "{} records this request and no longer fits the questions ({reason}); delete or move it, then record again",
+                    file.path.display()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The middle value, the lower one of two; `None` for none.
+fn median(times: &[u64]) -> Option<u64> {
+    let mut sorted = times.to_vec();
+    sorted.sort_unstable();
+    sorted.get(sorted.len().checked_sub(1)? / 2).copied()
+}
+
+/// Milliseconds for a person: `850 ms`, `9.1 s`, `14 min`, `2 h 5 min`.
+/// Each unit is chosen after rounding, so 59.96 s reads `1 min`, never
+/// `60.0 s`, and an hour less a second `1 h 0 min`, never `60 min`.
+fn duration(ms: u64) -> String {
+    if ms < 1_000 {
+        return format!("{ms} ms");
+    }
+    let tenths = (ms + 50) / 100;
+    if tenths < 600 {
+        return format!("{}.{} s", tenths / 10, tenths % 10);
+    }
+    let minutes = (ms + 30_000) / 60_000;
+    if minutes < 60 {
+        return format!("{minutes} min");
+    }
+    format!("{} h {} min", minutes / 60, minutes % 60)
 }
 
 fn record(args: &Record) -> Result<(), Failure> {
@@ -217,32 +447,11 @@ impl Session<'_> {
     /// has; a stale recording in `NAME.jud` itself is the file written
     /// anyway. Nothing is held under `--refresh`, so nothing is refused.
     fn refuse_stale_elsewhere(&self, planned: &[Planned]) -> Result<(), Failure> {
-        let mut found: Option<Vec<recordings::Found>> = None;
-        for step in planned {
-            if !matches!(self.held(step), Held::Stale) {
-                continue;
-            }
-            let state = &step.unit.case.state;
-            let fingerprint = canonical::request_fingerprint(state, &step.questions);
-            let hash = request_hash(state, &step.questions);
-            let own = recording_path(self.out, &step.name);
-            let files = found.get_or_insert_with(|| recordings::scan(self.out));
-            for file in files.iter().filter(|f| {
-                f.path != own
-                    && (f.recording.fingerprint.as_deref() == Some(fingerprint.as_str())
-                        || f.recording.request_hash.as_deref() == Some(hash.as_str()))
-            }) {
-                // The file's own reason: a valid twin of a stale recording in
-                // the case's own file is no problem (the run reports it).
-                if let Err(reason) = file.recording.response.verify(&step.questions) {
-                    return Err(Failure::Usage(format!(
-                        "{} records this request and no longer fits the questions ({reason}); delete or move it, then record again",
-                        file.path.display()
-                    )));
-                }
-            }
-        }
-        Ok(())
+        let stale: Vec<&Planned> = planned
+            .iter()
+            .filter(|step| matches!(self.held(step), Held::Stale))
+            .collect();
+        refuse_stale_files(self.out, &stale)
     }
 
     /// Ask the backend, record the answer and write it; the call's time in
@@ -439,6 +648,30 @@ mod tests {
         }))
         .unwrap();
         (questions, response)
+    }
+
+    #[test]
+    fn a_duration_reads_in_the_unit_a_person_would_say() {
+        assert_eq!(duration(850), "850 ms");
+        assert_eq!(duration(9_049), "9.0 s");
+        assert_eq!(duration(9_950), "10.0 s");
+        assert_eq!(duration(59_949), "59.9 s");
+        assert_eq!(duration(14 * 60_000), "14 min");
+        assert_eq!(duration(2 * 3_600_000 + 5 * 60_000), "2 h 5 min");
+        // Rounding never shows a unit's own ceiling.
+        assert_eq!(duration(59_950), "1 min");
+        assert_eq!(duration(3_599_000), "1 h 0 min");
+        assert_eq!(duration(7_199_000), "2 h 0 min");
+        assert_eq!(duration(3_570_000), "1 h 0 min");
+        assert_eq!(duration(3_569_999), "59 min");
+    }
+
+    #[test]
+    fn the_median_is_the_lower_middle_and_none_of_nothing() {
+        assert_eq!(median(&[]), None);
+        assert_eq!(median(&[7]), Some(7));
+        assert_eq!(median(&[9, 1, 5]), Some(5));
+        assert_eq!(median(&[4, 1, 3, 2]), Some(2));
     }
 
     #[test]

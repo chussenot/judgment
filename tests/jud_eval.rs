@@ -10,6 +10,7 @@
 mod support;
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 use std::path::Path;
 use std::process::{Output, Stdio};
 
@@ -299,8 +300,21 @@ fn the_json_report_has_every_documented_key_and_no_other() {
             "models",
             "questions",
             "requests",
-            "rubric"
+            "rubric",
+            "signal_rules"
         ]
+    );
+    // The thresholds the signals were read with, so a change to one shows.
+    assert_eq!(
+        report["signal_rules"],
+        json!({
+            "min_answers": 10,
+            "collapse_share": 0.8,
+            "collapse_margin": 0.2,
+            "never_answered_min": 3,
+            "defers_most": 0.5,
+            "defers_nearly_all": 0.9
+        })
     );
     assert_eq!(
         keys(&report["rubric"]),
@@ -321,12 +335,23 @@ fn the_json_report_has_every_documented_key_and_no_other() {
             "gate",
             "id",
             "labelled",
-            "misses"
+            "majority",
+            "misses",
+            "outcomes",
+            "signals"
         ]
     );
     assert_eq!(
         keys(&desk["gate"]),
         ["accuracy_when_acted", "acted", "deferred"]
+    );
+    assert_eq!(
+        keys(&desk["outcomes"][0]),
+        ["correct", "labelled", "level", "outcome", "predicted"]
+    );
+    assert_eq!(
+        keys(&desk["majority"]),
+        ["labelled", "level", "outcome", "share"]
     );
     assert_eq!(
         keys(&desk["misses"][0]),
@@ -1342,5 +1367,159 @@ fn the_help_says_which_accuracy_a_bar_holds_and_that_a_server_run_keeps_nothing(
     assert!(
         help.contains("Against a server eval keeps nothing: use `jud record` to keep the answers."),
         "{help}"
+    );
+}
+
+/// Each question's answers by outcome, the commonest label, and the signals
+/// read from them. The counts add up: `labelled` and `predicted` each to the
+/// question's `labelled`, `correct` to its `correct`.
+#[test]
+fn the_json_report_counts_outcomes_and_names_the_majority() {
+    let out = triage(&["--json"]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let report: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    let questions = report["questions"].as_array().unwrap();
+    for q in questions {
+        let sum = |key: &str| -> u64 {
+            q["outcomes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|o| o[key].as_u64().unwrap())
+                .sum()
+        };
+        assert_eq!(sum("labelled"), q["labelled"].as_u64().unwrap(), "{q}");
+        assert_eq!(sum("predicted"), q["labelled"].as_u64().unwrap(), "{q}");
+        assert_eq!(sum("correct"), q["correct"].as_u64().unwrap(), "{q}");
+    }
+    let by_id = |id: &str| questions.iter().find(|q| q["id"] == id).unwrap();
+
+    let actionable = by_id("actionable");
+    assert_eq!(
+        actionable["outcomes"],
+        json!([
+            {"outcome": "yes", "level": null, "labelled": 5, "predicted": 6, "correct": 5},
+            {"outcome": "no", "level": null, "labelled": 2, "predicted": 1, "correct": 1}
+        ])
+    );
+    assert_eq!(actionable["majority"]["outcome"], "yes");
+    assert_eq!(actionable["majority"]["labelled"], 5);
+    // 7 cases: the interval (0.49 to 0.97) reaches the 5 of 7 `yes`, but
+    // no score on seven cases could clear it, so nothing is raised under
+    // ten labels.
+    assert_eq!(actionable["signals"], json!([]));
+
+    // Every option of a Choice is listed in the rubric's order.
+    let desk: Vec<&str> = by_id("desk")["outcomes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["outcome"].as_str().unwrap())
+        .collect();
+    assert_eq!(desk, ["billing", "technical", "account", "none_of_these"]);
+    assert_eq!(by_id("desk")["signals"], json!([]));
+
+    // A Score's outcomes are its level indices, each with the level's text.
+    let tone = &by_id("tone")["outcomes"][0];
+    assert_eq!(
+        (tone["outcome"].as_str(), tone["level"].as_str()),
+        (Some("0"), Some("calm"))
+    );
+}
+
+/// The text report gives the same counts, the majority and one line per
+/// signal, in the question's block.
+#[test]
+fn the_text_report_shows_outcomes_majority_and_warnings() {
+    let out = triage(&[]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        text.contains("  outcomes, labelled/answered/right: yes 5/6/5, no 2/1/1\n  majority yes, 5 of 7 (0.71)\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains(
+            "  outcomes, labelled/answered/right: calm 4/4/4, annoyed 1/1/1, angry 1/1/1\n"
+        ),
+        "{text}"
+    );
+    // Seven cases are too few for the majority check: no warning.
+    assert!(!text.contains("  warning: "), "{text}");
+}
+
+/// A model that gives one answer whatever the case is named as collapsed,
+/// and a gate that defers nearly every answer is named with its fallback:
+/// ten cases answered by a server that always says `billing` at 0.3.
+#[tokio::test]
+async fn one_answer_for_every_case_is_a_collapse_and_a_gate_that_defers_all_is_named() {
+    let dir = scratch("collapse");
+    let options = ["billing", "technical", "account", "none_of_these"];
+    let mut cases = String::from(
+        "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: spread\nspec:\n  rubric: inbox-triage\n  cases:\n",
+    );
+    for i in 0..12 {
+        writeln!(
+            cases,
+            "    - id: c{i}\n      state: {{message: \"message {i}\"}}\n      expect: {{desk: {}}}",
+            options[i % 4]
+        )
+        .unwrap();
+    }
+    let cases_path = dir.join("spread.jud");
+    std::fs::write(&cases_path, cases).unwrap();
+    let mut answers = triage_answers();
+    answers["answers"]["desk"] = json!({
+        "type": "choice", "choice": "billing", "confidence": 0.3,
+        "probabilities": {"billing": 0.3, "technical": 0.25, "account": 0.25, "none_of_these": 0.2}
+    });
+    // Asked twice below, as JSON and as text.
+    let server = server(answers, 24).await;
+    let out = jud(
+        &["eval", TRIAGE, cases_path.to_str().unwrap(), "--json"],
+        "",
+        &[
+            ("TYPESAFE_BASE_URL", &server.uri()),
+            ("TYPESAFE_API_KEY", "test-key"),
+        ],
+    );
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let report: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    let desk = report["questions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|q| q["id"] == "desk")
+        .unwrap();
+    assert_eq!(
+        desk["signals"],
+        json!([
+            "no_better_than_majority",
+            "collapsed",
+            "never_answered",
+            "defers_nearly_all"
+        ]),
+        "{desk}"
+    );
+
+    let text = stdout(&jud(
+        &["eval", TRIAGE, cases_path.to_str().unwrap()],
+        "",
+        &[
+            ("TYPESAFE_BASE_URL", &server.uri()),
+            ("TYPESAFE_API_KEY", "test-key"),
+        ],
+    ));
+    assert!(
+        text.contains("  warning: collapsed: the model answered billing on 12 of 12 labelled cases; no bar or relabel fixes that\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("  warning: the gate defers 12 of 12: they fall back to none_of_these\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("  warning: never answered: technical (3 labelled), account (3 labelled), none_of_these (3 labelled); the model does not give them, whatever the bar\n"),
+        "{text}"
     );
 }

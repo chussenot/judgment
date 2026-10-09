@@ -982,6 +982,21 @@ A state nobody recorded is a backend failure (status 1, `no recording`); a direc
 
 `jud record`, `jud eval` and `jud tune` arrived after 0.10.4; pin a release that lists them in [the changelog](../../CHANGELOG.md).
 
+Before spending anything, `--dry-run` says what the run would do: how many requests, which the directory already answers, which backend and model would be asked, whether a key is set, and how long it would take at the pace of the recordings already there. It asks nothing, writes nothing and needs no key:
+
+```sh
+jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out recordings/screening --dry-run
+```
+
+<!-- transcript: jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out recordings/screening --dry-run -->
+```text
+4 requests: 0 already recorded in recordings/screening, 4 to ask (0 replacing a stale recording)
+to ask: charged-twice, cancelled-last-week, how-does-billing-work, furious-outage
+backend https://api.typesafe.ai, model jev-latest (from default)
+API key: missing; the run would stop before the first call (a local server that ignores it takes any word)
+time: unknown until the first request answers (no recording in the directory to read it from)
+```
+
 The repository's `refund-screening` documents have no recordings, so recording them needs a key:
 
 ```sh
@@ -1080,16 +1095,22 @@ cases inbox-triage-cases: sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc56
 actionable
   labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)
   brier 0.090, calibration error 0.144, confidence when right 0.92, when wrong 0.52
+  outcomes, labelled/answered/right: yes 5/6/5, no 2/1/1
+  majority yes, 5 of 7 (0.71)
   gate: acts on 7 of 7, defers 0, accuracy when acted 1.00
 
 desk
   labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)
   brier 0.155, calibration error 0.151, confidence when right 0.76, when wrong 0.40
+  outcomes, labelled/answered/right: billing 2/3/2, technical 2/2/2, account 1/1/1, none_of_these 2/1/1
+  majority billing, 2 of 7 (0.29)
   gate: acts on 6 of 7, defers 1, accuracy when acted 1.00
 
 tone
   labelled 6, correct 6, accuracy 1.00 (95% interval 0.61 to 1.00)
   brier 0.059, calibration error 0.202, confidence when right 0.80, when wrong -
+  outcomes, labelled/answered/right: calm 4/4/4, annoyed 1/1/1, angry 1/1/1
+  majority calm, 4 of 6 (0.67)
   gate: acts on 7 of 7, defers 0, accuracy when acted 1.00
 
 model misses (2)
@@ -1102,8 +1123,17 @@ The report is on stdout and nothing else is. Read a block from the top.
 - **Accuracy** is the share of labelled cases the model got right, with its 95 % interval. Six of seven is 0.86, and the interval runs from 0.49 to 0.97. On seven cases that width is the honest number.
 - **Brier** is 0 for a perfect answer and grows with confident wrong ones. **Calibration error** is the gap between how confident the model was and how often it was right; it needs far more than seven cases to mean anything.
 - **Confidence when right and when wrong** says whether confidence separates the two. For `actionable` it does, 0.92 against 0.52. If the two are close, no bar can sort the answers.
+- **Outcomes** count, for each answer the question offers, how many labels name it, how often the model gave it on a labelled case, and how often rightly: `yes 5/6/5` is five `yes` labels, six `yes` answers, five of them right. A Score's levels are shown by their text. An outcome no case labels shows `0/…`, which is a gap in the cases, and an outcome the model answers far more often than the labels name it is where its misses come from.
+- **Majority** is the commonest label and its share: what a model that always gave that one answer would score. Accuracy means something only above it.
 - **The gate line** is the policy's, not the model's. It says how many answers the gate acted on rather than deferred, and how often the policy's own verdict was right among those.
+- **Warnings** name what to read first, and none is read from fewer than ten answers: on seven cases this report has none. Its thresholds are in the JSON report's `signal_rules`.
+  - `not shown to beat always answering …`: the accuracy's interval reaches down to the majority's share, so the model has not shown it does better than a constant. Not raised when every label is the same outcome. Under ten cases even a perfect score could not clear a common majority (at 0.71 it takes ten, at 0.9 thirty-five), which is why it waits.
+  - `collapsed`: one answer takes at least 80 % of the model's answers, 20 points more than any label's share. The model is not telling the outcomes apart, and no bar or relabel fixes that.
+  - `never answered: …`: an outcome that three labels or more name is never the model's answer. On a skewed set a model that always gives the commonest answer is not a collapse by the rule above (always `yes` on a set that is 88 % `yes`), and this is the line that names it.
+  - `the gate defers N of M`: the gate defers half the answers or more (`defers_most`), or nine in ten or more (`defers_nearly_all`), so that much of the question's traffic goes to its fallback, or to a person. A bar read off a capable model's confident tail lands at the first more often than the second.
 - **Model misses** lists each answer the model got wrong, by case.
+
+`--json` carries the same as data: per question `outcomes`, `majority` and `signals` (`no_better_than_majority`, `collapsed`, `never_answered`, `defers_most`, `defers_nearly_all`), and the thresholds they were read with in `signal_rules`, so a script or an agent reads them rather than counting ([the JSON report](../reference/cli.md#the-json-report)).
 
 The model's accuracy and the policy's can differ. The `receipt` case is a miss for `actionable`: the recorded answer is 0.52, which is a yes, and the label says no. The gate's threshold is 0.55, so the policy says no and is right, and `accuracy when acted` is 1.00. The model's own reading decides a miss: a Noul at 0.5, a Choice by its pick, a Score by its most probable level.
 
@@ -1245,6 +1275,18 @@ cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1.3, 7 ca
 ```
 
 The questions' fingerprint is unchanged. The policy fingerprint moved, which is the point. `tuned on` is the fingerprint of the cases the bars rest on, and `tuning` also names the model, the server and the time. The next person to open the file sees what the numbers rest on.
+
+## Hold some cases out
+
+A bar tuned on the cases it is graded on looks better than it will do. With 40 labelled cases or more, tune on most of them and grade on the rest. `jud split` writes the two halves beside the cases, holding out every fourth one by default:
+
+```sh
+jud split --rubric rubric.jud cases.jud   # cases-tune.jud and cases-holdout.jud
+jud tune rubric.jud cases-tune.jud --replay recordings/
+jud eval rubric.jud cases-holdout.jud --replay recordings/
+```
+
+Each case is copied as read, so the recordings made over the whole set answer both halves and nothing is asked again. The command prints each half's labels per question and warns when one half lacks a label the other has; a held-out number on an outcome the tuning set never saw says little. `--rubric` reads the labels as the rubric does: a Score level written as its index and as its text counts as one level, the labels are checked against the rubric, and they are listed in its order. A conversation's `from_turn` label counts as the turns it labels, `true` from that turn on and `false` before it, with or without the rubric. It never writes over a file, so a second split goes to another `--out` directory. Keep the two files: the `tuning` block `jud tune` prints names the tune half by its fingerprint, and the held-out numbers are the honest ones to quote. The seven triage cases are too few for this, which is why the page above tunes on all of them.
 
 ## When the model moves
 
@@ -1522,6 +1564,8 @@ claude plugin install jud@judgment                 # --scope project enables it 
 
 Or interactively: `/plugin marketplace add chussenot/judgment`, then `/plugin install jud@judgment`. The plugin has no dependency beyond the `jud` command: with none on `PATH`, its script builds one from a judgment checkout named by `JUDGMENT_DIR`, from the project when the project is this crate, or from the checkout the plugin sits in.
 
+Two things happen on install that are easy to mistake for a fault. The skills and commands load when a Claude Code session starts, so a session that installs the plugin does not see them: start a new one. And `--scope project` writes `enabledPlugins` into the project's `.claude/settings.json`, which Claude Code rewrites in its own key order, so a checked-in settings file shows a diff that moves keys and changes no setting; review it before committing.
+
 ## The commands
 
 | Command | What it does |
@@ -1603,14 +1647,14 @@ Every document written with the skill passed every assertion (49 of 49); without
 
 `/jud:record`, `/jud:eval` and `/jud:tune` were battle-tested as a user runs them: each scenario is one prompt through `claude -p --plugin-dir plugins/jud` in a fresh git workspace. The allow-list is what a user of the plugin would grant: the plugin's script, `jud`, file edits and a few read-only commands.
 
-The backend is `skills/jud-tune/evals/mock_system_one.py`, a System One test double that knows the cases' labels. It answers right with a set accuracy, wrong at a middling confidence, deterministically, and can force an answer so that a scenario plants a wrong label or a confusion. Every run's base URL is the mock or a closed port, so no scenario can reach a real API.
+The backend is `skills/jud-tune/evals/mock_system_one.py`, a System One test double that knows the cases' labels. It answers right with a set accuracy, wrong at a middling confidence, deterministically, and can force an answer so that a scenario plants a wrong label or a confusion. Its `collapse` and `confidence` profile keys imitate what a small real model did on a real rubric: one option for nearly every state, and a Score always reported below its bar. Every run's base URL is the mock or a closed port, so no scenario can reach a real API.
 
 The fixture under `skills/jud-tune/evals/files/support/` is a three-question rubric with 48 labelled tickets. Two labels are wrong on purpose and three tickets straddle billing and account. On it, `jud tune` proposes raising the queue bar to 0.80, which would cover 15 of 48 cases: the right answer is to refuse that bar and fix its causes.
 
-The 14 scenarios cover:
+The 15 scenarios cover:
 
 - recording from scratch, resuming, over stale recordings, with no key, and over a conversation;
-- grading, with and without `--min-accuracy`, and over recordings a question edit made stale;
+- grading, with and without `--min-accuracy`, over recordings a question edit made stale, and over a model that collapses one question onto one answer and defers every case of another;
 - proposing, applying, holding out and a relabel what-if;
 - a plain-language request ("fix the thresholds") that names no command.
 
@@ -1634,7 +1678,7 @@ The pages were rewritten between rounds from what the graders found. A round on 
 
 Every scripted check passed in the final round: 109 of 109, at $4.61 for the 14 runs on Sonnet 5.5, $0.15 to $0.76 each. The confirmation round re-ran the six scenarios its fixes touched, and the two its own fixes touched were run once more, all checks passing. Two weaknesses remain, both in the replies' prose rather than in what the commands do:
 
-- **Contradicted claims.** Their number swings between rounds (2 to 20) with no trend after round 3. Most are arithmetic done by hand on label counts, which `jud eval --json` does not yet report per outcome.
+- **Contradicted claims.** Their number swings between rounds (2 to 20) with no trend after round 3. Most were arithmetic done by hand on label counts; `jud eval` now reports them per outcome, with the majority and its signals ([decision 0022](../project/decisions/0022-jud-reports-what-the-tuning-loop-counted-by-hand.md)), and the skill reads them instead of counting.
 - **The cost announcement.** A model writes it reliably as the `record` call's description, and less reliably as text before the call, so the check accepts either.
 
 To run them again, with `claude` logged in and `jud` built:
@@ -1649,9 +1693,9 @@ JUD=target/debug/jud python3 plugins/jud/skills/jud-tune/evals/run.py --out /tmp
 
 `/jud:rust` was battle-tested the same way: one prompt per scenario through `claude -p --plugin-dir plugins/jud`, in a fresh git workspace holding a small Rust application (`skills/jud-rust/evals/files/app/`, with `clippy::pedantic`, `unwrap_used` and `expect_used` on). The allow-list is the plugin's script, `cargo`, file edits and a few read-only commands. No scenario calls a backend.
 
-The 7 scenarios cover:
+The 8 scenarios cover:
 
-- the triage rubric in a crate;
+- the triage rubric in a crate, and in a crate whose `src/lib.rs` already declares the module;
 - the routing rubric, with options supplied per request, `when`, bands, `strict` and `level_at_least`;
 - a conversation rubric in a project with no crate;
 - a rubric of hostile names (a keyword, a dotted id, a leading digit, `self`, two keys that collide, a level with no letters);
@@ -1755,6 +1799,7 @@ Commands:
   record      Answer every case once and write the recordings
   eval        Grade a model's answers against the labelled cases
   tune        Propose each gate's bar from recorded answers
+  split       Split a Cases document into a tuning set and a held-out set
   completion  Print a shell completion script for jud's commands and flags
   help        Print this message or the help of the given subcommand(s)
 
@@ -1785,6 +1830,7 @@ Examples:
   jud record rubric.jud cases.jud --out recordings/
   jud eval rubric.jud cases.jud --replay recordings/
   jud tune rubric.jud cases.jud --replay recordings/
+  jud split cases.jud          # cases-tune.jud and cases-holdout.jud
 
 Exit status: 0 success; 1 a backend call failed, or a recording is missing
 under --replay; 2 wrong before any call: the invocation, a file, the state or
@@ -1908,7 +1954,7 @@ Prints the request the rubric lowers to, as the `questions` map the wire carries
 | `jud eval` | the configured backend, or the recordings under `--replay DIR` | nothing | unless `--replay` is given |
 | `jud tune` | the recordings under `--replay DIR`, always | with `--out PATH`, a rubric file | no |
 
-`record` is the only command that spends calls on purpose; `eval` spends them when it has no replay. [Tune thresholds](../guides/tune-thresholds.md) and [Run in CI](../guides/run-in-ci.md) show them at work.
+`record` is the only command that spends calls on purpose; `eval` spends them when it has no replay. [`jud split`](#jud-split) takes the cases alone and splits them into a tuning set and a held-out set. [Tune thresholds](../guides/tune-thresholds.md) and [Run in CI](../guides/run-in-ci.md) show them at work.
 
 The three share these rules.
 
@@ -1926,7 +1972,7 @@ Answer every case once and write the recordings.
 
 Each case's request is lowered from its state and its own options and sent to the configured backend; the verified response is written to DIR/CASE.jud with the request fingerprint, the rubric, the server and the time. A conversation labelled with `from_turn` is recorded turn by turn as CASE-turn-N.jud. A request already recorded in DIR is kept and not asked again, so an interrupted run resumes.
 
-Record always asks the configured backend and never reads `JUD_REPLAY`, so a run spends calls.
+Record always asks the configured backend and never reads `JUD_REPLAY`, so a run spends calls. --dry-run says how many, to whom and for how long, and asks nothing.
 
 Usage: jud record [OPTIONS] --out <DIR> <RUBRIC> <CASES>
 
@@ -1943,6 +1989,9 @@ Options:
 
       --refresh
           Ask every case again, replacing the recordings already in DIR
+
+      --dry-run
+          Ask nothing and write nothing: print what a run would do. The requests, how many DIR already answers, which are to be asked or replaced, the backend and model it would ask, whether a key is set, and how long the run would take at the median time of the recordings in DIR
 
   -h, --help
           Print help (see a summary with '-h')
@@ -1998,6 +2047,21 @@ A line for each of `recorded NAME (N/TOTAL, MS ms)`, `kept NAME` and `replaced N
 
 A call that fails stops the run at that case with status 1. The message names the case, its position, how many were recorded and kept before it, and `DIR`. The recordings already written stay, and the next run resumes from them. Exit status: 0 when every request has a recording, written or kept; 1 when a call failed or a recording could not be written; 2 for a refusal.
 
+### A dry run
+
+`--dry-run` reads what a run reads, the documents bound, every request lowered and the recordings in `DIR` matched by fingerprint, and then stops: it asks nothing, creates no directory, writes no file and needs no key. It prints, on stdout:
+
+```text
+93 requests: 88 already recorded in recordings/tev1, 5 to ask (0 replacing a stale recording)
+to ask: NAME, NAME, ...
+stale, to replace: NAME, ...
+backend http://127.0.0.1:11434, model tev1:0.8b (from config_file)
+API key: set (config_file)
+time: about 10.7 s a request (median of 88 recordings in recordings/tev1), about 53.6 s for 5
+```
+
+The `to ask` and `stale` lines appear only when there is a name to give. The model's source is `environment`, `config_file` or `default`; the key's is `environment` or `config_file`, or the line says it is missing and that the run would stop before the first call. The time is the median `elapsed_ms` of the recordings already in `DIR`, so it is the backend's own pace; with none it is unknown until the first request answers. With `--refresh` nothing is counted as kept. Two cases that lower to one request are counted once to ask and once kept, as a run asks once. The refusals a run makes before any call are status 2 here as in a run: a document that does not read or bind, a case without an id, an `--out` that is a file rather than a directory, and a stale recording that sits in a file the run would not write.
+
 ## `jud eval`
 
 <!-- help: jud eval -->
@@ -2047,7 +2111,10 @@ N requests, model MODEL
 QUESTION
   labelled L, correct C, accuracy A (95% interval LOW to HIGH)
   brier B, calibration error E, confidence when right R, when wrong W
+  outcomes, labelled/answered/right: OUTCOME L/A/R, OUTCOME L/A/R
+  majority OUTCOME, M of L (SHARE)
   gate: acts on A of T, defers D, accuracy when acted X
+  warning: SIGNAL
 
 model misses (N)
   QUESTION  CASE: expected E, predicted P, confidence C
@@ -2057,12 +2124,19 @@ model misses (N)
   NOT MET  QUESTION A < BAR
 ```
 
-There is one block per question, in the rubric's order. When several models answered, `model MODEL` reads `models MODEL, MODEL`. A question no case labels prints `not labelled` in place of its two metrics lines, a question without a gate prints `gate: none`, and a run with no miss prints `model misses: none`. The `--min-accuracy` section appears only with a gate flag.
+There is one block per question, in the rubric's order. When several models answered, `model MODEL` reads `models MODEL, MODEL`. A question no case labels prints `not labelled` in place of its metrics, outcomes and majority lines, a question without a gate prints `gate: none`, and a run with no miss prints `model misses: none`. A `warning:` line appears per signal raised, none when there is none. The `--min-accuracy` section appears only with a gate flag.
 
 A report holds three things that are not the same number: what the model got right, what the policy does with its answers, and where the model was wrong.
 
 - **The model.** `labelled`, `correct`, `accuracy` with its 95 % interval, the Brier score, the calibration error and the mean confidence when right and when wrong, each `-` when there is none. They read the model's own answer: a Noul is yes from a probability of 0.5, a Choice is the option it picked, a Score is its most probable level. [The metrics](../concepts/rubrics-cases-recordings.md#the-metrics) defines them.
 - **The gate.** `acts on A of T, defers D` counts what the rubric's gate for the question does with the T answers that asked it. A Noul's gate never defers, so it acts on every answer. `accuracy when acted` is the accuracy of the policy's own verdicts among the answers the gate acted on and a case labels. A Noul is read at the gate's `threshold` and `strict`, a Choice by the option the verdict names, a Score by the level the policy reads, the one nearest the weighted score. It is not the question's `accuracy`, and moving a bar moves one and not the other.
+- **The outcomes.** For every answer the question offers, in its order (`yes` and `no`, a Choice's options, a Score's levels by their text), how many labels name it, how often the model gave it on a labelled case, and how often rightly. Each count is over the labelled answers, so the labels and the answers each add up to `labelled`. An outcome no case labels shows `0/…`. Options supplied per request follow, as the answers name them.
+- **The majority.** The commonest label, the first in the question's order on a tie, and its share of `labelled`: what always giving that one answer would score.
+- **The warnings.** One line per signal, each read from the numbers above, and none from fewer than ten answers. The thresholds are in the JSON report's `signal_rules`; a change to one is a change of meaning ([stability](stability.md)).
+  - `not shown to beat always answering OUTCOME (SHARE): the interval reaches down to LOW` when the accuracy's 95 % interval reaches down to the majority's share, and the labels name more than one outcome.
+  - `collapsed: the model answered OUTCOME on N of L labelled cases; …` when one answer takes at least 0.8 of the labelled answers and at least 0.2 more than the largest share any label has.
+  - `never answered: OUTCOME (N labelled), …; …` when an outcome at least 3 labels name is never the model's answer on a labelled case. A skewed set hides this from `collapsed`: a model that always says `yes` to a set that is 88 % `yes` answers one outcome only 0.12 more often than the labels name it.
+  - `the gate defers D of T: they fall back to FALLBACK` (or `nothing acts on them` without a fallback) when the gate defers at least 0.5 of the answers it sees (`defers_most`) or at least 0.9 (`defers_nearly_all`); one of the two, never both.
 - **The misses.** `model misses` lists the model's own readings that the labels call wrong, one line per miss: question, case, expected, predicted and the model's confidence in what it predicted, which for a Noul is the larger of p and 1 - p. A Noul is `yes` or `no`, a Choice is an option key and a Score is a level index. A miss is not the policy's: a Noul answered 0.52 is a miss against a `false` label, and a gate at 0.55 says no and is right.
 
 ### The JSON report
@@ -2100,12 +2174,31 @@ A report holds three things that are not the same number: what the model got rig
 | `questions[].misses[].expected` | string | The label, in the answer's words. |
 | `questions[].misses[].predicted` | string | The model's reading, in the same words. |
 | `questions[].misses[].confidence` | number | The model's confidence in `predicted`. |
+| `questions[].outcomes` | array of objects | One per outcome the question offers, in its order, then any other the labels or answers name. |
+| `questions[].outcomes[].outcome` | string | In the label's words: `yes` or `no`, an option key, a level's index. |
+| `questions[].outcomes[].level` | string or `null` | A Score level's text; `null` for a Noul or a Choice. |
+| `questions[].outcomes[].labelled` | integer | Labels that name it. |
+| `questions[].outcomes[].predicted` | integer | Labelled answers in which the model gave it. |
+| `questions[].outcomes[].correct` | integer | Of those, the right ones. |
+| `questions[].majority` | object or `null` | The commonest label; `null` when nothing is labelled. |
+| `questions[].majority.outcome` | string | In the label's words. |
+| `questions[].majority.level` | string or `null` | A Score level's text. |
+| `questions[].majority.labelled` | integer | Labels that name it. |
+| `questions[].majority.share` | number | `labelled` over the question's `labelled`. |
+| `questions[].signals` | array of strings | In this order, each when raised: `no_better_than_majority`, `collapsed`, `never_answered`, then `defers_most` or `defers_nearly_all`, as [the text report](#the-text-report) defines them; `[]` when none is. |
 | `min_accuracy` | array of objects | One entry per question a `--min-accuracy` flag checks; `[]` without the flag. |
 | `min_accuracy[].question` | string or `null` | The question; `null` when a bare bar found no question with a label. |
 | `min_accuracy[].bar` | number | The bar as given. |
 | `min_accuracy[].labelled` | integer | Labelled answers of the question; 0 when it has none. |
 | `min_accuracy[].accuracy` | number or `null` | The question's `accuracy`. |
 | `min_accuracy[].met` | boolean | `false` when `accuracy` is below the bar or there is none. |
+| `signal_rules` | object | The thresholds the signals were read with, so two reports read under different ones can be told apart. |
+| `signal_rules.min_answers` | integer | The fewest answers any signal is read from: 10. |
+| `signal_rules.collapse_share` | number | The share one answer must take for `collapsed`: 0.8. |
+| `signal_rules.collapse_margin` | number | How far above the largest label share it must be: 0.2. |
+| `signal_rules.never_answered_min` | integer | The fewest labels an outcome needs for `never_answered`: 3. |
+| `signal_rules.defers_most` | number | The deferred share for `defers_most`: 0.5. |
+| `signal_rules.defers_nearly_all` | number | The deferred share for `defers_nearly_all`: 0.9. |
 
 The same report with one question kept and `--min-accuracy desk=0.9`:
 
@@ -2151,7 +2244,44 @@ The same report with one question kept and `--min-accuracy desk=0.9`:
           "predicted": "billing",
           "confidence": 0.4
         }
-      ]
+      ],
+      "outcomes": [
+        {
+          "outcome": "billing",
+          "level": null,
+          "labelled": 2,
+          "predicted": 3,
+          "correct": 2
+        },
+        {
+          "outcome": "technical",
+          "level": null,
+          "labelled": 2,
+          "predicted": 2,
+          "correct": 2
+        },
+        {
+          "outcome": "account",
+          "level": null,
+          "labelled": 1,
+          "predicted": 1,
+          "correct": 1
+        },
+        {
+          "outcome": "none_of_these",
+          "level": null,
+          "labelled": 2,
+          "predicted": 1,
+          "correct": 1
+        }
+      ],
+      "majority": {
+        "outcome": "billing",
+        "level": null,
+        "labelled": 2,
+        "share": 0.2857142857142857
+      },
+      "signals": []
     }
   ],
   "min_accuracy": [
@@ -2162,7 +2292,15 @@ The same report with one question kept and `--min-accuracy desk=0.9`:
       "accuracy": 0.8571428571428571,
       "met": false
     }
-  ]
+  ],
+  "signal_rules": {
+    "min_answers": 10,
+    "collapse_share": 0.8,
+    "collapse_margin": 0.2,
+    "never_answered_min": 3,
+    "defers_most": 0.5,
+    "defers_nearly_all": 0.9
+  }
 }
 ```
 
@@ -2287,6 +2425,40 @@ Without `--out`, `jud tune` writes nothing.
 
 Status 2: the settings above; a rubric with no gates, since there is nothing to tune; recordings that come from more than one model, since a bar is tuned per model, and the message names which cases each model answered; a `DIR` that cannot be read or holds a file that is not a recording; and the refusals under [the case commands](#the-case-commands). Status 1: a request with no recording, or one whose recording no longer fits.
 
+## `jud split`
+
+<!-- help: jud split -->
+```text
+Split a Cases document into a tuning set and a held-out set.
+
+Every Nth case (the Nth, the 2Nth, ...) goes to NAME-holdout.jud, the others to NAME-tune.jud, beside CASES or in --out. Cases are copied as read, so recordings made over CASES answer both halves. Prints each half's count, fingerprint and labels per question, and warns about a label one half has and the other lacks. With --rubric, the labels are read as the rubric reads them (a Score's level by its text whether written as text or index), checked against it, and listed in its order. Refuses to write over an existing file.
+
+Usage: jud split [OPTIONS] <CASES>
+
+Arguments:
+  <CASES>
+          The Cases document to split
+
+Options:
+      --every <N>
+          Hold out every Nth case, 2 or more: 4 holds out a quarter
+
+          [default: 4]
+
+      --out <DIR>
+          The directory the two halves are written to; CASES's own by default
+
+      --rubric <RUBRIC>
+          The Rubric the cases are for: read the labels as it reads them, so a Score level written as `0` and as `calm` is one level
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+Reads `CASES` and writes two new files, `STEM-tune.jud` and `STEM-holdout.jud`, beside it or under `--out` (created when needed), where `STEM` is the name of the `CASES` file without its extension. The Nth case, the 2Nth and so on go to the holdout half, the others to the tune half, in their order. Each case is copied as read, state, labels, options, tags and note (its values, not its bytes: comments go, and an anchor is written out), so a recording that answers a case in the whole set answers it in its half, and a split never needs a recording again. The halves are named `NAME-tune` and `NAME-holdout` after the set's `metadata.name`, keep its `spec.rubric`, labels and annotations, and say in `metadata.description` how they were made; each starts with a one-line comment naming its source. A half's fingerprint is over its own cases.
+
+Stdout gives each half's path, name, count and fingerprint, then per question the labels it carries and how many cases carry each. A conversation's `from_turn` label counts as the turns it labels: `true` from that turn on, `false` before it, or `false` throughout for `null`. With `--rubric`, the labels are read as the rubric reads them and listed in its order: a Score level is its text, whether the label wrote the text or the index. Without it, a label is its own word, and a note on stderr says when a level is named by its index. A label one half has and the other lacks is a `jud: warning:` line on stderr, since a held-out number on an outcome the tuning set never saw says little. Status 2, before anything is written: a document that does not read, `--every` under 2, fewer cases than `--every` (nothing would be held out), cases that do not fit the `--rubric` given, a half that would be written over the input, or a half's file that already exists. The two halves are written together or not at all: when the second cannot be written, the first is removed. `jud split` asks no backend and needs no key.
+
 ## `jud completion`
 
 <!-- help: jud completion -->
@@ -2330,9 +2502,9 @@ Options:
 | 2 | Wrong before any call, and fixable: no rubric argument, a file that cannot be read, a document that is not valid, cases that do not fit their rubric, stdin that is empty or not one JSON value, a missing API key, a malformed configuration file, an unknown flag or a flag with a bad value, an `--out` that would overwrite an input, a `--min-accuracy` that names no question; for `check`, any document refused. |
 | 3 | `jud eval` only. The evaluation ran, the report is on stdout, and a `--min-accuracy` bar was not met. |
 
-Every failure goes to stderr as `jud: MESSAGE`. A usage error that clap catches prints clap's own `error:` text instead, with status 2. `jud check` is the exception: its refusals are `error` lines in its result on stdout. Stdout carries the command's result and nothing else: the verdicts of a run, the lines of `jud check` and `jud lower`, the JSON of `jud config`, `jud eval`'s report, `jud tune`'s blocks and the completion script. `jud record` prints nothing on stdout. Everything else is a diagnostic and goes to stderr: the progress and tally of `jud record`, the tables and notes of `jud tune`, and the line that says a bar was not met. A pipeline never reads an error as a result. A reader that closes stdout early (`jud check FILE | head -1`) is not an error for any command: nothing panics, and the status is the command's own.
+Every failure goes to stderr as `jud: MESSAGE`. A usage error that clap catches prints clap's own `error:` text instead, with status 2. `jud check` is the exception: its refusals are `error` lines in its result on stdout. Stdout carries the command's result and nothing else: the verdicts of a run, the lines of `jud check` and `jud lower`, the JSON of `jud config`, `jud eval`'s report, `jud tune`'s blocks and the completion script. `jud record` prints nothing on stdout but its `--dry-run` plan, and `jud split` prints its report there. Everything else is a diagnostic and goes to stderr: the progress and tally of `jud record`, the tables and notes of `jud tune`, and the line that says a bar was not met. A pipeline never reads an error as a result. A reader that closes stdout early (`jud check FILE | head -1`) is not an error for any command: nothing panics, and the status is the command's own.
 
-Two commands write files, and nothing else does. `jud record` writes recordings into its `--out` directory. `jud tune --out` writes one rubric file. Neither writes over a rubric or a cases document it was given, and `jud tune --out` never writes among the recordings. Every other command, `jud eval` and a plain run among them, writes no file.
+Three commands write files, and nothing else does. `jud record` writes recordings into its `--out` directory. `jud tune --out` writes one rubric file. `jud split` writes two new cases files, and refuses when either exists. None writes over a rubric or a cases document it was given, and `jud tune --out` never writes among the recordings. Every other command, `jud eval` and a plain run among them, writes no file.
 
 
 <!-- source: docs/reference/configuration.md -->
@@ -3016,10 +3188,10 @@ The `jud` command follows the crate's version, and its contract is what a script
 
 - **Exit status.** 0, 1, 2 and 3, as [the command line reference](cli.md#exit-status) defines them. Status 3 is `jud eval`'s alone: the evaluation ran and a `--min-accuracy` bar was not met. Statuses 0, 1 and 2 keep their meaning.
 - **Stdout.** The result goes to stdout and every diagnostic to stderr, with the one exception that [the command line reference](cli.md#exit-status) names: `jud check`'s refusals are lines of its result. The result is the verdict JSON of a run ([Verdicts](cli.md#verdicts)) and, for `jud eval --json`, the keys and types of [the JSON report](cli.md#the-json-report). `jud tune` prints the `policy` and `tuning` blocks of the `jud/v1` format, which hold under that format's own promises. The text of `jud eval`'s report, the tables and notes of `jud tune` and the progress of `jud record` are for a person: a script reads `--json` and the exit status.
-- **Files written.** Two commands write files and no other does: `jud record`, into its `--out` directory, and `jud tune --out`, one rubric file. Neither writes over a rubric or a cases document it was given; [the command line reference](cli.md#exit-status) states the rule.
+- **Files written.** Three commands write files and no other does: `jud record`, into its `--out` directory, `jud tune --out`, one rubric file, and `jud split`, two new cases files. None writes over a rubric or a cases document it was given, and `jud split` writes over no file at all; [the command line reference](cli.md#exit-status) states the rule.
 - **Configuration.** What the command reads, and in what order ([Configuration](configuration.md)), including which commands read `JUD_REPLAY`.
 
-Exit status 3, `jud eval`'s `--json` keys and the two places that write files are such additions: they are part of the contract from the release that ships `jud record`, `jud eval` and `jud tune`, and not a break ([decision 0021](../project/decisions/0021-record-eval-and-tune-from-the-command-line.md)).
+Exit status 3, `jud eval`'s `--json` keys and the two places that write files are such additions: they are part of the contract from the release that ships `jud record`, `jud eval` and `jud tune`, and not a break ([decision 0021](../project/decisions/0021-record-eval-and-tune-from-the-command-line.md)). So are `jud split`, the files it writes, and the `outcomes`, `majority`, `signals` and `signal_rules` keys of `jud eval --json` ([decision 0022](../project/decisions/0022-jud-reports-what-the-tuning-loop-counted-by-hand.md)). The thresholds in `signal_rules` decide when a signal is raised, so a change to one is a change of meaning, made only in a minor and listed as breaking; a report carries the thresholds it was read with.
 
 ## In one table
 
@@ -3031,7 +3203,7 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 | A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good | `jud/v1.3`, decision 0018 |
 | The wire | The vendored OpenAPI document; a change moves the contract test, the CHANGELOG and the README together | crate 0.3.0 |
 | The crate | 0.x: a minor may break and says so; a patch does not | crate 0.3.0 |
-| The `jud` command | Exit status (0 to 3), the verdict JSON, `jud eval`'s `--json` keys, the two places that write files (`jud record --out`, `jud tune --out`) and the configuration: a change to what one means, or removing one, only in a minor, listed as breaking; an addition is listed under Added | crate 0.9.0; status 3, `eval --json` and the file writes from the release that ships `record`, `eval` and `tune` |
+| The `jud` command | Exit status (0 to 3), the verdict JSON, `jud eval`'s `--json` keys, the places that write files (`jud record --out`, `jud tune --out`, `jud split`) and the configuration: a change to what one means, or removing one, only in a minor, listed as breaking; an addition is listed under Added | crate 0.9.0; status 3, `eval --json` and the file writes from the release that ships `record`, `eval` and `tune` |
 
 
 <!-- source: docs/reference/glossary.md -->
@@ -4497,6 +4669,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0019](0019-a-command-line-for-the-format.md) | A command line for the format, released as a binary | accepted |
 | [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | proposed |
 | [0021](0021-record-eval-and-tune-from-the-command-line.md) | Record, evaluate and tune from the command line | accepted |
+| [0022](0022-jud-reports-what-the-tuning-loop-counted-by-hand.md) | jud reports what the tuning loop counted by hand | accepted |
 
 ## Status notes
 
@@ -4514,6 +4687,7 @@ Records are not edited after acceptance; a fact that has moved since is noted he
 - 0018 says any change of the format, additive or not, takes a new `apiVersion` that a reader of the earlier one refuses. [Stability](../../reference/stability.md), on 2026-10-06, promises that a `v1` minor only adds and that readers accept every `v1` document for at least twelve months after a later minor is published; a reader of a later minor therefore reads earlier `v1` documents, and only a change of meaning takes a new major. How the minor is spelled is [0020](0020-how-a-v1-minor-is-spelled.md), proposed. Nothing moves in the code until it is accepted: one minor exists and the reader reads it exactly.
 
 - 0021 extends the command [0019](0019-a-command-line-for-the-format.md) defined: three subcommands (`record`, `eval`, `tune`), exit status 3 for `jud eval` alone, and two places that write files (`jud record --out` and `jud tune --out`). 0019 stands: its statuses 0, 1 and 2 keep their meaning, and `jud RUBRIC` still evaluates one state from stdin. 0021 was accepted on 2026-10-08, when the subcommands were implemented; its "As implemented" section records what the implementation settled, and where it differs from the proposal the implementation is the contract.
+- 0022 adds to 0021's commands without changing them: per-outcome counts, a majority and three signals in `jud eval`, `jud record --dry-run`, and a fourth subcommand, `jud split`, a third place that writes files.
 
 ## Writing a record
 
@@ -5331,3 +5505,82 @@ The subcommands are `src/bin/jud/record.rs`, `eval.rs` and `tune.rs`, with `batc
 - [Rubrics, cases and recordings](../../concepts/rubrics-cases-recordings.md): the loop and the metrics.
 - [Tune thresholds](../../guides/tune-thresholds.md) and `examples/jud_calibration.rs`: the same loop with the commands, and in Rust.
 - `src/bin/jud/`: where the subcommands are; `src/backend.rs` (`Recorder`, `Replay`), `src/jud/` (`grade`, `recording_to_yaml`, `Case::per_turn`), `src/eval/` (`QuestionMetrics`, `tuning`): what they call.
+
+
+<!-- source: docs/project/decisions/0022-jud-reports-what-the-tuning-loop-counted-by-hand.md -->
+
+
+# 0022 jud reports what the tuning loop counted by hand
+
+**Status: accepted.** Implemented in the `jud` binary on 2026-10-09, with [issue #46](https://github.com/chussenot/judgment/issues/46).
+
+## Context and problem statement
+
+[Decision 0021](0021-record-eval-and-tune-from-the-command-line.md) put the loop from labelled cases to a tuned policy on the command line, and the Claude Code plugin's `jud-tune` skill drives it. The first run of both on real data outside the fixtures was a rubric over Wikimedia's recentchange stream: 93 captured cases, recorded against `tev1:0.8b` on Ollama, graded, split and tuned. It found what the commands did not say and the skill then had to compute by hand, with scripts the plugin cannot ship:
+
+- **No baseline.** `harm_risk` was 0.63 accurate; always answering its commonest label, `none`, scores 0.66. Nothing in the report said so; the counts per label had to be taken from the cases document.
+- **A collapse read as many misses.** `change_kind` answered `content` on 71 of 78 labelled cases. The report listed 49 separate misses; that they were one cause took a count of the predictions.
+- **A gate that deferred everything.** `harm_risk`'s gate deferred 90 of 93 answers, so the policy handed the question to its fallback; the gate line showed the two numbers and nothing about what they meant.
+- **The cost of a run.** Before `jud record` the skill counts the requests, matches the recordings in the directory with `jud check`, reads the backend from `jud config`, and estimates the time from nothing.
+- **The held-out set.** The skill says, in so many words, "jud has no split command: copy each case block verbatim". An agent copying 93 cases by hand into two files is where a state gets edited on the way.
+
+The plugin's own record of its battle test says the same: most of the claims graders found the output contradicting were "arithmetic done by hand on label counts, which `jud eval --json` does not yet report per outcome".
+
+## Decision drivers
+
+- **A count is the command's job.** A number the report could give is one an agent or a person should not compute: the command has the judgments, the reader has to rebuild them.
+- **Data, not advice.** The command reports what the numbers are and names a pattern by a code; what to do about it stays with the skill and the person.
+- **Nothing new to trust.** No new metric with a theory behind it: shares of counts already in the report, with the thresholds stated.
+- **Additive.** No key, status or meaning changes; the stability page lists additions under Added.
+
+## Considered options
+
+1. Leave it to the skill, which can compute all of it from `--json` and the cases document.
+2. Add the counts and signals to `jud eval`, a `--dry-run` to `jud record`, and a `jud split`.
+3. A separate `jud report` that reads `eval --json` and adds the analysis.
+
+## Decision outcome
+
+Option 2.
+
+### `jud eval`: outcomes, majority and signals
+
+Each question's block gains, for every outcome the question offers (`yes` and `no`, a Choice's options in order, a Score's levels), how many labels name it, how often the model answered it on a labelled case, and how often rightly; the majority label and its share; and one `warning:` line per signal. `--json` carries them as `outcomes`, `majority` and `signals`, the last a list of codes, and the thresholds as `signal_rules`:
+
+| Code | Raised when | Read from |
+|---|---|---|
+| `no_better_than_majority` | the accuracy's 95 % interval reaches down to the majority's share, and the labels name more than one outcome | ten labelled answers or more |
+| `collapsed` | one answer takes at least 0.8 of the labelled answers and at least 0.2 more than the largest share any label has | ten labelled answers or more |
+| `never_answered` | an outcome at least 3 labels name is never the model's answer | ten labelled answers or more |
+| `defers_most` | the gate defers at least 0.5 of the answers it sees, and less than 0.9 | ten answers or more |
+| `defers_nearly_all` | the gate defers at least 0.9 of the answers it sees | ten answers or more |
+
+The margin in `collapsed` keeps a model that rightly answers a set that is 90 % `no` from being called collapsed. The minimum of ten keeps a share read off a handful of answers from raising any signal.
+
+Three of these were changed in review, from what a live run against `jev-1.13.0` and the mock's profiles showed:
+
+- **`no_better_than_majority` waits for ten labels.** Without a minimum it fired on nearly every small set, perfect scores included: on the seven triage cases `tone` scored 6 of 6 and was flagged, since a Wilson interval on six answers cannot clear a 0.67 majority. A perfect model needs ten cases to clear a 0.71 majority and thirty-five to clear 0.9. A question whose labels are all one outcome is never flagged: nothing can beat 1.0.
+- **`never_answered` covers the collapse a skewed set hides.** A model that always said `yes` to a set that is 37 of 42 `yes` answered one outcome 0.12 more often than the labels named it, under the 0.2 margin, so `collapsed` stayed silent, and only `no 5/0/0` in the outcomes line showed it.
+- **`defers_most` at 0.5.** On the live support recordings, the bar `jud tune` proposed for `urgency` (0.90) deferred 36 of 48 answers, and 0.97 deferred 38: a capable model's confident tail puts a bad bar between a half and nine tenths, which `defers_nearly_all` never sees. The Wikimedia gate, 90 of 93 on a small model always unsure, is what the 0.9 line was drawn from.
+
+### `jud record --dry-run`
+
+Reads what a run reads, the documents bound, every request lowered and the directory's recordings matched by fingerprint, and stops. It prints the requests, how many are recorded, which are to ask and which stale ones to replace, the backend and model with their source, whether a key is set, and the time at the median `elapsed_ms` of the recordings already in the directory. It asks nothing, creates nothing and needs no key.
+
+### `jud split CASES [--every N] [--out DIR]`
+
+Writes `STEM-tune.jud` and `STEM-holdout.jud`, the Nth, 2Nth, ... case held out (4 by default), each case copied as read (its values; comments are not kept) so the recordings made over the whole set answer both halves. It refuses an existing file and the input, so it writes over nothing, and warns when a label one half has is missing from the other. A `from_turn` label counts as the turns it labels; with `--rubric`, a Score level written as its index and as its text is one level. On the Wikimedia cases its halves have exactly the fingerprints of the split the skill had made by hand.
+
+## Pros and cons of the options
+
+**1. Leave it to the skill.** Nothing changes in the crate. But every agent recomputes, and gets wrong, numbers the command already holds; a person without the plugin gets none of it; and the split, the step most likely to alter a state, stays manual.
+
+**2. In the commands.** The numbers come from the judgments the report is built from, so the counts add up by construction and the text and JSON cannot disagree. The cost is the report's length (two lines and the warnings per question), three thresholds that become part of the command's behaviour, and one more place that writes files.
+
+**3. A separate report.** Keeps `jud eval` short, but splits one report in two, and the second must re-read what the first already had.
+
+## More information
+
+The thresholds are constants in `src/bin/jud/eval.rs`, named on [the command line reference](../../reference/cli.md#the-text-report) and written into every JSON report as `signal_rules`; a change to one changes when a code is raised, which is a change of meaning under [Stability](../../reference/stability.md), and two reports read under different ones say so in their own data. The skill that used to compute these, `plugins/jud/skills/jud-tune`, now reads them from the report.
+
+Confirmed in `tests/jud_eval.rs` (the outcomes add up to `labelled` and `correct`, the documented keys, a collapse and a deferring gate raised against a server that always gives one answer), the signal unit tests in `src/bin/jud/eval.rs` (a skewed set answered rightly is no collapse, nothing raised under ten answers), `tests/jud_record.rs` (a dry run counts, names stale recordings, writes nothing and needs no key), and `tests/jud_split.rs` (the halves put back in order are the whole set, recordings over the whole set answer both, nothing is written over).

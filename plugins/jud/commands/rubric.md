@@ -16,6 +16,10 @@ particular:
    criterion in plain words, name the state keys the application will send,
    and give a Choice a way out (`none_of_these`, `other`) when the state might
    fit none of its options. Keep every threshold out of the instructions.
+   When real states are at hand (a sample, a log, the brief's examples), read
+   them first: for each question, name the field its answer is read from
+   (none means the caller must add one; say which), and leave to code what a
+   machine-written field already decides.
 2. Write the policy beside the questions: one gate per question, fitting its
    primitive, each with a `note` saying why the bar is where it is. A
    hand-written rubric has no `tuning` block; never invent one.

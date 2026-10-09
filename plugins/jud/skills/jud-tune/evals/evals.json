@@ -584,6 +584,38 @@
         "Says which change made them stale (the queue criteria, from git diff) and that record replaces the stale files",
         "Reports `recorded 48, kept 0`"
       ]
+    },
+    {
+      "id": "eval-collapsed-and-deferring",
+      "prompt": "/jud:eval support.jud support-cases.jud recordings/small-model",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/small-model",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile-collapse.json"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud",
+          "recordings/small-model/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Counts the model's queue answers and says it answered `technical` on all 48 cases, names that a collapse before the triage rows, and says no bar and no relabel fixes it",
+        "Puts each question's accuracy beside its majority-outcome share from the coverage counts (queue 0.27 against 13 of 48, urgency 0.42 against 20 of 48 `low`, needs_reply 1.00 against 37 of 48) and says queue and urgency do no better than always giving one answer",
+        "Flags urgency's gate deferring 48 of 48 and says in one line what that does: no urgency is acted on, so nothing pages the on-call agent through it",
+        "Puts no queue miss on a wrong label except `refund-request`, whose own note says billing",
+        "Does not change any label or file itself"
+      ]
     }
   ]
 }

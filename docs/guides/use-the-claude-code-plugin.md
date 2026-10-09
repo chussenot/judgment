@@ -2,7 +2,7 @@
 title: Use the Claude Code plugin
 description: How to install the jud plugin from this repository's marketplace, write a rubric and its cases with /jud:rubric and /jud:cases, check them with /jud:check, and measure and tune them with /jud:record, /jud:eval and /jud:tune, and turn a rubric into a typed Rust module with /jud:rust; what the three skills know that the reader and the numbers cannot say.
 status: current
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-09
 tags: [judgment, jud, skill, agent, claude-code, how-to]
 ---
 
@@ -20,6 +20,8 @@ claude plugin install jud@judgment                 # --scope project enables it 
 ```
 
 Or interactively: `/plugin marketplace add chussenot/judgment`, then `/plugin install jud@judgment`. The plugin has no dependency beyond the `jud` command: with none on `PATH`, its script builds one from a judgment checkout named by `JUDGMENT_DIR`, from the project when the project is this crate, or from the checkout the plugin sits in.
+
+Two things happen on install that are easy to mistake for a fault. The skills and commands load when a Claude Code session starts, so a session that installs the plugin does not see them: start a new one. And `--scope project` writes `enabledPlugins` into the project's `.claude/settings.json`, which Claude Code rewrites in its own key order, so a checked-in settings file shows a diff that moves keys and changes no setting; review it before committing.
 
 ## The commands
 
@@ -102,14 +104,14 @@ Every document written with the skill passed every assertion (49 of 49); without
 
 `/jud:record`, `/jud:eval` and `/jud:tune` were battle-tested as a user runs them: each scenario is one prompt through `claude -p --plugin-dir plugins/jud` in a fresh git workspace. The allow-list is what a user of the plugin would grant: the plugin's script, `jud`, file edits and a few read-only commands.
 
-The backend is `skills/jud-tune/evals/mock_system_one.py`, a System One test double that knows the cases' labels. It answers right with a set accuracy, wrong at a middling confidence, deterministically, and can force an answer so that a scenario plants a wrong label or a confusion. Every run's base URL is the mock or a closed port, so no scenario can reach a real API.
+The backend is `skills/jud-tune/evals/mock_system_one.py`, a System One test double that knows the cases' labels. It answers right with a set accuracy, wrong at a middling confidence, deterministically, and can force an answer so that a scenario plants a wrong label or a confusion. Its `collapse` and `confidence` profile keys imitate what a small real model did on a real rubric: one option for nearly every state, and a Score always reported below its bar. Every run's base URL is the mock or a closed port, so no scenario can reach a real API.
 
 The fixture under `skills/jud-tune/evals/files/support/` is a three-question rubric with 48 labelled tickets. Two labels are wrong on purpose and three tickets straddle billing and account. On it, `jud tune` proposes raising the queue bar to 0.80, which would cover 15 of 48 cases: the right answer is to refuse that bar and fix its causes.
 
-The 14 scenarios cover:
+The 15 scenarios cover:
 
 - recording from scratch, resuming, over stale recordings, with no key, and over a conversation;
-- grading, with and without `--min-accuracy`, and over recordings a question edit made stale;
+- grading, with and without `--min-accuracy`, over recordings a question edit made stale, and over a model that collapses one question onto one answer and defers every case of another;
 - proposing, applying, holding out and a relabel what-if;
 - a plain-language request ("fix the thresholds") that names no command.
 
@@ -133,7 +135,7 @@ The pages were rewritten between rounds from what the graders found. A round on 
 
 Every scripted check passed in the final round: 109 of 109, at $4.61 for the 14 runs on Sonnet 5.5, $0.15 to $0.76 each. The confirmation round re-ran the six scenarios its fixes touched, and the two its own fixes touched were run once more, all checks passing. Two weaknesses remain, both in the replies' prose rather than in what the commands do:
 
-- **Contradicted claims.** Their number swings between rounds (2 to 20) with no trend after round 3. Most are arithmetic done by hand on label counts, which `jud eval --json` does not yet report per outcome.
+- **Contradicted claims.** Their number swings between rounds (2 to 20) with no trend after round 3. Most were arithmetic done by hand on label counts; `jud eval` now reports them per outcome, with the majority and its signals ([decision 0022](../project/decisions/0022-jud-reports-what-the-tuning-loop-counted-by-hand.md)), and the skill reads them instead of counting.
 - **The cost announcement.** A model writes it reliably as the `record` call's description, and less reliably as text before the call, so the check accepts either.
 
 To run them again, with `claude` logged in and `jud` built:
@@ -148,9 +150,9 @@ JUD=target/debug/jud python3 plugins/jud/skills/jud-tune/evals/run.py --out /tmp
 
 `/jud:rust` was battle-tested the same way: one prompt per scenario through `claude -p --plugin-dir plugins/jud`, in a fresh git workspace holding a small Rust application (`skills/jud-rust/evals/files/app/`, with `clippy::pedantic`, `unwrap_used` and `expect_used` on). The allow-list is the plugin's script, `cargo`, file edits and a few read-only commands. No scenario calls a backend.
 
-The 7 scenarios cover:
+The 8 scenarios cover:
 
-- the triage rubric in a crate;
+- the triage rubric in a crate, and in a crate whose `src/lib.rs` already declares the module;
 - the routing rubric, with options supplied per request, `when`, bands, `strict` and `level_at_least`;
 - a conversation rubric in a project with no crate;
 - a rubric of hostile names (a keyword, a dotted id, a leading digit, `self`, two keys that collide, a level with no letters);

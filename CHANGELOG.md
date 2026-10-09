@@ -8,6 +8,55 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `jud eval` reports, per question, its answers by outcome (how many labels
+  name each, how often the model gave it, how often rightly), the majority
+  label with its share, and five signals: `no_better_than_majority`,
+  `collapsed`, `never_answered`, `defers_most` and `defers_nearly_all`, each a
+  `warning:` line in the text and a code in the new `outcomes`, `majority`
+  and `signals` keys of `--json`, none read from fewer than ten answers. The
+  thresholds they were read with are the new `signal_rules` key, so a report
+  says which it used (decision 0022). They are what the tuning skill
+  computed by hand on the first real-world run (#46).
+- `jud record --dry-run` says what a run would do and does nothing: the
+  requests, how many the directory answers, which are to ask or replace,
+  the backend and model, whether a key is set, and the time at the median
+  pace of the recordings already there. No key, no call, no file. It counts
+  two cases that lower to one request once, and refuses what the run would
+  refuse before its first call.
+- `jud split CASES [--every N] [--out DIR]` writes a tuning set and a
+  held-out set, every Nth case held out, each case copied as read so the
+  recordings over the whole set answer both. It writes over nothing and
+  warns when a label one half has is missing from the other. A `from_turn`
+  label counts as the turns it labels, and with `--rubric RUBRIC` a Score
+  level written as its index and as its text is one level.
+
+### Changed
+
+- The Claude Code plugin (now 0.3.1) carries what a first real-world run
+  taught it (#46): a rubric over Wikimedia's recentchange stream, 93 cases
+  captured from it, recorded and tuned against `tev1:0.8b` on Ollama, and a
+  Rust loop judging the live stream. `jud-tune` now reports each question
+  against always giving its commonest answer, names a question that has
+  collapsed onto one answer, flags a gate that defers nearly every case,
+  states a local server's cost as time, and allows an announced subset
+  experiment on a copy to measure a question change. The `jud` skill and
+  `/jud:rubric` ask for the field each answer is read from and leave to code
+  what machine-written fields decide; `/jud:cases` keeps captured states
+  verbatim and labels from the best evidence, an outcome known later
+  included. `jud-rust` gives the `use` path for a module mounted from
+  `lib.rs` and says that every `decide` is one request a stream caller must
+  bound. The mock System One server gains `collapse` and `confidence`
+  profile keys, and a new `jud-tune` scenario uses them.
+
+### Fixed
+
+- `/jud:rust` no longer writes a `Cargo.lock` (or a `target/`) into the
+  user's crate when that crate already mounts the module: it runs `cargo
+  test` there only when a lock file exists, with a target directory outside
+  the project.
+
+### Added
+
 - The Claude Code plugin (now 0.3.0) turns a rubric into a typed Rust module:
   the `jud-rust` skill and `/jud:rust <rubric>`. The module reads the rubric
   with `include_str!` and lowers the request with `Rubric::lower`, so it sends
