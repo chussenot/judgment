@@ -80,3 +80,6 @@ bd.db
 # They would override fork protection in .git/info/exclude.
 # Config files (metadata.json, config.yaml) are tracked by git by default
 # since no pattern above ignores them.
+
+# bd's marker for the last auto-import of issues.jsonl (size and mtime), per checkout.
+.auto-import-issues.jsonl
