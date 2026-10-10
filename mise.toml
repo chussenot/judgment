@@ -281,6 +281,14 @@ run = "bd ready"
 description = "Write every issue to .beads/issues.jsonl, the passive export reviewers read in a pull request"
 run = "bd export --all -o .beads/issues.jsonl"
 
+[tasks."bd:import"]
+description = "Upsert .beads/issues.jsonl into the local beads database (laptop side of bd:sync; never deletes an issue)"
+run = "scripts/bd-sync.sh import"
+
+[tasks."bd:sync"]
+description = "Carry beads through .beads/issues.jsonl when refs/dolt/data cannot be pushed: `mise run bd:sync -- export` (container), `-- import` (laptop), `-- status`; see scripts/bd-sync.sh"
+run = "scripts/bd-sync.sh"
+
 [tasks.image]
 description = "Build the container image from this checkout's own build (scripts/image-context.sh --local, then docker buildx) as ghcr.io/chussenot/jud:dev; a release image is pushed by the release workflow (docs/reference/cli.md)"
 run = [
