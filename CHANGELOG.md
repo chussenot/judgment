@@ -6,6 +6,18 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `examples/jud/agent-mail.jud`, a rubric asked about one message between
+  coding agents sharing a repository (needs an action, warns that something
+  broke, reports status only), with 33 labelled cases taken verbatim from
+  one repository's coordination store and `jev-1.13.0`'s live answers under
+  `examples/recordings/agent_mail/`. Three Nouls rather than one Choice,
+  because the messages are multi-label. The recordings rank well (area under
+  the ROC curve 0.90, 0.89, 0.97) and threshold badly at 0.5, so the gates
+  are the ones `jud tune` read off the 33 cases, marked as a starting point;
+  `tests/jud.rs` replays every case under them.
+
 ## [0.13.0] - 2026-10-10
 
 ### Added

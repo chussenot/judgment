@@ -1,0 +1,27 @@
+# Recorded answer for case `detail-landed`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: detail-landed
+spec:
+  elapsed_ms: 165
+  fingerprint: sha256:0d0110ce6aa753988ce0c6195bf3e70f40af2c5df1d517dacf17fe45fbce08f4
+  recorded_at: "2026-10-14T04:20:12Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.9
+        type: noul
+      needs_action:
+        noul: 0.69
+        type: noul
+      status_only:
+        noul: 0.04
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3aa71732c81ffea0d16ef7fa9
+    usage:
+      input_tokens: 1284
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

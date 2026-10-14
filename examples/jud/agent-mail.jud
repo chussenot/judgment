@@ -1,0 +1,74 @@
+# A rubric asked about one message between coding agents that share a
+# repository: what it needs from the agent it is addressed to. The state is
+# the message, `{"subject": ..., "body": ...}`.
+#
+# Three Nouls rather than one Choice, because the messages are multi-label:
+# "landed (054fc51), gate please, and one thing fleet.rs should know" asks
+# for something AND warns about something. A Choice over {status, request,
+# warning} would have to drop one of the two.
+#
+# The answers rank and escalate; they never hide. In the fleets these cases
+# come from, the message that mattered was a small minority that no rule
+# could predict, so a gate that drops a message drops that one too.
+apiVersion: jud/v1.3
+kind: Rubric
+metadata:
+  name: agent-mail
+  version: 1
+  description: >-
+    What a message between coding agents needs from its recipient: an action,
+    attention to something that broke, or nothing beyond knowing the work is done.
+spec:
+  questions:
+    needs_action:
+      type: noul
+      instructions: >-
+        Does `body` (under `subject`) ask its recipient to do something: decide,
+        approve, answer, run a check, make an edit, or check their own work?
+      criteria:
+        true: a question, a request for approval or a decision, "gate please", an edit to make, "check your work"
+        false: a report or an answer that leaves the recipient nothing to do, including "no action needed"
+    breaks_something:
+      type: noul
+      instructions: >-
+        Does `body` (under `subject`) warn its recipient that something they own
+        or rely on is broken, lost, changed or wrong: a reverted or overwritten
+        change, an interface that changed under them, a failing build or check,
+        a defect in their file, a premise that does not hold?
+      criteria:
+        true: a revert, an overwrite, a changed contract, a red build or gate, a defect, a wrong assumption
+        false: news that leaves everything the recipient relies on as it was
+    status_only:
+      type: noul
+      instructions: >-
+        Is `body` (under `subject`) only a report that work is done or under way,
+        with nothing the recipient must do and nothing they must know beyond that?
+      criteria:
+        true: started, done, landed, acknowledged, with no request, no warning and no finding
+        false: carries a request, a warning, a decision or a finding the recipient needs
+
+  # Read off 33 cases with no held-out set: a starting point to re-tune on a
+  # larger corpus, not a measured bar. The order the probabilities put the
+  # messages in is the stronger result (area under the ROC curve 0.90, 0.89
+  # and 0.97 on these recordings); the 0.5 default reads breaks_something as
+  # yes for 25 of 33 messages.
+  policy:
+    needs_action:
+      threshold: 0.45
+      note: best F1 on 33 labelled cases; 0.96 recall
+    breaks_something:
+      threshold: 0.75
+      note: best F1 on 33 labelled cases; 0.93 recall, 0.68 precision. A missed warning costs more than a glance
+    status_only:
+      threshold: 0.15
+      note: best F1 on 33 labelled cases; the model never puts a status report above 0.5
+
+  tuning:
+    cases: sha256:aefbd6d9f9611a03753f422fb9d1aeac4125d8ad232c1849cacc5067fef64245
+    model: jev-1.13.0
+    server: https://api.typesafe.ai
+    tuned_at: 2026-10-14T04:20:54Z
+    labelled:
+      needs_action: 33
+      breaks_something: 33
+      status_only: 33

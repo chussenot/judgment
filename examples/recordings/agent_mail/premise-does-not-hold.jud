@@ -1,0 +1,27 @@
+# Recorded answer for case `premise-does-not-hold`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: premise-does-not-hold
+spec:
+  elapsed_ms: 149
+  fingerprint: sha256:e8f916faa5795bef9a0a0b8afe50716b5c1fd97e8feecc7be2df2d005c5e3059
+  recorded_at: "2026-10-14T04:20:10Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.94
+        type: noul
+      needs_action:
+        noul: 0.91
+        type: noul
+      status_only:
+        noul: 0.02
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3a1447d3083e344732977a2f5
+    usage:
+      input_tokens: 1158
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

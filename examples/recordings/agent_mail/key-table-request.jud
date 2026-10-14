@@ -1,0 +1,27 @@
+# Recorded answer for case `key-table-request`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: key-table-request
+spec:
+  elapsed_ms: 135
+  fingerprint: sha256:cf40d599da607365fd7a51c47a972a0b7b33071d36ac5cb75fd09272694d629d
+  recorded_at: "2026-10-14T04:20:13Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.52
+        type: noul
+      needs_action:
+        noul: 0.98
+        type: noul
+      status_only:
+        noul: 0.02
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3ac98768f8f37bd06748f2f62
+    usage:
+      input_tokens: 712
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

@@ -1,0 +1,27 @@
+# Recorded answer for case `wave-kickoff`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: wave-kickoff
+spec:
+  elapsed_ms: 143
+  fingerprint: sha256:ae3ab999eeae646665a29f4176ff54d73bd4af94a308c52a35122fe6e9660096
+  recorded_at: "2026-10-14T04:20:11Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.9
+        type: noul
+      needs_action:
+        noul: 0.96
+        type: noul
+      status_only:
+        noul: 0.01
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3a6917a4b82a5666ffce2f6b6
+    usage:
+      input_tokens: 1505
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

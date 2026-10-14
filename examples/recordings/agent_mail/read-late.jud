@@ -1,0 +1,27 @@
+# Recorded answer for case `read-late`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: read-late
+spec:
+  elapsed_ms: 167
+  fingerprint: sha256:f8db8d38bfb7261a2e915799a63ac3d9f0d3688956260c4a81bd7794a047f6e5
+  recorded_at: "2026-10-14T04:20:10Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.19
+        type: noul
+      needs_action:
+        noul: 0.1
+        type: noul
+      status_only:
+        noul: 0.2
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3a09171b98ee9367f520da232
+    usage:
+      input_tokens: 854
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

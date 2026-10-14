@@ -1,0 +1,27 @@
+# Recorded answer for case `fleet-landed`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: fleet-landed
+spec:
+  elapsed_ms: 162
+  fingerprint: sha256:214074667c731706b70b66105cbe930c6cc2716784ac044b7253f309fff3c262
+  recorded_at: "2026-10-14T04:20:12Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.87
+        type: noul
+      needs_action:
+        noul: 0.97
+        type: noul
+      status_only:
+        noul: 0.02
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3ac0c7bf88782c37fd4546475
+    usage:
+      input_tokens: 1784
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

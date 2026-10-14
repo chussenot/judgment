@@ -19,6 +19,10 @@ const RECORDINGS: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/examples/recordings/jud_calibration"
 );
+const AGENT_MAIL_RECORDINGS: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/examples/recordings/agent_mail"
+);
 const BASE: &str = "https://github.com/chussenot/judgment/schemas/jud/";
 
 fn read(dir: &str, name: &str) -> String {
@@ -116,10 +120,10 @@ fn every_example_document_validates_against_its_schema_and_parses() {
         );
         *kinds.entry(kind).or_default() += 1;
     }
-    // triage, routing, handoff, and the guide's screening rubric.
-    assert_eq!(kinds["Rubric"], 4);
+    // triage, routing, handoff, agent-mail, and the guide's screening rubric.
+    assert_eq!(kinds["Rubric"], 5);
     // Their cases, and the specification's example cases document.
-    assert_eq!(kinds["Cases"], 5);
+    assert_eq!(kinds["Cases"], 6);
     // The calibration recordings, and the specification's example recording.
     assert!(kinds["Recording"] >= 11, "{kinds:?}");
 }
@@ -519,6 +523,35 @@ async fn a_replay_answers_from_jud_recordings_by_fingerprint() {
         "{err}"
     );
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[tokio::test]
+async fn the_agent_mail_recordings_replay_under_the_gates_they_tuned() {
+    // The live answers `jud record` kept for agent-mail: one per case, each
+    // found by fingerprint, so a question edited without re-recording fails
+    // here. The counts are the gates' agreement with the labels, which the
+    // rubric's notes and the measurement it came from quote.
+    let rubric = Rubric::parse(&read(EXAMPLES, "agent-mail.jud")).unwrap();
+    let cases = Cases::parse(&read(EXAMPLES, "agent-mail-cases.jud")).unwrap();
+    cases.bind(&rubric).unwrap();
+    let tuning = rubric.policy.tuning.as_ref().unwrap();
+    assert_eq!(tuning.cases.as_deref(), Some(cases.fingerprint().as_str()));
+    let replay = Replay::open(Path::new(AGENT_MAIL_RECORDINGS)).unwrap();
+    assert_eq!(replay.len(), cases.cases.len());
+    let mut right = std::collections::BTreeMap::<String, usize>::new();
+    for case in &cases.cases {
+        let asked = case.request(&rubric).unwrap();
+        let response = replay.answer(&case.state, "any", &asked).await.unwrap();
+        assert_eq!(response.model, "jev-1.13.0");
+        for (id, verdict) in rubric.apply(&asked, &response).unwrap() {
+            let said = matches!(verdict, jud::Verdict::Yes { .. });
+            let expected = matches!(case.expect[&id], jud::Expect::Bool(true));
+            *right.entry(id).or_default() += usize::from(said == expected);
+        }
+    }
+    assert_eq!(right["needs_action"], 28);
+    assert_eq!(right["breaks_something"], 26);
+    assert_eq!(right["status_only"], 32);
 }
 
 fn tempdir() -> PathBuf {

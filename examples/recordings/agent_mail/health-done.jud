@@ -1,0 +1,27 @@
+# Recorded answer for case `health-done`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: health-done
+spec:
+  elapsed_ms: 217
+  fingerprint: sha256:c035759a2955f51a8ac57890b7549327dc0dccea284158ec0a11138b6f9f1f56
+  recorded_at: "2026-10-14T04:20:12Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.73
+        type: noul
+      needs_action:
+        noul: 0.78
+        type: noul
+      status_only:
+        noul: 0.04
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3ab357a8ca7b8f38f58081634
+    usage:
+      input_tokens: 1494
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai
