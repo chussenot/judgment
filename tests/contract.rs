@@ -590,6 +590,12 @@ fn every_question_shape() -> Questions {
         ["No impact", "Some users", "Everyone"],
     )
     .unwrap();
+    q.r#box("box_string", "the coffee mug in `photo`").unwrap();
+    q.r#box(
+        "box_structured",
+        json!({ "find": "the person who matches `badge`", "in": "`photo`" }),
+    )
+    .unwrap();
     q
 }
 
@@ -616,6 +622,13 @@ fn fitting_fake(questions: &Questions) -> Fake {
                 fake.score(id, (0..n).map(|_| 1.0 / f64::from(n)), 0.3)
                     .unwrap()
             }
+            Question::Box { .. } => fake
+                .r#box(
+                    id,
+                    judgment::BoxEdges::new(0.25, 0.82, 0.44, 0.84),
+                    Some(0.9),
+                )
+                .unwrap(),
         };
     }
     fake
@@ -701,6 +714,13 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
             .evaluate(&Request::new(&with_image, "jev-preview", &q).with_assets(&assets))
             .await,
     );
+    // Without a Box question and without an image: the request as it was
+    // before either existed.
+    let mut text_only = Questions::new();
+    text_only
+        .noul("urgent", "Does `message` convey urgency?", None)
+        .unwrap();
+    results.push(client.system_one(&object, &text_only).await);
     for result in &results {
         assert!(
             matches!(result, Err(Error::InvalidRequest { status: 422, .. })),
@@ -765,9 +785,14 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
         let mut documented = sent.clone();
         documented.as_object_mut().unwrap().remove("beam_width");
         assert_conforms_strict(&schema, &documented, &format!("request {i}"));
+        let asked = if i == received.len() - 1 {
+            &text_only
+        } else {
+            &q
+        };
         assert_eq!(
             sent["questions"],
-            serde_json::to_value(&q).unwrap(),
+            serde_json::to_value(asked).unwrap(),
             "request {i} carries the built questions"
         );
     }
@@ -804,12 +829,25 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
             .is_some_and(|n| n.eq_ignore_ascii_case("typesafe-danger-zone-images"))),
         "the document names the images header: {documented:?}"
     );
-    for request in &received[..7] {
+    // Every request of the full set asks a Box, which needs the header too
+    // (the Box page), image or not; the text-only request gets neither the
+    // header nor an `assets` key.
+    for (i, request) in received[..8].iter().enumerate() {
         assert!(
-            request.headers.get("typesafe-danger-zone-images").is_none(),
-            "no header without an image"
+            request.headers.get("typesafe-danger-zone-images").is_some(),
+            "request {i} asks a Box and needs the header"
         );
-        let body: Value = serde_json::from_slice(&request.body).unwrap();
+    }
+    let last = received.last().unwrap();
+    assert!(
+        last.headers.get("typesafe-danger-zone-images").is_none(),
+        "no header without a Box or an image"
+    );
+    assert!(
+        bodies[8].get("assets").is_none(),
+        "no assets key without an image"
+    );
+    for body in &bodies[..7] {
         assert!(
             body.get("assets").is_none(),
             "no assets key without an image"
@@ -1155,6 +1193,9 @@ fn the_schema_examples_decode_through_the_crate() {
             levels.as_array().unwrap().clone(),
         )
         .unwrap();
+    // The document gives a Box question's instructions no example; the Box
+    // page's own will do, and the answer example below is the document's.
+    let mug = q.r#box("mug", "the coffee mug in `photo`").unwrap();
     assert_eq!(
         serde_json::to_value(&q).unwrap()["tone"]["criteria"],
         criteria
@@ -1177,8 +1218,9 @@ fn the_schema_examples_decode_through_the_crate() {
         "spam": example_answer("noul"),
         "tone": example_answer("choice"),
         "urgency": example_answer("score"),
+        "mug": example_answer("box"),
     });
-    assert_conforms(&response_schema(), &assembled, "the three answer examples");
+    assert_conforms(&response_schema(), &assembled, "the four answer examples");
     let response: Response = serde_json::from_value(assembled.clone()).unwrap();
     assert!(response.extra.is_empty(), "{:?}", response.extra);
     assert_eq!(serde_json::to_value(&response).unwrap(), assembled);
@@ -1188,6 +1230,15 @@ fn the_schema_examples_decode_through_the_crate() {
     let score = response.get(&urgency).unwrap();
     assert!((score.value - 1.7).abs() < 1e-12);
     assert_eq!(score.nearest_label(), "Needs attention today");
+    // The Box example: the document's first confidence example is `null`,
+    // which reads as no confidence.
+    let located = response.get(&mug).unwrap();
+    assert_eq!(
+        located.edges,
+        judgment::BoxEdges::new(0.2, 0.66, 0.19, 0.68),
+        "the BoxCoordinates examples"
+    );
+    assert_eq!(located.confidence, None);
 
     // The response example as the document assembles it: `billing`, asked
     // by the request example's question, which the builder reproduces.
@@ -1348,6 +1399,7 @@ fn the_schema_has_the_kinds_and_paths_the_crate_has() {
     q.noul("n", "?", None).unwrap();
     q.choice::<Tone>("c", "?").unwrap();
     q.score("s", "?", ["low", "high"]).unwrap();
+    q.r#box("b", "the mug in `photo`").unwrap();
     let crate_kinds: BTreeSet<&str> = q.iter().map(|(_, question)| question.kind()).collect();
     for union in [question_union(), answer_union()] {
         let mapped: BTreeSet<&str> = SPEC["components"]["schemas"][union.as_str()]["discriminator"]

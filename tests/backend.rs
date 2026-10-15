@@ -716,3 +716,45 @@ async fn a_backend_without_images_refuses_them_by_default() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn a_fake_box_is_checked_as_on_the_wire() {
+    use judgment::BoxEdges;
+    let mut q = Questions::new();
+    let mug = q.r#box("mug", "the mug in `photo`").unwrap();
+    let fake = Fake::new()
+        .r#box("mug", BoxEdges::new(0.25, 0.82, 0.44, 0.84), Some(0.9))
+        .unwrap();
+    let found = fake
+        .answer(&json!({ "photo": "x" }), "m", &q)
+        .await
+        .unwrap()
+        .get(&mug)
+        .unwrap();
+    assert!((found.width() - 0.4).abs() < 1e-9);
+    assert!(found.confidence_at_least(0.9));
+    let none = Fake::new()
+        .r#box("mug", BoxEdges::new(0.25, 0.82, 0.44, 0.84), None)
+        .unwrap();
+    let found = none
+        .answer(&json!({}), "m", &q)
+        .await
+        .unwrap()
+        .get(&mug)
+        .unwrap();
+    assert_eq!(found.confidence, None);
+    // Refused when the fake answers, as a server's would be.
+    let upside_down = Fake::new()
+        .r#box("mug", BoxEdges::new(0.82, 0.25, 0.44, 0.84), Some(0.9))
+        .unwrap();
+    let err = upside_down.answer(&json!({}), "m", &q).await.unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidAnswer { id, reason, .. } if id == "mug" && reason.contains("top 0.82 is not below")),
+        "{err}"
+    );
+    assert!(upside_down.calls().is_empty());
+    let err = Fake::new()
+        .r#box("mug", BoxEdges::new(0.1, 0.2, 0.3, 0.4), Some(1.5))
+        .unwrap_err();
+    assert!(matches!(err, Error::NotAProbability { .. }), "{err}");
+}

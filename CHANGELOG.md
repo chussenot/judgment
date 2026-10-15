@@ -38,6 +38,27 @@ All notable changes to the `judgment` crate. The format follows
 - `Fake` takes images, remembers each one's reference and digest in its
   `Call`, and refuses a reference the state does not carry as the hosted
   API does.
+- The Box primitive, Jev 1.14's fourth question type
+  (<https://docs.typesafe.ai/primitives/box>): `Questions::r#box(id,
+  instructions)` asks where what the instructions describe is in an image
+  the request carries (no criteria; null instructions are refused, since
+  they are all the question is), and the client sends the images header
+  for it even without an image. The answer is `Answer::Box { edges,
+  confidence }`, the wire's `box` as `BoxEdges` (top, bottom, left, right
+  as fractions of the image) and a confidence the document lets be null;
+  `Response::verify` refuses a box that is not a region (an edge outside
+  `0..=1`, a left not below its right, a top not below its bottom) as
+  `Error::InvalidAnswer`, and reads it as `BoundingBox`, with `width`,
+  `height`, `center`, `to_pixels`, `confidence_at_least` and the geometry
+  on `BoxEdges` (`iou`, `padded`, `area`, `contains`). A Box always answers
+  with a box, so the typed view's documentation pairs it with a Noul gate.
+  `Fake::r#box` scripts one. `Judgment::located` grades a Box against a
+  labelled box by intersection over union at `eval::DEFAULT_IOU_AT_LEAST`
+  (0.5) or the label's own bar, with the number on `Judgment::iou` and
+  `QuestionMetrics::mean_iou`; a Box has no Brier score. In a rubric a Box
+  is gated by `confidence` or `bands` (never `threshold`, `fallback` or
+  `level_at_least`) into `Verdict::Located` or a deferral, and a case labels
+  it `{box: {top, bottom, left, right}, iou_at_least}`.
 
 ### Changed
 
@@ -47,6 +68,12 @@ All notable changes to the `judgment` crate. The format follows
   `assets` field. `assets` is a reserved extra field and
   `typesafe-danger-zone-images` a reserved header: a caller that sent
   either through `CallOptions` passes the images through `Request` instead.
+- **Breaking:** `Question`, `Answer`, `jud::Verdict` and `jud::Expect` have
+  a Box variant, so a `match` outside the crate that named every variant
+  adds an arm; an answer of kind `box` no longer decodes as
+  `Answer::Unknown`. `eval::Judgment` has an `iou` field and
+  `eval::QuestionMetrics` a `mean_iou` field. `Question::instructions` and
+  `instructions_mut` read the instructions of any primitive.
 
 - `examples/jud/agent-mail.jud`, a rubric asked about one message between
   coding agents sharing a repository (needs an action, warns that something

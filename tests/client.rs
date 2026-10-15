@@ -2247,3 +2247,183 @@ async fn the_observer_is_told_how_many_image_bytes_a_call_sends() {
     let calls = observer.calls.lock().unwrap().clone();
     assert_eq!(calls, vec![("jev-preview".to_owned(), 2, 717 + 3357)]);
 }
+
+// ---------------------------------------------------------------------------
+// Box: the fourth primitive over the wire
+// ---------------------------------------------------------------------------
+
+fn box_body(answer: &serde_json::Value) -> serde_json::Value {
+    json!({
+        "model": "jev-1.14.0",
+        "answers": { "mug": answer },
+        "usage": { "input_tokens": 290, "output_tokens": 21 }
+    })
+}
+
+/// The Box page's request and response: the question is its instructions
+/// alone, the header is sent even without an image in the request, and the
+/// answer reads as a `BoundingBox` with its confidence.
+#[tokio::test]
+async fn a_box_question_is_sent_with_the_header_and_read_as_a_bounding_box() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(header("typesafe-danger-zone-images", "true"))
+        .and(body_partial_json(json!({
+            "model": "jev-preview",
+            "questions": { "mug": { "type": "box", "instructions": "the coffee mug in `photo`" } }
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(box_body(&json!({
+            "type": "box",
+            "box": { "top": 0.25, "bottom": 0.82, "left": 0.44, "right": 0.84 },
+            "confidence": 0.92
+        }))))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut q = Questions::new();
+    let mug = q.r#box("mug", "the coffee mug in `photo`").unwrap();
+    let state = json!({ "photo": "a reference the mock does not check" });
+    let c = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .model("jev-preview")
+        .retry(RetryPolicy::none())
+        .build()
+        .unwrap();
+    let response = c.system_one(&state, &q).await.unwrap();
+    let found = response.get(&mug).unwrap();
+    assert_eq!(found.edges, judgment::BoxEdges::new(0.25, 0.82, 0.44, 0.84));
+    assert!(found.confidence_at_least(0.9));
+    let crop = found.to_pixels(1000, 500);
+    assert_eq!(
+        (crop.left, crop.top, crop.right, crop.bottom),
+        (440, 125, 840, 410)
+    );
+    let sent: serde_json::Value =
+        serde_json::from_slice(&server.received_requests().await.unwrap()[0].body).unwrap();
+    assert!(
+        sent["questions"]["mug"].get("criteria").is_none(),
+        "a Box has no criteria key: {sent}"
+    );
+}
+
+/// A null confidence is allowed by the document and reads as none.
+#[tokio::test]
+async fn a_box_without_confidence_is_read_as_none() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(box_body(&json!({
+            "type": "box",
+            "box": { "top": 0.1, "bottom": 0.2, "left": 0.3, "right": 0.4 },
+            "confidence": null
+        }))))
+        .mount(&server)
+        .await;
+    let mut q = Questions::new();
+    let mug = q.r#box("mug", "the mug in `photo`").unwrap();
+    let found = client(&server, RetryPolicy::none())
+        .system_one(&"photo", &q)
+        .await
+        .unwrap()
+        .get(&mug)
+        .unwrap();
+    assert_eq!(found.confidence, None);
+    assert!(!found.confidence_at_least(0.0));
+}
+
+/// Every way a Box answer can fail to be a region is refused without a
+/// retry, naming the question and the edge; a confidence outside `[0, 1]`
+/// or a missing edge does not decode at all.
+#[tokio::test]
+async fn a_box_that_is_not_a_region_is_refused_and_not_retried() {
+    let server = MockServer::start().await;
+    let c = client(&server, fast_retries(2));
+    let mut q = Questions::new();
+    q.r#box("mug", "the mug in `photo`").unwrap();
+    let edges = |top: f64, bottom: f64, left: f64, right: f64| {
+        json!({ "type": "box", "box": { "top": top, "bottom": bottom, "left": left, "right": right },
+                "confidence": 0.5 })
+    };
+    for (answer, needle) in [
+        (edges(0.25, 0.82, 0.44, 1.2), "right 1.2 is outside"),
+        (edges(-0.1, 0.82, 0.44, 0.84), "top -0.1 is outside"),
+        (
+            edges(0.25, 0.82, 0.84, 0.44),
+            "left 0.84 is not below right 0.44",
+        ),
+        (
+            edges(0.82, 0.25, 0.44, 0.84),
+            "top 0.82 is not below bottom 0.25",
+        ),
+        (
+            edges(0.25, 0.25, 0.44, 0.84),
+            "top 0.25 is not below bottom 0.25",
+        ),
+    ] {
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(box_body(&answer)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = c.system_one(&"photo", &q).await.unwrap_err();
+        assert!(
+            matches!(&err, Error::InvalidAnswer { id, reason, .. } if id == "mug" && reason.contains(needle)),
+            "{needle}: {err}"
+        );
+        assert!(err.is_unfit());
+        server.verify().await;
+    }
+    for (answer, what) in [
+        (
+            json!({ "type": "box", "box": { "top": 0.1, "bottom": 0.2, "left": 0.3, "right": 0.4 }, "confidence": 1.5 }),
+            "a confidence over 1",
+        ),
+        (
+            json!({ "type": "box", "box": { "top": 0.1, "bottom": 0.2, "left": 0.3 }, "confidence": 0.5 }),
+            "a missing edge",
+        ),
+        (
+            json!({ "type": "box", "box": { "top": 0.1, "bottom": 0.2, "left": 0.3, "right": "far" }, "confidence": 0.5 }),
+            "a string edge",
+        ),
+    ] {
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(box_body(&answer)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = c.system_one(&"photo", &q).await.unwrap_err();
+        assert!(matches!(err, Error::Decode { .. }), "{what}: {err}");
+        server.verify().await;
+    }
+    // A Noul where a Box was asked, and a Box where a Noul was asked.
+    server.reset().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(box_body(&json!({ "type": "noul", "noul": 0.5 }))),
+        )
+        .mount(&server)
+        .await;
+    let err = c.system_one(&"photo", &q).await.unwrap_err();
+    assert!(
+        matches!(&err, Error::AnswerTypeMismatch { expected: "box", actual, .. } if actual == "noul"),
+        "{err}"
+    );
+    let mut noul = Questions::new();
+    noul.noul("mug", "a mug?", None).unwrap();
+    server.reset().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(box_body(&edges(0.1, 0.2, 0.3, 0.4))),
+        )
+        .mount(&server)
+        .await;
+    let err = c.system_one(&"photo", &noul).await.unwrap_err();
+    assert!(
+        matches!(&err, Error::AnswerTypeMismatch { expected: "noul", actual, .. } if actual == "box"),
+        "{err}"
+    );
+}

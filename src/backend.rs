@@ -20,7 +20,7 @@ use std::time::Instant;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::answer::{Answer, Confidence, Probability, Response, Usage};
+use crate::answer::{Answer, BoxEdges, Confidence, Probability, Response, Usage};
 use crate::asset::Assets;
 use crate::error::{Error, Result};
 use crate::eval::{Recording, request_hash_with};
@@ -368,6 +368,20 @@ impl Fake {
             },
         );
         Ok(self)
+    }
+
+    /// A Box answer: the four edges as fractions of the image, checked as
+    /// on the wire when the fake answers ([`Error::InvalidAnswer`] for an
+    /// edge outside `0..=1` or a left not below its right), and a
+    /// confidence, or `None` as the document allows.
+    pub fn r#box(
+        self,
+        id: impl Into<String>,
+        edges: BoxEdges,
+        confidence: Option<f64>,
+    ) -> Result<Self> {
+        let confidence = confidence.map(Confidence::new).transpose()?;
+        Ok(self.with_answer(id, Answer::Box { edges, confidence }))
     }
 
     /// Every request received so far, oldest first.

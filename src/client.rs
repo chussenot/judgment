@@ -777,10 +777,11 @@ impl Client {
 
 /// Whether any question is a Box, which needs the images header even
 /// without an image in the request
-/// (<https://docs.typesafe.ai/primitives/box>). No Box variant exists yet;
-/// the kind is compared by name so the Box commit changes one place.
+/// (<https://docs.typesafe.ai/primitives/box>).
 fn asks_a_box(questions: &Questions) -> bool {
-    questions.iter().any(|(_, q)| q.kind() == "box")
+    questions
+        .iter()
+        .any(|(_, q)| matches!(q, crate::question::Question::Box { .. }))
 }
 
 /// A 2xx body and the request id its response carried, not yet decoded.

@@ -9,8 +9,8 @@ use super::{
     API_VERSION, Envelope, Error, Metadata, Result, Rubric, Supplied, check_name, from_text,
     refuse_extra, some, to_yaml,
 };
-use crate::answer::Response;
-use crate::eval::{Judgment, canonical};
+use crate::answer::{Answer, BoxEdges, Confidence, Response};
+use crate::eval::{DEFAULT_IOU_AT_LEAST, Judgment, canonical};
 use crate::question::{Question, Questions};
 
 /// Labelled states a rubric is graded on ([`grade`]) and its gates are
@@ -68,6 +68,23 @@ pub enum Expect {
     Text(String),
     /// A Noul over a conversation: true from a turn on, or never.
     FromTurn(FromTurn),
+    /// A Box's answer: the labelled box, and the intersection over union it must reach.
+    Box(BoxLabel),
+}
+
+/// `{box: {top, bottom, left, right}, iou_at_least: 0.5}`: where the thing
+/// is, as fractions of the image, and how much of the answer must overlap
+/// it to count as right ([`crate::eval::Judgment::located`];
+/// [`DEFAULT_IOU_AT_LEAST`] when left out).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BoxLabel {
+    /// The labelled box.
+    #[serde(rename = "box")]
+    pub edges: BoxEdges,
+    /// The intersection over union that counts as right, 0 to 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub iou_at_least: Option<f64>,
 }
 
 /// `{from_turn: n}`: a Noul over a conversation is true from turn `n`
@@ -345,8 +362,15 @@ fn request(rubric: &Rubric, case: &Case, index: usize) -> Result<Questions> {
     })
 }
 
-/// The label in [`Judgment::of_answer`]'s vocabulary (`yes`/`no`, an option
-/// key, a level index as a string), checked against the request asked.
+/// A label as it is graded: in [`Judgment::of_answer`]'s vocabulary
+/// (`yes`/`no`, an option key, a level index as a string), or a box with
+/// the intersection over union it must reach ([`Judgment::located`]).
+enum Label {
+    Text(String),
+    Box { edges: BoxEdges, iou_at_least: f64 },
+}
+
+/// The label checked against the request asked ([`Label`]).
 fn expected_label(
     rubric: &Rubric,
     asked: &Questions,
@@ -354,7 +378,8 @@ fn expected_label(
     index: usize,
     id: &str,
     expect: &Expect,
-) -> Result<String> {
+) -> Result<Label> {
+    let text = |label: String| Ok(Label::Text(label));
     let refuse = |reason: String| {
         Err(Error::Case {
             case: case.name(index),
@@ -371,7 +396,7 @@ fn expected_label(
         return refuse(reason);
     };
     match (question, expect) {
-        (Question::Noul { .. }, Expect::Bool(yes)) => Ok(yes_no(*yes)),
+        (Question::Noul { .. }, Expect::Bool(yes)) => text(yes_no(*yes)),
         (Question::Noul { .. }, Expect::FromTurn(FromTurn { from_turn })) => {
             let Some(all) = turns(&case.state) else {
                 return refuse(
@@ -379,9 +404,9 @@ fn expected_label(
                 );
             };
             match from_turn {
-                None => Ok(yes_no(false)),
+                None => text(yes_no(false)),
                 Some(n) => match usize::try_from(*n) {
-                    Ok(n) if n < all.len() => Ok(yes_no(true)),
+                    Ok(n) if n < all.len() => text(yes_no(true)),
                     _ => refuse(format!(
                         "`from_turn: {n}` is past the last turn, {}; use null for never",
                         all.len().saturating_sub(1)
@@ -394,14 +419,14 @@ fn expected_label(
         }
         (Question::Choice { criteria, .. }, Expect::Text(key)) => {
             if criteria.contains_key(key) {
-                Ok(key.clone())
+                text(key.clone())
             } else {
                 refuse(format!("`{key}` is not one of the offered options"))
             }
         }
         (Question::Choice { .. }, _) => refuse("a Choice expects an option key".to_owned()),
         (Question::Score { criteria, .. }, Expect::Index(level)) => match usize::try_from(*level) {
-            Ok(level) if level < criteria.len() => Ok(level.to_string()),
+            Ok(level) if level < criteria.len() => text(level.to_string()),
             _ => refuse(format!(
                 "level {level} is out of range; the levels are 0 to {}",
                 criteria.len() - 1
@@ -414,11 +439,30 @@ fn expected_label(
                         "`{label}` is neither a level's text nor a level index"
                     ))
                 },
-                |level| Ok(level.to_string()),
+                |level| text(level.to_string()),
             ),
         (Question::Score { .. }, _) => {
             refuse("a Score expects a level index or a level's text".to_owned())
         }
+        (Question::Box { .. }, Expect::Box(label)) => {
+            if let Err(reason) = label.edges.check() {
+                return refuse(format!("`box` is not a region: {reason}"));
+            }
+            let iou_at_least = label.iou_at_least.unwrap_or(DEFAULT_IOU_AT_LEAST);
+            if !(0.0..=1.0).contains(&iou_at_least) {
+                return refuse(format!(
+                    "`iou_at_least` must be between 0 and 1, got {iou_at_least}"
+                ));
+            }
+            Ok(Label::Box {
+                edges: label.edges,
+                iou_at_least,
+            })
+        }
+        (Question::Box { .. }, _) => refuse(
+            "a Box expects {box: {top, bottom, left, right}} with an optional iou_at_least"
+                .to_owned(),
+        ),
     }
 }
 
@@ -451,7 +495,27 @@ pub fn grade(
                     request_id: response.request_id.clone(),
                 }),
             })?;
-            Ok((id.clone(), Judgment::of_answer(answer, Some(&expected))))
+            let judgment = match (&expected, answer) {
+                (Label::Text(label), answer) => Judgment::of_answer(answer, Some(label)),
+                (
+                    Label::Box {
+                        edges,
+                        iou_at_least,
+                    },
+                    Answer::Box {
+                        edges: answered,
+                        confidence,
+                    },
+                ) => Judgment::located(
+                    answered,
+                    Some(edges),
+                    *iou_at_least,
+                    confidence.map(Confidence::value),
+                ),
+                // Verified above: a Box question has a Box answer.
+                (Label::Box { .. }, other) => Judgment::of_answer(other, Some("box")),
+            };
+            Ok((id.clone(), judgment))
         })
         .collect()
 }
@@ -478,6 +542,7 @@ mod tests {
 
     use crate::Fake;
     use crate::backend::SystemOne;
+    use serde_json::json;
     const RUBRIC: &str = r"
 apiVersion: jud/v1.3
 kind: Rubric
@@ -607,6 +672,91 @@ spec:
         assert!(
             matches!(err, Error::Syntax(_)),
             "a misspelt field is refused: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_box_label_is_a_region_graded_by_iou() {
+        let mut questions = Questions::new();
+        questions.r#box("mug", "the mug in `photo`").unwrap();
+        let rubric = Rubric::new("mugs", questions);
+        let mut cases = Cases {
+            name: "crops".to_owned(),
+            ..Cases::default()
+        };
+        let mut labelled = Case::new(json!({ "photo": "img-1" }));
+        labelled.expect.insert(
+            "mug".to_owned(),
+            Expect::Box(BoxLabel {
+                edges: BoxEdges::new(0.2, 0.8, 0.2, 0.8),
+                iou_at_least: None,
+            }),
+        );
+        cases.cases.push(labelled);
+        cases.bind(&rubric).unwrap();
+        let yaml = cases.to_yaml().unwrap();
+        assert!(yaml.contains("box:") && yaml.contains("top: 0.2"), "{yaml}");
+        assert_eq!(Cases::parse(&yaml).unwrap(), cases);
+        let asked = cases.cases[0].request(&rubric).unwrap();
+        let response = Fake::new()
+            .r#box("mug", BoxEdges::new(0.25, 0.85, 0.25, 0.85), Some(0.8))
+            .unwrap()
+            .answer(&cases.cases[0].state, "m", &asked)
+            .await
+            .unwrap();
+        let graded: IndexMap<_, _> = grade(&rubric, &cases.cases[0], 0, &response)
+            .unwrap()
+            .into_iter()
+            .collect();
+        assert_eq!(graded["mug"].correct, Some(true));
+        assert!(graded["mug"].iou.unwrap() > 0.5);
+        // The label's own, stricter bar.
+        let mut strict = cases.clone();
+        strict.cases[0].expect["mug"] = Expect::Box(BoxLabel {
+            edges: BoxEdges::new(0.2, 0.8, 0.2, 0.8),
+            iou_at_least: Some(0.95),
+        });
+        strict.bind(&rubric).unwrap();
+        let graded: IndexMap<_, _> = grade(&rubric, &strict.cases[0], 0, &response)
+            .unwrap()
+            .into_iter()
+            .collect();
+        assert_eq!(graded["mug"].correct, Some(false));
+        // What does not fit: a label that is not a region, a bar outside 0..1,
+        // a word where a box is expected, a box where a Noul is.
+        let bad = [
+            (
+                "expect: {mug: {box: {top: 0.8, bottom: 0.2, left: 0.2, right: 0.8}}}",
+                "not a region",
+            ),
+            (
+                "expect: {mug: {box: {top: 0.2, bottom: 0.8, left: 0.2, right: 0.8}, iou_at_least: 1.5}}",
+                "between 0 and 1",
+            ),
+            ("expect: {mug: true}", "a Box expects"),
+        ];
+        for (expect, needle) in bad {
+            let text = format!(
+                "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: crops\nspec:\n  cases:\n    - id: c\n      state: {{photo: img-1}}\n      {expect}\n"
+            );
+            let err = Cases::parse(&text).unwrap().bind(&rubric).unwrap_err();
+            assert!(
+                matches!(&err, Error::Case { case, reason } if case == "c" && reason.contains(needle)),
+                "{expect}: {err}"
+            );
+        }
+        // A field a box label does not have is refused by the reader.
+        let err = Cases::parse(
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: crops\nspec:\n  cases:\n    - id: c\n      state: {photo: img-1}\n      expect: {mug: {box: {top: 0.2, bottom: 0.8, left: 0.2, right: 0.8}, until: 1}}\n",
+        )
+        .unwrap_err();
+        assert!(matches!(err, Error::Syntax(_)), "{err}");
+        let noul_rubric = Rubric::parse(RUBRIC).unwrap();
+        let text = "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: crops\nspec:\n  cases:\n    - id: c\n      state: {m: x}\n      expect: {actionable: {box: {top: 0.2, bottom: 0.8, left: 0.2, right: 0.8}}}\n";
+        let err = Cases::parse(text).unwrap().bind(&noul_rubric).unwrap_err();
+        assert!(
+            matches!(&err, Error::Case { reason, .. } if reason.contains("a Noul expects")),
+            "{err}"
         );
     }
 

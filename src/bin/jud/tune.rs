@@ -284,7 +284,9 @@ fn tune_question(
     );
     let proposed = match question {
         Question::Noul { .. } => tune_threshold(id, gate, judgments, labelled),
-        Question::Choice { .. } => tune_confidence(id, gate, judgments, labelled, settings, None),
+        Question::Choice { .. } | Question::Box { .. } => {
+            tune_confidence(id, gate, judgments, labelled, settings, None)
+        }
         Question::Score { criteria, .. } => tune_confidence(
             id,
             gate,

@@ -523,6 +523,8 @@ fn offered(rubric: &Rubric, id: &str) -> Vec<(String, Option<String>)> {
                 (i.to_string(), Some(text))
             })
             .collect(),
+        // One outcome, `box`: a Box is right or wrong by its IoU.
+        Some(Question::Box { .. }) => vec![("box".to_owned(), None)],
         None => Vec::new(),
     }
 }

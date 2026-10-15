@@ -19,7 +19,7 @@ use crate::eval::Recording;
 mod cases;
 mod rubric;
 
-pub use cases::{Case, Cases, Expect, FromTurn, Turn, grade, turns};
+pub use cases::{BoxLabel, Case, Cases, Expect, FromTurn, Turn, grade, turns};
 pub use rubric::{
     Band, Deferred, Gate, LevelRef, OptionsFrom, Policy, Rubric, RubricQuestion, Supplied, Tuning,
     Verdict,

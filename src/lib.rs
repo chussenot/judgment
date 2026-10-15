@@ -4,10 +4,11 @@
 //! System One models (Jev) and from any backend that speaks the same wire.
 //!
 //! A System One model does not generate text. It evaluates a `state` (any
-//! JSON) against typed questions and returns calibrated answers: a [`Noul`]
-//! is a probability of yes, a [`Choice`] a chosen option with its
-//! distribution and a [`Confidence`], a [`Score`] a weighted position on
-//! ordered levels. The threshold that turns a number into an action stays in
+//! JSON, images included) against typed questions and returns calibrated
+//! answers: a [`Noul`] is a probability of yes, a [`Choice`] a chosen
+//! option with its distribution and a [`Confidence`], a [`Score`] a
+//! weighted position on ordered levels, a [`BoundingBox`] where something
+//! is in an image. The threshold that turns a number into an action stays in
 //! code, and [`eval`] measures the probabilities against outcomes. The
 //! README says why that matters and what the crate guarantees; `docs/` says
 //! how.
@@ -85,7 +86,8 @@ pub mod observer;
 pub mod question;
 
 pub use answer::{
-    Answer, Choice, Confidence, FromAnswer, Noul, Probability, Response, Score, Usage,
+    Answer, BoundingBox, BoxEdges, Choice, Confidence, FromAnswer, Noul, PixelBox, Probability,
+    Response, Score, Usage,
 };
 pub use asset::{Assets, Image, ImageFormat};
 pub use backend::{Fake, Recorder, Replay, SystemOne};
