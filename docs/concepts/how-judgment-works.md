@@ -2,7 +2,7 @@
 title: How judgment works
 description: The mechanisms behind the crate's guarantees, typed handles from a question to its answer, the response check every backend applies, the path of one call through the modules, the retry loop with the official SDKs' defaults, the error grouping and the request id, and what the crate deliberately does not do.
 status: current
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-15
 tags: [judgment, design, typesafe, retries, concepts]
 ---
 
@@ -119,7 +119,7 @@ It is the last attempt's id when the call was retried, and there is none after a
 - **No sync client.** The API documents one evaluation endpoint and a model listing, and every consumer so far is async. A caller that must block can block on the future.
 - **No batching or streaming.** The API documents one request shape, and one request already carries many questions.
 - **No metrics backend.** A library that named instruments would force its telemetry stack on every consumer. The crate emits `tracing` spans and hands token usage and failed attempts to an `Observer`; the application counts them where it counts everything else.
-- **No per-call options across the `SystemOne` trait.** `Client::evaluate_with` takes a `CallOptions` for one call's timeout, retry policy, headers and extra body fields. A recording is filed under a hash of the state and the questions, and an extra field can change the answer, so options could cross the trait only by entering that hash. Keeping them off leaves every existing recording valid.
+- **No per-call options across the `SystemOne` trait.** `Client::evaluate_with` takes a `CallOptions` for one call's timeout, retry policy, headers and extra body fields. A recording is filed under a hash of the state and the questions, and an extra field can change the answer, so options could cross the trait only by entering that hash. Keeping them off leaves every existing recording valid. Long context is the one option with a client-wide default (`ClientBuilder::long_context`): a `Recorder` over such a client sends the header on every call, and the recordings it writes are keyed as any other, since the header changes the limits, not the request.
 - **No provider switch.** Any server that speaks the wire is a base URL and nothing more; `SystemOne` is already the abstraction.
 
 ## Next

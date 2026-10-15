@@ -24,6 +24,9 @@ tool.
    cases document.
 2. **Check.** `jud.sh check <rubric> <cases>` must say `0 refused`. A refusal
    means the requests cannot be built: report it, offer `/jud:check`, stop.
+   `check` does not open the images the documents declare under `assets`;
+   the plan in the next step does, and names a file that is missing or
+   refused (not a PNG or a JPEG, outside the limits) before any call.
 3. **Plan the run.** `jud.sh record <rubric> <cases> --out <dir> --dry-run`
    (with `--refresh` when asked) asks nothing, writes nothing and needs no
    key. It prints the requests (a conversation labelled with `from_turn`
@@ -41,9 +44,12 @@ tool.
    stale means a question changed; some, those cases did.
 5. **Read the backend from the plan.** `(from default)` means nothing set
    the model: `jev-latest` is an alias, and the recordings will name the
-   version that answered. Neither the plan nor `jud config` prints the key
-   or contacts the backend; never print the key, and do not probe the
-   backend yourself.
+   version that answered. A rubric with a Box needs Jev 1.14: when the
+   model is `jev-latest` or any 1.13, stop and say that `jev-preview` (in
+   the configuration file's `model`) answers a Box and `jev-latest` refuses
+   every such request, rather than spend one failed call per case. Neither
+   the plan nor `jud config` prints the key or contacts the backend; never
+   print the key, and do not probe the backend yourself.
 6. **Stop if there is no key.** If the plan says `API key: missing`, stop
    and report what it found (directory, requests, kept, to ask, stale,
    backend, model, time) in one reply. Say that the key is set outside

@@ -309,6 +309,57 @@ fn the_cli_tutorial_replays_the_recorded_answer() {
     );
 }
 
+/// The shapes recordings are keyed by the image, so each replay passes it
+/// with `--asset`; the Box guide and the tutorial show the same located
+/// box, and the guide the deferred one and the `jud eval` report.
+#[test]
+fn the_tutorial_and_the_box_guide_replay_the_shapes_recordings() {
+    for page in [
+        "docs/start/first-decision-cli.md",
+        "docs/guides/locate-with-a-box.md",
+    ] {
+        assert_transcript(
+            page,
+            "replay shape-01",
+            &[
+                "--replay",
+                "examples/recordings/shapes",
+                "--asset",
+                "shape-01=examples/jud/images/shape-01.png",
+                "examples/jud/shapes.jud",
+            ],
+            "{\"image\": \"shape-01\"}",
+            &[],
+        );
+    }
+    assert_transcript(
+        "docs/guides/locate-with-a-box.md",
+        "replay shape-03",
+        &[
+            "--replay",
+            "examples/recordings/shapes",
+            "--asset",
+            "shape-03=examples/jud/images/shape-03.png",
+            "examples/jud/shapes.jud",
+        ],
+        "{\"image\": \"shape-03\"}",
+        &[],
+    );
+    assert_transcript(
+        "docs/guides/locate-with-a-box.md",
+        "jud eval examples/jud/shapes.jud examples/jud/shapes-cases.jud --replay examples/recordings/shapes",
+        &[
+            "eval",
+            "examples/jud/shapes.jud",
+            "examples/jud/shapes-cases.jud",
+            "--replay",
+            "examples/recordings/shapes",
+        ],
+        "",
+        &[],
+    );
+}
+
 const TRIAGE: &str = "examples/jud/triage.jud";
 const TRIAGE_CASES: &str = "examples/jud/triage-cases.jud";
 const TRIAGE_RECORDINGS: &str = "examples/recordings/jud_calibration";

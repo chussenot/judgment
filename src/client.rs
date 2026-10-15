@@ -93,6 +93,42 @@
 //! the questions, and an extra field can change the answer, so extras could
 //! cross the trait only by entering that hash.
 //!
+//! # Images
+//!
+//! A [`Request`] carries its images in `assets` ([`crate::asset`]): the
+//! wire's `assets` map, left out when empty. Images and Box questions are
+//! a feature TypeSafe keeps behind a header,
+//! `TypeSafe-Danger-Zone-Images: true`, which the client sends on every
+//! request that has an image or a Box question and on no other
+//! ([`DANGER_ZONE_IMAGES_HEADER`], reserved like the client's own). The
+//! caller opted in by adding the image; asking it to also set a header
+//! would be a second switch for one decision, and forgetting it a 400
+//! after the upload. Before the body is sent, a reference that appears
+//! nowhere in the state or the questions is [`Error::InvalidAsset`] and a
+//! body over 32 MiB is [`Error::RequestTooLarge`], both the hosted API's
+//! own refusals; the image's own limits were checked when it was built.
+//! The images' count and bytes are reported to the [`Observer`]
+//! ([`Observer::on_assets`]) and the count is the span's `images` field.
+//!
+//! # Long context
+//!
+//! A request fits two context limits, 64k tokens for the state and every
+//! question together and 32k for the state and any one question
+//! (<https://docs.typesafe.ai/models#context-length>); over either, the
+//! hosted API answers 400 `max_tokens_exceeded`
+//! ([`Error::is_request_too_large`]). Long context raises both to 262k, on
+//! Jev 1.13 and 1.14, behind a second header,
+//! `TypeSafe-Danger-Zone-Long-Context: true`
+//! ([`DANGER_ZONE_LONG_CONTEXT_HEADER`], reserved like the others). It is
+//! a switch, not a default: TypeSafe says a long request is slower and less
+//! accurate than one within the limits, so the crate sends the header only
+//! when asked, for one call ([`CallOptions::long_context`]) or for every
+//! call of a client ([`ClientBuilder::long_context`], the one option with a
+//! client-wide default, so a [`Recorder`](crate::Recorder) over the client
+//! sends it too). It is not read off the request: the crate has no
+//! tokeniser, and the caller who built a long state knows it did. The
+//! setting is the span's `long_context` field.
+//!
 //! # `GET /v1/models`
 //!
 //! [`Client::list_models`] lists the models and aliases the account may
@@ -115,6 +151,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::answer::{Answer, Response, sanitize_server_str};
+use crate::asset::{Assets, MAX_REQUEST_BYTES};
 use crate::error::{Error, Result, ValidationIssue};
 use crate::http::{self, Completed, Exhausted};
 use crate::observer::Observer;
@@ -145,9 +182,25 @@ pub use reqwest::header::{HeaderName, HeaderValue};
 /// Sent and stripped from a caller's headers by both official SDKs; reserved
 /// before this crate sends it, so that sending it later breaks no caller.
 const RETRY_COUNT_HEADER: HeaderName = HeaderName::from_static("x-typesafe-retry-count");
+/// The header that turns images and Box questions on
+/// (<https://docs.typesafe.ai/images#turning-on-images>), sent by the
+/// client on every request that carries an image or asks a Box question
+/// and on no other (module docs, `# Images`).
+pub const DANGER_ZONE_IMAGES_HEADER: &str = "typesafe-danger-zone-images";
+/// The header that raises both context limits to 262k tokens
+/// (<https://docs.typesafe.ai/models#long-context>), sent by the client
+/// when [`CallOptions::long_context`] or [`ClientBuilder::long_context`]
+/// asks for it and never otherwise (module docs, `# Long context`).
+pub const DANGER_ZONE_LONG_CONTEXT_HEADER: &str = "typesafe-danger-zone-long-context";
 /// Headers the client sets itself, refused as a per-call or default header.
-const RESERVED_HEADERS: [HeaderName; 4] =
-    [AUTHORIZATION, CONTENT_TYPE, USER_AGENT, RETRY_COUNT_HEADER];
+const RESERVED_HEADERS: [HeaderName; 6] = [
+    AUTHORIZATION,
+    CONTENT_TYPE,
+    USER_AGENT,
+    RETRY_COUNT_HEADER,
+    HeaderName::from_static(DANGER_ZONE_IMAGES_HEADER),
+    HeaderName::from_static(DANGER_ZONE_LONG_CONTEXT_HEADER),
+];
 /// Headers HTTP itself owns, refused because the stack would keep a caller's
 /// value over the one it computes.
 const TRANSPORT_HEADERS: [HeaderName; 6] = [
@@ -159,9 +212,10 @@ const TRANSPORT_HEADERS: [HeaderName; 6] = [
     UPGRADE,
 ];
 /// Body fields set from the [`Request`], refused as extra fields.
-const RESERVED_FIELDS: [&str; 3] = ["state", "model", "questions"];
+const RESERVED_FIELDS: [&str; 4] = ["state", "model", "questions", "assets"];
 
-/// The body of `POST /v1/systemone`.
+/// The body of `POST /v1/systemone`. [`Request::new`] builds one without
+/// images; a struct literal names all four fields.
 #[derive(Debug, Clone, Serialize)]
 pub struct Request<'a, S: Serialize> {
     /// Content to evaluate: string, object or array.
@@ -170,6 +224,39 @@ pub struct Request<'a, S: Serialize> {
     pub model: &'a str,
     /// The questions.
     pub questions: &'a Questions,
+    /// The images the state or the questions refer to ([`crate::asset`]);
+    /// left off the wire when there are none, so a request without images
+    /// is the same bytes it always was.
+    #[serde(skip_serializing_if = "no_assets")]
+    pub assets: &'a Assets,
+}
+
+/// `skip_serializing_if` for a borrowed [`Assets`].
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn no_assets(assets: &&Assets) -> bool {
+    assets.is_empty()
+}
+
+/// What [`Request::new`] borrows for a request without images.
+static NO_ASSETS: Assets = Assets::new();
+
+impl<'a, S: Serialize> Request<'a, S> {
+    /// A request without images; [`Request::with_assets`] adds them.
+    pub fn new(state: &'a S, model: &'a str, questions: &'a Questions) -> Self {
+        Self {
+            state,
+            model,
+            questions,
+            assets: &NO_ASSETS,
+        }
+    }
+
+    /// The same request with these images.
+    #[must_use]
+    pub fn with_assets(mut self, assets: &'a Assets) -> Self {
+        self.assets = assets;
+        self
+    }
 }
 
 /// One entry from `GET /v1/models`.
@@ -222,6 +309,7 @@ pub struct CallOptions {
     retry: Option<RetryPolicy>,
     headers: HeaderMap,
     extra: Map<String, Value>,
+    long_context: Option<bool>,
 }
 
 impl fmt::Debug for CallOptions {
@@ -231,6 +319,7 @@ impl fmt::Debug for CallOptions {
             .field("retry", &self.retry)
             .field("headers", &header_names(&self.headers))
             .field("extra", &self.extra.keys().collect::<Vec<_>>())
+            .field("long_context", &self.long_context)
             .finish()
     }
 }
@@ -271,13 +360,25 @@ impl CallOptions {
         self
     }
 
+    /// Long context for this call, in place of the client's setting: both
+    /// context limits raised to 262k tokens through the header TypeSafe
+    /// keeps the feature behind (module docs, `# Long context`). `false`
+    /// turns it off for one call of a client built with it on.
+    #[must_use]
+    pub fn long_context(mut self, on: bool) -> Self {
+        self.long_context = Some(on);
+        self
+    }
+
     /// A header sent on every attempt of this call, replacing a
     /// [`ClientBuilder::default_header`] of the same (case-insensitive) name.
     ///
     /// `authorization`, `content-type`, `user-agent`,
-    /// `x-typesafe-retry-count`, `content-length`, `transfer-encoding`,
-    /// `host`, `connection`, `te` and `upgrade` are [`Error::ReservedHeader`]
-    /// (module docs, `# Per-call options`). Mark a secret value with
+    /// `x-typesafe-retry-count`, `typesafe-danger-zone-images`,
+    /// `typesafe-danger-zone-long-context`, `content-length`,
+    /// `transfer-encoding`, `host`, `connection`, `te` and `upgrade` are
+    /// [`Error::ReservedHeader`] (module docs, `# Per-call options`,
+    /// `# Images` and `# Long context`). Mark a secret value with
     /// [`HeaderValue::set_sensitive`] so `reqwest` redacts it.
     pub fn header(mut self, name: HeaderName, value: HeaderValue) -> Result<Self> {
         refuse_reserved_header(&name)?;
@@ -287,8 +388,8 @@ impl CallOptions {
 
     /// A top-level body field for a server parameter this crate does not
     /// model; the server may use, ignore or refuse it. `null` is sent as
-    /// `null`. `state`, `model` and `questions` are [`Error::ReservedField`],
-    /// matched exactly.
+    /// `null`. `state`, `model`, `questions` and `assets` are
+    /// [`Error::ReservedField`], matched exactly.
     pub fn extra(mut self, name: impl Into<String>, value: impl Into<Value>) -> Result<Self> {
         let name = name.into();
         if RESERVED_FIELDS.contains(&name.as_str()) {
@@ -342,6 +443,7 @@ pub struct ClientBuilder {
     retry: RetryPolicy,
     observer: Option<Arc<dyn Observer>>,
     headers: HeaderMap,
+    long_context: bool,
 }
 
 impl fmt::Debug for ClientBuilder {
@@ -354,6 +456,7 @@ impl fmt::Debug for ClientBuilder {
             .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
             .field("observer", &self.observer.as_ref().map(|_| "set"))
             .field("default_headers", &header_names(&self.headers))
+            .field("long_context", &self.long_context)
             .finish()
     }
 }
@@ -368,6 +471,7 @@ impl Default for ClientBuilder {
             retry: RetryPolicy::default(),
             observer: None,
             headers: HeaderMap::new(),
+            long_context: false,
         }
     }
 }
@@ -413,6 +517,17 @@ impl ClientBuilder {
     #[must_use]
     pub fn retry(mut self, retry: RetryPolicy) -> Self {
         self.retry = retry;
+        self
+    }
+
+    /// Long context on every call this client makes (module docs, `# Long
+    /// context`): both context limits raised to 262k tokens, at the cost
+    /// TypeSafe names (slower, less accurate than a request within the
+    /// default limits). Off by default; [`CallOptions::long_context`]
+    /// changes it for one call.
+    #[must_use]
+    pub fn long_context(mut self, on: bool) -> Self {
+        self.long_context = on;
         self
     }
 
@@ -487,6 +602,7 @@ impl ClientBuilder {
             model: self.model,
             retry: self.retry,
             observer: self.observer,
+            long_context: self.long_context,
         })
     }
 }
@@ -499,6 +615,7 @@ pub struct Client {
     model: String,
     retry: RetryPolicy,
     observer: Option<Arc<dyn Observer>>,
+    long_context: bool,
 }
 
 impl fmt::Debug for Client {
@@ -507,6 +624,7 @@ impl fmt::Debug for Client {
             .field("base_url", &self.base_url.as_str())
             .field("model", &self.model)
             .field("retry", &self.retry)
+            .field("long_context", &self.long_context)
             .field("api_key", &"<redacted>")
             .finish_non_exhaustive()
     }
@@ -533,18 +651,20 @@ impl Client {
         &self.retry
     }
 
+    /// Whether this client asks for long context on every call
+    /// ([`ClientBuilder::long_context`]).
+    pub const fn long_context(&self) -> bool {
+        self.long_context
+    }
+
     /// Evaluate `state` against `questions` with the default model.
     pub async fn system_one<S: Serialize + Sync>(
         &self,
         state: &S,
         questions: &Questions,
     ) -> Result<Response> {
-        self.evaluate(&Request {
-            state,
-            model: &self.model,
-            questions,
-        })
-        .await
+        self.evaluate(&Request::new(state, &self.model, questions))
+            .await
     }
 
     /// Evaluate a fully specified request with the client's own settings:
@@ -566,6 +686,8 @@ impl Client {
         skip_all,
         fields(
             model = request.model,
+            images = request.assets.len(),
+            long_context = options.long_context.unwrap_or(self.long_context),
             input_tokens = tracing::field::Empty,
             request_id = tracing::field::Empty
         )
@@ -576,14 +698,48 @@ impl Client {
         options: &CallOptions,
     ) -> Result<Response> {
         let url = self.url("v1/systemone")?;
+        let dangerous = !request.assets.is_empty() || asks_a_box(request.questions);
+        let long_context = options.long_context.unwrap_or(self.long_context);
+        if !request.assets.is_empty() {
+            // Before the body is built: a reference that appears nowhere is
+            // the hosted API's 400, found here without the upload.
+            let state = serde_json::to_string(request.state)?;
+            let questions = serde_json::to_string(request.questions)?;
+            request.assets.check_referenced(&state, &questions)?;
+        }
         let body = serde_json::to_vec(&Body {
             request,
             extra: &options.extra,
         })?;
+        if !request.assets.is_empty() {
+            let bytes = u64::try_from(body.len()).unwrap_or(u64::MAX);
+            if bytes > MAX_REQUEST_BYTES {
+                return Err(Error::RequestTooLarge {
+                    what: "body",
+                    bytes,
+                    limit: MAX_REQUEST_BYTES,
+                });
+            }
+            self.observer().on_assets(
+                request.model,
+                request.assets.len(),
+                request.assets.total_bytes(),
+            );
+        }
         let policy = options.retry.as_ref().unwrap_or(&self.retry);
         let reply = self
             .send(policy, || {
-                options.apply(self.http.post(url.clone()).body(body.clone()))
+                let mut rb = self.http.post(url.clone()).body(body.clone());
+                if dangerous {
+                    rb = rb.header(DANGER_ZONE_IMAGES_HEADER, HeaderValue::from_static("true"));
+                }
+                if long_context {
+                    rb = rb.header(
+                        DANGER_ZONE_LONG_CONTEXT_HEADER,
+                        HeaderValue::from_static("true"),
+                    );
+                }
+                options.apply(rb)
             })
             .await
             .inspect_err(|e| record_request_id(e.request_id()))?;
@@ -686,6 +842,15 @@ impl Client {
             Err(Exhausted::TooLarge { limit, .. }) => Err(Error::ResponseTooLarge { limit }),
         }
     }
+}
+
+/// Whether any question is a Box, which needs the images header even
+/// without an image in the request
+/// (<https://docs.typesafe.ai/primitives/box>).
+fn asks_a_box(questions: &Questions) -> bool {
+    questions
+        .iter()
+        .any(|(_, q)| matches!(q, crate::question::Question::Box { .. }))
 }
 
 /// A 2xx body and the request id its response carried, not yet decoded.
@@ -1330,16 +1495,8 @@ mod tests {
                 HeaderValue::from_static("a"),
             )
             .unwrap();
-        let object_request = Request {
-            state: &object,
-            model: "jev-latest",
-            questions: &q,
-        };
-        let text_request = Request {
-            state: &text,
-            model: "jev-latest",
-            questions: &q,
-        };
+        let object_request = Request::new(&object, "jev-latest", &q);
+        let text_request = Request::new(&text, "jev-latest", &q);
         for options in [&none, &no_extras] {
             assert_eq!(
                 body(&object_request, options),
@@ -1370,8 +1527,8 @@ mod tests {
     fn an_extra_field_may_not_replace_state_model_or_questions() {
         // The names themselves, not the constant: a name dropped from it
         // must fail here.
-        assert_eq!(RESERVED_FIELDS.len(), 3);
-        for name in ["state", "model", "questions"] {
+        assert_eq!(RESERVED_FIELDS.len(), 4);
+        for name in ["state", "model", "questions", "assets"] {
             let err = CallOptions::new().extra(name, "x").unwrap_err();
             assert!(
                 matches!(&err, Error::ReservedField(n) if n == name),

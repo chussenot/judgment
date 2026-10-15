@@ -1,8 +1,8 @@
 ---
 title: Stability
-description: What stays the same across versions and for how long, so a document, a recording or a dependency written today keeps working; the jud/v1 format is stable, a minor version only adds, a reader accepts every v1 document for at least twelve months after a later minor is published, fingerprints exclude the envelope and never change for a document's spec, the jud command's exit status, JSON output and file writes are a contract, and the crate's 0.x releases say what they break.
+description: What stays the same across versions and for how long, so a document, a recording or a dependency written today keeps working; the jud/v1 format is stable, a minor version (metadata.minor) only adds, a reader accepts every v1 document for at least twelve months after a later minor is published, fingerprints exclude the envelope and never change for a document's spec, the jud command's exit status, JSON output and file writes are a contract, and the crate's 0.x releases say what they break.
 status: current
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-15
 tags: [judgment, jud, stability, versioning, compatibility, fingerprint, reference]
 ---
 
@@ -12,14 +12,14 @@ What is promised, what is not, and for how long, for the format, its fingerprint
 
 ## The format: `jud/v1` is stable
 
-The `.jud` format is at `apiVersion: jud/v1.3` ([The .jud format](jud-format.md)), and the `v1` line is stable:
+The `.jud` format is at `apiVersion: jud/v1`, minor 4 ([The .jud format](jud-format.md)), and the `v1` line is stable:
 
 - **A valid document stays valid.** A document that a `jud/v1` reader accepts today is accepted by every later `jud/v1` reader. Nothing is removed, renamed or given a new meaning inside the `v1` line: not a field of the envelope, not a field of `spec`, not a kind, not a rule of reading.
 - **A minor version only adds.** A later minor (`1.4`, `1.5`) may add an optional field, a value a field may take, or a kind. It may not make an optional field required, narrow what a field accepts, or change what an existing field means. A document that uses nothing a later minor added is, byte for byte, a document of the earlier minor.
 - **Readers accept every `v1` document for at least twelve months.** When a later minor is published, every reader of the format that this repository ships (the crate's `judgment::jud`, the `jud` command, the plugin's checks) accepts documents of each earlier `v1` minor for at least twelve months from that publication. The date is the release date of the crate version that first reads the new minor, recorded in the `CHANGELOG`.
 - **A change of meaning is `jud/v2`.** Anything a minor may not do takes a new major version, with its own `apiVersion`, its own schemas and a page that maps `v1` onto it. A `v2` reader is not required to read `v1`; a `v1` document is moved by rewriting it.
 
-Today the one `v1` minor published is `1.3`, and the crate's reader reads exactly `apiVersion: jud/v1.3`. How the next minor is spelled, and how a reader of it also reads `1.3`, is [decision 0020](../project/decisions/0020-how-a-v1-minor-is-spelled.md), proposed and not applied; whichever spelling is accepted, the promises on this page hold.
+A document declares the minor it needs in `metadata.minor` ([decision 0020](../project/decisions/0020-how-a-v1-minor-is-spelled.md)), and a reader reads every minor up to its own and refuses a higher one by number, so the twelve-month clock has a number to run against. Minor 3 was first published as `apiVersion: jud/v1.3`, with the minor in the string; the crate's reader reads that spelling as minor 3 for at least twelve months from 0.14.0, the release that first reads `jud/v1`, and writes `jud/v1` with `metadata.minor`. Minor 4 (the Box question, the images a document names, the Box label) was published in the same release, so a minor 3 document, in either spelling, is read for at least twelve months from 0.14.0.
 
 ## Fingerprints exclude the envelope and never change
 
@@ -50,10 +50,10 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 
 | What | Promise | Since |
 |---|---|---|
-| A `jud/v1` document | Valid today, valid under every later `v1` minor | `jud/v1.3`, crate 0.8.0 |
+| A `jud/v1` document | Valid today, valid under every later `v1` minor | minor 3 (`jud/v1.3`), crate 0.8.0 |
 | A `v1` minor | Adds only; never removes, renames, narrows or changes meaning | this page |
 | Readers of an earlier `v1` minor | Accepted for at least twelve months after a later minor is published | this page |
-| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good | `jud/v1.3`, decision 0018 |
+| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good. A request's includes each image by the digest of its bytes, and is unchanged for a request without one | minor 3, decision 0018; the images, minor 4, decision 0025 |
 | The wire | The vendored OpenAPI document; a change moves the contract test, the CHANGELOG and the README together | crate 0.3.0 |
 | The crate | 0.x: a minor may break and says so; a patch does not | crate 0.3.0 |
 | The `jud` command | Exit status (0 to 3), the verdict JSON, `jud eval`'s `--json` keys, the places that write files (`jud record --out`, `jud tune --out`, `jud split`) and the configuration: a change to what one means, or removing one, only in a minor, listed as breaking; an addition is listed under Added | crate 0.9.0; status 3, `eval --json` and the file writes from the release that ships `record`, `eval` and `tune` |

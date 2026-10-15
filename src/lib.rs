@@ -4,10 +4,11 @@
 //! System One models (Jev) and from any backend that speaks the same wire.
 //!
 //! A System One model does not generate text. It evaluates a `state` (any
-//! JSON) against typed questions and returns calibrated answers: a [`Noul`]
-//! is a probability of yes, a [`Choice`] a chosen option with its
-//! distribution and a [`Confidence`], a [`Score`] a weighted position on
-//! ordered levels. The threshold that turns a number into an action stays in
+//! JSON, images included) against typed questions and returns calibrated
+//! answers: a [`Noul`] is a probability of yes, a [`Choice`] a chosen
+//! option with its distribution and a [`Confidence`], a [`Score`] a
+//! weighted position on ordered levels, a [`BoundingBox`] where something
+//! is in an image. The threshold that turns a number into an action stays in
 //! code, and [`eval`] measures the probabilities against outcomes. The
 //! README says why that matters and what the crate guarantees; `docs/` says
 //! how.
@@ -69,6 +70,7 @@
 //! how they are run and re-recorded.
 
 pub mod answer;
+pub mod asset;
 pub mod backend;
 #[cfg(feature = "http")]
 pub mod client;
@@ -84,8 +86,10 @@ pub mod observer;
 pub mod question;
 
 pub use answer::{
-    Answer, Choice, Confidence, FromAnswer, Noul, Probability, Response, Score, Usage,
+    Answer, BoundingBox, BoxEdges, Choice, Confidence, FromAnswer, Noul, PixelBox, Probability,
+    Response, Score, Usage,
 };
+pub use asset::{Assets, Image, ImageFormat};
 pub use backend::{Fake, Recorder, Replay, SystemOne};
 #[cfg(feature = "http")]
 pub use client::{
@@ -105,3 +109,12 @@ pub struct DocsRecordReplayAndTest;
 #[cfg(all(doctest, feature = "http"))]
 #[doc = include_str!("../docs/guides/configure-a-backend.md")]
 pub struct DocsConfigureABackend;
+#[cfg(all(doctest, feature = "http"))]
+#[doc = include_str!("../docs/guides/ask-about-an-image.md")]
+pub struct DocsAskAboutAnImage;
+#[cfg(all(doctest, feature = "http"))]
+#[doc = include_str!("../docs/guides/locate-with-a-box.md")]
+pub struct DocsLocateWithABox;
+#[cfg(all(doctest, feature = "http"))]
+#[doc = include_str!("../docs/guides/use-long-context.md")]
+pub struct DocsUseLongContext;

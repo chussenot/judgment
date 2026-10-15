@@ -20,10 +20,16 @@ use std::time::Instant;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::answer::{Answer, Confidence, Probability, Response, Usage};
+use crate::answer::{Answer, BoxEdges, Confidence, Probability, Response, Usage};
+use crate::asset::Assets;
 use crate::error::{Error, Result};
-use crate::eval::{Recording, request_hash};
+use crate::eval::{Recording, request_hash_with};
 use crate::question::{Question, Questions};
+
+/// What [`SystemOne::answer`] hands [`SystemOne::answer_with_assets`]: no
+/// images, for the life of the program, so the future it returns can
+/// borrow it.
+static NO_ASSETS: Assets = Assets::new();
 
 /// A boxed, sendable future: what a trait object can return.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -35,6 +41,12 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// but does not fit), so a caller reads the answers through its handles
 /// without checking again. A backend written elsewhere must verify itself;
 /// [`Recorder`] verifies what it wraps because nothing forces that.
+///
+/// A request with images ([`crate::asset`]) goes through
+/// [`SystemOne::answer_with_assets`]; the images are part of the request's
+/// identity, so every backend here keys a recording by them. A backend
+/// written elsewhere that implements [`SystemOne::answer`] alone takes
+/// none: the default refuses images rather than drop them.
 pub trait SystemOne: Send + Sync {
     /// Answer `questions` about `state` with `model` (a name or alias; a
     /// backend with one model may ignore it and report its own).
@@ -44,6 +56,34 @@ pub trait SystemOne: Send + Sync {
         model: &'a str,
         questions: &'a Questions,
     ) -> BoxFuture<'a, Result<Response>>;
+
+    /// [`SystemOne::answer`] for a request whose `state` or `questions`
+    /// refer to the images in `assets`. The default answers without them
+    /// when there are none and refuses otherwise ([`Error::InvalidAsset`]),
+    /// for a backend that does not know images; the crate's own backends
+    /// all take them.
+    fn answer_with_assets<'a>(
+        &'a self,
+        state: &'a Value,
+        model: &'a str,
+        questions: &'a Questions,
+        assets: &'a Assets,
+    ) -> BoxFuture<'a, Result<Response>> {
+        if assets.is_empty() {
+            return self.answer(state, model, questions);
+        }
+        let reference = assets
+            .iter()
+            .next()
+            .map(|(r, _)| r.to_owned())
+            .unwrap_or_default();
+        Box::pin(async move {
+            Err(Error::InvalidAsset {
+                reference,
+                reason: "this backend takes no images".to_owned(),
+            })
+        })
+    }
 
     /// [`Self::answer`] over any serialisable state.
     fn answer_typed<'a, S: Serialize + Sync>(
@@ -71,6 +111,16 @@ impl<T: SystemOne + ?Sized> SystemOne for &T {
     ) -> BoxFuture<'a, Result<Response>> {
         (**self).answer(state, model, questions)
     }
+
+    fn answer_with_assets<'a>(
+        &'a self,
+        state: &'a Value,
+        model: &'a str,
+        questions: &'a Questions,
+        assets: &'a Assets,
+    ) -> BoxFuture<'a, Result<Response>> {
+        (**self).answer_with_assets(state, model, questions, assets)
+    }
 }
 
 impl<T: SystemOne + ?Sized> SystemOne for std::sync::Arc<T> {
@@ -81,6 +131,16 @@ impl<T: SystemOne + ?Sized> SystemOne for std::sync::Arc<T> {
         questions: &'a Questions,
     ) -> BoxFuture<'a, Result<Response>> {
         (**self).answer(state, model, questions)
+    }
+
+    fn answer_with_assets<'a>(
+        &'a self,
+        state: &'a Value,
+        model: &'a str,
+        questions: &'a Questions,
+        assets: &'a Assets,
+    ) -> BoxFuture<'a, Result<Response>> {
+        (**self).answer_with_assets(state, model, questions, assets)
     }
 }
 
@@ -93,11 +153,21 @@ impl<T: SystemOne + ?Sized> SystemOne for Box<T> {
     ) -> BoxFuture<'a, Result<Response>> {
         (**self).answer(state, model, questions)
     }
+
+    fn answer_with_assets<'a>(
+        &'a self,
+        state: &'a Value,
+        model: &'a str,
+        questions: &'a Questions,
+        assets: &'a Assets,
+    ) -> BoxFuture<'a, Result<Response>> {
+        (**self).answer_with_assets(state, model, questions, assets)
+    }
 }
 
 /// Through [`Client::evaluate`](crate::client::Client::evaluate), with the
 /// client's own settings: per-call options do not cross the trait, because
-/// a [`Replay`] is keyed by [`request_hash`] and an extra body field can
+/// a [`Replay`] is keyed by [`request_hash_with`] and an extra body field can
 /// change the answer. If they ever do, they enter that hash.
 #[cfg(feature = "http")]
 impl SystemOne for crate::client::Client {
@@ -107,11 +177,22 @@ impl SystemOne for crate::client::Client {
         model: &'a str,
         questions: &'a Questions,
     ) -> BoxFuture<'a, Result<Response>> {
+        self.answer_with_assets(state, model, questions, &NO_ASSETS)
+    }
+
+    fn answer_with_assets<'a>(
+        &'a self,
+        state: &'a Value,
+        model: &'a str,
+        questions: &'a Questions,
+        assets: &'a Assets,
+    ) -> BoxFuture<'a, Result<Response>> {
         Box::pin(async move {
             self.evaluate(&crate::client::Request {
                 state,
                 model,
                 questions,
+                assets,
             })
             .await
         })
@@ -127,6 +208,9 @@ pub struct Call {
     pub model: String,
     /// The question ids, in order.
     pub question_ids: Vec<String>,
+    /// Each image's reference to its [`crate::Image::digest`]; empty for a
+    /// request without images.
+    pub assets: BTreeMap<String, String>,
 }
 
 /// A backend that answers from a table and remembers what it was asked.
@@ -286,6 +370,20 @@ impl Fake {
         Ok(self)
     }
 
+    /// A Box answer: the four edges as fractions of the image, checked as
+    /// on the wire when the fake answers ([`Error::InvalidAnswer`] for an
+    /// edge outside `0..=1` or a left not below its right), and a
+    /// confidence, or `None` as the document allows.
+    pub fn r#box(
+        self,
+        id: impl Into<String>,
+        edges: BoxEdges,
+        confidence: Option<f64>,
+    ) -> Result<Self> {
+        let confidence = confidence.map(Confidence::new).transpose()?;
+        Ok(self.with_answer(id, Answer::Box { edges, confidence }))
+    }
+
     /// Every request received so far, oldest first.
     pub fn calls(&self) -> Vec<Call> {
         self.calls.lock().map(|c| c.clone()).unwrap_or_default()
@@ -299,7 +397,25 @@ impl SystemOne for Fake {
         model: &'a str,
         questions: &'a Questions,
     ) -> BoxFuture<'a, Result<Response>> {
+        self.answer_with_assets(state, model, questions, &NO_ASSETS)
+    }
+
+    /// The images change no scripted answer, but a reference that appears
+    /// nowhere is refused as the hosted API refuses it, so a test cannot
+    /// pass on a state the server would reject; the references and digests
+    /// are remembered in the [`Call`].
+    fn answer_with_assets<'a>(
+        &'a self,
+        state: &'a Value,
+        model: &'a str,
+        questions: &'a Questions,
+        assets: &'a Assets,
+    ) -> BoxFuture<'a, Result<Response>> {
         Box::pin(async move {
+            if !assets.is_empty() {
+                let questions_json = serde_json::to_string(questions)?;
+                assets.check_referenced(&state.to_string(), &questions_json)?;
+            }
             let answers = questions
                 .iter()
                 .filter_map(|(id, question)| {
@@ -322,6 +438,7 @@ impl SystemOne for Fake {
                     state: state.clone(),
                     model: model.to_owned(),
                     question_ids: questions.ids().map(str::to_owned).collect(),
+                    assets: assets.digests(),
                 });
             }
             Ok(response)
@@ -365,18 +482,33 @@ impl<B: SystemOne> SystemOne for Recorder<B> {
         model: &'a str,
         questions: &'a Questions,
     ) -> BoxFuture<'a, Result<Response>> {
+        self.answer_with_assets(state, model, questions, &NO_ASSETS)
+    }
+
+    /// The images are in the hash and the fingerprint, so two requests
+    /// that differ only by an image are two recordings.
+    fn answer_with_assets<'a>(
+        &'a self,
+        state: &'a Value,
+        model: &'a str,
+        questions: &'a Questions,
+        assets: &'a Assets,
+    ) -> BoxFuture<'a, Result<Response>> {
         Box::pin(async move {
-            let hash = request_hash(state, questions);
+            let hash = request_hash_with(state, questions, assets);
             let started = Instant::now();
-            let response = self.inner.answer(state, model, questions).await?;
+            let response = self
+                .inner
+                .answer_with_assets(state, model, questions, assets)
+                .await?;
             response.verify(questions)?;
             let recording = Recording {
                 case: hash.clone(),
                 response: response.clone(),
                 elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                 request_hash: Some(hash),
-                fingerprint: Some(crate::eval::canonical::request_fingerprint(
-                    state, questions,
+                fingerprint: Some(crate::eval::canonical::request_fingerprint_with(
+                    state, questions, assets,
                 )),
                 rubric: None,
                 server: None,
@@ -513,14 +645,29 @@ impl SystemOne for Replay {
     fn answer<'a>(
         &'a self,
         state: &'a Value,
+        model: &'a str,
+        questions: &'a Questions,
+    ) -> BoxFuture<'a, Result<Response>> {
+        self.answer_with_assets(state, model, questions, &NO_ASSETS)
+    }
+
+    /// Found by the fingerprint of the state, the questions and the
+    /// images' digests: the image file itself is not needed to replay, only
+    /// its bytes to name it, and a changed image is a request nobody
+    /// recorded.
+    fn answer_with_assets<'a>(
+        &'a self,
+        state: &'a Value,
         _model: &'a str,
         questions: &'a Questions,
+        assets: &'a Assets,
     ) -> BoxFuture<'a, Result<Response>> {
         Box::pin(async move {
             // The fingerprint first: it is the published key, and SHA-256
             // where the hash is FNV, which a writer could collide on purpose.
-            let fingerprint = crate::eval::canonical::request_fingerprint(state, questions);
-            let hash = request_hash(state, questions);
+            let fingerprint =
+                crate::eval::canonical::request_fingerprint_with(state, questions, assets);
+            let hash = request_hash_with(state, questions, assets);
             let index = if let Some(index) = self.by_fingerprint.get(&fingerprint) {
                 *index
             } else {

@@ -20,7 +20,12 @@ file, the field and, in one sentence each, what the reader refuses and why
 (`${CLAUDE_PLUGIN_ROOT}/skills/jud/references/format.md` has the rules and
 the reading rules it refuses by); every cases document that could not be bound
 because its rubric was not among the files; and the names and fingerprints
-of what passed. A document the reader refuses by its envelope is in an old
+of what passed. A rubric's line counts the images it declares; `check`
+reads the declarations (the kind, one of `path` and `data_base64`, a
+relative path that stays under the directory, a format the API takes,
+every reference present in the questions or the state) without opening the
+files, so a missing or malformed image is found by `jud record`'s plan,
+not here: say so when a document declares images. A document the reader refuses by its envelope is in an old
 shape: say so and point at the skill's "Moving an old document forward"
 section rather than editing it unasked.
 

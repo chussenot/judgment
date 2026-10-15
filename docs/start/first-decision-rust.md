@@ -89,10 +89,11 @@ use judgment::{Fake, SystemOne};
 // another tool can read (docs/reference/jud-format.md). The policy is never
 // sent to the model.
 const RUBRIC: &str = r"
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: inbox-triage
+  minor: 3
 spec:
   questions:
     department:
@@ -195,3 +196,4 @@ The output is what `jev-1.13.0` answered on 2026-10-04; a later model answers wi
 - [Record, replay and test](../guides/record-replay-and-test.md): record that call once and replay it in your tests.
 - [The crate](../reference/crate.md): the features, the modules and the rustdoc.
 - [Patterns](../guides/patterns.md): the four shapes a call takes inside a real program.
+- [Ask a question about an image](../guides/ask-about-an-image.md) and [Locate something with a Box question](../guides/locate-with-a-box.md): the same call with a picture in the state.

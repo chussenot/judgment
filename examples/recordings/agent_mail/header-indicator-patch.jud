@@ -1,8 +1,9 @@
 # Recorded answer for case `header-indicator-patch`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: header-indicator-patch
+  minor: 3
 spec:
   elapsed_ms: 142
   fingerprint: sha256:0a0960a5320c353f19f2729e8b8122262d0b5df55a278eff2ad7e0ac43341d1a

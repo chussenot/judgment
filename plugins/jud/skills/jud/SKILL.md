@@ -1,9 +1,9 @@
 ---
 name: jud
-description: Write, review or fix .jud documents (a rubric with its policy, labelled cases, a recording) in version 1.3 of the format the judgment crate reads, and check them with the crate's own reader. Use this whenever a task touches a .jud file, a rubric, typed questions with thresholds, labelled cases for tuning a threshold, or turning questions written in code into a document another tool can read, even when the user does not say "jud" or "rubric".
+description: Write, review or fix .jud documents (a rubric with its policy, labelled cases, a recording) in the jud/v1 format the judgment crate reads, at its current minor, and check them with the crate's own reader. Use this whenever a task touches a .jud file, a rubric, typed questions with thresholds, labelled cases for tuning a threshold, or turning questions written in code into a document another tool can read, even when the user does not say "jud" or "rubric".
 ---
 
-# Writing .jud documents (version 1.3)
+# Writing .jud documents (jud/v1)
 
 A `.jud` file is a decision written down so a person can review it and a
 program can run it: the typed questions a System One model is asked about a
@@ -41,15 +41,17 @@ with `/jud:rust`.
    with the envelope, every field per kind, the gate fields per primitive,
    the label shapes, and the reading rules the reader refuses by. It is 400
    lines and saves a round of refusals.
-3. **Write the document** with the envelope first: `apiVersion: jud/v1.3`,
-   `kind`, `metadata` with its `name`, then everything the kind holds under
-   `spec`:
+3. **Write the document** with the envelope first: `apiVersion: jud/v1`,
+   `kind`, `metadata` with its `name` and the `minor` the document needs
+   (3, unless it uses a field a later minor added), then everything the kind
+   holds under `spec`:
 
    ```yaml
-   apiVersion: jud/v1.3
+   apiVersion: jud/v1
    kind: Rubric
    metadata:
      name: inbox-triage
+     minor: 3
      description: What the rubric decides, for the reader.
    spec:
      questions: ...
@@ -60,7 +62,9 @@ with `/jud:rust`.
    repository when one is at hand (`triage.jud` and `triage-cases.jud` for
    one message with a tuned policy; `handoff.jud` and `handoff-cases.jud` for
    a conversation; `routing.jud` and `routing-cases.jud` for per-request
-   options, `when`, `part_when` and bands).
+   options, `when`, `part_when` and bands; `shapes.jud` and
+   `shapes-cases.jud` for an image, a Noul beside a Box, and cases that
+   declare their images under `assets`, minor 4).
 4. **Check it** with the crate's reader, rubric and cases together so the
    labels are checked against the requests they grade:
 
@@ -98,10 +102,13 @@ with `/jud:rust`.
 Each of these is a refusal `jud check` will name; knowing them first saves the
 round trip.
 
-- `apiVersion` is the string `jud/v1.3`, exactly: the reader reads that one
-  value and refuses any other, a number, a missing key, or a document that
-  still starts with a `jud:` key. `kind` is PascalCase: `Rubric`, `Cases`,
-  `Recording`; `rubric` is refused.
+- `apiVersion` is the string `jud/v1`, exactly, and `metadata.minor` the
+  integer minor the document needs (4 today; 3 for a document with no Box
+  and no `assets`): the reader refuses any other
+  apiVersion, a number, a missing key, a document that still starts with a
+  `jud:` key, a missing `minor`, and a `minor` above the one it reads. The
+  earlier spelling `jud/v1.3` (no `minor`) is still read. `kind` is
+  PascalCase: `Rubric`, `Cases`, `Recording`; `rubric` is refused.
 - `metadata.name` is required on every kind and is a **name**: letters,
   digits, `.`, `_`, `-`, starting with a letter or digit. `inbox-triage` yes;
   `inbox triage`, `./triage`, `.hidden` no. A case's `id` inside `spec.cases`
@@ -120,8 +127,20 @@ round trip.
 - A **Score** has 2 to 10 levels, lowest first, none null, each a plain
   string.
 - A **Noul**'s `criteria` keys are exactly `true` and `false`.
-- A gate fits its primitive: `threshold` is Noul-only; `confidence`, `bands`,
-  `fallback`, `level_at_least` are Choice or Score (`level_at_least` Score-only).
+- A **Box** (minor 4) has `instructions` only, never null and no `criteria`:
+  what to locate, and in which image, named by a *reference*, text the state
+  or the instructions carry where the image belongs (`state: {image:
+  shape-00}`). The reference is declared under `spec.assets` on the rubric
+  (an image every request sends) or `assets` on the case, as `{type: image,
+  path: images/shape-00.png}` relative to the document, or `{type: image,
+  format: png, data_base64: …}` inline; a declared reference that appears
+  nowhere is refused, and so is a path that is absolute or leaves the
+  directory. A Box always answers with a box, found or not: put a Noul
+  beside it that says whether there is anything to find, and gate the two
+  together.
+- A gate fits its primitive: `threshold` is Noul-only; `confidence` and
+  `bands` are Choice, Score or Box; `fallback` is Choice or Score;
+  `level_at_least` is Score-only.
 - `fallback` names an option the Choice offers **statically** in `criteria`,
   or a Score level by text or index-as-string. A supplied option cannot be a
   fallback.
@@ -129,9 +148,11 @@ round trip.
   and a gate has `bands` or `confidence`, not both.
 - A label in `expect` fits the question: `true`/`false` for a Noul,
   `{from_turn: n}` only for a Noul over an array state, an offered option key
-  for a Choice, a level index or text for a Score. A label for a question whose
-  `when` is not present in that case's state is refused: a question not asked
-  has no answer to grade.
+  for a Choice, a level index or text for a Score, `{box: {top, bottom, left,
+  right}}` as fractions of the image (top below bottom, left below right) for
+  a Box, with `iou_at_least` beside it when 0.5 is not the overlap the task
+  needs. A label for a question whose `when` is not present in that case's
+  state is refused: a question not asked has no answer to grade.
 - For a Choice with `options_from: request`, every case supplies its options
   under `options.<question id>`, and the request still needs 2 to 255 in total.
 - No merge keys (`<<`), no explicit tags. A plain anchor and alias on a scalar
@@ -173,6 +194,18 @@ round trip.
   history over the last message alone), the model can only guess: say what
   the caller must add to the state, and leave the question out until it
   does. Instructions cannot make up for a missing field.
+- **A Box asks where; a Noul beside it asks whether.** A Box answers with a
+  box whether or not the thing is there (the hosted API gives a box at a
+  confidence near zero over nothing), so a rubric that locates something
+  asks a Noul for whether first and gates the two together: the Noul's
+  threshold says whether to use the box, the Box's `confidence` how far to
+  trust it. Name the image by the reference the state carries (`the mug in
+  `photo``) and say what to locate as a thing, not a condition; the policy
+  on the Box is `confidence` or `bands`, never `threshold` or `fallback`.
+  Images cost input tokens by their pixels (fifteen times more at the
+  largest size the API takes than at the smallest), so the state carries
+  the smallest image that keeps the target legible, and a Box needs Jev
+  1.14 (`jev-preview` on the hosted API until `jev-latest` moves).
 - **Be honest in the policy.** A hand-written rubric has no `tuning` block,
   and a `threshold: 0.5` with no `note` says "a guess" plainly. A `note` on a
   gate says why the bar is where it is. Do not invent a `tuning` block, a
@@ -228,6 +261,21 @@ they cover anything. That is the writer's job.
 - **Supply what the request needs.** For a Choice with `options_from:
   request`, each case supplies its own options under `options`, as the
   application would that day, and the request still needs 2 to 255.
+- **Declare each case's image, and label the box as it was placed.** A case
+  about an image carries the reference in its state (`state: {image:
+  shape-01}`) and declares the file under `assets` by a path relative to
+  the cases document (`shape-01: {type: image, path: images/shape-01.png}`),
+  never absolute and never leaving the directory; a small image a document
+  keeps to itself goes inline as `format` and `data_base64`. A Box label is
+  the box the annotator or the generator placed, `{box: {top, bottom, left,
+  right}}` in fractions of the image, with `iou_at_least` only when 0.5 is
+  not the overlap the task needs (a crop with a margin tolerates less, an
+  alignment needs more); say in the `note` where the box came from. An
+  image where the thing is not there labels the Noul `false` and leaves the
+  Box unlabelled. Cover both: images with the thing in different places and
+  sizes, and images without it, with the distractors the application will
+  see. The image's bytes are part of the recording's key: a re-encoded or
+  resized image is a new request.
 - **Name the rubric.** `spec.rubric` by name while the questions move, by
   fingerprint once a run must be reproducible.
 - **Never copy the model's answers in.** A case says what the answer should
@@ -246,7 +294,9 @@ wire's own shape: `questions.choice::<T>(id, instructions)` with an
 descriptions in declaration order; `questions.noul(id, instructions, None)`
 is a Noul with no `criteria` (leave the key out; `None` and absent are the
 same on the wire); `questions.score(id, instructions, levels)` is a Score
-with those levels. The map goes under `spec.questions`, in the code's order,
+with those levels; `questions.r#box(id, instructions)` is a Box, and the
+images the code adds with `Request::with_assets` are the rubric's or the
+case's `assets`, under the same references. The map goes under `spec.questions`, in the code's order,
 and the rubric's `metadata.name` is what `Rubric::new(name, questions)`
 would be given. What the code does with an answer is the policy:
 `confidence.at_least(0.7)` is `confidence: 0.7`, `is_yes(0.6)` is
@@ -271,7 +321,7 @@ fingerprint still holds after the move.
 
 | Old envelope | New envelope |
 |---|---|
-| `jud: 1`, `1.1`, `1.2` | `apiVersion: jud/v1.3` |
+| `jud: 1`, `1.1`, `1.2` | `apiVersion: jud/v1` and `metadata.minor: 3` |
 | `kind: rubric`, `cases`, `recording` | `kind: Rubric`, `Cases`, `Recording` |
 | `id` (rubric, cases) | `metadata.name`, now required on cases too |
 | a recording's `case` | `metadata.name` |

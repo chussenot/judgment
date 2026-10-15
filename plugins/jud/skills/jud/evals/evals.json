@@ -8,7 +8,7 @@
       "expected_output": "Two documents in the 1.3 format that jud check accepts together: a rubric with a Noul, a Choice with a no-match option, a Score, a policy whose gates fit each primitive and no invented tuning block; six cases whose labels bind.",
       "files": [],
       "expectations": [
-        "Both files declare `apiVersion: jud/v1.3` and a PascalCase kind",
+        "Both files declare `apiVersion: jud/v1` with `metadata.minor` and a PascalCase kind",
         "`jud check` accepts the rubric and the cases together with 0 refused",
         "The rubric has a noul, a choice and a score question",
         "The choice offers an option for issues that fit no area",
@@ -26,7 +26,7 @@
       "expected_output": "A rubric with two Nouls over a conversation state and a cases document whose cancel labels use {from_turn: n} and {from_turn: null}, binding under jud check.",
       "files": [],
       "expectations": [
-        "Both files declare `apiVersion: jud/v1.3` and a PascalCase kind",
+        "Both files declare `apiVersion: jud/v1` with `metadata.minor` and a PascalCase kind",
         "`jud check` accepts the rubric and the cases together with 0 refused",
         "The rubric has two noul questions",
         "Every case state is an array of turns with role and text",
@@ -42,7 +42,7 @@
       "expected_output": "A rubric using options_from: request, when, part_when and bands with a static fallback; cases that supply options per case; all binding under jud check, and jud lower shows the incident question dropped when no incidents are open.",
       "files": [],
       "expectations": [
-        "Both files declare `apiVersion: jud/v1.3` and a PascalCase kind",
+        "Both files declare `apiVersion: jud/v1` with `metadata.minor` and a PascalCase kind",
         "`jud check` accepts the rubric and the cases together with 0 refused",
         "The team question is a choice with options_from: request and a static no-match option in criteria",
         "The incident question has `when` on the incidents path",
@@ -62,7 +62,7 @@
         "evals/files/moderation-broken-cases.jud"
       ],
       "expectations": [
-        "Both fixed files declare `apiVersion: jud/v1.3` and a PascalCase kind (Rubric, Cases), with no `jud:` key left",
+        "Both fixed files declare `apiVersion: jud/v1` with `metadata.minor` and a PascalCase kind (Rubric, Cases), with no `jud:` key left",
         "`jud check` accepts the fixed rubric and cases together with 0 refused",
         "Both files have the four top-level keys only: the questions, policy, rubric and cases sit under spec, the description under metadata",
         "The rubric's metadata.name and the cases' metadata.name are names (no spaces) and the cases' spec.rubric matches the rubric's metadata.name",
@@ -82,7 +82,7 @@
       "expected_output": "A rubric whose questions fingerprint equals the one the code's Questions produce, the thresholds of the code in the policy, a case, and a hand-written recording that jud check verifies with a matching fingerprint.",
       "files": [],
       "expectations": [
-        "All three files declare `apiVersion: jud/v1.3` and a PascalCase kind",
+        "All three files declare `apiVersion: jud/v1` with `metadata.minor` and a PascalCase kind",
         "`jud check` accepts the three files together with 0 refused",
         "The rubric's questions fingerprint equals the fingerprint of the Questions quickstart.rs builds (EXPECTED)",
         "The policy mirrors the code's thresholds: department confidence 0.7 and is_urgent threshold 0.6 (as the code applies them)",
@@ -98,7 +98,7 @@
       "expected_output": "A valid rubric that pushes back on the brief where the format or honesty requires: a name for an id, the bar in the policy rather than in the instructions, ten levels at most, a second option, and no invented tuning block, each explained in the reply.",
       "files": [],
       "expectations": [
-        "Both files declare `apiVersion: jud/v1.3` and a PascalCase kind",
+        "Both files declare `apiVersion: jud/v1` with `metadata.minor` and a PascalCase kind",
         "`jud check` accepts the rubric and the cases together with 0 refused",
         "The rubric's metadata.name is a name (no spaces), e.g. refund-review-v2, and the title may be kept in metadata.description or metadata.version",
         "The 'only if really sure' requirement is expressed as a threshold (or strict) in the policy, and the instructions do not tell the model to answer only when sure",
@@ -106,6 +106,24 @@
         "The product line Choice offers at least two options including an other/none option",
         "There is no `tuning` block claiming a run that did not happen (no tuning key, or no cases fingerprint/model invented)",
         "The reply explains each deviation from the brief: the name, the threshold, the scale, the tuning block"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "image-rubric-with-a-box",
+      "prompt": "We get photos of parcel labels from a warehouse camera. Write a .jud rubric that says whether a photo shows a readable shipping label at all and where the label is in the photo, so our service can crop it, plus a cases file with 5 photos: 3 with a label (the images are OUT/images/label-1.png to label-3.png, 320x320, and the label boxes are known from the annotator), 2 without (OUT/images/empty-1.png, empty-2.png). The state will be {\"photo\": <reference>}. Write them to OUT/labels.jud and OUT/labels-cases.jud. We will run it on jev-preview.",
+      "expected_output": "A rubric at minor 4 with a Noul for whether and a Box for where, the Box with instructions only, gated by confidence; cases that declare each image under assets by a relative path under the reference the state carries, label the three boxes in fractions and leave the Box unlabelled on the two empty photos, binding under jud check.",
+      "files": [],
+      "expectations": [
+        "Both files declare `apiVersion: jud/v1` with `metadata.minor: 4` and a PascalCase kind",
+        "`jud check` accepts the rubric and the cases together with 0 refused",
+        "The rubric has a noul question and a box question, and the box question has instructions and no criteria",
+        "The box's instructions name the image by the reference the state carries (photo)",
+        "The policy gates the box with confidence or bands, never threshold or fallback",
+        "Every case's state carries the reference and declares its image under assets with a relative path",
+        "The three label cases label the box question with {box: {top, bottom, left, right}} in fractions",
+        "The two empty cases label the noul false and do not label the box question",
+        "The reply says that a Box always answers with a box and that the Noul decides whether to use it"
       ]
     }
   ]

@@ -17,10 +17,11 @@ The example screens a support message for a refund request. The finished file is
 Every document has the same four top-level fields. Name the rubric; the name is what cases and recordings will refer to, so keep it stable.
 
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: refund-screening
+  minor: 3
   description: Screen a support message for a refund request before a person reads it.
 spec:
   questions: {}
@@ -30,7 +31,7 @@ A name is letters, digits, `.`, `_` and `-`, starting with a letter or a digit (
 
 ## 2. Write one question per thing
 
-List what the application needs to know and cannot compute itself. Each becomes one question of one primitive ([System One](../concepts/system-one.md)). "Does it ask for a refund, and why, and how angry are they?" is three questions.
+List what the application needs to know and cannot compute itself. Each becomes one question of one primitive ([System One](../concepts/system-one.md)). "Does it ask for a refund, and why, and how angry are they?" is three questions. A question about an image names the image by the reference the state carries, and a Box, which asks where, always goes beside a Noul that asks whether ([Locate something with a Box question](locate-with-a-box.md)).
 
 Give each outcome a criterion in plain words. `Does the message ask for money back?` reads differently to every grader; `true: a refund, a chargeback, a credit` reads the same to all of them, and to the model. Name the state key the question is about (`message`): the state is JSON and the model sees all of it.
 
@@ -99,7 +100,7 @@ jud check screening.jud
 
 <!-- transcript: jud check examples/jud/screening.jud -->
 ```text
-rubric    examples/jud/screening.jud: name refund-screening, jud/v1.3, 3 questions, 3 gates (untuned)
+rubric    examples/jud/screening.jud: name refund-screening, jud/v1 minor 3, 3 questions, 3 gates (untuned)
           questions sha256:92a19d0948fdaa410401d8c22b43d1783ac291b40af210d4aa4c81e8275e0e17
           policy    sha256:2c4cfcb3d2b6f200242a8589f22ca64d0627a611860f5498be20424a73261766
 1 documents, 0 refused
@@ -122,10 +123,11 @@ prints the request the rubric lowers to for that state: the questions whose `whe
 # The rubric built step by step in docs/guides/write-a-rubric.md: whether a
 # support message asks for money back, why, and how upset the writer is.
 # Hand-written, so it carries no tuning block: the bars are stated guesses.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: refund-screening
+  minor: 3
   description: Screen a support message for a refund request before a person reads it.
 spec:
   questions:

@@ -105,6 +105,21 @@ struct Cli {
     /// --options, read from a file.
     #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath)]
     options_file: Option<String>,
+    /// An image the state refers to: the reference written in the state,
+    /// and the PNG or JPEG file. Repeatable.
+    ///
+    /// The file is checked against the hosted API's limits before anything
+    /// is sent, base64-encoded by jud, and sent with the images header. The
+    /// rubric's own `spec.assets` are read from the rubric's directory
+    /// without a flag.
+    #[arg(long, value_name = "REF=PATH", value_hint = ValueHint::FilePath)]
+    asset: Vec<String>,
+    /// The image's size, so a located box is also printed in pixels.
+    ///
+    /// Without it, the size of the request's one image is used; with
+    /// several images, or none, a box is printed as fractions only.
+    #[arg(long, value_name = "WxH")]
+    pixels: Option<String>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -174,6 +189,10 @@ fn main() -> ExitCode {
             run::OptionsArg {
                 inline: cli.options.as_deref(),
                 file: cli.options_file.as_deref(),
+            },
+            run::AssetsArg {
+                pairs: &cli.asset,
+                pixels: cli.pixels.as_deref(),
             },
         ),
         // `arg_required_else_help` prints the help only for an empty command

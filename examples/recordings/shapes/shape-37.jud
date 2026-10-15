@@ -1,0 +1,30 @@
+# Recorded answer for case `shape-37`; found by fingerprint.
+apiVersion: jud/v1
+kind: Recording
+metadata:
+  name: shape-37
+  minor: 4
+spec:
+  elapsed_ms: 94
+  fingerprint: sha256:79f8f886c315827379de2928bfb092fa3c1c2752328f68e9557b775516848b09
+  recorded_at: "2026-10-15T11:16:57Z"
+  response:
+    answers:
+      circle:
+        box:
+          bottom: 0.66
+          left: 0.04
+          right: 0.21
+          top: 0.48
+        confidence: 0.98
+        type: box
+      circle_present:
+        noul: 0.99
+        type: noul
+    model: jev-1.14.0
+    request_id: req_01a13f4791eb7c80813efeaa1d6fbf0e
+    usage:
+      input_tokens: 625
+      output_tokens: 37
+  rubric: shapes
+  server: https://api.typesafe.ai

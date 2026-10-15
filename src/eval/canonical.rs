@@ -13,6 +13,7 @@ use std::fmt::Write as _;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::asset::Assets;
 use crate::question::Questions;
 
 /// The canonical rendering of `value` per RFC 8785.
@@ -34,17 +35,43 @@ pub fn fingerprint(value: &Value) -> String {
 }
 
 /// The fingerprint of `{"questions": …, "state": …}`, model left out so the
-/// same request answered by two models yields two recordings under one name.
+/// same request answered by two models yields two recordings under one
+/// name: [`request_fingerprint_with`] for a request without images.
 pub fn request_fingerprint(state: &Value, questions: &Questions) -> String {
+    request_fingerprint_with(state, questions, &Assets::new())
+}
+
+/// The fingerprint of a request with its images: `{"assets": {reference:
+/// "sha256:…"}, "questions": …, "state": …}`, each image named by the
+/// SHA-256 of its bytes ([`Assets::digests`]) rather than by its base64,
+/// so re-encoding changes nothing; without images the `assets` key is left
+/// out, so a request without them fingerprints as it always has and every
+/// recording made before images stays valid. Two requests that differ only
+/// in an image are two fingerprints, which is why the images are in it.
+pub fn request_fingerprint_with(state: &Value, questions: &Questions, assets: &Assets) -> String {
+    fingerprint(&request_value(state, questions, assets))
+}
+
+/// The value both request fingerprints are over ([`request_fingerprint_with`]
+/// and [`crate::eval::request_hash_with`]).
+pub(crate) fn request_value(state: &Value, questions: &Questions, assets: &Assets) -> Value {
     let questions = serde_json::to_value(questions).unwrap_or(Value::Null);
-    fingerprint(&Value::Object(
-        [
-            ("questions".to_owned(), questions),
-            ("state".to_owned(), state.clone()),
-        ]
-        .into_iter()
-        .collect(),
-    ))
+    let mut object = serde_json::Map::new();
+    if !assets.is_empty() {
+        object.insert(
+            "assets".to_owned(),
+            Value::Object(
+                assets
+                    .digests()
+                    .into_iter()
+                    .map(|(k, v)| (k, Value::String(v)))
+                    .collect(),
+            ),
+        );
+    }
+    object.insert("questions".to_owned(), questions);
+    object.insert("state".to_owned(), state.clone());
+    Value::Object(object)
 }
 
 fn write(out: &mut String, value: &Value) {

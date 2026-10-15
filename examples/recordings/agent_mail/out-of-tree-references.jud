@@ -1,8 +1,9 @@
 # Recorded answer for case `out-of-tree-references`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: out-of-tree-references
+  minor: 3
 spec:
   elapsed_ms: 137
   fingerprint: sha256:f5477f8c0c61fc8a6253bde598d4f920736c7cf008569662d4099ee75237d7a8

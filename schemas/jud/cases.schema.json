@@ -47,7 +47,7 @@
               },
               "expect": {
                 "type": "object",
-                "description": "By question id: true or false for a Noul (or {from_turn} over a conversation), an option key for a Choice, a level index or a level's text for a Score.",
+                "description": "By question id: true or false for a Noul (or {from_turn} over a conversation), an option key for a Choice, a level index or a level's text for a Score, {box, iou_at_least} for a Box.",
                 "additionalProperties": {
                   "oneOf": [
                     {
@@ -75,9 +75,29 @@
                         "from_turn"
                       ],
                       "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "description": "A Box's label: the box, and the intersection over union the answer must reach (0.5 when left out).",
+                      "properties": {
+                        "box": {
+                          "$ref": "common.schema.json#/$defs/boxEdges"
+                        },
+                        "iou_at_least": {
+                          "$ref": "common.schema.json#/$defs/unit"
+                        }
+                      },
+                      "required": [
+                        "box"
+                      ],
+                      "additionalProperties": false
                     }
                   ]
                 }
+              },
+              "assets": {
+                "$ref": "common.schema.json#/$defs/assets",
+                "description": "The images the case's state refers to; paths are relative to this file."
               },
               "tags": {
                 "type": "array",

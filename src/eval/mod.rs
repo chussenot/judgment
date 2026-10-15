@@ -14,11 +14,19 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::answer::{Answer, Response, sanitize_server_str};
+use crate::answer::{Answer, BoxEdges, Confidence, Response, sanitize_server_str};
+use crate::asset::Assets;
 use crate::question::Questions;
 
 /// Bins for expected calibration error.
 pub const ECE_BINS: usize = 10;
+
+/// The intersection over union a Box answer must reach against its
+/// labelled box to count as right when the label sets no bar of its own
+/// ([`Judgment::located`]): half, the detection benchmarks' usual bar
+/// (PASCAL VOC), loose enough that a box a few pixels off is right and
+/// strict enough that a box around the wrong thing is not.
+pub const DEFAULT_IOU_AT_LEAST: f64 = 0.5;
 
 /// A raw model response kept for replay.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -210,19 +218,20 @@ pub fn fingerprint(value: &Value) -> String {
 /// names recording files: FNV-1a over key-sorted JSON, because it must not
 /// change across runs, machines or toolchains and `DefaultHasher` promises
 /// none of that. Not collision-resistant against an adversary.
+/// [`request_hash_with`] for a request without images.
 pub fn request_hash(state: &Value, questions: &Questions) -> String {
-    let questions = serde_json::to_value(questions).unwrap_or(Value::Null);
+    request_hash_with(state, questions, &Assets::new())
+}
+
+/// [`request_hash`] of a request with its images, over the value
+/// [`canonical::request_fingerprint_with`] fingerprints: the images by the
+/// SHA-256 of their bytes under `assets`, the key left out without any, so
+/// a request without images hashes as before.
+pub fn request_hash_with(state: &Value, questions: &Questions, assets: &Assets) -> String {
     let mut canonical = String::new();
     write_canonical(
         &mut canonical,
-        &Value::Object(
-            [
-                ("questions".to_owned(), questions),
-                ("state".to_owned(), state.clone()),
-            ]
-            .into_iter()
-            .collect(),
-        ),
+        &canonical::request_value(state, questions, assets),
     );
     format!("{:016x}", fnv1a64(canonical.as_bytes()))
 }
@@ -284,6 +293,11 @@ pub struct Judgment {
     pub probabilities: BTreeMap<String, f64>,
     /// False when the question was not asked and the answer is the implied one: graded but marked.
     pub asked: bool,
+    /// For a Box graded against a labelled box ([`Judgment::located`]): the
+    /// intersection over union, which decided `correct`. `None` for every
+    /// other primitive and for an unlabelled Box.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iou: Option<f64>,
 }
 
 impl Judgment {
@@ -307,6 +321,34 @@ impl Judgment {
             p_expected,
             probabilities,
             asked,
+            iou: None,
+        }
+    }
+
+    /// Grade a Box answer against a labelled box by intersection over union
+    /// ([`BoxEdges::iou`]): right when it reaches `iou_at_least`
+    /// ([`DEFAULT_IOU_AT_LEAST`] when the label sets none). The prediction
+    /// and the label both read `box`, so the outcome counts stay one
+    /// vocabulary per question; `iou` carries the number. A Box's
+    /// confidence is the model's own and may be absent, which grades as 0:
+    /// the model said nothing about its certainty. No distribution, so no
+    /// Brier score.
+    pub fn located(
+        edges: &BoxEdges,
+        expected: Option<&BoxEdges>,
+        iou_at_least: f64,
+        confidence: Option<f64>,
+    ) -> Self {
+        let iou = expected.map(|label| edges.iou(label));
+        Self {
+            predicted: "box".to_owned(),
+            expected: expected.map(|_| "box".to_owned()),
+            correct: iou.map(|iou| iou >= iou_at_least),
+            confidence: confidence.unwrap_or(0.0),
+            p_expected: None,
+            probabilities: BTreeMap::new(),
+            asked: true,
+            iou,
         }
     }
 
@@ -324,6 +366,8 @@ impl Judgment {
 
     /// Grade a wire answer as returned (a Choice by option key, a Score by level index as a
     /// string, a Noul as `yes` or `no`); an application that names its levels uses [`Self::new`].
+    /// A Box has no label in words: it reads `box`, ungraded (`correct` is
+    /// `None`), and is graded by [`Judgment::located`] against a labelled box.
     ///
     /// An [`Answer::Unknown`] is a miss, not dropped, since dropping it would
     /// raise the accuracy of a model whose answers cannot be read: predicted
@@ -340,7 +384,18 @@ impl Judgment {
                 p_expected: expected.map(|_| 0.0),
                 probabilities: BTreeMap::new(),
                 asked: true,
+                iou: None,
             },
+            Answer::Box { edges, confidence } => {
+                let mut graded = Self::located(
+                    edges,
+                    None,
+                    DEFAULT_IOU_AT_LEAST,
+                    confidence.map(Confidence::value),
+                );
+                graded.expected = expected.map(str::to_owned);
+                graded
+            }
             Answer::Noul { noul } => Self::noul(noul.value(), expected.map(|e| e == "yes"), true),
             Answer::Choice {
                 choice,
@@ -403,6 +458,9 @@ pub struct QuestionMetrics {
     pub confidence_when_wrong: Option<f64>,
     /// `expected -> predicted -> count`.
     pub confusion: BTreeMap<String, BTreeMap<String, usize>>,
+    /// Mean intersection over union of the labelled Box judgments
+    /// ([`Judgment::iou`]); `None` for any other primitive.
+    pub mean_iou: Option<f64>,
 }
 
 impl QuestionMetrics {
@@ -419,11 +477,15 @@ impl QuestionMetrics {
         let mut calib = Vec::new();
         let mut right = Vec::new();
         let mut wrong = Vec::new();
+        let mut ious = Vec::new();
         for j in judgments {
             let (Some(expected), Some(correct)) = (&j.expected, j.correct) else {
                 continue;
             };
             m.labelled += 1;
+            if let Some(iou) = j.iou {
+                ious.push(iou);
+            }
             if correct {
                 m.correct += 1;
                 right.push(j.confidence);
@@ -440,11 +502,14 @@ impl QuestionMetrics {
                 .iter()
                 .map(|(k, p)| (k == expected, *p))
                 .collect();
-            let mut b = metrics::brier(&pairs);
-            if !j.probabilities.contains_key(expected) {
-                b += 1.0;
+            // A Box is graded by its IoU and has no distribution to score.
+            if j.iou.is_none() {
+                let mut b = metrics::brier(&pairs);
+                if !j.probabilities.contains_key(expected) {
+                    b += 1.0;
+                }
+                brier.push(b);
             }
-            brier.push(b);
             calib.push((j.confidence, correct));
         }
         if m.labelled > 0 {
@@ -455,6 +520,7 @@ impl QuestionMetrics {
         m.ece = (!calib.is_empty()).then(|| metrics::expected_calibration_error(&calib, ece_bins));
         m.confidence_when_right = metrics::mean(&right);
         m.confidence_when_wrong = metrics::mean(&wrong);
+        m.mean_iou = metrics::mean(&ious);
         m
     }
 }
@@ -679,6 +745,60 @@ mod tests {
         let l = Latency::of(&[10.0, 30.0, 20.0]);
         assert_eq!(l.p50_ms, Some(20.0));
         assert_eq!(l.mean_ms, Some(20.0));
+    }
+
+    #[test]
+    fn a_box_is_graded_by_iou_and_summarised_without_a_brier_score() {
+        let label = BoxEdges::new(0.2, 0.8, 0.2, 0.8);
+        let close = BoxEdges::new(0.25, 0.85, 0.25, 0.85);
+        let far = BoxEdges::new(0.0, 0.3, 0.0, 0.3);
+        let hit = Judgment::located(&close, Some(&label), DEFAULT_IOU_AT_LEAST, Some(0.9));
+        assert_eq!(hit.predicted, "box");
+        assert_eq!(hit.expected.as_deref(), Some("box"));
+        assert_eq!(hit.correct, Some(true));
+        assert!((hit.iou.unwrap() - close.iou(&label)).abs() < 1e-12);
+        assert!((hit.confidence - 0.9).abs() < f64::EPSILON);
+        assert!(hit.probabilities.is_empty());
+        let miss = Judgment::located(&far, Some(&label), DEFAULT_IOU_AT_LEAST, None);
+        assert_eq!(miss.correct, Some(false));
+        assert!(
+            miss.confidence.abs() < f64::EPSILON,
+            "no confidence grades as none"
+        );
+        let strict = Judgment::located(&close, Some(&label), 0.9, Some(0.9));
+        assert_eq!(strict.correct, Some(false), "the label's own bar");
+        let unlabelled = Judgment::located(&close, None, DEFAULT_IOU_AT_LEAST, Some(0.9));
+        assert_eq!((unlabelled.correct, unlabelled.iou), (None, None));
+        let shown = serde_json::to_value(&hit).unwrap();
+        assert!(shown["iou"].is_number());
+        assert!(
+            serde_json::to_value(&unlabelled)
+                .unwrap()
+                .get("iou")
+                .is_none()
+        );
+
+        let m = QuestionMetrics::summarise([&hit, &miss, &unlabelled], ECE_BINS);
+        assert_eq!((m.labelled, m.correct), (2, 1));
+        assert_eq!(m.brier, None, "no distribution to score");
+        let mean = f64::midpoint(close.iou(&label), far.iou(&label));
+        assert!((m.mean_iou.unwrap() - mean).abs() < 1e-12);
+        assert_eq!(m.confusion["box"]["box"], 2);
+        assert_eq!(m.confidence_when_right, Some(0.9));
+        assert_eq!(m.confidence_when_wrong, Some(0.0));
+        // `of_answer` cannot grade a Box: no label in words.
+        let answer = Answer::Box {
+            edges: close,
+            confidence: Some(Confidence::new(0.7).unwrap()),
+        };
+        let graded = Judgment::of_answer(&answer, Some("box"));
+        assert_eq!(
+            (graded.predicted.as_str(), graded.correct, graded.iou),
+            ("box", None, None)
+        );
+        assert!((graded.confidence - 0.7).abs() < f64::EPSILON);
+        let other = QuestionMetrics::summarise([&Judgment::noul(0.9, Some(true), true)], ECE_BINS);
+        assert_eq!(other.mean_iou, None);
     }
 
     #[test]

@@ -1,8 +1,9 @@
 # Recorded answer for case `docs-gate-red`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: docs-gate-red
+  minor: 3
 spec:
   elapsed_ms: 146
   fingerprint: sha256:f2d1c93315a4a1aa541058458927e006ad49d86547ef1093f6d927557040fd73

@@ -5,6 +5,10 @@ A Claude Code plugin for writing, measuring and tuning `.jud` documents, and for
 typed questions a System One model is asked and the policy that reads its
 answers), the **Cases** it is graded on, and a **Recording** of what a model
 answered. The crate's own reader checks every document the plugin writes.
+Since 0.4.0 the skills know Jev 1.14: a Box question that locates something
+in an image, the images a rubric or a case declares under `assets`, labels
+graded by intersection over union, and a typed module whose `decide` takes
+the images.
 
 ```sh
 claude plugin marketplace add chussenot/judgment

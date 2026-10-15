@@ -537,3 +537,224 @@ async fn two_files_recording_one_request_are_read_in_name_order() {
     assert_eq!(response.model, "fake-1", "b.json, the later name, answers");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---------------------------------------------------------------------------
+// Images through the backends: accepted, keyed and checked
+// ---------------------------------------------------------------------------
+
+fn fixture_image(name: &str) -> judgment::Image {
+    judgment::Image::read(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/images")
+            .join(name),
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_fake_takes_images_remembers_them_and_refuses_an_unreferenced_one() {
+    let mut q = Questions::new();
+    let person = q
+        .noul("person", "Is there a person in `door`?", None)
+        .unwrap();
+    let mut assets = judgment::Assets::new();
+    let door = assets.add(fixture_image("square-300.png")).unwrap();
+    let fake = Fake::new().noul("person", 0.9).unwrap();
+    let state = json!({ "door": door });
+    let response = fake
+        .answer_with_assets(&state, "jev-preview", &q, &assets)
+        .await
+        .unwrap();
+    assert!(response.get(&person).unwrap().is_yes(0.5));
+    let calls = fake.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].assets[&door], assets.get(&door).unwrap().digest());
+    // A reference the state does not carry: the hosted API's 400, here.
+    let err = fake
+        .answer_with_assets(&json!({ "door": "x" }), "jev-preview", &q, &assets)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, Error::InvalidAsset { .. }), "{err}");
+    assert_eq!(fake.calls().len(), 1, "a refused call is not remembered");
+    // Without images, the call is as it was.
+    fake.answer(&json!({ "door": "text" }), "m", &q)
+        .await
+        .unwrap();
+    assert!(fake.calls()[1].assets.is_empty());
+}
+
+/// Two requests that differ only by their image are two recordings, and a
+/// replay answers each from its own; the same image re-read from disk is
+/// the same request.
+#[tokio::test]
+async fn a_recorder_keys_by_the_image_and_a_replay_finds_it_again() {
+    let dir = test_dir("images");
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut q = Questions::new();
+    q.noul("person", "Is there a person in `door`?", None)
+        .unwrap();
+    let mut png = judgment::Assets::new();
+    let p = png.add(fixture_image("square-300.png")).unwrap();
+    let mut jpeg = judgment::Assets::new();
+    let j = jpeg.add(fixture_image("square-300.jpg")).unwrap();
+    // The reference is the image's own, so the states differ with the image.
+    let state_png = json!({ "door": p });
+    let state_jpeg = json!({ "door": j });
+    let recorder = Recorder::new(Fake::new().model("fake").noul("person", 0.9).unwrap(), &dir);
+    recorder
+        .answer_with_assets(&state_png, "m", &q, &png)
+        .await
+        .unwrap();
+    recorder
+        .answer_with_assets(&state_jpeg, "m", &q, &jpeg)
+        .await
+        .unwrap();
+    let files = std::fs::read_dir(&dir).unwrap().count();
+    assert_eq!(files, 2, "one recording per image");
+
+    let replay = Replay::open(&dir).unwrap();
+    assert_eq!(replay.len(), 2);
+    let again = judgment::Assets::new();
+    let mut again = {
+        let mut a = again;
+        a.add(fixture_image("square-300.png")).unwrap();
+        a
+    };
+    replay
+        .answer_with_assets(&state_png, "m", &q, &again)
+        .await
+        .unwrap();
+    // The same reference over other bytes is a request nobody recorded.
+    again = judgment::Assets::new();
+    again
+        .insert(p.clone(), fixture_image("progressive-300.jpg"))
+        .unwrap();
+    let err = replay
+        .answer_with_assets(&state_png, "m", &q, &again)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, Error::NoRecording(_)), "{err}");
+    // And without the image at all.
+    let err = replay.answer(&state_png, "m", &q).await.unwrap_err();
+    assert!(matches!(err, Error::NoRecording(_)), "{err}");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The request fingerprint and hash name the image by its bytes, under
+/// `assets`, and are what they were for a request without any.
+#[test]
+fn the_fingerprint_names_the_image_by_its_bytes_and_is_unchanged_without() {
+    use judgment::eval::canonical::{request_fingerprint, request_fingerprint_with};
+    use judgment::eval::request_hash_with;
+    let mut q = Questions::new();
+    q.noul("person", "Is there a person in `door`?", None)
+        .unwrap();
+    let state = json!({ "door": "img-x" });
+    let none = judgment::Assets::new();
+    assert_eq!(
+        request_fingerprint_with(&state, &q, &none),
+        request_fingerprint(&state, &q)
+    );
+    assert_eq!(
+        request_hash_with(&state, &q, &none),
+        request_hash(&state, &q)
+    );
+    let mut a = judgment::Assets::new();
+    a.insert("img-x", fixture_image("square-300.png")).unwrap();
+    let mut b = judgment::Assets::new();
+    b.insert("img-x", fixture_image("square-300.jpg")).unwrap();
+    assert_ne!(
+        request_fingerprint_with(&state, &q, &a),
+        request_fingerprint_with(&state, &q, &b)
+    );
+    assert_ne!(
+        request_fingerprint_with(&state, &q, &a),
+        request_fingerprint(&state, &q)
+    );
+    assert_ne!(request_hash_with(&state, &q, &a), request_hash(&state, &q));
+    // The value fingerprinted, as another tool computes it.
+    let digest = a.get("img-x").unwrap().digest().to_owned();
+    let expected = judgment::eval::canonical::fingerprint(&json!({
+        "assets": { "img-x": digest },
+        "questions": serde_json::to_value(&q).unwrap(),
+        "state": state,
+    }));
+    assert_eq!(request_fingerprint_with(&state, &q, &a), expected);
+}
+
+/// A backend written elsewhere that implements `answer` alone refuses
+/// images rather than drop them.
+#[tokio::test]
+async fn a_backend_without_images_refuses_them_by_default() {
+    struct TextOnly(Fake);
+    impl SystemOne for TextOnly {
+        fn answer<'a>(
+            &'a self,
+            state: &'a Value,
+            model: &'a str,
+            questions: &'a Questions,
+        ) -> BoxFuture<'a, judgment::Result<Response>> {
+            self.0.answer(state, model, questions)
+        }
+    }
+    let text_only = TextOnly(Fake::new().noul("person", 0.5).unwrap());
+    let mut q = Questions::new();
+    q.noul("person", "?", None).unwrap();
+    let mut assets = judgment::Assets::new();
+    let door = assets.add(fixture_image("square-300.png")).unwrap();
+    let state = json!({ "door": door });
+    let err = text_only
+        .answer_with_assets(&state, "m", &q, &assets)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidAsset { reference, reason } if *reference == door && reason.contains("no images")),
+        "{err}"
+    );
+    text_only
+        .answer_with_assets(&state, "m", &q, &judgment::Assets::new())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_fake_box_is_checked_as_on_the_wire() {
+    use judgment::BoxEdges;
+    let mut q = Questions::new();
+    let mug = q.r#box("mug", "the mug in `photo`").unwrap();
+    let fake = Fake::new()
+        .r#box("mug", BoxEdges::new(0.25, 0.82, 0.44, 0.84), Some(0.9))
+        .unwrap();
+    let found = fake
+        .answer(&json!({ "photo": "x" }), "m", &q)
+        .await
+        .unwrap()
+        .get(&mug)
+        .unwrap();
+    assert!((found.width() - 0.4).abs() < 1e-9);
+    assert!(found.confidence_at_least(0.9));
+    let none = Fake::new()
+        .r#box("mug", BoxEdges::new(0.25, 0.82, 0.44, 0.84), None)
+        .unwrap();
+    let found = none
+        .answer(&json!({}), "m", &q)
+        .await
+        .unwrap()
+        .get(&mug)
+        .unwrap();
+    assert_eq!(found.confidence, None);
+    // Refused when the fake answers, as a server's would be.
+    let upside_down = Fake::new()
+        .r#box("mug", BoxEdges::new(0.82, 0.25, 0.44, 0.84), Some(0.9))
+        .unwrap();
+    let err = upside_down.answer(&json!({}), "m", &q).await.unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidAnswer { id, reason, .. } if id == "mug" && reason.contains("top 0.82 is not below")),
+        "{err}"
+    );
+    assert!(upside_down.calls().is_empty());
+    let err = Fake::new()
+        .r#box("mug", BoxEdges::new(0.1, 0.2, 0.3, 0.4), Some(1.5))
+        .unwrap_err();
+    assert!(matches!(err, Error::NotAProbability { .. }), "{err}");
+}

@@ -248,6 +248,7 @@ impl<'a> Reading<'a> {
                     .unwrap_or_else(|| i.to_string()),
             ],
             Expect::Text(t) => vec![t.clone()],
+            Expect::Box(_) => vec!["box".to_owned()],
         }
     }
 
@@ -280,6 +281,7 @@ impl<'a> Reading<'a> {
                 .filter_map(|i| self.level_text(question, Some(i)))
                 .collect(),
             Some(Question::Noul { .. }) => vec!["true".to_owned(), "false".to_owned()],
+            Some(Question::Box { .. }) => vec!["box".to_owned()],
             None => Vec::new(),
         }
     }

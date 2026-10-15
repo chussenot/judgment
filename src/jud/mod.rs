@@ -1,8 +1,8 @@
 //! The `.jud` document format: a rubric with its policy, the cases it is
 //! graded on and the recordings of what a model answered, as YAML or JSON
 //! any tool can read, write and name by content. The specification is
-//! `docs/reference/jud-format.md`; this module reads and writes one version of it,
-//! [`API_VERSION`]: [`parse`] for any kind, [`Rubric`], [`Cases`], and [`parse_recording`]
+//! `docs/reference/jud-format.md`; this module reads and writes one line of it,
+//! [`API_VERSION`] up to [`MINOR`]: [`parse`] for any kind, [`Rubric`], [`Cases`], and [`parse_recording`]
 //! and [`recording_to_yaml`] for a [`crate::eval::Recording`]. Fingerprints
 //! are [`crate::eval::canonical`].
 //!
@@ -19,16 +19,33 @@ use crate::eval::Recording;
 mod cases;
 mod rubric;
 
-pub use cases::{Case, Cases, Expect, FromTurn, Turn, grade, turns};
+pub use cases::{BoxLabel, Case, Cases, Expect, FromTurn, Turn, grade, turns};
+
+use std::path::Path;
+
+use crate::asset::{Assets, Image, ImageFormat};
 pub use rubric::{
     Band, Deferred, Gate, LevelRef, OptionsFrom, Policy, Rubric, RubricQuestion, Supplied, Tuning,
     Verdict,
 };
 
-/// The one `apiVersion` this crate reads and writes. A document of any
-/// other version is refused by name: the format has no compatibility
-/// between versions, and a change takes a new apiVersion.
-pub const API_VERSION: &str = "jud/v1.3";
+/// The `apiVersion` this crate reads and writes: the stable `v1` line of
+/// the format, whose minor is `metadata.minor` ([`MINOR`]; decision 0020).
+/// Any other string is refused by name, but for [`EARLIER_SPELLINGS`].
+pub const API_VERSION: &str = "jud/v1";
+
+/// The highest `metadata.minor` this crate reads, and the one it writes. A
+/// minor only adds (`docs/reference/stability.md`), so every lower minor
+/// is read too; a document declaring a higher one needs a later release
+/// and is refused by number ([`Error::Minor`]).
+pub const MINOR: u32 = 4;
+
+/// How a minor was spelled before `metadata.minor` existed, with the
+/// minor it is: `jud/v1.3` wrote its minor into the `apiVersion` string.
+/// Read as that minor, with no `metadata.minor` allowed beside it, for at
+/// least twelve months from the release that first reads `jud/v1`
+/// (`docs/reference/stability.md`); never written.
+pub const EARLIER_SPELLINGS: [(&str, u32); 1] = [("jud/v1.3", 3)];
 
 /// The three kinds, as the `kind` field spells them.
 pub const KINDS: [&str; 3] = ["Rubric", "Cases", "Recording"];
@@ -61,11 +78,22 @@ pub enum Error {
     Syntax(String),
     /// An `apiVersion` this crate does not read.
     #[error(
-        "`apiVersion: {found}` is not a version this crate reads; it reads `apiVersion: jud/v1.3`"
+        "`apiVersion: {found}` is not a version this crate reads; it reads `apiVersion: jud/v1` with `metadata.minor`, and the earlier spelling `jud/v1.3`"
     )]
     Version {
         /// What the document said.
         found: String,
+    },
+    /// A `metadata.minor` above the one this crate reads: the document
+    /// uses something a later minor added, and a later release reads it.
+    #[error(
+        "`metadata.minor: {found}` is past the minor this crate reads, {reads}; a later release of the crate reads it"
+    )]
+    Minor {
+        /// What the document declared.
+        found: u64,
+        /// The highest minor this crate reads.
+        reads: u32,
     },
     /// A `kind:` this crate does not know.
     #[error("`kind: {found}` is not a document kind; the kinds are Rubric, Cases and Recording")]
@@ -133,6 +161,212 @@ pub enum Error {
 /// Result alias.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Where a document's image comes from (`docs/reference/jud-format.md`, Assets;
+/// decision 0025): a file beside the document, or the bytes inline. The
+/// map an entry sits in is keyed by the reference written where the image
+/// belongs, as the wire's `assets` is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssetSource {
+    /// `image`, the one kind; written always, read optionally.
+    #[serde(rename = "type", default = "image_type")]
+    pub kind: String,
+    /// A path relative to the document's directory, never absolute and never
+    /// leaving it; the format is read from the file and checked against
+    /// `format` when one is written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// `png`, `jpg` or `jpeg`: required with `data_base64`, optional with a path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    /// The file's bytes as the wire carries them, for a small image a
+    /// document keeps to itself; a path is the usual choice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_base64: Option<String>,
+}
+
+fn image_type() -> String {
+    "image".to_owned()
+}
+
+impl AssetSource {
+    /// An image at `path`, relative to the document.
+    pub fn path(path: impl Into<String>) -> Self {
+        Self {
+            kind: image_type(),
+            path: Some(path.into()),
+            format: None,
+            data_base64: None,
+        }
+    }
+
+    /// An image inline, as `format` and its base64.
+    pub fn inline(image: &Image) -> Self {
+        Self {
+            kind: image_type(),
+            path: None,
+            format: Some(image.format().wire_name().to_owned()),
+            data_base64: Some(image.to_base64()),
+        }
+    }
+
+    /// The shape checks a reader makes without touching a file: the kind is
+    /// `image`, exactly one of `path` and `data_base64`, a format the wire
+    /// takes, `format` beside `data_base64`, a relative path that stays in
+    /// the directory. `field` names the entry in a refusal.
+    pub(crate) fn check(&self, field: &str) -> Result<()> {
+        let refuse = |reason: String| {
+            Err(Error::Invalid {
+                field: field.to_owned(),
+                reason,
+            })
+        };
+        if self.kind != "image" {
+            return refuse(format!(
+                "`type: {}` is not an asset kind; the one kind is `image`",
+                self.kind
+            ));
+        }
+        match (&self.path, &self.data_base64) {
+            (Some(_), Some(_)) => {
+                return refuse(
+                    "has both `path` and `data_base64`; an image comes one way".to_owned(),
+                );
+            }
+            (None, None) => {
+                return refuse(
+                    "needs `path` (relative to the document) or `data_base64`".to_owned(),
+                );
+            }
+            (None, Some(_)) if self.format.is_none() => {
+                return refuse(
+                    "`format` (png, jpg or jpeg) is required with `data_base64`".to_owned(),
+                );
+            }
+            _ => {}
+        }
+        if let Some(format) = &self.format
+            && ImageFormat::from_wire_name(format).is_none()
+        {
+            return refuse(format!(
+                "`format: {format}` is not one the API takes: png, jpg or jpeg"
+            ));
+        }
+        if let Some(path) = &self.path {
+            let p = Path::new(path);
+            let leaves = p.is_absolute()
+                || p.components().any(|c| {
+                    matches!(
+                        c,
+                        std::path::Component::ParentDir | std::path::Component::Prefix(_)
+                    )
+                });
+            if path.is_empty() || leaves {
+                return refuse(format!(
+                    "`path: {path}` must be relative to the document and stay under its directory"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// The image: read from `base` joined with the path, or decoded from
+    /// the base64. [`Error::Invalid`] names the entry and what went wrong,
+    /// the path included, so a file that moved fails loudly by name.
+    pub fn load(&self, field: &str, base: &Path) -> Result<Image> {
+        self.check(field)?;
+        let invalid = |reason: String| Error::Invalid {
+            field: field.to_owned(),
+            reason,
+        };
+        let image = match (&self.path, &self.data_base64) {
+            (Some(path), _) => {
+                let full = base.join(path);
+                let image = Image::read(&full)
+                    .map_err(|e| invalid(format!("cannot load the image at {path}: {e}")))?;
+                if let Some(format) = &self.format
+                    && ImageFormat::from_wire_name(format) != Some(image.format())
+                {
+                    return Err(invalid(format!(
+                        "{path} is a {} but the entry says `format: {format}`",
+                        image.format()
+                    )));
+                }
+                image
+            }
+            (None, Some(text)) => Image::from_base64(text, self.format.as_deref())
+                .map_err(|e| invalid(e.to_string()))?,
+            (None, None) => unreachable!("checked above"),
+        };
+        Ok(image)
+    }
+}
+
+/// The reference and shape checks over a document's asset map, and that
+/// every reference appears in `referenced_json` (the questions' or the
+/// state's JSON text): the server refuses an unreferenced asset with a 400,
+/// and a reference that appears nowhere is a typo somewhere.
+pub(crate) fn check_assets(
+    field: &str,
+    assets: &IndexMap<String, AssetSource>,
+    referenced_json: &str,
+) -> Result<()> {
+    let mut total = 0;
+    for (reference, source) in assets {
+        let entry = format!("{field}.{reference}");
+        if reference.trim().is_empty() || reference.len() > crate::asset::MAX_REFERENCE_BYTES {
+            return Err(Error::Invalid {
+                field: entry,
+                reason: format!(
+                    "a reference is text, not empty and at most {} bytes",
+                    crate::asset::MAX_REFERENCE_BYTES
+                ),
+            });
+        }
+        total += reference.len();
+        source.check(&entry)?;
+        let quoted = serde_json::to_string(reference).unwrap_or_default();
+        if !referenced_json.contains(quoted.trim_matches('"')) {
+            return Err(Error::Invalid {
+                field: entry,
+                reason: "is referenced nowhere; write the reference where the image belongs, or drop the entry".to_owned(),
+            });
+        }
+    }
+    if total > crate::asset::MAX_REFERENCES_BYTES {
+        return Err(Error::Invalid {
+            field: field.to_owned(),
+            reason: format!(
+                "the references weigh {total} bytes together, over the {} the API allows",
+                crate::asset::MAX_REFERENCES_BYTES
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Load a document's declared images into the request's [`Assets`], each
+/// path relative to `base`, the document's directory. A reference already
+/// in `into` must name the same bytes ([`Error::Invalid`] otherwise), so a
+/// rubric's images and a case's merge into one request.
+pub fn load_assets(
+    field: &str,
+    declared: &IndexMap<String, AssetSource>,
+    base: &Path,
+    into: &mut Assets,
+) -> Result<()> {
+    for (reference, source) in declared {
+        let entry = format!("{field}.{reference}");
+        let image = source.load(&entry, base)?;
+        into.insert(reference.clone(), image)
+            .map_err(|e| Error::Invalid {
+                field: entry,
+                reason: e.to_string(),
+            })?;
+    }
+    Ok(())
+}
+
 /// Parse a document of any kind, YAML or JSON, by its `kind`.
 pub fn parse(text: &str) -> Result<Document> {
     let envelope: Envelope = from_text(text)?;
@@ -145,25 +379,47 @@ pub fn parse(text: &str) -> Result<Document> {
     }
 }
 
-/// The two keys read before anything else, so a document of another
-/// version or kind is refused by name and never half-read.
+/// The keys read before anything else, so a document of another version,
+/// minor or kind is refused by name and never half-read: `apiVersion`,
+/// `kind` and `metadata.minor`.
 #[derive(Deserialize)]
 pub(crate) struct Envelope {
     #[serde(default, rename = "apiVersion")]
     pub(crate) api_version: Option<Value>,
     #[serde(default)]
     pub(crate) kind: Option<String>,
+    #[serde(default)]
+    pub(crate) metadata: Option<EnvelopeMetadata>,
+}
+
+/// The one metadata field the envelope check reads; the rest is each
+/// kind's reader's.
+#[derive(Deserialize, Default)]
+pub(crate) struct EnvelopeMetadata {
+    #[serde(default)]
+    pub(crate) minor: Option<Value>,
 }
 
 impl Envelope {
     pub(crate) fn check(&self) -> Result<()> {
+        let minor = self.metadata.as_ref().and_then(|m| m.minor.as_ref());
         match &self.api_version {
             None => {
                 return Err(Error::Missing {
                     field: "apiVersion",
                 });
             }
-            Some(Value::String(s)) if s == API_VERSION => {}
+            Some(Value::String(s)) if s == API_VERSION => check_minor(minor)?,
+            Some(Value::String(s)) if EARLIER_SPELLINGS.iter().any(|(e, _)| e == s) => {
+                if minor.is_some() {
+                    return Err(Error::Invalid {
+                        field: "metadata.minor".to_owned(),
+                        reason: format!(
+                            "not a field of a `{s}` document, whose minor is in its apiVersion; write `apiVersion: {API_VERSION}` to declare one"
+                        ),
+                    });
+                }
+            }
             Some(other) => {
                 return Err(Error::Version {
                     found: other.to_string(),
@@ -195,12 +451,41 @@ impl Envelope {
     }
 }
 
-/// The `metadata` of any kind: a name, and what a tool keeps beside the
-/// format. Which optional fields a kind takes is checked by its reader.
+/// `metadata.minor` under `apiVersion: jud/v1`: required, an integer, at
+/// most [`MINOR`]. Checked before anything else in the document.
+fn check_minor(minor: Option<&Value>) -> Result<()> {
+    let Some(minor) = minor else {
+        return Err(Error::Missing {
+            field: "metadata.minor",
+        });
+    };
+    let Some(found) = minor.as_u64() else {
+        return Err(Error::Invalid {
+            field: "metadata.minor".to_owned(),
+            reason: format!(
+                "{minor} is not a minor version: a non-negative integer, {MINOR} today"
+            ),
+        });
+    };
+    if found > u64::from(MINOR) {
+        return Err(Error::Minor {
+            found,
+            reads: MINOR,
+        });
+    }
+    Ok(())
+}
+
+/// The `metadata` of any kind: a name, the minor the document needs, and
+/// what a tool keeps beside the format. Which optional fields a kind takes
+/// is checked by its reader; `minor` was checked by the envelope and is
+/// written as [`MINOR`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Metadata {
     pub(crate) name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) minor: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) version: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -295,6 +580,7 @@ pub fn recording_to_yaml(recording: &Recording) -> Result<String> {
         kind: "Recording",
         metadata: Metadata {
             name: recording.case.clone(),
+            minor: Some(MINOR),
             ..Metadata::default()
         },
         spec: &spec,
@@ -435,10 +721,56 @@ mod tests {
             ),
             "{err}"
         );
-        for other in ["jud/v1.2", "jud/v1.4", "jud/v2", "v1.3", "1.3"] {
+        for other in ["jud/v1.2", "jud/v1.4", "jud/v2", "v1.3", "1.3", "jud/v1.0"] {
             let err = parse(&format!("apiVersion: {other}\nkind: Rubric\n")).unwrap_err();
             assert!(matches!(err, Error::Version { .. }), "{other}: {err}");
         }
+        // `jud/v1` needs a minor, an integer at most the one this crate reads.
+        let err = parse("apiVersion: jud/v1\nkind: Rubric\nmetadata: {name: r}\n").unwrap_err();
+        assert!(
+            matches!(
+                err,
+                Error::Missing {
+                    field: "metadata.minor"
+                }
+            ),
+            "{err}"
+        );
+        let err = parse(&format!(
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata: {{name: r, minor: {}}}\n",
+            MINOR + 1
+        ))
+        .unwrap_err();
+        assert!(
+            matches!(err, Error::Minor { found, reads } if found == u64::from(MINOR + 1) && reads == MINOR),
+            "{err}"
+        );
+        for bad in ["\"3\"", "3.5", "-1", "null"] {
+            let err = parse(&format!(
+                "apiVersion: jud/v1\nkind: Rubric\nmetadata: {{name: r, minor: {bad}}}\n"
+            ))
+            .unwrap_err();
+            assert!(
+                matches!(&err, Error::Invalid { field, .. } if field == "metadata.minor")
+                    || matches!(
+                        err,
+                        Error::Missing {
+                            field: "metadata.minor"
+                        }
+                    ),
+                "{bad}: {err}"
+            );
+        }
+        // The earlier spelling reads as its minor, and takes no `minor`.
+        parse("apiVersion: jud/v1.3\nkind: Rubric\nmetadata: {name: r}\nspec:\n  questions:\n    q: {type: noul, instructions: ok?}\n").unwrap();
+        let err = parse("apiVersion: jud/v1.3\nkind: Rubric\nmetadata: {name: r, minor: 3}\n")
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::Invalid { field, .. } if field == "metadata.minor"),
+            "{err}"
+        );
+        // A lower minor is read: a minor only adds.
+        parse("apiVersion: jud/v1\nkind: Rubric\nmetadata: {name: r, minor: 0}\nspec:\n  questions:\n    q: {type: noul, instructions: ok?}\n").unwrap();
         let err = parse("apiVersion: 1.3\nkind: Rubric\n").unwrap_err();
         assert!(
             matches!(err, Error::Version { .. }),
@@ -483,7 +815,8 @@ mod tests {
             "{err}"
         );
         // An unknown kind is still the other error, through the same path.
-        let err = Rubric::parse("apiVersion: jud/v1.3\nkind: verdicts\n").unwrap_err();
+        let err = Rubric::parse("apiVersion: jud/v1\nkind: verdicts\nmetadata: {minor: 3}\n")
+            .unwrap_err();
         assert!(
             matches!(&err, Error::Kind { found } if found == "verdicts"),
             "{err}"

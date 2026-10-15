@@ -102,6 +102,8 @@ const TOLERANCE: f64 = 1e-9;
 ///       "id", "labelled", "correct",
 ///       "accuracy", "accuracy_interval95",   // [low, high], Wilson
 ///       "brier", "ece",
+///       "mean_iou",                       // a Box question's mean intersection
+///                                        // over union with its labels; null else
 ///       "confidence_when_right", "confidence_when_wrong",
 ///                                        // all null while "labelled" is 0;
 ///                                        // all of these read the MODEL's answer
@@ -110,8 +112,9 @@ const TOLERANCE: f64 = 1e-9;
 ///       "gate": { "acted", "deferred", "accuracy_when_acted" } | null,
 ///                                        // the POLICY's: what the gate did with
 ///                                        // the answers, see `GateCoverage`
-///       "misses": [ { "case", "expected", "predicted", "confidence" } ],
-///                                        // the model's misses, as `correct` counts
+///       "misses": [ { "case", "expected", "predicted", "confidence", "iou"? } ],
+///                                        // the model's misses, as `correct` counts;
+///                                        // `iou` on a Box's miss only
 ///       "outcomes": [ { "outcome", "level", "labelled", "predicted", "correct" } ],
 ///                                        // every outcome the question offers, in
 ///                                        // its order, then any other seen: how many
@@ -215,6 +218,8 @@ struct QuestionReport {
     accuracy_interval95: Option<(f64, f64)>,
     brier: Option<f64>,
     ece: Option<f64>,
+    /// A Box question's mean intersection over union with its labels.
+    mean_iou: Option<f64>,
     confidence_when_right: Option<f64>,
     confidence_when_wrong: Option<f64>,
     /// What the rubric's gate for this question does with the answers;
@@ -335,6 +340,9 @@ struct Miss {
     predicted: String,
     /// The model's confidence in what it predicted.
     confidence: f64,
+    /// A Box's intersection over union with its label, under the bar.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    iou: Option<f64>,
 }
 
 /// One `--min-accuracy` check: a bar and the accuracy of one question.
@@ -492,6 +500,7 @@ fn question_report(
         accuracy_interval95: metrics.accuracy_interval95,
         brier: metrics.brier,
         ece: metrics.ece,
+        mean_iou: metrics.mean_iou,
         confidence_when_right: metrics.confidence_when_right,
         confidence_when_wrong: metrics.confidence_when_wrong,
         gate,
@@ -523,6 +532,8 @@ fn offered(rubric: &Rubric, id: &str) -> Vec<(String, Option<String>)> {
                 (i.to_string(), Some(text))
             })
             .collect(),
+        // One outcome, `box`: a Box is right or wrong by its IoU.
+        Some(Question::Box { .. }) => vec![("box".to_owned(), None)],
         None => Vec::new(),
     }
 }
@@ -653,6 +664,7 @@ fn misses(id: &str, answered: &[Answered]) -> Vec<Miss> {
                         expected: judgment.expected.clone()?,
                         predicted: judgment.predicted.clone(),
                         confidence: judgment.confidence,
+                        iou: judgment.iou,
                     })
                 })
         })
@@ -802,11 +814,18 @@ impl Report {
         let width = self.questions.iter().map(|q| q.id.len()).max().unwrap_or(0);
         for q in &self.questions {
             for m in &q.misses {
-                writeln!(
-                    f,
-                    "  {:<width$}  {}: expected {}, predicted {}, confidence {:.2}",
-                    q.id, m.case, m.expected, m.predicted, m.confidence
-                )?;
+                match m.iou {
+                    Some(iou) => writeln!(
+                        f,
+                        "  {:<width$}  {}: a box at IoU {iou:.2} with the label, confidence {:.2}",
+                        q.id, m.case, m.confidence
+                    )?,
+                    None => writeln!(
+                        f,
+                        "  {:<width$}  {}: expected {}, predicted {}, confidence {:.2}",
+                        q.id, m.case, m.expected, m.predicted, m.confidence
+                    )?,
+                }
             }
         }
         Ok(())
@@ -840,6 +859,13 @@ impl QuestionReport {
                 fixed(self.confidence_when_right, 2),
                 fixed(self.confidence_when_wrong, 2)
             )?;
+            if self.mean_iou.is_some() {
+                writeln!(
+                    f,
+                    "  mean IoU {} (a box is right at or above its label's IoU bar)",
+                    fixed(self.mean_iou, 2)
+                )?;
+            }
         }
         if self.labelled > 0 {
             let counts: Vec<String> = self

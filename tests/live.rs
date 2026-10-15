@@ -29,8 +29,8 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use judgment::{
-    Answer, CallOptions, Client, Error, NoulCriteria, Questions, Recorder, Replay, Request,
-    SystemOne, options,
+    Answer, Assets, BoxEdges, CallOptions, Client, Error, Image, NoulCriteria, Questions, Recorder,
+    Replay, Request, SystemOne, options,
 };
 use serde_json::{Value, json};
 
@@ -476,12 +476,7 @@ async fn a_structured_score_level_is_echoed() {
     let base_url = base_url();
     let state = json!({ "message": STATE_PAYOUTS });
     let model = env_or("JUDGMENT_LIVE_MODEL", "typed-decisions");
-    let body = serde_json::to_vec(&Request {
-        state: &state,
-        model: &model,
-        questions: &q,
-    })
-    .unwrap();
+    let body = serde_json::to_vec(&Request::new(&state, &model, &q)).unwrap();
     let sent = reqwest::Client::new()
         .post(format!("{}/v1/systemone", base_url.trim_end_matches('/')))
         .bearer_auth(env_or("JUDGMENT_LIVE_API_KEY", "unused"))
@@ -537,12 +532,7 @@ async fn every_body_the_server_sends_holds_to_the_published_document() {
     .unwrap();
     let state = json!({ "message": STATE_PAYOUTS });
     let model = requested_model();
-    let body = serde_json::to_value(Request {
-        state: &state,
-        model: &model,
-        questions: &q,
-    })
-    .unwrap();
+    let body = serde_json::to_value(Request::new(&state, &model, &q)).unwrap();
     let (status, text) = post_raw(&body).await;
     assert_eq!(status, 200, "{text}");
 
@@ -692,11 +682,7 @@ async fn an_unknown_extra_field_is_answered_or_refused_by_name() {
     let options = CallOptions::new()
         .extra("judgment_live_unknown_field", 4)
         .unwrap();
-    let request = Request {
-        state: &state,
-        model: client.model(),
-        questions: &q,
-    };
+    let request = Request::new(&state, client.model(), &q);
     match client.evaluate_with(&request, &options).await {
         Ok(response) => {
             response.get(&urgent).unwrap();
@@ -789,12 +775,22 @@ async fn a_wrong_bearer_token_is_unauthorized_and_the_right_one_is_not() {
 /// bypassing the builder, for the shapes the builder refuses. Returns the
 /// status and the body text.
 async fn post_raw(body: &serde_json::Value) -> (u16, String) {
+    post_raw_with(body, &[]).await
+}
+
+/// [`post_raw`] with extra headers: the images header, for a request that
+/// carries an image or asks a Box.
+async fn post_raw_with(body: &serde_json::Value, headers: &[(&str, &str)]) -> (u16, String) {
     let base_url = base_url();
-    let response = reqwest::Client::new()
+    let mut request = reqwest::Client::new()
         .post(format!("{}/v1/systemone", base_url.trim_end_matches('/')))
         .bearer_auth(env_or("JUDGMENT_LIVE_API_KEY", "unused"))
         .header("content-type", "application/json")
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_secs(120));
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    let response = request
         .body(serde_json::to_vec(body).unwrap())
         .send()
         .await
@@ -1092,6 +1088,136 @@ async fn a_state_over_the_budget_is_refused_as_too_large() {
             assert!(
                 expected.is_none(),
                 "{profile:?} refuses it with {expected:?}: {other}"
+            );
+        }
+    }
+}
+
+/// The image one of the shapes cases is about, and the box its generator
+/// drew the circle at (`examples/jud/shapes-cases.jud`, `shape-01`).
+fn shape_01() -> (Image, BoxEdges) {
+    let image = Image::read(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/examples/jud/images/shape-01.png"
+    )))
+    .unwrap();
+    (image, BoxEdges::new(0.3688, 0.85, 0.1969, 0.6781))
+}
+
+/// An image in the request and a Box question about it: the hosted API
+/// takes both under the images header on Jev 1.14 (`jev-preview` while
+/// `jev-latest` is 1.13) and answers a box inside the image with a
+/// confidence, overlapping the generator's own box; a server without the
+/// primitive refuses the request by name, which is printed. The body is
+/// then sent raw, as the client serialises it, and checked against the
+/// published document with the answer; without the header, the hosted API
+/// refuses it with a 400 that names what is missing.
+#[tokio::test]
+#[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
+async fn an_image_and_a_box_question_round_trip() {
+    let (image, label) = shape_01();
+    let mut assets = Assets::new();
+    assets.insert("image", image).unwrap();
+    let state = json!({ "image": "image" });
+    let mut q = Questions::new();
+    let present = q
+        .noul(
+            "circle_present",
+            "Is there a filled circle in `image`?",
+            None,
+        )
+        .unwrap();
+    let circle = q.r#box("circle", "the filled circle in `image`").unwrap();
+    let profile = *PROFILE;
+    let model = if profile == Profile::Typesafe {
+        "jev-preview".to_owned()
+    } else {
+        requested_model()
+    };
+    match client()
+        .answer_with_assets(&state, &model, &q, &assets)
+        .await
+    {
+        Ok(response) => {
+            let present = response.get(&present).unwrap();
+            let circle = response.get(&circle).unwrap();
+            let iou = circle.edges.iou(&label);
+            eprintln!(
+                "image and box: {} said circle_present {:.2}, box {:?} at confidence {:?}, IoU {iou:.2} with the label",
+                response.model, present.yes, circle.edges, circle.confidence
+            );
+            assert!(present.is_yes(0.5), "{present:?}");
+            if profile == Profile::Typesafe {
+                assert!(iou >= 0.5, "the box overlaps the drawn circle: {iou:.2}");
+                assert!(circle.confidence.is_some(), "the hosted API gives one");
+            }
+        }
+        Err(err) => {
+            eprintln!("image and box: {err}");
+            assert!(profile != Profile::Typesafe, "{err:?}");
+            assert!(matches!(err, Error::InvalidRequest { .. }), "{err:?}");
+        }
+    }
+    // The same body raw: what the client sends is what the document
+    // describes, header included, and the answer is checked too.
+    let body = serde_json::to_value(Request::new(&state, &model, &q).with_assets(&assets)).unwrap();
+    assert!(body["assets"]["image"]["data_base64"].is_string());
+    assert_eq!(body["assets"]["image"]["format"], "png");
+    let (status, text) = post_raw_with(&body, &[("typesafe-danger-zone-images", "true")]).await;
+    eprintln!("raw with the header: {status}");
+    if profile == Profile::Typesafe {
+        assert_eq!(status, 200, "{text}");
+        let (status, text) = post_raw(&body).await;
+        eprintln!("raw without the header: {status} {text}");
+        assert_eq!(status, 400, "the images header is required");
+    }
+}
+
+/// The state [`a_state_over_the_budget_is_refused_as_too_large`] sends,
+/// about 40,000 tokens against the 32,000-token per-question budget, with
+/// long context asked for: the hosted API answers it, on Jev 1.13 and 1.14
+/// alike, since the header raises both limits to 262k; a server without
+/// the header's meaning answers or refuses as it did without it (printed).
+#[tokio::test]
+#[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
+async fn a_state_over_the_default_budget_is_answered_with_long_context() {
+    let noise = vec!["lorem ipsum dolor sit amet consectetur adipiscing elit ".repeat(20); 450];
+    let state = json!({ "message": STATE_PAYOUTS, "noise": noise });
+    let mut q = Questions::new();
+    let urgent = q
+        .noul("urgent", "Does `message` convey urgency?", None)
+        .unwrap();
+    let profile = *PROFILE;
+    let started = std::time::Instant::now();
+    let result = client()
+        .evaluate_with(
+            &Request::new(&state, &requested_model(), &q),
+            &CallOptions::new().long_context(true),
+        )
+        .await;
+    match result {
+        Ok(response) => {
+            let answer = response.get(&urgent).unwrap();
+            eprintln!(
+                "long context: {} answered in {:?}, urgent {:.2}, {:?} input tokens",
+                response.model,
+                started.elapsed(),
+                answer.yes,
+                response.usage.input_tokens
+            );
+            if profile == Profile::Typesafe {
+                assert!(
+                    response.usage.input_tokens > 32_000,
+                    "over the default per-question budget: {:?}",
+                    response.usage
+                );
+            }
+        }
+        Err(err) => {
+            eprintln!("long context: {err}");
+            assert!(
+                profile != Profile::Typesafe,
+                "the header lifts the budget: {err:?}"
             );
         }
     }

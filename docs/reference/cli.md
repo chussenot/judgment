@@ -52,6 +52,16 @@ Options:
       --options-file <PATH>
           --options, read from a file
 
+      --asset <REF=PATH>
+          An image the state refers to: the reference written in the state, and the PNG or JPEG file. Repeatable.
+
+          The file is checked against the hosted API's limits before anything is sent, base64-encoded by jud, and sent with the images header. The rubric's own `spec.assets` are read from the rubric's directory without a flag.
+
+      --pixels <WxH>
+          The image's size, so a located box is also printed in pixels.
+
+          Without it, the size of the request's one image is used; with several images, or none, a box is printed as fractions only.
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -116,9 +126,10 @@ Stdout carries a JSON object keyed by question id, in the rubric's order, the se
 | `yes`, `no` | Noul | `probability` |
 | `option` | Choice | `key`, `confidence`, and `band` when the gate has bands |
 | `level` | Score | `index`, `label`, `value`, `confidence`, `band` when the gate has bands, and `reached` when the gate has `level_at_least` |
-| `deferred` | Choice, Score | `fallback` (`null` when the gate names none), `nearest`, `confidence` and `bar` |
+| `located` | Box | `box` (`top`, `bottom`, `left`, `right`, as fractions of the image), `confidence` when the model gave one, `band` when the gate has bands, and `pixels` (`left`, `top`, `right`, `bottom`) when the image's size is known: `--pixels WxH`, or the request's one image |
+| `deferred` | Choice, Score, Box | `fallback` (`null` when the gate names none, always for a Box), `nearest`, `confidence` and `bar` |
 
-`nearest` is the option key a Choice named, or the index of the level a Score is nearest to, as a string. `bar` is the bar the answer was below, the lowest when the gate has bands. A `desk` the triage rubric defers, because the answer `billing` at 0.4 is below the bar of 0.45:
+`nearest` is the option key a Choice named, the index of the level a Score is nearest to, as a string, or a Box's edges as `top,bottom,left,right`. `bar` is the bar the answer was below, the lowest when the gate has bands. A Box that gave no confidence is read at 0, so a Box gate with a bar defers it. A `desk` the triage rubric defers, because the answer `billing` at 0.4 is below the bar of 0.45:
 
 ```json
 "desk": {
@@ -127,6 +138,17 @@ Stdout carries a JSON object keyed by question id, in the rubric's order, the se
   "nearest": "billing",
   "confidence": 0.4,
   "bar": 0.45
+}
+```
+
+A located box from the shapes rubric, replayed with its 320 by 320 image given as `--asset` ([Locate something with a Box question](../guides/locate-with-a-box.md) shows the whole run):
+
+```json
+"circle": {
+  "verdict": "located",
+  "box": { "top": 0.36, "bottom": 0.86, "left": 0.2, "right": 0.67 },
+  "confidence": 0.92,
+  "pixels": { "left": 64, "top": 115, "right": 214, "bottom": 275 }
 }
 ```
 
@@ -166,7 +188,7 @@ Options:
           Print help (see a summary with '-h')
 ```
 
-One line per document with its kind, path, name, `apiVersion` and what was checked; indented lines with its fingerprints; `error` lines naming the file and the field; a summary. A cases document is bound to the rubric it names among the files; a recording whose `metadata.name` names a case of a bound document is verified against that case's request and its fingerprint compared.
+One line per document with its kind, path, name, `apiVersion` and what was checked; indented lines with its fingerprints; `error` lines naming the file and the field; a summary. A cases document is bound to the rubric it names among the files; a recording whose `metadata.name` names a case of a bound document is verified against that case's request and its fingerprint compared. A rubric's line counts the images it declares. The images themselves are not opened: `check` reads the declarations (the kind, one of `path` and `data_base64`, a relative path under the document's directory, a format the API takes, every reference present in the questions or the state) and leaves the files to the commands that build a request.
 
 ## `jud lower`
 
@@ -205,6 +227,7 @@ The three share these rules.
 
 - **Documents.** Both are read as `jud check` reads them and the cases are bound to the rubric. A document that is refused, or a label that does not fit its question, is status 2 and names the file and the field.
 - **Requests.** A case's request is its `state` lowered with its own `options`, so a Choice with `options_from: request` is asked over the case's options. A conversation (a `state` that is an array) with a `from_turn` label is one request per turn, the state cut after that turn, named `ID-turn-N` with N counted from 0. Every other case is one request.
+- **Images.** The images the rubric declares under `spec.assets` and the case under `assets` are loaded from each document's own directory, merged (a reference in both must name the same bytes) and sent with the request, every turn of a conversation included. They are loaded before any call: a file that is missing, is not a PNG or a JPEG, or is outside the hosted API's limits is status 2, naming the entry. A recording is keyed by each image's digest as well as the state, so a re-encoded image is a request nobody recorded.
 - **Before any call.** Every request is lowered, and every label of a conversation's turn is checked, before any call is made or any answer is taken from a recording. A request the rubric does not lower for the case, or one that asks nothing because every `when` fails for its state, is status 2 and names the case.
 - **Recordings.** Under a replay a recording answers a request by the request's fingerprint, or by its request hash, and never by its file name. It is verified against the questions as a server's response would be.
 - **Missing recordings.** Under a replay every request is tried before the run fails. Status 1 then names every case that has no recording and says to record it with `jud record`. A recording that matches a request and no longer fits its questions is status 1 at that case.
@@ -271,7 +294,7 @@ Status 2, before the first call:
 - A file in `DIR` that does not read as a recording, unless `--refresh` is given, which does not read `DIR`.
 - A missing key, or a `DIR` that cannot be created.
 
-The refusals under [the case commands](#the-case-commands) apply as well.
+The refusals under [the case commands](#the-case-commands) apply as well, an image that cannot be loaded among them; `--dry-run` makes the same refusals, since it loads the images to tell which recordings still answer.
 
 ### What it prints
 
@@ -359,6 +382,7 @@ N requests, model MODEL
 QUESTION
   labelled L, correct C, accuracy A (95% interval LOW to HIGH)
   brier B, calibration error E, confidence when right R, when wrong W
+  mean IoU I (a box is right at or above its label's IoU bar)
   outcomes, labelled/answered/right: OUTCOME L/A/R, OUTCOME L/A/R
   majority OUTCOME, M of L (SHARE)
   gate: acts on A of T, defers D, accuracy when acted X
@@ -366,6 +390,7 @@ QUESTION
 
 model misses (N)
   QUESTION  CASE: expected E, predicted P, confidence C
+  QUESTION  CASE: a box at IoU I with the label, confidence C
 
 --min-accuracy
   met      QUESTION A >= BAR
@@ -376,7 +401,7 @@ There is one block per question, in the rubric's order. When several models answ
 
 A report holds three things that are not the same number: what the model got right, what the policy does with its answers, and where the model was wrong.
 
-- **The model.** `labelled`, `correct`, `accuracy` with its 95 % interval, the Brier score, the calibration error and the mean confidence when right and when wrong, each `-` when there is none. They read the model's own answer: a Noul is yes from a probability of 0.5, a Choice is the option it picked, a Score is its most probable level. [The metrics](../concepts/rubrics-cases-recordings.md#the-metrics) defines them.
+- **The model.** `labelled`, `correct`, `accuracy` with its 95 % interval, the Brier score, the calibration error and the mean confidence when right and when wrong, each `-` when there is none. They read the model's own answer: a Noul is yes from a probability of 0.5, a Choice is the option it picked, a Score is its most probable level, a Box is right when its intersection over union with the label reaches the label's `iou_at_least` (0.5 unless the label says). A Box has no distribution, so its `brier` is `-` and the `mean IoU` line, the mean overlap over its labelled cases, follows in its place; the calibration error and the confidences read its confidence against those hits. [The metrics](../concepts/rubrics-cases-recordings.md#the-metrics) defines them.
 - **The gate.** `acts on A of T, defers D` counts what the rubric's gate for the question does with the T answers that asked it. A Noul's gate never defers, so it acts on every answer. `accuracy when acted` is the accuracy of the policy's own verdicts among the answers the gate acted on and a case labels. A Noul is read at the gate's `threshold` and `strict`, a Choice by the option the verdict names, a Score by the level the policy reads, the one nearest the weighted score. It is not the question's `accuracy`, and moving a bar moves one and not the other.
 - **The outcomes.** For every answer the question offers, in its order (`yes` and `no`, a Choice's options, a Score's levels by their text), how many labels name it, how often the model gave it on a labelled case, and how often rightly. Each count is over the labelled answers, so the labels and the answers each add up to `labelled`. An outcome no case labels shows `0/…`. Options supplied per request follow, as the answers name them.
 - **The majority.** The commonest label, the first in the question's order on a tie, and its share of `labelled`: what always giving that one answer would score.
@@ -385,7 +410,7 @@ A report holds three things that are not the same number: what the model got rig
   - `collapsed: the model answered OUTCOME on N of L labelled cases; …` when one answer takes at least 0.8 of the labelled answers and at least 0.2 more than the largest share any label has.
   - `never answered: OUTCOME (N labelled), …; …` when an outcome at least 3 labels name is never the model's answer on a labelled case. A skewed set hides this from `collapsed`: a model that always says `yes` to a set that is 88 % `yes` answers one outcome only 0.12 more often than the labels name it.
   - `the gate defers D of T: they fall back to FALLBACK` (or `nothing acts on them` without a fallback) when the gate defers at least 0.5 of the answers it sees (`defers_most`) or at least 0.9 (`defers_nearly_all`); one of the two, never both.
-- **The misses.** `model misses` lists the model's own readings that the labels call wrong, one line per miss: question, case, expected, predicted and the model's confidence in what it predicted, which for a Noul is the larger of p and 1 - p. A Noul is `yes` or `no`, a Choice is an option key and a Score is a level index. A miss is not the policy's: a Noul answered 0.52 is a miss against a `false` label, and a gate at 0.55 says no and is right.
+- **The misses.** `model misses` lists the model's own readings that the labels call wrong, one line per miss: question, case, expected, predicted and the model's confidence in what it predicted, which for a Noul is the larger of p and 1 - p. A Noul is `yes` or `no`, a Choice is an option key and a Score is a level index; a Box's miss says the overlap it reached instead, `a box at IoU I with the label`. A miss is not the policy's: a Noul answered 0.52 is a miss against a `false` label, and a gate at 0.55 says no and is right.
 
 ### The JSON report
 
@@ -409,7 +434,8 @@ A report holds three things that are not the same number: what the model got rig
 | `questions[].correct` | integer | Labelled answers the model got right. |
 | `questions[].accuracy` | number or `null` | `correct` over `labelled`; `null` when nothing is labelled. |
 | `questions[].accuracy_interval95` | array of two numbers or `null` | The 95 % Wilson interval, low then high. |
-| `questions[].brier` | number or `null` | The mean Brier score. |
+| `questions[].brier` | number or `null` | The mean Brier score; `null` for a Box, which has no distribution. |
+| `questions[].mean_iou` | number or `null` | A Box question's mean intersection over union with its labels; `null` for any other primitive. |
 | `questions[].ece` | number or `null` | The expected calibration error, over ten bins. |
 | `questions[].confidence_when_right` | number or `null` | `null` when no labelled answer was right. |
 | `questions[].confidence_when_wrong` | number or `null` | `null` when no labelled answer was wrong. |
@@ -422,6 +448,7 @@ A report holds three things that are not the same number: what the model got rig
 | `questions[].misses[].expected` | string | The label, in the answer's words. |
 | `questions[].misses[].predicted` | string | The model's reading, in the same words. |
 | `questions[].misses[].confidence` | number | The model's confidence in `predicted`. |
+| `questions[].misses[].iou` | number | A Box's intersection over union with the label, under the bar; absent on any other primitive's miss. |
 | `questions[].outcomes` | array of objects | One per outcome the question offers, in its order, then any other the labels or answers name. |
 | `questions[].outcomes[].outcome` | string | In the label's words: `yes` or `no`, an option key, a level's index. |
 | `questions[].outcomes[].level` | string or `null` | A Score level's text; `null` for a Noul or a Choice. |
@@ -608,7 +635,7 @@ Reads `RUBRIC`, `CASES` and the recordings in `--replay DIR`, which is required 
 | Question | Gate field | Rule |
 |---|---|---|
 | Noul | `threshold` | The threshold with the best F1, over 0.05 to 0.95 in steps of 0.05. A tie goes to the lower. |
-| Choice, Score | `confidence` | The lowest bar, over 0 to 0.95 in steps of 0.05, whose answers at or above it are right at least `--target-accuracy` of the time over at least `--min-covered` answers. |
+| Choice, Score, Box | `confidence` | The lowest bar, over 0 to 0.95 in steps of 0.05, whose answers at or above it are right at least `--target-accuracy` of the time over at least `--min-covered` answers. A Box is right at or above its label's `iou_at_least`, which is the label's and never proposed; its sweep sees only the cases that label it with a box. |
 | Score with `level_at_least` | `level_at_least` | The level with the best F1 for "this level or higher". A tie goes to the lower. Written as the gate named it: an index stays an index, a text becomes the level's text. |
 
 `--target-accuracy` is a number from 0 to 1, default 0.95. `--min-covered` is at least 1, default 3. Anything else is status 2, before the documents are read.
@@ -627,7 +654,7 @@ Tables and notes go to stderr. A question's header reads `jud: ID (KIND): L labe
 | Table | Columns | Rows |
 |---|---|---|
 | Noul threshold | `threshold`, `accuracy`, `precision`, `recall`, `f1` | 0.05 to 0.95 |
-| Choice or Score bar | `bar`, `covered`, `coverage`, `correct`, `accuracy` | 0 to 0.95 |
+| Choice, Score or Box bar | `bar`, `covered`, `coverage`, `correct`, `accuracy` | 0 to 0.95 |
 | Score level | `level`, `accuracy`, `precision`, `recall`, `f1` | level 1 up |
 
 `covered` counts the answers at or above the bar, `coverage` is that over the labelled answers, and `correct` and `accuracy` are among the covered. A line `jud: ID: propose threshold 0.55 (now 0.55): NOTE` follows, with `confidence` or `level_at_least` for the others. `now` is the gate's current value, or `unset` when it has none.

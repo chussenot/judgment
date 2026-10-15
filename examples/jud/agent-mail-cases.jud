@@ -6,10 +6,11 @@
 #
 # One annotator labelled them, reading each whole message. Three were close
 # calls and are marked; a second annotator would move some of them.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: agent-mail-cases
+  minor: 3
 spec:
   rubric: agent-mail
 

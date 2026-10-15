@@ -285,6 +285,14 @@ run = "scripts/record_demo.sh"
 description = "Read .jud documents as the crate reads them and bind cases to their rubric (src/bin/jud/); `mise run jud:check -- FILE...`, default: the examples"
 run = """sh -c 'if [ $# -eq 0 ]; then set -- examples/jud/*.jud examples/recordings/jud_calibration/*.jud; fi; cargo run -q --features cli --bin jud -- check "$@"' --"""
 
+[tasks."plugins:install"]
+description = "Install the two Claude Code plugins this repository works with, at user scope and non-interactively: jud from this checkout (loaded in place) and typesafe from typesafe-ai/skills (scripts/claude-plugins.sh); what the cloud session-start hook runs"
+run = "scripts/claude-plugins.sh install"
+
+[tasks."plugins:update"]
+description = "Refresh both plugin marketplaces and update the jud and typesafe plugins to their latest versions; a running session sees them after /reload-plugins"
+run = "scripts/claude-plugins.sh update"
+
 [tasks."bd:ready"]
 description = "Issues ready to work on (bd ready)"
 run = "bd ready"

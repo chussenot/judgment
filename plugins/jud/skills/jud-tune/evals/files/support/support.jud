@@ -1,10 +1,11 @@
 # Support inbox triage: does a ticket need a reply, which queue takes it,
 # and how urgent it is. The bars below are hand-written guesses; tune them
 # on support-cases.jud.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: support-triage
+  minor: 3
   version: "1"
   description: Route an incoming support ticket and say how urgent it is.
 spec:

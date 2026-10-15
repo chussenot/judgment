@@ -147,7 +147,8 @@ async fn the_first_run_asks_every_case_once_and_writes_one_recording_each() {
         "{text}"
     );
     for wanted in [
-        "apiVersion: jud/v1.3",
+        "apiVersion: jud/v1\n",
+        &format!("  minor: {}\n", judgment::jud::MINOR),
         "kind: Recording",
         "name: refund-angry",
         "rubric: inbox-triage",

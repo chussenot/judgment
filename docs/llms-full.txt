@@ -24,14 +24,15 @@ Not affiliated with TypeSafe AI.
 | Using `jud` from a shell, no Rust | [Install](start/install.md), [Your first decision from the command line](start/first-decision-cli.md) | [Configure a backend](guides/configure-a-backend.md), [Record, replay and test](guides/record-replay-and-test.md#record-a-rubrics-cases-from-the-shell), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [The jud command line](reference/cli.md) |
 | Writing `.jud` documents | [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [Write a rubric](guides/write-a-rubric.md) | [Label cases](guides/label-cases.md), [Tune thresholds](guides/tune-thresholds.md), [The .jud format](reference/jud-format.md) |
 | Using the crate from Rust | [Your first decision in Rust](start/first-decision-rust.md) | [Record, replay and test](guides/record-replay-and-test.md), [Patterns](guides/patterns.md), [The crate](reference/crate.md) and the [rustdoc](https://docs.rs/judgment) |
+| Asking about images | [Visual judgments](concepts/visual-judgments.md) | [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [A Box calibration study](project/verification/box-calibration-study.md) |
 | Contributing | [Contributing](project/contributing.md) | [Internals](project/internals.md), [How the crate is checked](project/verification/method.md), [Decisions](project/decisions/README.md) |
 
 ## The documentation
 
 - **Start**: [Install](start/install.md), [first decision from the command line](start/first-decision-cli.md), [first decision in Rust](start/first-decision-rust.md).
-- **Guides**: [Configure a backend](guides/configure-a-backend.md), [Write a rubric](guides/write-a-rubric.md), [Label cases](guides/label-cases.md), [Record, replay and test](guides/record-replay-and-test.md), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [Run in a container](guides/run-in-a-container.md), [Use the Claude Code plugin](guides/use-the-claude-code-plugin.md), [Patterns](guides/patterns.md).
+- **Guides**: [Configure a backend](guides/configure-a-backend.md), [Write a rubric](guides/write-a-rubric.md), [Label cases](guides/label-cases.md), [Record, replay and test](guides/record-replay-and-test.md), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [Run in a container](guides/run-in-a-container.md), [Use the Claude Code plugin](guides/use-the-claude-code-plugin.md), [Patterns](guides/patterns.md), [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [Use long context](guides/use-long-context.md).
 - **Reference**: [The jud command line](reference/cli.md), [Configuration](reference/configuration.md), [The .jud format](reference/jud-format.md), [The crate](reference/crate.md), [The container image](reference/container-image.md), [Stability](reference/stability.md), [Glossary](reference/glossary.md); the [rustdoc](https://docs.rs/judgment) for every type.
-- **Concepts**: [System One](concepts/system-one.md), [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [How judgment works](concepts/how-judgment-works.md).
+- **Concepts**: [System One](concepts/system-one.md), [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [How judgment works](concepts/how-judgment-works.md), [Visual judgments](concepts/visual-judgments.md).
 - **Project**: [Contributing](project/contributing.md), [Internals](project/internals.md), [Releasing](project/releasing.md), [verification](project/verification/method.md) against real servers, [research](project/research/compatible-servers-and-models.md), [decisions](project/decisions/README.md), the [CHANGELOG](../CHANGELOG.md); [llms.txt](llms.txt) and [llms-full.txt](llms-full.txt) for an agent.
 
 The crate began as the client layer of another application and moved here with its history; how any one application uses it belongs to that application's documentation. A page belongs here when it would still be true, and still be needed, if no particular application existed.
@@ -174,11 +175,11 @@ jud check examples/jud/triage.jud examples/jud/triage-cases.jud
 
 <!-- transcript: jud check examples/jud/triage.jud examples/jud/triage-cases.jud -->
 ```text
-rubric    examples/jud/triage.jud: name inbox-triage, jud/v1.3, 3 questions, 3 gates (tuned)
+rubric    examples/jud/triage.jud: name inbox-triage, jud/v1 minor 3, 3 questions, 3 gates (tuned)
           questions sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a
           policy    sha256:1585094f59711426a98044a00ded2ec747010b5369e941f33a2732a50262e99f
           tuned on  sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
-cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1.3, 7 cases, bound to examples/jud/triage.jud
+cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1 minor 3, 7 cases, bound to examples/jud/triage.jud
           cases     sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
 2 documents, 0 refused
 ```
@@ -249,6 +250,43 @@ echo '{"message": "My payouts have been failing for 3 days."}' | jud examples/ju
 ```
 
 Without a key the run is refused before any call, with status 2 and a message naming the variable and the configuration file. Without an account, an open-weight model on your own machine answers the same command through a configuration file: [Configure a backend](../guides/configure-a-backend.md) sets up `tev1` on Ollama in three commands.
+
+## 6. Ask about an image
+
+A state can carry an image, and a question can ask where something is in it. The shapes rubric (`examples/jud/shapes.jud`) asks two questions about one picture: whether there is a filled circle, and where. The image goes in with `--asset`, under the reference the state carries, and the recording is found by the image's bytes as well as the state:
+
+```sh
+echo '{"image": "shape-01"}' \
+  | jud --replay examples/recordings/shapes --asset shape-01=examples/jud/images/shape-01.png examples/jud/shapes.jud
+```
+
+<!-- transcript: replay shape-01 -->
+```json
+{
+  "circle_present": {
+    "verdict": "yes",
+    "probability": 0.99
+  },
+  "circle": {
+    "verdict": "located",
+    "box": {
+      "top": 0.36,
+      "bottom": 0.86,
+      "left": 0.2,
+      "right": 0.67
+    },
+    "confidence": 0.92,
+    "pixels": {
+      "left": 64,
+      "top": 115,
+      "right": 214,
+      "bottom": 275
+    }
+  }
+}
+```
+
+The Box's verdict is `located`: the edges as fractions of the image, the confidence, and the same box in the pixels of the 320 by 320 file. A Box always answers with a box, which is why the Noul is beside it ([Visual judgments](../concepts/visual-judgments.md)); [Locate something with a Box question](../guides/locate-with-a-box.md) goes on from here, image with no circle included.
 
 ## Next
 
@@ -344,10 +382,11 @@ use judgment::{Fake, SystemOne};
 // another tool can read (docs/reference/jud-format.md). The policy is never
 // sent to the model.
 const RUBRIC: &str = r"
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: inbox-triage
+  minor: 3
 spec:
   questions:
     department:
@@ -450,6 +489,7 @@ The output is what `jev-1.13.0` answered on 2026-10-04; a later model answers wi
 - [Record, replay and test](../guides/record-replay-and-test.md): record that call once and replay it in your tests.
 - [The crate](../reference/crate.md): the features, the modules and the rustdoc.
 - [Patterns](../guides/patterns.md): the four shapes a call takes inside a real program.
+- [Ask a question about an image](../guides/ask-about-an-image.md) and [Locate something with a Box question](../guides/locate-with-a-box.md): the same call with a picture in the state.
 
 
 <!-- source: docs/guides/configure-a-backend.md -->
@@ -637,10 +677,11 @@ The example screens a support message for a refund request. The finished file is
 Every document has the same four top-level fields. Name the rubric; the name is what cases and recordings will refer to, so keep it stable.
 
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: refund-screening
+  minor: 3
   description: Screen a support message for a refund request before a person reads it.
 spec:
   questions: {}
@@ -650,7 +691,7 @@ A name is letters, digits, `.`, `_` and `-`, starting with a letter or a digit (
 
 ## 2. Write one question per thing
 
-List what the application needs to know and cannot compute itself. Each becomes one question of one primitive ([System One](../concepts/system-one.md)). "Does it ask for a refund, and why, and how angry are they?" is three questions.
+List what the application needs to know and cannot compute itself. Each becomes one question of one primitive ([System One](../concepts/system-one.md)). "Does it ask for a refund, and why, and how angry are they?" is three questions. A question about an image names the image by the reference the state carries, and a Box, which asks where, always goes beside a Noul that asks whether ([Locate something with a Box question](locate-with-a-box.md)).
 
 Give each outcome a criterion in plain words. `Does the message ask for money back?` reads differently to every grader; `true: a refund, a chargeback, a credit` reads the same to all of them, and to the model. Name the state key the question is about (`message`): the state is JSON and the model sees all of it.
 
@@ -719,7 +760,7 @@ jud check screening.jud
 
 <!-- transcript: jud check examples/jud/screening.jud -->
 ```text
-rubric    examples/jud/screening.jud: name refund-screening, jud/v1.3, 3 questions, 3 gates (untuned)
+rubric    examples/jud/screening.jud: name refund-screening, jud/v1 minor 3, 3 questions, 3 gates (untuned)
           questions sha256:92a19d0948fdaa410401d8c22b43d1783ac291b40af210d4aa4c81e8275e0e17
           policy    sha256:2c4cfcb3d2b6f200242a8589f22ca64d0627a611860f5498be20424a73261766
 1 documents, 0 refused
@@ -742,10 +783,11 @@ prints the request the rubric lowers to for that state: the questions whose `whe
 # The rubric built step by step in docs/guides/write-a-rubric.md: whether a
 # support message asks for money back, why, and how upset the writer is.
 # Hand-written, so it carries no tuning block: the bars are stated guesses.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: refund-screening
+  minor: 3
   description: Screen a support message for a refund request before a person reads it.
 spec:
   questions:
@@ -812,7 +854,7 @@ Use the keys the application really sends, in their real shape. An invented stat
 
 ## 3. Label what you are sure of
 
-A label is written in the answer's own vocabulary: `true` or `false` for a Noul, an offered option key for a Choice, a level's text or index for a Score. A question left out of `expect` is asked and not graded. A wrong label costs more than a missing one, because the bar moves to fit it.
+A label is written in the answer's own vocabulary: `true` or `false` for a Noul, an offered option key for a Choice, a level's text or index for a Score, `{box: {top, bottom, left, right}}` as fractions of the image for a Box, with the case's image declared under `assets` by a path relative to the file ([Locate something with a Box question](locate-with-a-box.md)). A question left out of `expect` is asked and not graded. A wrong label costs more than a missing one, because the bar moves to fit it.
 
 ```yaml
     - id: charged-twice
@@ -849,10 +891,10 @@ jud check examples/jud/screening.jud examples/jud/screening-cases.jud
 
 <!-- transcript: jud check examples/jud/screening.jud examples/jud/screening-cases.jud -->
 ```text
-rubric    examples/jud/screening.jud: name refund-screening, jud/v1.3, 3 questions, 3 gates (untuned)
+rubric    examples/jud/screening.jud: name refund-screening, jud/v1 minor 3, 3 questions, 3 gates (untuned)
           questions sha256:92a19d0948fdaa410401d8c22b43d1783ac291b40af210d4aa4c81e8275e0e17
           policy    sha256:2c4cfcb3d2b6f200242a8589f22ca64d0627a611860f5498be20424a73261766
-cases     examples/jud/screening-cases.jud: name refund-screening-cases, jud/v1.3, 4 cases, bound to examples/jud/screening.jud
+cases     examples/jud/screening-cases.jud: name refund-screening-cases, jud/v1 minor 3, 4 cases, bound to examples/jud/screening.jud
           cases     sha256:0e0d8b5cb14429de6ab723450402612fd326e7e6d98fe64f229e2235f62c6cc9
 2 documents, 0 refused
 ```
@@ -874,10 +916,11 @@ For a Choice with `options_from: request`, each case supplies its options under 
 # Labelled cases for the refund-screening rubric, written in
 # docs/guides/label-cases.md. Each case labels the questions it is sure
 # about; a question left out is asked and not graded.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: refund-screening-cases
+  minor: 3
   description: Four messages, labelled by hand while writing the guide.
 spec:
   rubric: refund-screening
@@ -997,6 +1040,8 @@ cat event.json | jud --replay examples/recordings/jud_calibration examples/jud/t
 ```
 
 A state nobody recorded is a backend failure (status 1, `no recording`); a directory that does not exist is a usage error (status 2). `jud eval` takes the same flag and variable, and `jud tune` requires one of them. [Run in CI](run-in-ci.md) turns this into a job.
+
+An image in the request is part of what a recording is keyed by: the fingerprint folds each image in by the SHA-256 of its bytes, so a replay finds the answer only when the same image is sent, and a re-encoded image is a request nobody recorded ([Ask a question about an image](ask-about-an-image.md)).
 
 ## Record a rubric's cases from the shell
 
@@ -1289,11 +1334,11 @@ jud check triage-tuned.jud examples/jud/triage-cases.jud
 
 <!-- transcript: jud tune --out triage-tuned.jud, then jud check triage-tuned.jud examples/jud/triage-cases.jud -->
 ```text
-rubric    triage-tuned.jud: name inbox-triage, jud/v1.3, 3 questions, 3 gates (tuned)
+rubric    triage-tuned.jud: name inbox-triage, jud/v1 minor 4, 3 questions, 3 gates (tuned)
           questions sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a
           policy    sha256:d9e705af6ee1d94e4219fd4a8c26710d18e01d160262f3e83d8ab8c0032eefc7
           tuned on  sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
-cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1.3, 7 cases, bound to triage-tuned.jud
+cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1 minor 3, 7 cases, bound to triage-tuned.jud
           cases     sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
 2 documents, 0 refused
 ```
@@ -1588,7 +1633,9 @@ claude plugin install jud@judgment                 # --scope project enables it 
 
 Or interactively: `/plugin marketplace add chussenot/judgment`, then `/plugin install jud@judgment`. The plugin has no dependency beyond the `jud` command: with none on `PATH`, its script builds one from a judgment checkout named by `JUDGMENT_DIR`, from the project when the project is this crate, or from the checkout the plugin sits in.
 
-Two things happen on install that are easy to mistake for a fault. The skills and commands load when a Claude Code session starts, so a session that installs the plugin does not see them: start a new one. And `--scope project` writes `enabledPlugins` into the project's `.claude/settings.json`, which Claude Code rewrites in its own key order, so a checked-in settings file shows a diff that moves keys and changes no setting; review it before committing.
+Two things happen on install that are easy to mistake for a fault. The skills and commands load when a Claude Code session starts, so a session that installs the plugin does not see them: start a new one, or run `/reload-plugins`. And `--scope project` writes `enabledPlugins` into the project's `.claude/settings.json`, which Claude Code rewrites in its own key order, so a checked-in settings file shows a diff that moves keys and changes no setting; review it before committing.
+
+In this repository the plugin is installed for you: `mise run plugins:install` adds the checkout as a marketplace and installs `jud` from it in place, with TypeSafe's `typesafe` plugin beside it, and a cloud session's start hook does the same ([Contributing](../project/contributing.md#cloud-sessions)); `mise run plugins:update` moves both to their latest.
 
 ## The commands
 
@@ -1600,7 +1647,7 @@ Two things happen on install that are easy to mistake for a fault. The skills an
 | `/jud:record <rubric> <cases> [dir]` | Runs `jud record` after telling you, in a message of its own, how many requests it will spend (only those the directory does not already answer), to which backend and model. Stops with what to set when no key is set, and never asks for the key. |
 | `/jud:eval <rubric> <cases> [dir]` | Grades the recordings with `jud eval --replay`, counts the labels per outcome, and puts every miss in one cause: a wrong label, an ambiguous question, a fact the model cannot see, overlapping outcomes, a coverage gap, the bar's job or the model. It proposes each fix with its cost and changes no file. Explains stale recordings rather than working around them. |
 | `/jud:tune <rubric> <cases> <dir> [apply] [holdout]` | Runs `jud tune`, decides gate by gate whether to take the proposal, and shows the coverage a lower target would buy. It refuses a bar of 0 on a handful of cases and a bar that absorbs a wrong label. With `apply` it edits the rubric in place, keeping comments and the notes that still hold, and shows each gate before and after. With `holdout` it tunes on three quarters of the cases and reports the rest as the numbers to expect. |
-| `/jud:rust <rubric> [out.rs] [embed]` | Writes the rubric as a small Rust module: an enum per Choice and Score, a `Decision` struct and one `decide(backend, model, state)` call, with the rubric read through `include_str!` so its requests are what `jud lower` sends and a retune needs no regeneration. It compiles the module, runs its test and clippy before handing it over, and replies with the `Cargo.toml` and `mod` lines and a usage example. |
+| `/jud:rust <rubric> [out.rs] [embed]` | Writes the rubric as a small Rust module: an enum per Choice and Score, a `Located` verdict per Box, a `Decision` struct and one `decide(backend, model, state)` call (with the request's `Assets` when the rubric looks at an image), with the rubric read through `include_str!` so its requests are what `jud lower` sends and a retune needs no regeneration. It compiles the module, runs its test and clippy before handing it over, and replies with the `Cargo.toml` and `mod` lines and a usage example. |
 
 The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric, typed questions with thresholds, labelled cases, or questions written in code that should become a document. The `jud-rust` skill loads when a task is about using a rubric from Rust ("call screening.jud from my service with real types"). The `jud-tune` skill loads when a task is about how well a rubric works: its accuracy, why a decision came out wrong, its thresholds or its recordings ("our rubric sends too many tickets to the wrong queue, fix the thresholds"). Neither needs the word "jud" in the request.
 
@@ -1613,16 +1660,16 @@ The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric
 | `skills/jud/scripts/jud.sh` | Runs the `jud` command: one on `PATH`, else one built from a judgment checkout. |
 | `skills/jud-tune/SKILL.md` | The tuning guide: what each edit costs and which ones make recordings stale, how to count a run's calls, what every `jud eval` and `jud tune` number means and how many cases a bar needs, the miss triage table, when to accept, keep or re-run a proposed bar, how to apply it in place, how to hold cases out, and what a reply must contain. |
 | `skills/jud-rust/SKILL.md` | The Rust guide: what the generated module is and why the rubric stays its source, the naming rules from `.jud` keys to Rust identifiers, the mapping per primitive and declaration, how to wire and verify it. |
-| `skills/jud-rust/references/` | The two modules the skill copies its shape from, with their rubrics: copies of `examples/jud/triage.rs` and `routing.rs`, which `cargo test` compiles and runs (`examples/jud_typed.rs`); `scripts/gen-plugin-rust.sh --check` keeps the copies equal. |
+| `skills/jud-rust/references/` | The three modules the skill copies its shape from, with their rubrics: copies of `examples/jud/triage.rs`, `routing.rs` and `shapes.rs` (a Noul and a Box over an image), which `cargo test` compiles and runs (`examples/jud_typed.rs`); `scripts/gen-plugin-rust.sh --check` keeps the copies equal. |
 | `commands/rubric.md`, `cases.md`, `check.md`, `record.md`, `eval.md`, `tune.md`, `rust.md` | The seven commands, each a page of instructions that follows its skill. |
-| `skills/jud/evals/` | The six tasks the authoring skill was tested on. |
+| `skills/jud/evals/` | The six tasks the authoring skill was tested on, and a seventh for an image rubric with a Box, added with Jev 1.14 and not yet run. |
 | `skills/jud-tune/evals/` | The battle test of the tuning commands: the scenarios, the support fixture with its planted wrong labels, a mock System One server and the runner (below). |
 
 ## How the skill works
 
 1. Decide the kind. A decision needs a rubric; a rubric's thresholds need cases, so the two are usually written together. A recording is written by hand only as a test fixture.
 2. Read the format reference before writing.
-3. Write the document in the `jud/v1.3` envelope, starting from the nearest example under `examples/jud/`.
+3. Write the document in the `jud/v1` envelope with its `metadata.minor`, starting from the nearest example under `examples/jud/`.
 4. Check it with `scripts/jud.sh check`, rubric and cases together, and fix every refusal in the document rather than around it.
 5. When the request depends on the state, look at what each case sends with `scripts/jud.sh lower`.
 6. When bars are to be measured, hand over to the `jud-tune` skill: `jud record` runs only when asked, and only `jud tune` writes a `tuning` block's values.
@@ -1646,11 +1693,11 @@ A program that asks a rubric's questions from Rust has the crate's `Rubric::lowe
 - **Drift fails a test.** The module's own test compares its fingerprint and enums with the parsed rubric, so an edited question fails `cargo test` until the module is regenerated.
 - **It is cheap to wire.** The module depends only on `judgment` (feature `jud`), `serde` and `serde_json`. It builds under `clippy::pedantic` with `unwrap_used` and `expect_used` denied. A program adds `mod triage;` and calls `triage::decide(&backend, "jev-latest", &state)`.
 
-[`examples/jud_typed.rs`](../../examples/jud_typed.rs) is such a program: it routes the calibration cases through `examples/jud/triage.rs` from recordings, and tests `examples/jud/routing.rs` with `Fake`. Both modules are the skill's templates.
+[`examples/jud_typed.rs`](../../examples/jud_typed.rs) is such a program: it routes the calibration cases through `examples/jud/triage.rs` from recordings, tests `examples/jud/routing.rs` with `Fake`, and decides every shapes case through `examples/jud/shapes.rs` from the shapes recordings with their images. The three modules are the skill's templates; `shapes.rs` is the one with a Box, whose `decide` takes the request's images and whose `Located` verdict carries the box in fractions for the caller to turn into pixels ([Locate something with a Box question](locate-with-a-box.md)).
 
 ## Work on the plugin itself
 
-Add the checkout as a local marketplace (`/plugin marketplace add ./` from the repository root) and reload with `/reload-plugins` after an edit; a plugin loaded from a local marketplace is read in place. The plugin is not published with the crate (`Cargo.toml` excludes `plugins/`); the `jud` binary is. `scripts/gen-plugin-format.sh` regenerates `references/format.md` after the specification changes.
+Add the checkout as a local marketplace (`/plugin marketplace add ./` from the repository root, or `mise run plugins:install`, which does it at user scope) and reload with `/reload-plugins` after an edit; a plugin loaded from a local marketplace is read in place. The plugin is not published with the crate (`Cargo.toml` excludes `plugins/`); the `jud` binary is. `scripts/gen-plugin-format.sh` regenerates `references/format.md` after the specification changes.
 
 ## How it was tested
 
@@ -1793,9 +1840,395 @@ Three things the pattern pages say that the examples make concrete.
 
 The same primitives take other shapes, each with a [cookbook](https://docs.typesafe.ai/cookbooks): select a value or a span from candidates found in code rather than generate it; rerank retrieved passages with one question per pair; verify a claim against its evidence and escalate what fails; turn scores into features for a classical model. None has an example here yet. They are the same `Questions`, handles and backends arranged differently.
 
+With an image in the state ([Visual judgments](../concepts/visual-judgments.md)) the same primitives take five more, none with an example here beyond the shapes rubric (`examples/jud/shapes.jud`, [Locate something with a Box question](locate-with-a-box.md)):
+
+| Shape | The questions | What carries it, and the gate |
+|---|---|---|
+| **UI screenshot verification** | A Noul per expected element ("is the Save button enabled in `screen`"), a Choice for which state the screen is in | A `Questions` fanned out over one screenshot, one `Handle` per check; a threshold per Noul, deterministic layout checks left in code |
+| **Document page triage** | A Choice for the page's kind (invoice, form, letter, blank), a Score for legibility, a Noul for a signature | `Choice::confidence` with a bar and `none_of_these` as the way out; the Score's nearest level sends the page to OCR or to a person |
+| **Image moderation gate** | A Noul per policy line, each with its criteria, over one image | Thresholds tuned per line from labelled cases, with the margin the calibration error says they need; a Box beside the Noul that fires, so a reviewer sees what the model saw |
+| **Visual regression review** | A Score for how different a rendered page is from its reference, a Choice for the kind of difference (layout, colour, text, nothing) | Two images in one `Assets`, referenced from the state by name; the Score's confidence floor sends the unsure diffs to a person and the rest to a threshold |
+| **Element location for cropping** | A Noul for whether, a Box for where | `BoundingBox::edges.padded(..).to_pixels(..)` for the crop, a confidence bar on the Box and the Noul's threshold in front of it; graded by intersection over union against labelled boxes |
+
+In every row the model is asked what the application cannot compute, and the pixel arithmetic, the layout rules and the thresholds stay in code.
+
 ## Next
 
 - [Record, replay and test](record-replay-and-test.md): how the examples' recordings are made and kept.
+
+
+<!-- source: docs/guides/ask-about-an-image.md -->
+
+
+# Ask a question about an image
+
+**You will** send an image with a request and read a calibrated answer about it, from the shell and from Rust, and replay the answer with no key. **Prerequisites:** [Install](../start/install.md); [Visual judgments](../concepts/visual-judgments.md) for what an image in a request is. A key is needed for the live call only.
+
+## From the shell
+
+A rubric asks about an image the way it asks about anything in the state: by naming it. The state carries a *reference*, any text, where the image belongs, and the request declares which image the reference stands for.
+
+```yaml
+apiVersion: jud/v1
+kind: Rubric
+metadata:
+  name: door
+  minor: 4
+spec:
+  questions:
+    person:
+      type: noul
+      instructions: Is there a person at the door in `photo`?
+  policy:
+    person: {threshold: 0.6}
+```
+
+`--asset REF=PATH` adds the image under the reference the state uses; the file is checked against the API's limits, base64-encoded and sent with the header the API requires, and nothing else in the request changes:
+
+```sh
+echo '{"photo": "door", "when": "7 pm"}' | jud door.jud --asset door=frames/door-1912.png
+```
+
+A reference the state does not carry is refused before any call ("referenced nowhere"), as is a file that is not a PNG or a JPEG, or one outside the limits. An image every request sends goes in the rubric instead, under `spec.assets` by a path relative to the file ([Assets](../reference/jud-format.md#assets)); a cases document declares each case's image the same way, so `jud record`, `jud eval` and `jud tune` need no flag.
+
+## In Rust
+
+```rust no_run
+use judgment::{Assets, Client, Image, Questions, SystemOne};
+
+async fn run() -> judgment::Result<()> {
+    // The format and the size are read from the bytes and held to the API's
+    // limits here, so a bad image is an error before any upload.
+    let photo = Image::read("frames/door-1912.png")?;
+    let mut assets = Assets::new();
+    // `add` names the image by its bytes: `img-` and 32 hex digits of their
+    // SHA-256. `insert(reference, image)` takes a name of your own.
+    let door = assets.add(photo)?;
+    let state = serde_json::json!({ "photo": door, "when": "7 pm" });
+
+    let mut questions = Questions::new();
+    let person = questions.noul("person", "Is there a person at the door in `photo`?", None)?;
+
+    let client = Client::from_env()?;
+    let response = client
+        .answer_with_assets(&state, "jev-latest", &questions, &assets)
+        .await?;
+    let person = response.get(&person)?;
+    if person.is_yes(0.6) {
+        println!("someone is at the door ({:.2})", person.yes);
+    }
+    Ok(())
+}
+```
+
+`answer_with_assets` is on the `SystemOne` trait, so a `Fake`, a `Recorder` or a `Replay` takes the same call: the fake refuses a reference the state does not carry as the API does, and the recorder keys the recording by the image's bytes as well as the state. A backend written elsewhere that has not implemented it refuses a request with images rather than dropping them. `Request::new(..).with_assets(&assets)` is the same request for `Client::evaluate_with`, when the call needs options.
+
+## What the crate checks, and what it reports
+
+| Check | Where | Error |
+|---|---|---|
+| PNG or JPEG, not animated; each side 256 to 1568 pixels; 78,400 to 2,458,624 pixels; at most 16 MiB | `Image::read`, `Image::from_bytes`, `Image::from_base64` | `Error::InvalidImage` |
+| A reference 1 to 1024 bytes, all of them at most 65,536; the same reference not two different images | `Assets::add`, `Assets::insert` | `Error::InvalidAsset` |
+| Every reference appears in the state or the questions; the body at most 32 MiB | `Client::evaluate_with`, before the upload | `Error::InvalidAsset`, `Error::RequestTooLarge` |
+
+The hosted API refuses the same with a 400, and a 413 for a body over its size limits; both read as `Error::is_request_too_large` when the remedy is a smaller image. The images' count and bytes reach the `Observer` (`on_assets`) once per call, and the `typesafe.evaluate` span carries the count as `images`, so an application's own metrics can price a visual judgment.
+
+An image costs input tokens in proportion to its pixels ([Visual judgments](../concepts/visual-judgments.md)): resize before sending when the target stays legible. `jev-latest` (Jev 1.13) answers a Noul, a Choice or a Score about an image; a Box needs `jev-preview` until the alias moves ([Locate something with a Box question](locate-with-a-box.md)).
+
+## Next
+
+- [Locate something with a Box question](locate-with-a-box.md): where, not only whether.
+- [Record, replay and test](record-replay-and-test.md): the recording is keyed by the image.
+- [Label cases](label-cases.md): a cases document names each case's image beside its state.
+
+
+<!-- source: docs/guides/locate-with-a-box.md -->
+
+
+# Locate something with a Box question
+
+**You will** ask a model where something is in an image, read the answer as a box, decide whether to trust it, and grade a set of such answers against labelled boxes. **Prerequisites:** [Ask a question about an image](ask-about-an-image.md); a checkout of the repository for the replayed steps, which need no key. A Box needs Jev 1.14: `jev-preview` on the hosted API until `jev-latest` moves.
+
+## Ask where, and whether
+
+A Box always returns a box, found or not ([Visual judgments](../concepts/visual-judgments.md)), so a rubric asks two questions: a Noul for whether the thing is there and a Box for where. The shapes example does exactly that over synthetic images:
+
+<!-- file: examples/jud/shapes.jud -->
+```yaml
+# A rubric asked about one image: whether it holds a filled circle, and
+# where. Synthetic images (examples/jud/images/, shapes on flat backgrounds),
+# so the repository stays generic and the set regenerates byte for byte.
+# A Box always answers with a box, found or not, so the Noul beside it says
+# whether the box means anything (docs/concepts/visual-judgments.md).
+apiVersion: jud/v1
+kind: Rubric
+metadata:
+  name: shapes
+  minor: 4
+  description: >-
+    Whether an image holds a filled circle, and where it is: the Noul gate and
+    the Box it guards, on synthetic shapes.
+spec:
+  questions:
+    circle_present:
+      type: noul
+      instructions: Is there a filled circle in `image`?
+      criteria:
+        true: one round, filled shape, whatever its colour or size
+        false: only squares, rectangles or an empty background
+    circle:
+      type: box
+      instructions: the filled circle in `image`
+
+  # Where an answer becomes an action. The Noul's threshold is the default
+  # until `jud tune` reads one off the cases; the Box's bar is the
+  # confidence under which a caller pads the box or asks again on a crop.
+  policy:
+    circle_present:
+      threshold: 0.5
+      note: a starting point; tune it on the recorded cases
+    circle:
+      confidence: 0.5
+      note: below it, pad the box before cropping, or ask again on a larger crop
+```
+
+The image is referenced as `image` in the state and declared by the case or on the command line. Replayed from the committed recordings, with the image's size read from the file so the box is also in pixels:
+
+```sh
+echo '{"image": "shape-01"}' \
+  | jud --replay examples/recordings/shapes --asset shape-01=examples/jud/images/shape-01.png examples/jud/shapes.jud
+```
+
+<!-- transcript: replay shape-01 -->
+```json
+{
+  "circle_present": {
+    "verdict": "yes",
+    "probability": 0.99
+  },
+  "circle": {
+    "verdict": "located",
+    "box": {
+      "top": 0.36,
+      "bottom": 0.86,
+      "left": 0.2,
+      "right": 0.67
+    },
+    "confidence": 0.92,
+    "pixels": {
+      "left": 64,
+      "top": 115,
+      "right": 214,
+      "bottom": 275
+    }
+  }
+}
+```
+
+`located` is the gate letting the box through: the edges as the wire gave them, the confidence, and `pixels` for an image 320 by 320 (`--pixels WxH` names another size, the original a scaled image came from, say). On an image with no circle the Noul says no and the Box is deferred below its bar, with the box it would have given as text:
+
+```sh
+echo '{"image": "shape-03"}' \
+  | jud --replay examples/recordings/shapes --asset shape-03=examples/jud/images/shape-03.png examples/jud/shapes.jud
+```
+
+<!-- transcript: replay shape-03 -->
+```json
+{
+  "circle_present": {
+    "verdict": "no",
+    "probability": 0.04
+  },
+  "circle": {
+    "verdict": "deferred",
+    "fallback": null,
+    "nearest": "0.03,0.54,0.02,0.54",
+    "confidence": 0.03,
+    "bar": 0.5
+  }
+}
+```
+
+## In Rust
+
+```rust no_run
+use judgment::{Assets, BoundingBox, Client, Image, Questions, SystemOne};
+
+async fn run() -> judgment::Result<()> {
+    let page = Image::read("scans/page-7.png")?;
+    let (width, height) = (page.width(), page.height());
+    let mut assets = Assets::new();
+    assets.insert("page", page)?;
+    let state = serde_json::json!({ "page": "page" });
+
+    let mut questions = Questions::new();
+    let signed = questions.noul("signed", "Is there a handwritten signature on `page`?", None)?;
+    let signature = questions.r#box("signature", "the handwritten signature on `page`")?;
+
+    let client = Client::from_env()?;
+    let response = client
+        .answer_with_assets(&state, "jev-preview", &questions, &assets)
+        .await?;
+    let signed = response.get(&signed)?;
+    let signature: BoundingBox = response.get(&signature)?;
+    // Whether from the Noul, how far to trust the box from its confidence.
+    if signed.is_yes(0.6) && signature.confidence_at_least(0.5) {
+        // A little margin, then the page's own pixels, for a crop.
+        let crop = signature.edges.padded(0.02).to_pixels(width, height);
+        println!("crop x {}..{}, y {}..{}", crop.left, crop.right, crop.top, crop.bottom);
+    }
+    Ok(())
+}
+```
+
+`BoundingBox` is the typed view: `edges` (a `BoxEdges` with `width`, `height`, `center`, `area`, `contains`, `iou`, `padded`), `confidence` (`None` when the model gave none) and `to_pixels`. `Response::verify` has already refused a box that is not a region, so the edges are inside the image and ordered. A `Fake` scripts one with `Fake::r#box`.
+
+## Label and grade
+
+A case labels a Box with the box the thing is in, as fractions of the image, and a cases document declares each case's image by a path relative to itself:
+
+```yaml
+    - id: shape-01
+      state: {image: shape-01}
+      assets:
+        shape-01: {type: image, path: images/shape-01.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.3688, bottom: 0.85, left: 0.1969, right: 0.6781}}
+```
+
+An answer is right when its intersection over union with the label reaches `iou_at_least`, 0.5 unless the label says otherwise ([decision 0026](../project/decisions/0026-a-box-is-graded-by-intersection-over-union.md)); the overlap is kept, and `jud eval` reports its mean where a Noul has a Brier score, with each miss's overlap:
+
+```sh
+jud eval examples/jud/shapes.jud examples/jud/shapes-cases.jud --replay examples/recordings/shapes
+```
+
+<!-- transcript: jud eval examples/jud/shapes.jud examples/jud/shapes-cases.jud --replay examples/recordings/shapes -->
+```text
+rubric shapes: questions sha256:ce690f12891229b8596a87345f78d4763fefa03a527b1e9d4aa3ca6dc5876081, policy sha256:3909432a57ea86dbd757b9b3b00f1481ef9592185daef2b544f343d2cf0d1169
+cases shapes-cases: sha256:f4a368d49c556c625e4a6d74437947c6720bc5d9cc907e909cb8aa42ce649adf, 40 cases
+40 requests, model jev-1.14.0
+
+circle_present
+  labelled 40, correct 40, accuracy 1.00 (95% interval 0.91 to 1.00)
+  brier 0.001, calibration error 0.015, confidence when right 0.99, when wrong -
+  outcomes, labelled/answered/right: yes 30/30/30, no 10/10/10
+  majority yes, 30 of 40 (0.75)
+  gate: acts on 40 of 40, defers 0, accuracy when acted 1.00
+
+circle
+  labelled 30, correct 28, accuracy 0.93 (95% interval 0.79 to 0.98)
+  brier -, calibration error 0.212, confidence when right 0.75, when wrong 0.49
+  mean IoU 0.80 (a box is right at or above its label's IoU bar)
+  outcomes, labelled/answered/right: box 30/30/28
+  majority box, 30 of 30 (1.00)
+  gate: acts on 23 of 40, defers 17, accuracy when acted 0.96
+
+model misses (2)
+  circle          shape-00: a box at IoU 0.00 with the label, confidence 0.29
+  circle          shape-10: a box at IoU 0.24 with the label, confidence 0.70
+```
+
+Twenty-eight of thirty at the bar, a mean overlap of 0.80, and a gate at 0.5 that acts on 23 answers and is right on 22 of them; the two misses say how far off they were. [A Box calibration study on synthetic shapes](../project/verification/box-calibration-study.md) reads these numbers, and the hosted API's behaviour on the edges, in full. `jud tune` sweeps the Box's confidence bar as it does a Choice's; the overlap bar is the label's and is not swept.
+
+## Next
+
+- [Visual judgments](../concepts/visual-judgments.md): why the Box is read beside a Noul.
+- [Other shapes](patterns.md#other-shapes): element location for cropping, visual regression review.
+- [Tune thresholds](tune-thresholds.md): the confidence bar from the recordings.
+
+
+<!-- source: docs/guides/use-long-context.md -->
+
+
+# Use long context
+
+**You will** send a state that the default limits refuse, and know when not to. **Prerequisites:** [Your first decision in Rust](../start/first-decision-rust.md). The `jud` command has no setting for this yet.
+
+## The limits, and the switch
+
+Jev reads the state once and answers every question against it, inside two limits: 64k tokens for the state and all the questions together, 32k for the state and any one question ([Models](https://docs.typesafe.ai/models#context-length)). Over either, the hosted API answers 400 `max_tokens_exceeded`, which the crate reports as `Error::InvalidRequest` with `is_request_too_large()` true: the one refusal fixed by sending less, or by this page.
+
+Long context raises both limits to 262k tokens, on Jev 1.13 and 1.14, behind a header the client sends when asked and never otherwise ([decision 0027](../project/decisions/0027-long-context-is-a-switch-on-the-call.md)). TypeSafe says a request under it is slower and less accurate than one within the limits, which is why it is a switch and not a default, and why the crate does not guess from the state's size: the caller who built a long state knows it did.
+
+## For one call
+
+```rust no_run
+use judgment::{CallOptions, Client, Questions, Request};
+
+async fn run(transcript: &serde_json::Value) -> judgment::Result<()> {
+    let mut questions = Questions::new();
+    let decided = questions.noul(
+        "decided",
+        "Does `transcript` end with a decision the participants agreed on?",
+        None,
+    )?;
+    let client = Client::from_env()?;
+    let request = Request::new(transcript, "jev-latest", &questions);
+    let response = client
+        .evaluate_with(&request, &CallOptions::new().long_context(true))
+        .await?;
+    println!("decided: {:.2}", response.get(&decided)?.yes);
+    Ok(())
+}
+```
+
+The body is the same bytes as without the option; only the header is added, and the `typesafe.evaluate` span records `long_context = true`. A recording of the call is keyed as any other, since the header changes the limits and not the request.
+
+## For every call of a client
+
+A client that only ever reads long transcripts or contracts turns it on once:
+
+```rust no_run
+use judgment::{CallOptions, Client, Questions, Request};
+
+async fn run(contract: &serde_json::Value) -> judgment::Result<()> {
+    let client = Client::builder().long_context(true).build()?;
+    let mut questions = Questions::new();
+    let termination = questions.noul(
+        "termination",
+        "Does `contract` let either party end the agreement early?",
+        None,
+    )?;
+    let response = client.system_one(contract, &questions).await?;
+    println!("early termination: {:.2}", response.get(&termination)?.yes);
+    // A short request from the same client, within the limits, without it.
+    let short = Request::new(&"one line", "jev-latest", &questions);
+    let _ = client
+        .evaluate_with(&short, &CallOptions::new().long_context(false))
+        .await?;
+    Ok(())
+}
+```
+
+A `Recorder` over such a client sends the header on every call too.
+
+## Only when refused
+
+When the states vary and nothing says which are long, ask within the limits first and resend under the header only on the refusal; a refused body is not billed, so the cost of the first try is a round trip:
+
+```rust no_run
+use judgment::{CallOptions, Client, Questions, Request, Response};
+
+async fn ask(client: &Client, state: &serde_json::Value, questions: &Questions) -> judgment::Result<Response> {
+    let request = Request::new(state, "jev-latest", questions);
+    match client.evaluate(&request).await {
+        Err(e) if e.is_request_too_large() => {
+            client
+                .evaluate_with(&request, &CallOptions::new().long_context(true))
+                .await
+        }
+        other => other,
+    }
+}
+```
+
+`is_request_too_large` is also true of a 413 and of an image over its limits, which the header does not fix; a request that is refused again under it is one to send less of.
+
+## Next
+
+- [Configure a backend](configure-a-backend.md): the client's other settings.
+- [Jev 1.14 on the hosted API](../project/verification/hosted-typesafe-jev-1-14.md): the 74,550-token state the header let through.
 
 
 <!-- source: docs/reference/cli.md -->
@@ -1846,6 +2279,16 @@ Options:
 
       --options-file <PATH>
           --options, read from a file
+
+      --asset <REF=PATH>
+          An image the state refers to: the reference written in the state, and the PNG or JPEG file. Repeatable.
+
+          The file is checked against the hosted API's limits before anything is sent, base64-encoded by jud, and sent with the images header. The rubric's own `spec.assets` are read from the rubric's directory without a flag.
+
+      --pixels <WxH>
+          The image's size, so a located box is also printed in pixels.
+
+          Without it, the size of the request's one image is used; with several images, or none, a box is printed as fractions only.
 
   -h, --help
           Print help (see a summary with '-h')
@@ -1911,9 +2354,10 @@ Stdout carries a JSON object keyed by question id, in the rubric's order, the se
 | `yes`, `no` | Noul | `probability` |
 | `option` | Choice | `key`, `confidence`, and `band` when the gate has bands |
 | `level` | Score | `index`, `label`, `value`, `confidence`, `band` when the gate has bands, and `reached` when the gate has `level_at_least` |
-| `deferred` | Choice, Score | `fallback` (`null` when the gate names none), `nearest`, `confidence` and `bar` |
+| `located` | Box | `box` (`top`, `bottom`, `left`, `right`, as fractions of the image), `confidence` when the model gave one, `band` when the gate has bands, and `pixels` (`left`, `top`, `right`, `bottom`) when the image's size is known: `--pixels WxH`, or the request's one image |
+| `deferred` | Choice, Score, Box | `fallback` (`null` when the gate names none, always for a Box), `nearest`, `confidence` and `bar` |
 
-`nearest` is the option key a Choice named, or the index of the level a Score is nearest to, as a string. `bar` is the bar the answer was below, the lowest when the gate has bands. A `desk` the triage rubric defers, because the answer `billing` at 0.4 is below the bar of 0.45:
+`nearest` is the option key a Choice named, the index of the level a Score is nearest to, as a string, or a Box's edges as `top,bottom,left,right`. `bar` is the bar the answer was below, the lowest when the gate has bands. A Box that gave no confidence is read at 0, so a Box gate with a bar defers it. A `desk` the triage rubric defers, because the answer `billing` at 0.4 is below the bar of 0.45:
 
 ```json
 "desk": {
@@ -1922,6 +2366,17 @@ Stdout carries a JSON object keyed by question id, in the rubric's order, the se
   "nearest": "billing",
   "confidence": 0.4,
   "bar": 0.45
+}
+```
+
+A located box from the shapes rubric, replayed with its 320 by 320 image given as `--asset` ([Locate something with a Box question](../guides/locate-with-a-box.md) shows the whole run):
+
+```json
+"circle": {
+  "verdict": "located",
+  "box": { "top": 0.36, "bottom": 0.86, "left": 0.2, "right": 0.67 },
+  "confidence": 0.92,
+  "pixels": { "left": 64, "top": 115, "right": 214, "bottom": 275 }
 }
 ```
 
@@ -1961,7 +2416,7 @@ Options:
           Print help (see a summary with '-h')
 ```
 
-One line per document with its kind, path, name, `apiVersion` and what was checked; indented lines with its fingerprints; `error` lines naming the file and the field; a summary. A cases document is bound to the rubric it names among the files; a recording whose `metadata.name` names a case of a bound document is verified against that case's request and its fingerprint compared.
+One line per document with its kind, path, name, `apiVersion` and what was checked; indented lines with its fingerprints; `error` lines naming the file and the field; a summary. A cases document is bound to the rubric it names among the files; a recording whose `metadata.name` names a case of a bound document is verified against that case's request and its fingerprint compared. A rubric's line counts the images it declares. The images themselves are not opened: `check` reads the declarations (the kind, one of `path` and `data_base64`, a relative path under the document's directory, a format the API takes, every reference present in the questions or the state) and leaves the files to the commands that build a request.
 
 ## `jud lower`
 
@@ -2000,6 +2455,7 @@ The three share these rules.
 
 - **Documents.** Both are read as `jud check` reads them and the cases are bound to the rubric. A document that is refused, or a label that does not fit its question, is status 2 and names the file and the field.
 - **Requests.** A case's request is its `state` lowered with its own `options`, so a Choice with `options_from: request` is asked over the case's options. A conversation (a `state` that is an array) with a `from_turn` label is one request per turn, the state cut after that turn, named `ID-turn-N` with N counted from 0. Every other case is one request.
+- **Images.** The images the rubric declares under `spec.assets` and the case under `assets` are loaded from each document's own directory, merged (a reference in both must name the same bytes) and sent with the request, every turn of a conversation included. They are loaded before any call: a file that is missing, is not a PNG or a JPEG, or is outside the hosted API's limits is status 2, naming the entry. A recording is keyed by each image's digest as well as the state, so a re-encoded image is a request nobody recorded.
 - **Before any call.** Every request is lowered, and every label of a conversation's turn is checked, before any call is made or any answer is taken from a recording. A request the rubric does not lower for the case, or one that asks nothing because every `when` fails for its state, is status 2 and names the case.
 - **Recordings.** Under a replay a recording answers a request by the request's fingerprint, or by its request hash, and never by its file name. It is verified against the questions as a server's response would be.
 - **Missing recordings.** Under a replay every request is tried before the run fails. Status 1 then names every case that has no recording and says to record it with `jud record`. A recording that matches a request and no longer fits its questions is status 1 at that case.
@@ -2066,7 +2522,7 @@ Status 2, before the first call:
 - A file in `DIR` that does not read as a recording, unless `--refresh` is given, which does not read `DIR`.
 - A missing key, or a `DIR` that cannot be created.
 
-The refusals under [the case commands](#the-case-commands) apply as well.
+The refusals under [the case commands](#the-case-commands) apply as well, an image that cannot be loaded among them; `--dry-run` makes the same refusals, since it loads the images to tell which recordings still answer.
 
 ### What it prints
 
@@ -2154,6 +2610,7 @@ N requests, model MODEL
 QUESTION
   labelled L, correct C, accuracy A (95% interval LOW to HIGH)
   brier B, calibration error E, confidence when right R, when wrong W
+  mean IoU I (a box is right at or above its label's IoU bar)
   outcomes, labelled/answered/right: OUTCOME L/A/R, OUTCOME L/A/R
   majority OUTCOME, M of L (SHARE)
   gate: acts on A of T, defers D, accuracy when acted X
@@ -2161,6 +2618,7 @@ QUESTION
 
 model misses (N)
   QUESTION  CASE: expected E, predicted P, confidence C
+  QUESTION  CASE: a box at IoU I with the label, confidence C
 
 --min-accuracy
   met      QUESTION A >= BAR
@@ -2171,7 +2629,7 @@ There is one block per question, in the rubric's order. When several models answ
 
 A report holds three things that are not the same number: what the model got right, what the policy does with its answers, and where the model was wrong.
 
-- **The model.** `labelled`, `correct`, `accuracy` with its 95 % interval, the Brier score, the calibration error and the mean confidence when right and when wrong, each `-` when there is none. They read the model's own answer: a Noul is yes from a probability of 0.5, a Choice is the option it picked, a Score is its most probable level. [The metrics](../concepts/rubrics-cases-recordings.md#the-metrics) defines them.
+- **The model.** `labelled`, `correct`, `accuracy` with its 95 % interval, the Brier score, the calibration error and the mean confidence when right and when wrong, each `-` when there is none. They read the model's own answer: a Noul is yes from a probability of 0.5, a Choice is the option it picked, a Score is its most probable level, a Box is right when its intersection over union with the label reaches the label's `iou_at_least` (0.5 unless the label says). A Box has no distribution, so its `brier` is `-` and the `mean IoU` line, the mean overlap over its labelled cases, follows in its place; the calibration error and the confidences read its confidence against those hits. [The metrics](../concepts/rubrics-cases-recordings.md#the-metrics) defines them.
 - **The gate.** `acts on A of T, defers D` counts what the rubric's gate for the question does with the T answers that asked it. A Noul's gate never defers, so it acts on every answer. `accuracy when acted` is the accuracy of the policy's own verdicts among the answers the gate acted on and a case labels. A Noul is read at the gate's `threshold` and `strict`, a Choice by the option the verdict names, a Score by the level the policy reads, the one nearest the weighted score. It is not the question's `accuracy`, and moving a bar moves one and not the other.
 - **The outcomes.** For every answer the question offers, in its order (`yes` and `no`, a Choice's options, a Score's levels by their text), how many labels name it, how often the model gave it on a labelled case, and how often rightly. Each count is over the labelled answers, so the labels and the answers each add up to `labelled`. An outcome no case labels shows `0/…`. Options supplied per request follow, as the answers name them.
 - **The majority.** The commonest label, the first in the question's order on a tie, and its share of `labelled`: what always giving that one answer would score.
@@ -2180,7 +2638,7 @@ A report holds three things that are not the same number: what the model got rig
   - `collapsed: the model answered OUTCOME on N of L labelled cases; …` when one answer takes at least 0.8 of the labelled answers and at least 0.2 more than the largest share any label has.
   - `never answered: OUTCOME (N labelled), …; …` when an outcome at least 3 labels name is never the model's answer on a labelled case. A skewed set hides this from `collapsed`: a model that always says `yes` to a set that is 88 % `yes` answers one outcome only 0.12 more often than the labels name it.
   - `the gate defers D of T: they fall back to FALLBACK` (or `nothing acts on them` without a fallback) when the gate defers at least 0.5 of the answers it sees (`defers_most`) or at least 0.9 (`defers_nearly_all`); one of the two, never both.
-- **The misses.** `model misses` lists the model's own readings that the labels call wrong, one line per miss: question, case, expected, predicted and the model's confidence in what it predicted, which for a Noul is the larger of p and 1 - p. A Noul is `yes` or `no`, a Choice is an option key and a Score is a level index. A miss is not the policy's: a Noul answered 0.52 is a miss against a `false` label, and a gate at 0.55 says no and is right.
+- **The misses.** `model misses` lists the model's own readings that the labels call wrong, one line per miss: question, case, expected, predicted and the model's confidence in what it predicted, which for a Noul is the larger of p and 1 - p. A Noul is `yes` or `no`, a Choice is an option key and a Score is a level index; a Box's miss says the overlap it reached instead, `a box at IoU I with the label`. A miss is not the policy's: a Noul answered 0.52 is a miss against a `false` label, and a gate at 0.55 says no and is right.
 
 ### The JSON report
 
@@ -2204,7 +2662,8 @@ A report holds three things that are not the same number: what the model got rig
 | `questions[].correct` | integer | Labelled answers the model got right. |
 | `questions[].accuracy` | number or `null` | `correct` over `labelled`; `null` when nothing is labelled. |
 | `questions[].accuracy_interval95` | array of two numbers or `null` | The 95 % Wilson interval, low then high. |
-| `questions[].brier` | number or `null` | The mean Brier score. |
+| `questions[].brier` | number or `null` | The mean Brier score; `null` for a Box, which has no distribution. |
+| `questions[].mean_iou` | number or `null` | A Box question's mean intersection over union with its labels; `null` for any other primitive. |
 | `questions[].ece` | number or `null` | The expected calibration error, over ten bins. |
 | `questions[].confidence_when_right` | number or `null` | `null` when no labelled answer was right. |
 | `questions[].confidence_when_wrong` | number or `null` | `null` when no labelled answer was wrong. |
@@ -2217,6 +2676,7 @@ A report holds three things that are not the same number: what the model got rig
 | `questions[].misses[].expected` | string | The label, in the answer's words. |
 | `questions[].misses[].predicted` | string | The model's reading, in the same words. |
 | `questions[].misses[].confidence` | number | The model's confidence in `predicted`. |
+| `questions[].misses[].iou` | number | A Box's intersection over union with the label, under the bar; absent on any other primitive's miss. |
 | `questions[].outcomes` | array of objects | One per outcome the question offers, in its order, then any other the labels or answers name. |
 | `questions[].outcomes[].outcome` | string | In the label's words: `yes` or `no`, an option key, a level's index. |
 | `questions[].outcomes[].level` | string or `null` | A Score level's text; `null` for a Noul or a Choice. |
@@ -2403,7 +2863,7 @@ Reads `RUBRIC`, `CASES` and the recordings in `--replay DIR`, which is required 
 | Question | Gate field | Rule |
 |---|---|---|
 | Noul | `threshold` | The threshold with the best F1, over 0.05 to 0.95 in steps of 0.05. A tie goes to the lower. |
-| Choice, Score | `confidence` | The lowest bar, over 0 to 0.95 in steps of 0.05, whose answers at or above it are right at least `--target-accuracy` of the time over at least `--min-covered` answers. |
+| Choice, Score, Box | `confidence` | The lowest bar, over 0 to 0.95 in steps of 0.05, whose answers at or above it are right at least `--target-accuracy` of the time over at least `--min-covered` answers. A Box is right at or above its label's `iou_at_least`, which is the label's and never proposed; its sweep sees only the cases that label it with a box. |
 | Score with `level_at_least` | `level_at_least` | The level with the best F1 for "this level or higher". A tie goes to the lower. Written as the gate named it: an index stays an index, a text becomes the level's text. |
 
 `--target-accuracy` is a number from 0 to 1, default 0.95. `--min-covered` is at least 1, default 3. Anything else is status 2, before the documents are read.
@@ -2422,7 +2882,7 @@ Tables and notes go to stderr. A question's header reads `jud: ID (KIND): L labe
 | Table | Columns | Rows |
 |---|---|---|
 | Noul threshold | `threshold`, `accuracy`, `precision`, `recall`, `f1` | 0.05 to 0.95 |
-| Choice or Score bar | `bar`, `covered`, `coverage`, `correct`, `accuracy` | 0 to 0.95 |
+| Choice, Score or Box bar | `bar`, `covered`, `coverage`, `correct`, `accuracy` | 0 to 0.95 |
 | Score level | `level`, `accuracy`, `precision`, `recall`, `f1` | level 1 up |
 
 `covered` counts the answers at or above the bar, `coverage` is that over the labelled answers, and `correct` and `accuracy` are among the covered. A line `jud: ID: propose threshold 0.55 (now 0.55): NOTE` follows, with `confidence` or `level_at_least` for the others. `now` is the gate's current value, or `unset` when it has none.
@@ -2652,10 +3112,11 @@ A request nobody recorded is a backend failure (status 1); a directory that does
 | Model | the `model` argument of `SystemOne::answer`, or `ClientBuilder::model` for `Client::system_one` | `jev-latest` |
 | Timeout per attempt | `ClientBuilder::timeout`, or `CallOptions::timeout` for one call | 10 s |
 | Retries | `ClientBuilder::retry_policy`, or `CallOptions` for one call | `RetryPolicy::default()`: [The crate](crate.md#defaults) |
+| Long context | `ClientBuilder::long_context`, or `CallOptions::long_context` for one call | off: the model's own limits, 64k tokens per request and 32k per question; on, 262k for both through the `TypeSafe-Danger-Zone-Long-Context` header, slower and less accurate by TypeSafe's own account ([decision 0027](../project/decisions/0027-long-context-is-a-switch-on-the-call.md)) |
 
 The crate's client reads no base URL from the environment; the `jud` command and the examples do, and pass it to the builder. The two timeouts differ on purpose: a library call is usually one of many on a request path and fails fast at 10 s; a command-line run has a person waiting and a local model that may be loading, so it waits 30 s.
 
-The constants are public: `judgment::client::{API_KEY_ENV, DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_TIMEOUT, REQUEST_ID_HEADER}` ([docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html)).
+The constants are public: `judgment::client::{API_KEY_ENV, DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_TIMEOUT, REQUEST_ID_HEADER, DANGER_ZONE_IMAGES_HEADER, DANGER_ZONE_LONG_CONTEXT_HEADER}` ([docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html)).
 
 
 <!-- source: docs/reference/jud-format.md -->
@@ -2663,7 +3124,7 @@ The constants are public: `judgment::client::{API_KEY_ENV, DEFAULT_BASE_URL, DEF
 
 # The `.jud` format
 
-This page is the specification of `apiVersion: jud/v1.3`. The rules here are the format; every other page that mentions a field links here. The reasoning behind the format is in [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md) and in decisions [0014](../project/decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) and [0018](../project/decisions/0018-jud-1-3-takes-the-manifest-envelope.md). The crate's implementation is `judgment::jud` ([The crate](crate.md#the-jud-feature)); the terms are in the [glossary](glossary.md).
+This page is the specification of `apiVersion: jud/v1` at `metadata.minor` 4. The rules here are the format; every other page that mentions a field links here. The reasoning behind the format is in [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md) and in decisions [0014](../project/decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md), [0018](../project/decisions/0018-jud-1-3-takes-the-manifest-envelope.md) and [0020](../project/decisions/0020-how-a-v1-minor-is-spelled.md); for the images and the Box, [0025](../project/decisions/0025-a-document-names-an-image-by-path.md) and [0026](../project/decisions/0026-a-box-is-graded-by-intersection-over-union.md), with [Visual judgments](../concepts/visual-judgments.md). The crate's implementation is `judgment::jud` ([The crate](crate.md#the-jud-feature)); the terms are in the [glossary](glossary.md).
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in BCP 14 [[RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)] [[RFC 8174](https://www.rfc-editor.org/rfc/rfc8174)] when, and only when, they appear in all capitals, as shown here.
 
@@ -2675,11 +3136,11 @@ Three kinds exist:
 
 | Kind | Holds |
 |---|---|
-| `Rubric` | The questions a request sends, in wire shape and wire order, and the policy an application reads the answers by |
-| `Cases` | Labelled states a rubric is graded on and its gates are tuned on |
+| `Rubric` | The questions a request sends, in wire shape and wire order, the images they refer to, and the policy an application reads the answers by |
+| `Cases` | Labelled states a rubric is graded on and its gates are tuned on, each with the image it is about when there is one |
 | `Recording` | One model response to one request |
 
-The questions in a rubric are the wire's own shape (`type`, `instructions`, `criteria`), as `POST /v1/systemone` sends them. The [HTTP API reference](https://docs.typesafe.ai/) is the reference for what each question field means.
+The questions in a rubric are the wire's own shape (`type`, `instructions`, `criteria`; a Box has `type` and `instructions` alone), as `POST /v1/systemone` sends them, and the images are the wire's `assets`, declared by file rather than carried. The [HTTP API reference](https://docs.typesafe.ai/) is the reference for what each question field means.
 
 ## The envelope
 
@@ -2687,7 +3148,7 @@ Every document has exactly four top-level fields, the envelope of a [Kubernetes 
 
 | Field | Value | Meaning |
 |---|---|---|
-| `apiVersion` | `jud/v1.3` | The format, a string, exactly this. |
+| `apiVersion` | `jud/v1` | The format's stable line, a string, exactly this; the minor is `metadata.minor`. [The apiVersion and the minor](#the-apiversion-and-the-minor). |
 | `kind` | `Rubric`, `Cases` or `Recording` | Which shape `spec` has. Any other value MUST be refused. |
 | `metadata` | an object | What identifies the document and what a tool keeps beside it. |
 | `spec` | an object | The kind's own fields. |
@@ -2696,6 +3157,7 @@ Every document has exactly four top-level fields, the envelope of a [Kubernetes 
 
 | Field | On | Required | Meaning |
 |---|---|---|---|
+| `minor` | every kind | yes | The minor of `jud/v1` the document needs, an integer: `4` today, `3` for a document that uses nothing minor 4 added. [The apiVersion and the minor](#the-apiversion-and-the-minor). |
 | `name` | every kind | yes | A [name](#names). On a Rubric, what a cases document's or a recording's `rubric` may name, stable across edits. On a Cases document, the name of the set. On a Recording, the case it answers: a case's name, `<case>-turn-<n>` for one turn of a conversation, or a request hash when a recorder keyed it by content. |
 | `version` | Rubric | no | An edition of the rubric, free-form; a number is read as its text. The questions' fingerprint is the exact identity. |
 | `description` | Rubric, Cases | no | What the rubric decides, or where the cases came from, for the person reading the file. |
@@ -2703,10 +3165,11 @@ Every document has exactly four top-level fields, the envelope of a [Kubernetes 
 | `annotations` | every kind | no | String to string: what a tool keeps that the format does not name. [Labels and annotations](#labels-and-annotations). |
 
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: inbox-triage
+  minor: 3
   version: 2
   description: Sort an incoming support message.
 spec:
@@ -2714,9 +3177,16 @@ spec:
   policy: …
 ```
 
-### The apiVersion
+### The apiVersion and the minor
 
-A reader reads exactly `apiVersion: jud/v1.3`. Any other value, a missing `apiVersion`, or a number where the string should be MUST be refused by name, before anything else in the document is read. A change of the format, whether it adds a field or changes what one means, takes a new apiVersion (`jud/v1.4`); a reader reads one apiVersion, and a document is moved forward by rewriting its envelope, not by a reader that reads several.
+`apiVersion` names the stable line of the format, `jud/v1`, and `metadata.minor` the minor within it that the document needs: the lowest whose fields it uses, or simply the one the writer implements. A minor only adds a field, a value a field may take, or a kind; it never removes, renames or narrows one ([Stability](stability.md)). A reader reads `apiVersion: jud/v1` with every `minor` up to the one it implements, and MUST refuse, by number, a `minor` above it, before anything else in the document is read: the document uses something a later minor added, and the right message is that the reader is out of date, not that the document is wrong. A missing `apiVersion`, any other string, a number where the string should be, and a `minor` that is missing or not a non-negative integer MUST be refused by name, before anything else is read. A writer writes the minor it implements. A change of meaning takes a new line, `jud/v2`, with its own apiVersion.
+
+Minor 3 was first published as `apiVersion: jud/v1.3`, with the minor in the string and no `metadata.minor`. A reader MUST read that spelling as `jud/v1` at minor 3, for at least twelve months from the release that first reads `jud/v1` (crate 0.14.0), and MUST refuse a `metadata.minor` beside it; a writer never writes it. The minors published so far:
+
+| Minor | Adds | First read by |
+|---|---|---|
+| 3 | The manifest envelope and everything on this page; spelled `jud/v1.3` until `metadata.minor` existed | crate 0.8.0 (as `jud/v1.3`), 0.14.0 (as `jud/v1`) |
+| 4 | The Box question ([Questions](#questions)), the images a document names (`assets` on a Rubric and on a case, [Assets](#assets)), the Box label (`{box, iou_at_least}`, [Cases](#cases)) and the Box in a gate's `confidence` and `bands`; the request fingerprint folds the images in ([Fingerprints](#fingerprints)) | crate 0.14.0 |
 
 ### Names
 
@@ -2727,10 +3197,11 @@ A name identifies a thing another document or a file name refers to: every `meta
 `metadata.labels` and `metadata.annotations` are maps of string to string under any keys. Labels are for selecting and grouping; annotations are for everything else, including a shared YAML anchor that would otherwise have to live inside the first question that uses it. A reader MUST check only their shape: every key and every value is a string, so an anchor placed there is a scalar, not a mapping. Their content has no meaning to the reader and is part of no fingerprint. A writer MUST keep them when it writes the document back.
 
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: support-routing
+  minor: 3
   labels:
     team: support
   annotations:
@@ -2754,10 +3225,11 @@ Labels and annotations are the only open maps outside `spec.tuning`, `spec.respo
 | `questions` | yes | A map of question id to question, at least one, in the order the model sees them. |
 | `policy` | no | A map of question id to gate. |
 | `tuning` | no | Where the gates came from. |
+| `assets` | no | The images the questions refer to, by reference (minor 4). [Assets](#assets). |
 
 ### Questions
 
-A question is exactly what the API receives. The reader MUST apply the checks a request builder applies before sending, and refuse a question that would be refused: a Choice needs 2 to 255 options with non-empty keys, a Score needs 2 to 10 levels none of which is null, a Noul needs instructions or criteria that describe at least one outcome, and no id is empty.
+A question is exactly what the API receives. The reader MUST apply the checks a request builder applies before sending, and refuse a question that would be refused: a Choice needs 2 to 255 options with non-empty keys, a Score needs 2 to 10 levels none of which is null, a Noul needs instructions or criteria that describe at least one outcome, a Box needs instructions that are not `null`, and no id is empty.
 
 ```yaml
 questions:
@@ -2781,6 +3253,18 @@ questions:
 ```
 
 `instructions` MAY be a string, an object, an array or `null`; absent and `null` are the same, and both are sent to the API as `null`. A Noul's criteria keys are `true` and `false`, which YAML reads as booleans and the wire carries as strings; a reader MUST accept them bare or quoted and MUST refuse any other key. The order of `questions` and of a Choice's `criteria` is significant: it is the order the model sees, and a reader MUST preserve it.
+
+A Box (minor 4) asks where something is in an image the request carries, and answers with a box, found or not: four edges as fractions of the image and a confidence. It has `instructions` and no `criteria`; `null` instructions MUST be refused, since the instructions are all the question is. The image is named by a *reference*, text that stands for it wherever it appears in the state or the instructions, declared under [`assets`](#assets). A reader does not refuse a Box in a rubric that declares no image, since the image may come with the case or the request (`jud RUBRIC --asset`); the hosted API answers a Box over no image at all with a box at a confidence near zero, which the gate catches. A Box always returns a box, so the question whether there is anything to find is a Noul beside it, and the policy reads the two together.
+
+```yaml
+questions:
+  circle_present:
+    type: noul
+    instructions: Is there a filled circle in `image`?
+  circle:
+    type: box
+    instructions: the filled circle in `image`   # `image` is a reference: the state carries it, `assets` declares it
+```
 
 ### Declarations
 
@@ -2824,6 +3308,26 @@ The syntax is not [JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901) (RFC 69
 
 A path is *present* in a state when it leads to a value that is not `null`, not an empty string, not an empty array and not an empty object; `false` and `0` are present. That is the one test the format makes on the state.
 
+### Assets
+
+The images a request carries (minor 4). `assets` is a map of reference to image, on a Rubric for the images every request sends and on a case for the image that case is about ([Cases](#cases)); the two merge into one request, and a reference declared in both MUST name the same bytes. A reference is text, 1 to 1024 bytes, that the state or a question's instructions carries where the image belongs (`state: {image: shape-00}`, or `instructions: the mug in `photo``): the API resolves it wherever it appears as or inside a string, and refuses an asset nothing refers to, so a reader MUST refuse, as it reads the document and before any file is opened, a rubric's reference that appears in none of its questions and a case's reference that does not appear in its state (a case is read without its rubric, so the rubric's instructions do not count for it). An image is declared one of two ways ([decision 0025](../project/decisions/0025-a-document-names-an-image-by-path.md)):
+
+| Field | Required | Meaning |
+|---|---|---|
+| `type` | no | `image`, the one kind; written always, read optionally. |
+| `path` | one of the two | The file, relative to the document's directory. An absolute path, or one that leaves the directory (`..`), MUST be refused. The format is read from the bytes. |
+| `data_base64` | one of the two | The bytes inline, base64 as the wire carries them, with `format` required: for a small image a document keeps to itself. |
+| `format` | with `data_base64` | `png`, `jpg` or `jpeg`. With a `path`, optional, and the file MUST match it. |
+
+```yaml
+spec:
+  assets:
+    logo: {type: image, path: images/logo.png}           # beside the document
+    mark: {type: image, format: png, data_base64: iVBORw0KGgo…}
+```
+
+A reader loads the files when it builds the request, not when it reads the document, so `jud check` reads a document whose images are elsewhere; a file that is missing or is not a PNG or a JPEG fails loudly, by the entry's name, when the request is built. The image's own limits (a side from 256 to 1568 pixels, 78,400 to 2,458,624 pixels in all, 16 MiB a file, 32 MiB a request) are the API's, checked before anything is sent.
+
 ### Policy
 
 A gate says where one question's answer becomes an action. Every field is OPTIONAL, and each applies to some primitives; a gate that does not fit its question, or names a question the rubric does not have, MUST be refused.
@@ -2831,14 +3335,14 @@ A gate says where one question's answer becomes an action. Every field is OPTION
 | Field | Applies to | Meaning | Absent |
 |---|---|---|---|
 | `threshold` | Noul | Yes at this probability of yes and above. | 0.5 |
-| `confidence` | Choice, Score | Acted on at this confidence and above; deferred below it. | 0, nothing deferred |
-| `bands` | Choice, Score | Confidence bands, highest bar first, each `{at_least, verdict}`: the first band the answer's confidence meets names the verdict; below the last, the answer is deferred. The generalisation of `confidence`, which is one unnamed band; a gate has one or the other. Bars strictly decrease, names are distinct, and the list is not empty. | |
+| `confidence` | Choice, Score, Box | Acted on at this confidence and above; deferred below it. A Box that gave no confidence is read at 0. | 0, nothing deferred |
+| `bands` | Choice, Score, Box | Confidence bands, highest bar first, each `{at_least, verdict}`: the first band the answer's confidence meets names the verdict; below the last, the answer is deferred. The generalisation of `confidence`, which is one unnamed band; a gate has one or the other. Bars strictly decrease, names are distinct, and the list is not empty. | |
 | `fallback` | Choice, Score | What a deferred answer falls back to: an offered option key (a static one, for a Choice whose options come from the request), or a level by its text or its index as a string. | none |
 | `level_at_least` | Score | A level, by index or text: the verdict says whether the nearest level reached it. | |
-| `strict` | every bar | `true`: a bar is met above it, not at it (`>` for `≥`), for the threshold, the confidence and every band. A Choice or Score gate with neither `confidence` nor `bands` has no bar, and defers nothing, strict or not. | `false` |
+| `strict` | every bar | `true`: a bar is met above it, not at it (`>` for `≥`), for the threshold, the confidence and every band. A Choice, Score or Box gate with neither `confidence` nor `bands` has no bar, and defers nothing, strict or not. | `false` |
 | `note` | any | Why the bar is where it is. | |
 
-Reading a response through the policy gives one verdict per question asked: for a Noul, yes or no with the probability; for a Choice, the chosen option with its confidence and its band, or deferred with the fallback, the option the model would have chosen and the bar (the lowest, with bands); for a Score, the level nearest to the weighted score with its index, text, confidence, band and whether it reached `level_at_least`, or deferred likewise. A verdict is derived, not stored.
+Reading a response through the policy gives one verdict per question asked: for a Noul, yes or no with the probability; for a Choice, the chosen option with its confidence and its band, or deferred with the fallback, the option the model would have chosen and the bar (the lowest, with bands); for a Score, the level nearest to the weighted score with its index, text, confidence, band and whether it reached `level_at_least`, or deferred likewise; for a Box, the box with its confidence and band (*located*), or deferred with the box the model gave as text and the bar. A verdict is derived, not stored.
 
 ```yaml
 policy:
@@ -2878,6 +3382,7 @@ Where the gates came from. Every field is OPTIONAL.
 | `model` | The versioned model that answered them (`jev-1.13.0`): a gate is tuned per version. |
 | `server` | The server that answered, as a base URL. |
 | `tuned_at` | When, [RFC 3339](https://www.rfc-editor.org/rfc/rfc3339). |
+| `labelled` | Question id to the number of labelled cases its bar was read off, as `jud tune` writes it; another implementation keeps it as given. |
 | anything else | Kept as given. `tuning` is the one place in a rubric's `spec` that accepts fields the format does not name. |
 
 ### Fingerprint
@@ -2903,6 +3408,7 @@ A case:
 | `state` | yes | Any JSON: the state the questions are asked about. An array is a conversation, one element per turn. |
 | `expect` | no | The right answer, by question id, for the questions this case is labelled for. A question left out is asked and not graded. |
 | `options` | no | Options supplied for this case's request, by question id, then option key to description: what a Choice with `options_from: request` is asked over. |
+| `assets` | no | The images this case's state refers to, by reference, each a `path` relative to this document or inline `data_base64` (minor 4). [Assets](#assets). |
 | `tags` | no | Free labels for slicing a report. |
 | `note` | no | Why the label is what it is. |
 
@@ -2914,15 +3420,17 @@ Binding cases to a rubric lowers each case's request (its state and its `options
 | Noul, over a conversation | `{from_turn: n}`: true from turn `n` (zero-based) on; `{from_turn: null}`: never | `yes` when the conversation has a turn `n`, else `no`; per turn, [Conversations](#conversations) |
 | Choice | an option the case's request offers, static or supplied | the key |
 | Score | a level's index (a number) or a level's text | the index, as a string |
+| Box | `{box: {top, bottom, left, right}}`, the edges as fractions of the image, `top` below `bottom` and `left` below `right`; `iou_at_least` beside it, 0 to 1, the overlap that counts as right (0.5 when left out) | `box`; right when the intersection over union of the answer and the label reaches the bar ([decision 0026](../project/decisions/0026-a-box-is-graded-by-intersection-over-union.md)) |
 
-The "grades as" column is the vocabulary the API's own answers are graded in: a Noul answer is `yes` at 0.5 and above, a Choice answer is its option key, a Score answer's distribution is keyed by level index.
+The "grades as" column is the vocabulary the API's own answers are graded in: a Noul answer is `yes` at 0.5 and above, a Choice answer is its option key, a Score answer's distribution is keyed by level index, a Box answer is `box` with the overlap as the number a report keeps (the mean overlap stands where a Brier score would).
 
 <!-- file: examples/jud/spec-cases.jud -->
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: inbox-triage-cases
+  minor: 3
   description: Seven messages, labelled by the support lead.
 spec:
   rubric: inbox-triage
@@ -2957,7 +3465,7 @@ A state that is an array is a conversation. `{from_turn: n}` labels a Noul with 
         wants_human: {from_turn: 2}
 ```
 
-`from_turn` MUST be refused on a question that is not a Noul, on a state that is not an array, and with a turn past the last one (`null` says never). `{}` and `{from_turn: 0, until: 1}` are not labels.
+`from_turn` MUST be refused on a question that is not a Noul, on a state that is not an array, and with a turn past the last one (`null` says never). `{}` and `{from_turn: 0, until: 1}` are not labels. A case's `assets` go with every turn's request, since each turn is the state cut, not the images.
 
 ### Fingerprint
 
@@ -2969,9 +3477,9 @@ A cases document's fingerprint is the [fingerprint](#fingerprints) of its `spec.
 
 | Field | Required | Meaning |
 |---|---|---|
-| `response` | yes | The response as received: `model`, `answers` and `usage` in the wire's shape, plus `request_id` and any top-level field the server added. |
+| `response` | yes | The response as received: `model`, `answers` and `usage` in the wire's shape (a Box's answer is `type: box` with `box: {top, bottom, left, right}` and a `confidence` that may be `null`), plus `request_id` and any top-level field the server added. |
 | `elapsed_ms` | yes | Wall-clock time of the call. |
-| `fingerprint` | no | The [request fingerprint](#fingerprints): the identity of the state and the questions, model excluded. The key a replay finds the recording by. |
+| `fingerprint` | no | The [request fingerprint](#fingerprints): the identity of the state, the questions and the images, model excluded. The key a replay finds the recording by. |
 | `request_hash` | no | This crate's own 16-hex-digit content hash, written by its `Recorder`; another implementation leaves it out. |
 | `rubric` | no | The rubric the questions came from, by name or by fingerprint. |
 | `server` | no | The server that answered, as a base URL. |
@@ -2979,10 +3487,11 @@ A cases document's fingerprint is the [fingerprint](#fingerprints) of its `spec.
 
 <!-- file: examples/jud/spec-recording.jud -->
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: receipt
+  minor: 3
 spec:
   response:
     model: jev-1.13.0
@@ -3021,7 +3530,43 @@ spec:
   recorded_at: "2026-10-04T11:58:00Z"
 ```
 
-Any field of `spec` the kind does not define MUST be refused; `response` keeps whatever the server sent. A recording MUST be verified against the questions of the request that finds it before it is replayed, as a live response would be, so a recording that no longer fits the rubric fails naming the question rather than replaying an answer the rubric would refuse.
+Any field of `spec` the kind does not define MUST be refused; `response` keeps whatever the server sent. A recording MUST be verified against the questions of the request that finds it before it is replayed, as a live response would be (an answer for every question, of its primitive, a Choice naming an offered option, a Score whose legend is the levels sent, a Box whose box is a region), so a recording that no longer fits the rubric fails naming the question rather than replaying an answer the rubric would refuse.
+
+A recording of a request with an image holds no image: the fingerprint folds each image in by the digest of its bytes, so a replay finds the recording only when the same bytes are sent again, under the same reference, and the `response` carries the box as the wire does. One of the shapes example's recordings (`examples/recordings/shapes/`, `jev-1.14.0`'s answers to `examples/jud/shapes-cases.jud`):
+
+<!-- file: examples/recordings/shapes/shape-01.jud -->
+```yaml
+# Recorded answer for case `shape-01`; found by fingerprint.
+apiVersion: jud/v1
+kind: Recording
+metadata:
+  name: shape-01
+  minor: 4
+spec:
+  elapsed_ms: 238
+  fingerprint: sha256:f658b1e1bb21af59348bc00a5839590b852c27c37627f3b1fca9c9d8db93fac6
+  recorded_at: "2026-10-15T11:16:51Z"
+  response:
+    answers:
+      circle:
+        box:
+          bottom: 0.86
+          left: 0.2
+          right: 0.67
+          top: 0.36
+        confidence: 0.92
+        type: box
+      circle_present:
+        noul: 0.99
+        type: noul
+    model: jev-1.14.0
+    request_id: req_01a13f477ac97642b59f062f6172375f
+    usage:
+      input_tokens: 625
+      output_tokens: 37
+  rubric: shapes
+  server: https://api.typesafe.ai
+```
 
 ## Fingerprints
 
@@ -3032,7 +3577,7 @@ A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 ([FIPS 
 | a rubric | its `spec.questions` map |
 | a rubric's policy | its `spec.policy` map |
 | a cases document | its `spec.cases` array |
-| a request | `{"questions": <the questions map>, "state": <the state>}` |
+| a request | `{"assets": {<reference>: "sha256:<hex of the image's bytes>", …}, "questions": <the questions map>, "state": <the state>}`, with `assets` left out when the request carries no image |
 
 Every fingerprint is over a value inside `spec`, never over the envelope: `apiVersion`, `kind` and `metadata` are part of none.
 
@@ -3042,6 +3587,8 @@ The request fingerprint leaves the model out: the same request answered by two m
 
 Known vector: the fingerprint of `{"b": "x", "a": 1}` is `sha256:ecf9e98ec0641e23113ff3ce8bdc78d0ddd249886517fd4a7f68cc83d4e65667`, the SHA-256 of the fifteen bytes `{"a":1,"b":"x"}`.
 
+An image is in a request's fingerprint by the SHA-256 of its bytes, under its reference, never by its base64 or its path: the same image declared by another path, or inline, is the same request, and a request without an image fingerprints exactly as it did before `assets` existed. Known vector: the request `{"state": {"photo": "photo"}}` asking one Box `mug` with the instructions `` the mug in `photo` `` over `tests/fixtures/images/square-300.png` (717 bytes, SHA-256 `d1b456a83498c260c89efd73af6015d7260951224900d1d9c736bcd15d96ceb2`) canonicalises to `{"assets":{"photo":"sha256:d1b456a8…"},"questions":{"mug":{"instructions":"the mug in `photo`","type":"box"}},"state":{"photo":"photo"}}` and fingerprints as `sha256:7a492d9eb5e50d0413dfc3d3361e06dabc0ca9fe68e31860b923340d4258aa72`.
+
 `request_hash` is not part of the format: this crate's `Recorder` writes it, its `Replay` finds a recording by either key, and another implementation neither writes nor needs it.
 
 ## Reading rules
@@ -3049,24 +3596,25 @@ Known vector: the fingerprint of `{"b": "x", "a": 1}` is `sha256:ecf9e98ec0641e2
 An implementation MUST read a document under these rules.
 
 - YAML 1.2 core schema: `true` and `false` are the booleans; `yes`, `no`, `on`, `off` and `y` are strings; a leading-zero number is decimal. A duplicate key is an error. JSON is accepted as YAML. A merge key (`<<`) and an explicit tag the core schema does not define are refused with their position, and a `!!binary` scalar is its text, not what it encodes. A syntax error names a line and a column and quotes no part of the document.
-- `apiVersion` MUST be present and the string `jud/v1.3`; `kind` MUST be present and one of the three. Both are checked before anything else. A top-level key other than the four of the envelope is refused by name.
+- `apiVersion` MUST be present and the string `jud/v1` (or the earlier spelling `jud/v1.3`); `metadata.minor` MUST be present under `jud/v1`, a non-negative integer at most the minor the reader implements, and absent under the earlier spelling; `kind` MUST be present and one of the three. All three are checked before anything else. A top-level key other than the four of the envelope is refused by name.
 - Every `metadata.name` and every case `id` is a [name](#names). `metadata.name` is REQUIRED on every kind; `metadata.version` is refused on a Cases document and a Recording, `metadata.description` on a Recording. `metadata.labels` and `metadata.annotations` are maps of string to string under any keys.
 - A field the kind does not define is refused, with its path. The exceptions are `tuning` in a rubric and `response` in a recording, which keep what they are given, and `state`, which is any JSON.
 - Order is significant and preserved for `questions`, a Choice's `criteria`, a Score's `criteria`, `bands`, `cases`, `expect` and a case's supplied options. It is not for the parts of an instructions object, which is a JSON object like the state: an implementation MAY send its keys in any order (this crate sends them sorted).
 - A state path in `when` or `part_when` is well formed, and every `part_when` name is a key of its instructions object. `options_from` is `request`, on a Choice. None of the three is `null`.
+- An asset is `type: image` (or no `type`), has exactly one of `path` and `data_base64`, a `format` the API takes (`png`, `jpg`, `jpeg`) that is required with `data_base64`, and a path that is relative and stays under the document's directory. Every reference a rubric declares appears in its questions, and every reference a case declares appears in its state; a document's references weigh at most 65,536 bytes together. A Box's `instructions` is not `null`.
 - A rubric's questions pass the request builder's checks, and each gate fits its question's primitive and names an offered option or an existing level. A cases document's labels fit their questions when the cases are bound to a rubric; a document MAY be read without its rubric, and is then only checked for shape.
-- A `threshold`, a `confidence` and a band's `at_least` are numbers from 0 to 1 inclusive. A level index is a non-negative integer below the number of levels.
-- A reader that writes a document back MUST write `apiVersion`, `kind`, `metadata` (`name`, then `version`, `description`, `labels` and `annotations` when present) and `spec`, in that order, with the same fields, so a document survives a read and a write with its fingerprints unchanged.
+- A `threshold`, a `confidence`, a band's `at_least`, a box's four edges and a label's `iou_at_least` are numbers from 0 to 1 inclusive. A level index is a non-negative integer below the number of levels. A labelled box is a region: `top` below `bottom`, `left` below `right`.
+- A reader that writes a document back MUST write `apiVersion: jud/v1`, `kind`, `metadata` (`name`, `minor`, then `version`, `description`, `labels` and `annotations` when present) and `spec`, in that order, with the same fields, so a document survives a read and a write with its fingerprints unchanged; a document read in the earlier spelling is written in this one.
 
 ## Schemas and conformance
 
-`schemas/jud/rubric.schema.json`, `cases.schema.json` and `recording.schema.json` ([JSON Schema 2020-12](https://json-schema.org/draft/2020-12), sharing `common.schema.json` for the envelope, `metadata` and the name grammar) state the shape of each kind. A schema cannot state the cross-checks (a gate against its question's primitive, a label against the options offered, `from_turn` against the state's shape); those are the reading rules above.
+`schemas/jud/rubric.schema.json`, `cases.schema.json` and `recording.schema.json` ([JSON Schema 2020-12](https://json-schema.org/draft/2020-12), sharing `common.schema.json` for the envelope, `metadata`, the name grammar, the four question shapes, an asset and a box's edges) state the shape of each kind. A schema cannot state the cross-checks (a gate against its question's primitive, a label against the options offered, `from_turn` against the state's shape, a reference against the state or the questions, a labelled box being a region); those are the reading rules above.
 
 An implementation conforms when it reads all three kinds under the reading rules, refuses what they refuse with the field named, computes the fingerprints of this page (checked against the known vector), and writes documents that validate against the schemas and read back unchanged.
 
 ## Extending the format
 
-`jud/v1.3` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later apiVersion is refused whole rather than half-read. Any change, an added field or a changed meaning, takes a new apiVersion, which a reader of this one refuses by name. Two additions are foreseen and not in this apiVersion: a soft label (a distribution over options or levels) and a verdict kind (what an application decided).
+Minor 4 of `jud/v1` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later minor is refused whole rather than half-read, and by its `metadata.minor` first, so the refusal names the minor the reader lacks. An addition (a field, a value a field may take, a kind) is the next minor, with this page, the schemas and `metadata.minor`'s range moving together; a change of meaning is `jud/v2`. Two additions are foreseen and not in this minor: a soft label (a distribution over options or levels) and a verdict kind (what an application decided).
 
 
 <!-- source: docs/reference/crate.md -->
@@ -3100,22 +3648,23 @@ In the order of one call: a question is built, sent through a backend, answered,
 
 | Module | What it is for | Reference |
 |---|---|---|
-| `question` | `Questions` collects the typed questions of one request; adding one returns a `Handle<A>` that fixes the answer type (`noul`, `choice::<T>`, `score`, `dynamic_choice`). The `options!` macro writes an enum and its wire keys together. The builder checks the limits below before anything is sent. | [docs.rs](https://docs.rs/judgment/latest/judgment/question/index.html) |
-| `answer` | `Response` and the wire `Answer`; `Probability` and `Confidence`, which refuse a value outside `[0, 1]`; `Response::verify` holds a response against the questions; `Response::get(&handle)` reads `Noul`, `Choice<T>` or `Score`. | [docs.rs](https://docs.rs/judgment/latest/judgment/answer/index.html) |
-| `backend` | The `SystemOne` trait and three implementations beside the client: `Fake`, `Recorder`, `Replay`. | [docs.rs](https://docs.rs/judgment/latest/judgment/backend/index.html) |
-| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions`: the wire with the official SDKs' retries. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
+| `question` | `Questions` collects the typed questions of one request; adding one returns a `Handle<A>` that fixes the answer type (`noul`, `choice::<T>`, `score`, `dynamic_choice`, `r#box`). The `options!` macro writes an enum and its wire keys together. The builder checks the limits below before anything is sent. | [docs.rs](https://docs.rs/judgment/latest/judgment/question/index.html) |
+| `answer` | `Response` and the wire `Answer`; `Probability` and `Confidence`, which refuse a value outside `[0, 1]`; `Response::verify` holds a response against the questions; `Response::get(&handle)` reads `Noul`, `Choice<T>`, `Score` or `BoundingBox` (`BoxEdges` as fractions of the image, `PixelBox` at a size). | [docs.rs](https://docs.rs/judgment/latest/judgment/answer/index.html) |
+| `asset` | `Image` (a PNG or a JPEG, its format and size read from the bytes, the hosted API's limits checked), `ImageFormat`, and `Assets`, the request's images by reference. |  [docs.rs](https://docs.rs/judgment/latest/judgment/asset/index.html) |
+| `backend` | The `SystemOne` trait (`answer`, and `answer_with_assets` for a request with images) and three implementations beside the client: `Fake`, `Recorder`, `Replay`. | [docs.rs](https://docs.rs/judgment/latest/judgment/backend/index.html) |
+| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields and long context for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
 | `http` (`http`) | `RetryPolicy` and `send_with_retries`, the retry loop behind the client, public so another `reqwest` client can retry the same way. | [docs.rs](https://docs.rs/judgment/latest/judgment/http/index.html) |
 | `error` | `Error`, `Result`, `ValidationIssue`. | [docs.rs](https://docs.rs/judgment/latest/judgment/error/index.html) |
 | `eval` | `Recording`, `Judgment`, the metrics (`metrics`), the fingerprints (`canonical`) and the sweeps (`tuning`). | [docs.rs](https://docs.rs/judgment/latest/judgment/eval/index.html) |
-| `jud` (`jud`) | `parse`, `Rubric`, `Cases`, `Case`, `Verdict`, `parse_recording`, `recording_to_yaml`, `present`, `API_VERSION`. | [docs.rs](https://docs.rs/judgment/latest/judgment/jud/index.html) |
+| `jud` (`jud`) | `parse`, `Rubric`, `Cases`, `Case`, `Verdict`, `AssetSource`, `load_assets`, `BoxLabel`, `parse_recording`, `recording_to_yaml`, `present`, `API_VERSION`, `MINOR`. | [docs.rs](https://docs.rs/judgment/latest/judgment/jud/index.html) |
 | `observer` | `Observer`, the seam through which token usage and failed attempts reach the application's metrics. The crate emits `tracing` spans (`typesafe.evaluate`, `typesafe.list_models`) and no metrics of its own. | [docs.rs](https://docs.rs/judgment/latest/judgment/observer/index.html) |
 | `contract` (`openapi`) | `OPENAPI_DOCUMENT`. | [docs.rs](https://docs.rs/judgment/latest/judgment/contract/index.html) |
 
-The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCriteria`, the answer types, `SystemOne`, `Fake`, `Recorder`, `Replay`, `Error`, `Result`, `ValidationIssue`, `Observer` and, with `http`, the client types.
+The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCriteria`, the answer types, `Assets`, `Image`, `ImageFormat`, `SystemOne`, `Fake`, `Recorder`, `Replay`, `Error`, `Result`, `ValidationIssue`, `Observer` and, with `http`, the client types.
 
 ### The `jud` feature
 
-`judgment::jud` implements [The .jud format](jud-format.md) at `API_VERSION` (`jud/v1.3`), the one apiVersion it reads and writes. `Rubric` has `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `gate`, `lower` and `apply`; `Cases` has `parse`, `to_yaml`, `fingerprint` and `bind`, with `Case::request` and `Case::per_turn`; `grade` grades one case against one response; `present` is the state-path test; `parse_recording` and `recording_to_yaml` read and write the third kind into `eval::Recording`. `Questions::handle` gives a typed handle to a question read from a file. `Replay` reads `.jud` recordings beside its `.json` ones.
+`judgment::jud` implements [The .jud format](jud-format.md) at `API_VERSION` (`jud/v1`) up to `MINOR` (4), the line it reads and writes; the earlier spelling of minor 3, `jud/v1.3`, is read as it stands (`EARLIER_SPELLINGS`). `Rubric` has `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `gate`, `lower` and `apply`; `Cases` has `parse`, `to_yaml`, `fingerprint` and `bind`, with `Case::request` and `Case::per_turn`; `grade` grades one case against one response (a Box label by intersection over union); `Rubric::load_assets` and `Case::load_assets` read a document's declared images into a request's `Assets`; `present` is the state-path test; `parse_recording` and `recording_to_yaml` read and write the third kind into `eval::Recording`. `Questions::handle` gives a typed handle to a question read from a file. `Replay` reads `.jud` recordings beside its `.json` ones.
 
 ## Errors
 
@@ -3124,7 +3673,7 @@ The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCri
 | Group | Variants | Remedy |
 |---|---|---|
 | Configuration | `MissingApiKey`, `InvalidApiKey`, `Url`, `ReservedHeader`, `ReservedField` | fix the builder's input; refused before any call |
-| Request refused | `Unauthorized`, `PermissionDenied`, `InvalidRequest`, `InvalidQuestion`, `DuplicateQuestionId` | fix the key, the permission or the question |
+| Request refused | `Unauthorized`, `PermissionDenied`, `InvalidRequest`, `InvalidQuestion`, `DuplicateQuestionId`, `InvalidImage`, `InvalidAsset`, `RequestTooLarge` | fix the key, the permission, the question or the image; an image outside the limits is refused before any call |
 | Account out of credit | `PaymentRequired` (a 402, OpenRouter's "Insufficient credits") | add credit; a retry or a new key does not help |
 | Transient, after the retries | `RateLimited`, `Overloaded`, `Http` | retry later, fall back, or raise the policy |
 | Transport | `Transport`, `ResponseTooLarge` | the network, the server, or the body cap |
@@ -3144,6 +3693,11 @@ Checked by the builder before a request is sent, and by the `.jud` reader:
 | Question ids | non-empty, unique | |
 | Option keys | non-empty | |
 | Response body | 8 MiB by default | `RetryPolicy::max_body_bytes` |
+| An image's side | 256 to 1568 pixels | `asset::MIN_SIDE_PX`, `asset::MAX_SIDE_PX` |
+| An image's pixels | 78,400 to 2,458,624 | `asset::MIN_PIXELS`, `asset::MAX_PIXELS` |
+| An image's bytes | 16 MiB | `asset::MAX_IMAGE_BYTES` |
+| A request's images, and its body | 32 MiB | `asset::MAX_REQUEST_BYTES` |
+| A reference | 1 to 1024 bytes, 65,536 bytes for all of a request's | `asset::MAX_REFERENCE_BYTES`, `asset::MAX_REFERENCES_BYTES` |
 
 ## Defaults
 
@@ -3213,14 +3767,14 @@ What is promised, what is not, and for how long, for the format, its fingerprint
 
 ## The format: `jud/v1` is stable
 
-The `.jud` format is at `apiVersion: jud/v1.3` ([The .jud format](jud-format.md)), and the `v1` line is stable:
+The `.jud` format is at `apiVersion: jud/v1`, minor 4 ([The .jud format](jud-format.md)), and the `v1` line is stable:
 
 - **A valid document stays valid.** A document that a `jud/v1` reader accepts today is accepted by every later `jud/v1` reader. Nothing is removed, renamed or given a new meaning inside the `v1` line: not a field of the envelope, not a field of `spec`, not a kind, not a rule of reading.
 - **A minor version only adds.** A later minor (`1.4`, `1.5`) may add an optional field, a value a field may take, or a kind. It may not make an optional field required, narrow what a field accepts, or change what an existing field means. A document that uses nothing a later minor added is, byte for byte, a document of the earlier minor.
 - **Readers accept every `v1` document for at least twelve months.** When a later minor is published, every reader of the format that this repository ships (the crate's `judgment::jud`, the `jud` command, the plugin's checks) accepts documents of each earlier `v1` minor for at least twelve months from that publication. The date is the release date of the crate version that first reads the new minor, recorded in the `CHANGELOG`.
 - **A change of meaning is `jud/v2`.** Anything a minor may not do takes a new major version, with its own `apiVersion`, its own schemas and a page that maps `v1` onto it. A `v2` reader is not required to read `v1`; a `v1` document is moved by rewriting it.
 
-Today the one `v1` minor published is `1.3`, and the crate's reader reads exactly `apiVersion: jud/v1.3`. How the next minor is spelled, and how a reader of it also reads `1.3`, is [decision 0020](../project/decisions/0020-how-a-v1-minor-is-spelled.md), proposed and not applied; whichever spelling is accepted, the promises on this page hold.
+A document declares the minor it needs in `metadata.minor` ([decision 0020](../project/decisions/0020-how-a-v1-minor-is-spelled.md)), and a reader reads every minor up to its own and refuses a higher one by number, so the twelve-month clock has a number to run against. Minor 3 was first published as `apiVersion: jud/v1.3`, with the minor in the string; the crate's reader reads that spelling as minor 3 for at least twelve months from 0.14.0, the release that first reads `jud/v1`, and writes `jud/v1` with `metadata.minor`. Minor 4 (the Box question, the images a document names, the Box label) was published in the same release, so a minor 3 document, in either spelling, is read for at least twelve months from 0.14.0.
 
 ## Fingerprints exclude the envelope and never change
 
@@ -3251,10 +3805,10 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 
 | What | Promise | Since |
 |---|---|---|
-| A `jud/v1` document | Valid today, valid under every later `v1` minor | `jud/v1.3`, crate 0.8.0 |
+| A `jud/v1` document | Valid today, valid under every later `v1` minor | minor 3 (`jud/v1.3`), crate 0.8.0 |
 | A `v1` minor | Adds only; never removes, renames, narrows or changes meaning | this page |
 | Readers of an earlier `v1` minor | Accepted for at least twelve months after a later minor is published | this page |
-| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good | `jud/v1.3`, decision 0018 |
+| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good. A request's includes each image by the digest of its bytes, and is unchanged for a request without one | minor 3, decision 0018; the images, minor 4, decision 0025 |
 | The wire | The vendored OpenAPI document; a change moves the contract test, the CHANGELOG and the README together | crate 0.3.0 |
 | The crate | 0.x: a minor may break and says so; a patch does not | crate 0.3.0 |
 | The `jud` command | Exit status (0 to 3), the verdict JSON, `jud eval`'s `--json` keys, the places that write files (`jud record --out`, `jud tune --out`, `jud split`) and the configuration: a change to what one means, or removing one, only in a minor, listed as breaking; an addition is listed under Added | crate 0.9.0; status 3, `eval --json` and the file writes from the release that ships `record`, `eval` and `tune` |
@@ -3265,11 +3819,17 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 
 # Glossary
 
+**Asset**
+: An image a request carries, under a reference: the wire's `assets` map, the crate's `Assets`, a document's `assets` declared by a path relative to the document or inline. [Assets](jud-format.md#assets).
+
 **Backend**
 : A source of answers behind the `SystemOne` trait: the `Client`, a `Fake`, a `Recorder`, a `Replay`. Every backend verifies its response against the questions before returning it. [How judgment works](../concepts/how-judgment-works.md).
 
 **Band**
 : One row of a gate's `bands`: a confidence bar (`at_least`) and the verdict an answer at or above it receives. Bands are listed highest first; below the last, the answer is deferred. [Policy](jud-format.md#policy).
+
+**Box**
+: The primitive that locates something in an image: the answer is four edges as fractions of the image (`top`, `bottom`, `left`, `right`) and a confidence, and it always returns a box, found or not. Graded by intersection over union against a labelled box. [Questions](jud-format.md#questions), [Cases](jud-format.md#cases).
 
 **Case**
 : One labelled state in a Cases document: the state the questions are asked about, the expected answers for the questions the labeller was sure of, and optionally the options supplied for the request. [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md), [`Cases`](jud-format.md#cases).
@@ -3278,16 +3838,19 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 : The primitive that picks one option out of a closed set. The answer is the chosen option, a probability per option, and a confidence. [System One](../concepts/system-one.md).
 
 **Confidence**
-: For a Choice or a Score, how far the distribution leans toward its answer, in `[0, 1]`. It is not a probability of being right, and the crate's `Confidence` type cannot be compared with a `Probability` at a threshold. A Noul has no confidence. [System One](../concepts/system-one.md).
+: For a Choice or a Score, how far the distribution leans toward its answer, in `[0, 1]`; for a Box, the model's confidence in its box, which it may leave out. It is not a probability of being right, and the crate's `Confidence` type cannot be compared with a `Probability` at a threshold. A Noul has no confidence. [System One](../concepts/system-one.md).
 
 **Fake**
 : The backend that answers from a scripted table, refuses a question it has no answer for or an answer the question could not produce, and remembers every call. [Record, replay and test](../guides/record-replay-and-test.md).
 
 **Fingerprint**
-: `sha256:` over the RFC 8785 canonical JSON of a value inside a document's `spec`: a rubric's questions, a cases document's cases, or a request (state and questions). The same content has one fingerprint in every implementation. [Fingerprints](jud-format.md#fingerprints).
+: `sha256:` over the RFC 8785 canonical JSON of a value inside a document's `spec`: a rubric's questions, a cases document's cases, or a request (state, questions, and each image by the SHA-256 of its bytes under its reference). The same content has one fingerprint in every implementation. [Fingerprints](jud-format.md#fingerprints).
 
 **Gate**
 : A rubric's policy entry for one question: the bar at which its answer becomes an action, with a fallback, bands or a level to reach. [Policy](jud-format.md#policy).
+
+**Intersection over union**
+: The overlap of two boxes divided by the area they cover together, 0 to 1; the rule a Box answer is graded by against its label, right at `iou_at_least` (0.5 by default) and above, with the mean kept in a report where a Brier score would be. [Cases](jud-format.md#cases), [decision 0026](../project/decisions/0026-a-box-is-graded-by-intersection-over-union.md).
 
 **Lower**
 : To build the request for one state from a rubric: the questions whose `when` holds, with the parts their `part_when` keeps, and the supplied options in place. `Rubric::lower` in the crate, `jud lower` on the command line. [Declarations](jud-format.md#declarations).
@@ -3303,6 +3866,9 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 
 **Recording**
 : One model response to one request, kept with the request's fingerprint, the server, and the time, so a run can be replayed without a call. [`Recording`](jud-format.md#recording).
+
+**Reference**
+: The text that stands for an image in a request: a string in the state or in a question's instructions that is also a key of `assets`. The API resolves it wherever it appears; an asset nothing refers to is refused. [Assets](jud-format.md#assets).
 
 **Replay**
 : The backend that answers from a directory of recordings, found by request fingerprint or request hash, verified before they are returned; a request nobody recorded is an error. [Record, replay and test](../guides/record-replay-and-test.md).
@@ -3323,7 +3889,7 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 : The provenance block of a rubric's policy: which cases, which model, which server and when the gates were tuned on. Also the act of sweeping a bar over graded recordings. [Tune thresholds](../guides/tune-thresholds.md).
 
 **Verdict**
-: What the policy makes of one answer: yes or no, an option, a level, or deferred, with the numbers behind it. Derived when a response is read, never stored. [Policy](jud-format.md#policy).
+: What the policy makes of one answer: yes or no, an option, a level, a located box, or deferred, with the numbers behind it. Derived when a response is read, never stored. [Policy](jud-format.md#policy).
 
 
 <!-- source: docs/concepts/system-one.md -->
@@ -3333,21 +3899,22 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 
 A generative model asked to classify something answers in prose, or in JSON it was told to produce. A `confidence` field in that JSON is generated text, not a measured probability, and a parse failure becomes a failure of the decision it was meant to inform.
 
-A [System One](https://docs.typesafe.ai) model does not generate text. It evaluates a `state` (any JSON) against typed questions and returns calibrated answers: a probability of yes, one option out of a defined set with the full distribution and a confidence, or a position on ordered levels. Calibrated means the probabilities can be measured against outcomes and held to account: among the answers given at 0.8, about eight in ten are right. That lets code own the workflow. The model supplies a number; the threshold that turns the number into an action is written, tested and tuned by the application.
+A [System One](https://docs.typesafe.ai) model does not generate text. It evaluates a `state` (any JSON, an image included) against typed questions and returns calibrated answers: a probability of yes, one option out of a defined set with the full distribution and a confidence, a position on ordered levels, or where something is in an image. Calibrated means the probabilities can be measured against outcomes and held to account: among the answers given at 0.8, about eight in ten are right. That lets code own the workflow. The model supplies a number; the threshold that turns the number into an action is written, tested and tuned by the application.
 
 TypeSafe's hosted models are the Jev family (`jev-latest`); the wire they speak, `POST /v1/systemone`, is spoken by other servers and open-weight models too ([Compatible servers and models](../project/research/compatible-servers-and-models.md)). This crate is a client to the wire, not to one server. It is not affiliated with TypeSafe AI.
 
-## The three primitives
+## The four primitives
 
 | Primitive | Asks | Answers with | A gate reads |
 |---|---|---|---|
 | **Noul** | A yes-or-no question | The probability of yes | a threshold on the probability |
 | **Choice** | One option among those offered | The chosen option, a probability per option, a confidence | a bar on the confidence, a fallback below it |
 | **Score** | A position on a scale of levels | A weighted position, a probability per level, a confidence | the nearest level, a bar on the confidence, a level to reach |
+| **Box** | Where something is in an image (Jev 1.14) | Four edges as fractions of the image, a confidence | a bar on the confidence; a Noul beside it says whether there is anything to find ([Visual judgments](visual-judgments.md)) |
 
 A question is narrow and atomic: one thing, answered with one number. "Which desk, and is it urgent, and should we refund?" is three questions. The model never sees the question's id, only its instructions and criteria, and never sees the threshold, which is why a bar can move without an answer changing.
 
-Confidence is not the probability of being right. For a Choice it is how far the distribution leans toward the chosen option; for a Score, how far it leans toward one level. A 60/40 split between two neighbouring levels is a confidence of 0.40 even when the weighted position is exact. A Noul has no confidence: it is thresholded on its probability. The crate keeps the two apart as types, `Probability` and `Confidence`, so a threshold meant for one is never applied to the other ([How judgment works](how-judgment-works.md)).
+Confidence is not the probability of being right. For a Choice it is how far the distribution leans toward the chosen option; for a Score, how far it leans toward one level. A 60/40 split between two neighbouring levels is a confidence of 0.40 even when the weighted position is exact. A Box's confidence is the model's in its box, and it may leave it out. A Noul has no confidence: it is thresholded on its probability. The crate keeps the two apart as types, `Probability` and `Confidence`, so a threshold meant for one is never applied to the other ([How judgment works](how-judgment-works.md)).
 
 ## What the model is not asked
 
@@ -3360,6 +3927,7 @@ A threshold is a claim about the model's probabilities: above this number, the m
 ## Next
 
 - [How judgment works](how-judgment-works.md): how the crate ties an answer to its question and what it checks before an answer is read.
+- [Visual judgments](visual-judgments.md): what changes when the state is an image.
 - [Your first decision from the command line](../start/first-decision-cli.md) or [in Rust](../start/first-decision-rust.md).
 
 
@@ -3581,7 +4149,7 @@ It is the last attempt's id when the call was retried, and there is none after a
 - **No sync client.** The API documents one evaluation endpoint and a model listing, and every consumer so far is async. A caller that must block can block on the future.
 - **No batching or streaming.** The API documents one request shape, and one request already carries many questions.
 - **No metrics backend.** A library that named instruments would force its telemetry stack on every consumer. The crate emits `tracing` spans and hands token usage and failed attempts to an `Observer`; the application counts them where it counts everything else.
-- **No per-call options across the `SystemOne` trait.** `Client::evaluate_with` takes a `CallOptions` for one call's timeout, retry policy, headers and extra body fields. A recording is filed under a hash of the state and the questions, and an extra field can change the answer, so options could cross the trait only by entering that hash. Keeping them off leaves every existing recording valid.
+- **No per-call options across the `SystemOne` trait.** `Client::evaluate_with` takes a `CallOptions` for one call's timeout, retry policy, headers and extra body fields. A recording is filed under a hash of the state and the questions, and an extra field can change the answer, so options could cross the trait only by entering that hash. Keeping them off leaves every existing recording valid. Long context is the one option with a client-wide default (`ClientBuilder::long_context`): a `Recorder` over such a client sends the header on every call, and the recordings it writes are keyed as any other, since the header changes the limits, not the request.
 - **No provider switch.** Any server that speaks the wire is a base URL and nothing more; `SystemOne` is already the abstraction.
 
 ## Next
@@ -3589,6 +4157,53 @@ It is the last attempt's id when the call was retried, and there is none after a
 - [Your first decision in Rust](../start/first-decision-rust.md).
 - [Record, replay and test](../guides/record-replay-and-test.md).
 - [Internals](../project/internals.md), the rules behind the decoder, the error bodies and the recordings, for a contributor.
+
+
+<!-- source: docs/concepts/visual-judgments.md -->
+
+
+# Visual judgments
+
+A System One request is a state and typed questions about it ([System One](system-one.md)). Since Jev 1.13 the state can include an image, and since Jev 1.14 a question can ask where something is in one. Nothing else changes: the questions are as narrow, the answers as calibrated, the thresholds as much the application's. This page is what is different.
+
+## An image is part of the state
+
+An image travels under `assets`, a map of *reference* to image, beside `state` and `questions`. The reference is text, and it stands for the image wherever it appears as or inside a string in the state or a question's instructions: `{"photo": "img-3f2a…"}` in the state, or "the signature on `page`" in a Box's instructions. The model sees the image where the reference is. An asset nothing refers to is refused by the API, so the crate refuses it first, by name.
+
+The crate treats an image as part of the request's identity ([decision 0024](../project/decisions/0024-images-are-part-of-the-request.md)): the request fingerprint and hash fold each image in by the SHA-256 of its bytes, so a recording is found by the image it answered and two requests that differ only by their image are two recordings. A request without an image is the request it always was, on the wire and in every recording. The `.jud` format names an image by a path relative to the document, or inline for a small one ([Assets](../reference/jud-format.md#assets), [decision 0025](../project/decisions/0025-a-document-names-an-image-by-path.md)).
+
+An image costs input tokens in proportion to its pixels: about one token per 120 pixels at 320 by 320, one per 190 at the largest size the API takes, 1568 by 1568, so the same picture costs fifteen times more at the top of the range than at the bottom, for the same answer ([the calibration study](../project/verification/box-calibration-study.md)). Send the smallest image that keeps the target legible; the latency hardly moves with the size, the bill does.
+
+## Four questions about an image
+
+| Primitive | Asked about an image | Answers with |
+|---|---|---|
+| Noul | Is the thing there, is the page a form, is this moderation-safe | the probability of yes |
+| Choice | Which of these layouts, which document type, which state is the UI in | an option, a distribution, a confidence |
+| Score | How blurred, how severe, how far from the reference | a position on levels, a confidence |
+| Box | Where is the thing | four edges as fractions of the image, and a confidence |
+
+The first three are the text primitives asked about a picture; everything on [System One](system-one.md) holds for them. The Box is the one new shape: `{top, bottom, left, right}` in fractions of the image's height and width from its top-left corner, so a box written for a scaled copy holds for the original, and a `PixelBox` is one multiplication away when the size is known.
+
+## A Box always returns a box
+
+A Box does not say whether the thing is there. Asked for the filled circle in an image with no circle, Jev 1.14 returns a box all the same, with a confidence near zero ([the calibration study](../project/verification/box-calibration-study.md): 0.02 to 0.04 on ten empty images). That is the primitive's contract, not a defect: a Box answers *where*, and *whether* is a Noul's question. The crate's documentation and the `.jud` format therefore pair every Box with a Noul beside it, and the application reads the two together: the Noul says whether to use the box, the Box's confidence says how far to trust it, and a gate on each turns the pair into an action (locate, pad and crop; ask again on a larger crop; send to a person). A Box's `confidence` may be absent on the wire; the crate reads it as `None`, and a gate reads an absent confidence as 0.
+
+The confidence is informative in both directions on the study's images: near zero when there was nothing, lower on the boxes that were off, and under-confident in the middle. It is not a probability that the box is right; it is measured the same way a Choice's is, against hits under a bar, and `jud eval` reports its calibration error.
+
+## How a box is graded
+
+Two boxes are compared by intersection over union, the overlap divided by the area they cover together, 0 to 1. A labelled case carries the box and, when 0.5 is not the bar the task needs, `iou_at_least`; an answer at or over the bar is right, and the overlap is kept as a number, averaged into a report where a Noul or a Choice has a Brier score ([decision 0026](../project/decisions/0026-a-box-is-graded-by-intersection-over-union.md)). The bar is harsh on small targets, where a few pixels of offset halve the overlap; a label for a small target lowers it and says why.
+
+## What is checked before anything is sent
+
+An image is a PNG or a JPEG, not animated, each side from 256 to 1568 pixels, 78,400 to 2,458,624 pixels in all, at most 16 MiB; a request's images weigh at most 32 MiB together; a reference is 1 to 1024 bytes and all of a request's at most 65,536. The crate checks every one when the image is built or added, as `Error::InvalidImage`, `Error::InvalidAsset` or `Error::RequestTooLarge`, so the refusal names the limit and costs no upload; the hosted API refuses the same with a 400 ([Jev 1.14 on the hosted API](../project/verification/hosted-typesafe-jev-1-14.md)). The header the API keeps the feature behind is the client's to send, and it sends it on every request that carries an image or asks a Box.
+
+## Next
+
+- [Ask a question about an image](../guides/ask-about-an-image.md), [Locate something with a Box question](../guides/locate-with-a-box.md).
+- [Other shapes](../guides/patterns.md#other-shapes): screenshots, document pages, moderation, visual regression, cropping.
+- [A Box calibration study on synthetic shapes](../project/verification/box-calibration-study.md): the numbers behind this page.
 
 
 <!-- source: docs/project/contributing.md -->
@@ -3670,7 +4285,9 @@ Before touching questions, answers, the client or the backends, read the live Ty
 
 ## Cloud sessions
 
-A Claude Code cloud session starts from a fresh container, and its sandbox cannot list versions through the backends `mise.toml` names (api.github.com answers only for this repository). `.claude/hooks/session-start.sh`, registered in `.claude/settings.json`, makes the container the checkout above describes before the session's first command, and only there (`CLAUDE_CODE_REMOTE`): it installs mise from its release tarball, sets `MISE_ENV=cloud` so `mise.cloud.toml` supplies the same tools at the same versions from pinned release URLs (rust stays rustup's, from `rust-toolchain.toml`; Ollama is skipped), runs `mise install` and `mise run setup`, bootstraps the beads database from `.beads/issues.jsonl` and imports the file the way the post-merge hook does, and warms the build of every test target through mbx. The container is snapshotted after the hook, so later sessions pay only for what changed. `JUDGMENT_SESSION_SKIP_BUILD=1` skips the warm build. A version bump in `mise.toml` is a bump in `mise.cloud.toml` too.
+A Claude Code cloud session starts from a fresh container, and its sandbox cannot list versions through the backends `mise.toml` names (api.github.com answers only for this repository). `.claude/hooks/session-start.sh`, registered in `.claude/settings.json`, makes the container the checkout above describes before the session's first command, and only there (`CLAUDE_CODE_REMOTE`): it installs mise from its release tarball, sets `MISE_ENV=cloud` so `mise.cloud.toml` supplies the same tools at the same versions from pinned release URLs (rust stays rustup's, from `rust-toolchain.toml`; Ollama is skipped), runs `mise install` and `mise run setup`, bootstraps the beads database from `.beads/issues.jsonl` and imports the file the way the post-merge hook does, installs the two Claude Code plugins (below), and warms the build of every test target through mbx. The container is snapshotted after the hook, so later sessions pay only for what changed. `JUDGMENT_SESSION_SKIP_BUILD=1` skips the warm build. A version bump in `mise.toml` is a bump in `mise.cloud.toml` too.
+
+The plugins are the two `.claude/settings.json` enables: `jud` from this checkout, the marketplace being the checkout itself as a directory source, so the plugin loads in place and an edit under `plugins/jud/` is live at the next session start or `/reload-plugins`; and `typesafe` from TypeSafe's marketplace (`typesafe-ai/skills`), whose `typesafe-ai` skill `CLAUDE.md` asks for before the wire is touched. A laptop's Claude Code installs both from the settings file once the workspace is trusted; a cloud session never does ([Plugins](https://code.claude.com/docs/en/plugins/loading)), so `scripts/claude-plugins.sh install` runs them in through the `claude` command at user scope, idempotently, and the snapshot keeps them. The same script is `mise run plugins:install` on a laptop, and `mise run plugins:update` refreshes both marketplaces and moves both plugins to their latest versions; a session that is already open sees an update after `/reload-plugins`.
 
 ## Secrets
 
@@ -3823,7 +4440,7 @@ flowchart LR
 
 **Reading.** YAML is read with `serde_saphyr` under five options: `strict_booleans`, which keeps `yes`, `no`, `on` and `off` as strings; `merge_keys = Error` and `reject_unsupported_tags`, which refuse what folds in or decodes text the reviewer did not see; `ignore_binary_tag_for_string`, which keeps a `!!binary` scalar as its text; and `with_snippet = false`, so an error names a line and a column and quotes no part of a document whose state may be someone's data. The envelope is checked first: a missing `apiVersion` or `kind` is `Missing`; an `apiVersion` that is not the string `jud/v1.3` is `Version`, naming what was found; a `kind` outside the three is `Kind`. Every kind is read through a raw struct whose keys beyond the four of the envelope are collected, and the first is refused by name, pointing at `metadata.annotations`. `metadata` is one struct for every kind; a kind then refuses by path the optional fields it does not take. Every `metadata.name` and every case `id` is checked against the name grammar before anything else about it is read. A Recording's `spec` is read as the `eval::Recording` struct with `metadata.name` inserted as its `case`. A Noul's criteria keys read through an untagged `Bool | Text` so a bare `true:` and a quoted `"true":` both land on the yes criterion. A parsed question runs through the same validation as the builder's, with a minimum of zero options when `options_from: request` and two otherwise.
 
-**One apiVersion.** The reader reads `jud::API_VERSION` and nothing else, and the writer writes it, in the order the specification states. Nothing is computed from a document's content to choose a version, and no other envelope is read or converted. "A declaration counts by its presence" is one deserializer: a present key is `Some` whatever its value, an absent one `None`, and `null` is refused with a message saying to leave the field out, read through a JSON value first because a YAML reader may otherwise take `null` for an empty map. `bands: []` is refused before any other gate check.
+**One line, every minor up to its own.** The reader reads `jud::API_VERSION` (`jud/v1`) with any `metadata.minor` up to `jud::MINOR`, refusing a higher one by number before anything else is read, and reads the earlier spelling of minor 3 (`jud/v1.3`, no `minor`) as that minor; the writer writes `jud/v1` and the minor it implements, in the order the specification states. Nothing is computed from a document's content to choose a minor, and no other envelope is read or converted. "A declaration counts by its presence" is one deserializer: a present key is `Some` whatever its value, an absent one `None`, and `null` is refused with a message that says to leave the field out.
 
 **Why a rubric's fingerprint is its lowered request's.** A rubric question serialises as the bare wire `Question` first and adds `when`, `part_when` and `options_from` only when set, so a question without declarations is byte for byte a `Question`, and the fingerprint of a rubric's questions equals the fingerprint of the `Questions` it lowers to. A case's fingerprint covers `options`, `tags` and `note` as well as `state` and `expect`, with empty fields skipped, so adding an empty `tags` changes nothing.
 
@@ -3931,7 +4548,7 @@ The unit and integration tests never leave the process: wiremock for the client,
 
 ## Does a real server speak the wire this way?
 
-`tests/live.rs` holds sixteen `#[ignore]` tests that run the three primitives, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Six tasks run them:
+`tests/live.rs` holds eighteen `#[ignore]` tests that run the three text primitives, an image with a Box question about it (on `jev-preview` against the hosted API, where `jev-latest` is still Jev 1.13), a state over the default budget under long context, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Six tasks run them:
 
 | Task | Against | Needs |
 |---|---|---|
@@ -3942,7 +4559,7 @@ The unit and integration tests never leave the process: wiremock for the client,
 | `mise run live:pplx` | Perplexity's [pplx-decider-v1.1-27b](https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b) through the `autojev-serve` its checkpoint ships, on `PPLX_URL` (default `http://127.0.0.1:8010`), model `autojev-qwen3.8-27b` by default | a CUDA GPU with about 49 GiB for the weights; the snapshot's `source/` installed with its `requirements.txt`, then `AUTOJEV_CHECKPOINT=<snapshot> PORT=8010 autojev-serve`. `PPLX_API_KEY` when the server sets `AUTOJEV_API_KEY`, which also runs the bearer test |
 | `mise run live:clef` | Cloudflare's Clef on Workers AI through `tools/systemone/serve.py`, `clef` by default and `CLEF_MODEL=clef-flash` for the 9B | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`; spends a handful of model calls |
 
-Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `openrouter`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate; against the hosted API an unset profile stops the run instead, since its pins are what a run there is for. What each profile pins is on its server's page: [the hosted API](hosted-typesafe.md), [Laya](laya-typed-decisions.md), [autojev-serve](autojev-serve.md).
+Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `openrouter`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate; against the hosted API an unset profile stops the run instead, since its pins are what a run there is for. What each profile pins is on its server's page: [the hosted API](hosted-typesafe.md) and [its Jev 1.14 run](hosted-typesafe-jev-1-14.md), [Laya](laya-typed-decisions.md), [autojev-serve](autojev-serve.md).
 
 Every body a test reads as sent, a success, a refusal or the model list, is also checked against the vendored OpenAPI document (below), and the verdict printed: which component it was held to, and every field that fails, down to the answer kind's own branch. The client decodes into types that tolerate more than the document allows, so a server can pass every other test and still send what the contract does not; this is where that shows. A status the document does not list (only 200 and 422 are) is named as such: the hosted API's 400 and laya-serve's 413 are refusals the client handles, not bodies the document describes. A success body that fails the document fails the run on the profiles that hold their server to it, `typesafe` and `autojev`; on the others it is reported, until a run shows the server holds.
 
@@ -3994,7 +4611,7 @@ The live tests show that one server, on one day, accepted and answered what the 
 
 The [judgment crate](../../../README.md) is tested against mocks of TypeSafe's wire and the vendored OpenAPI document. A mock and a schema both encode what someone believed about the wire; only the server can contradict that belief. The [Laya run](laya-typed-decisions.md) checked the crate against a second implementation of System One, but no TypeSafe key was available then, so the hosted API itself had answered this client only once, through a set of triage questions (2026-09-23). That run proved those questions round-trip; it did not exercise the crate's edges: structured Score levels, null option descriptions, an unknown extra field, the model list, a wrong key.
 
-This page records the run that did. All ten tests in `tests/live.rs`, the same file the Laya run used, passed against `https://api.typesafe.ai` with a real key on 2026-10-03; five more, written from the probes [below](#beyond-the-test-file), passed the same day. `mise run live:typesafe` runs them all under the `typesafe` profile, with a sixteenth added since, which holds every success body to the published document ([How the crate is checked](method.md)).
+This page records the run that did. All ten tests in `tests/live.rs`, the same file the Laya run used, passed against `https://api.typesafe.ai` with a real key on 2026-10-03; five more, written from the probes [below](#beyond-the-test-file), passed the same day. `mise run live:typesafe` runs them all under the `typesafe` profile, with a sixteenth added since, which holds every success body to the published document ([How the crate is checked](method.md)), and two more for an image with a Box question and for long context, run on 2026-10-15 against Jev 1.14.0 ([Jev 1.14 on the hosted API](hosted-typesafe-jev-1-14.md)).
 
 ## What was tested, and with what
 
@@ -4073,6 +4690,147 @@ JUDGMENT_LIVE_AUTH_BASE_URL=https://api.typesafe.ai JUDGMENT_LIVE_AUTH_API_KEY="
 JUDGMENT_LIVE_MODEL=jev-latest JUDGMENT_LIVE_PROFILE=typesafe \
   cargo test -p judgment --test live -- --ignored --nocapture --test-threads=1
 ```
+
+
+<!-- source: docs/project/verification/hosted-typesafe-jev-1-14.md -->
+
+
+# Jev 1.14 on the hosted API, images and the Box
+
+[The earlier record](hosted-typesafe.md) verified the three text primitives against the hosted API on `jev-1.13.0`. Jev 1.13 also takes images, and Jev 1.14 adds the Box, a question that locates something in one. The crate's support for both ([decision 0024](../decisions/0024-images-are-part-of-the-request.md), the `.jud` format's minor 4) was written against the published pages and the refreshed OpenAPI document, and then run against the server on 2026-10-15 with a real key. This page records that run.
+
+## What was tested, and with what
+
+| | |
+|---|---|
+| Server | `https://api.typesafe.ai` |
+| Model requested | `jev-preview`, which resolved to `jev-1.14.0`; `jev-latest` was still `jev-1.13.0` |
+| Crate | `judgment` at the commit this page was added in, with the `http` and `jud` features |
+| Live tests | `an_image_and_a_box_question_round_trip` in `tests/live.rs`, under the `typesafe` profile: a 320 by 320 PNG through `Client::answer_with_assets` with a Noul and a Box, then the same body raw with and without the images header, each body held to the OpenAPI document; `a_state_over_the_default_budget_is_answered_with_long_context`, the budget test's state with the long-context header |
+| Recording run | `jud record` over the forty shapes cases, committed under `examples/recordings/shapes/` ([the calibration study](box-calibration-study.md)) |
+| Probes | about twenty raw requests past what the client lets through: the image at five sizes and as a JPEG, dimensions outside the limits, an unreferenced asset, a Box with no image, with `null` instructions, with criteria, a wrong `format`, a Box on `jev-latest`, an image on `jev-latest` |
+
+## What the hosted API does
+
+- **An image round-trips, and the Box answers inside it.** `jev-1.14.0` put the circle of `shape-01.png` at an overlap of 0.96 with the box the generator drew it at, confidence 0.82, with `circle_present` at 0.99. The body the client sends, `assets` under the state with the base64 and the format and the header `typesafe-danger-zone-images: true`, is the body the document describes, and the success body conforms to `SystemOneResponse` with the `box` answer kind.
+- **The header is required, and its absence is a 400 that says so.** `api_usage_error`, "Images are experimental. Send the header TypeSafe-Danger-Zone-Images: true to use them." The client sets the header on every request that carries an image or asks a Box, so a caller never sees this.
+- **Images work on Jev 1.13; the Box needs 1.14.** A Noul about an image was answered by `jev-1.13.0` under `jev-latest` (863 input tokens, the image counted); a Box under `jev-latest` is a 400 `api_usage_error` with the message "Invalid request." and nothing naming the question type. The crate's Box documentation names `jev-preview` until the alias moves.
+- **The dimension limits are a 400, not a 413.** A side under 256 or over 1568, or more than 2,458,624 pixels, is `api_usage_error`, "Invalid image dimensions."; the [Images](https://docs.typesafe.ai/images) page files size limits under 413, which the probes could not reach: a PNG inside the pixel limits is a few megabytes, far under the 16 MiB file limit. The crate checks the dimensions and the 78,400 pixel minimum (which rules out 256 by 256) before anything is sent, as `Error::InvalidImage`, so the 400 is never paid for; the 413 mapping stays for the size limits, untested.
+- **An unreferenced asset is refused**, 400 `api_usage_error`, "Invalid image request.", whether it is the only asset or one of two. The client refuses it first, by the reference's name (`Error::InvalidAsset`).
+- **A Box without an image is answered**, with a box over nothing at confidence 0.03. The reference page says a Box locates something in an image; the server does not insist on one. The crate sends such a request as written (a rubric's image may come with the case, or `jud RUBRIC --asset`), and the gate catches the answer: this is the strongest reason the Box documentation pairs it with a Noul.
+- **`null` instructions and `criteria` on a Box are accepted** and the criteria ignored; a PNG declared `format: jpg` is accepted and sniffed. The crate refuses all three before the wire, since none can mean what the caller meant: the instructions are all a Box is, a Box has no outcomes to describe, and a format that is not the bytes' is a mistake somewhere.
+- **Long context lifts the budget on Jev 1.13 as the page says.** The 40,000-token state the budget test sends, refused without the header as 400 `max_tokens_exceeded`, was answered under `TypeSafe-Danger-Zone-Long-Context: true` by `jev-1.13.0` in 1.4 s, 74,550 input tokens counted (the eighteenth live test). The crate sends the header through `CallOptions::long_context` and `ClientBuilder::long_context` ([decision 0027](../decisions/0027-long-context-is-a-switch-on-the-call.md)).
+- **Input tokens follow the pixels**: 860 at 320 by 320, 2,400 at 640, 5,760 at 1024, 12,828 at 1568, for the same twenty output tokens and a latency between 190 and 300 ms. [The calibration study](box-calibration-study.md) tables it.
+
+## What the crate changed for it
+
+Nothing in the wire shape, which the OpenAPI refresh of the same day had already settled. Two things in words: the format page no longer says a reader must refuse a Box in a rubric without an image, and the Box's documentation names which alias answers it. The two live tests are the seventeenth and eighteenth in `tests/live.rs`; `mise run live:typesafe` runs them with the others, asking `jev-preview` for the Box part until `jev-latest` is 1.14.
+
+
+<!-- source: docs/project/verification/box-calibration-study.md -->
+
+
+# A Box calibration study on synthetic shapes
+
+[The .jud format](../../reference/jud-format.md) grades a Box by intersection over union against a labelled box ([decision 0026](../decisions/0026-a-box-is-graded-by-intersection-over-union.md)) and reports the confidence the model gives beside it. Whether the two numbers mean anything, and what a gate on the confidence buys, is a question for recordings, not for a page. This is the first such run: small, synthetic and committed, so that it replays with no key, and so that the next run (real photographs, a harder target) has a baseline to be set against.
+
+## What was run
+
+| | |
+|---|---|
+| Images | `examples/jud/images/shape-00.png` to `shape-39.png`: forty 320 by 320 PNGs drawn with Pillow from one seed, each a flat background with, in thirty of them, one filled circle of random size, colour and position and one distractor square; in ten, squares only. The generator's own coordinates are the labels, so no labeller's judgment is in them. |
+| Rubric | `examples/jud/shapes.jud`: `circle_present`, a Noul with its two criteria, and `circle`, a Box asking for the filled circle in `image`; the policy gates the Noul at 0.5 and the Box at a confidence of 0.5 |
+| Cases | `examples/jud/shapes-cases.jud`: forty cases, each naming its image by a path relative to the document and labelled `true` with the circle's box, or `false` with no box |
+| Server, model | `https://api.typesafe.ai`, `jev-preview`, answered by `jev-1.14.0` |
+| Run | `jud record examples/jud/shapes.jud examples/jud/shapes-cases.jud --out examples/recordings/shapes` on 2026-10-15; forty requests in about seven seconds, 93 to 532 ms each, median 119 ms, 625 input tokens and 37 output tokens a request |
+| Report | `jud eval examples/jud/shapes.jud examples/jud/shapes-cases.jud --replay examples/recordings/shapes`, replayed in `tests/jud.rs`, which pins the counts below |
+
+## The Noul: forty of forty, calibrated
+
+| | |
+|---|---|
+| Labelled, right | 40, 40 (accuracy 1.00, 95 % interval 0.91 to 1.00) |
+| Brier score, calibration error | 0.001, 0.015 |
+| Probability of yes | 0.99 or 1.00 on every image with a circle; 0.03 or 0.04 on every image without |
+| Gate at 0.5 | acts on 40, defers 0, accuracy when acted 1.00 |
+
+A filled circle on a flat background is the easiest question the model can be asked, and it answers it as a calibrated model should: the probability sits at the ends, and the ten negatives are as confidently no as the thirty positives are yes. The number to carry forward is not the accuracy but the Brier score: on a target this clean, 0.001 is the floor a harder set is measured from.
+
+## The Box: twenty-eight of thirty at the 0.5 bar
+
+| | |
+|---|---|
+| Labelled, right | 30, 28 (accuracy 0.93, 95 % interval 0.79 to 0.98) |
+| Mean intersection over union | 0.80 |
+| Confidence when right, when wrong | 0.75, 0.49 |
+| Calibration error, over the confidence against hits | 0.21 |
+| Brier score | none: a Box has no distribution to score |
+
+Where the overlap fell, with the model's mean confidence in each band:
+
+| Intersection over union | Cases | Mean confidence | Which |
+|---|---|---|---|
+| 0.0 up to 0.5 | 2 | 0.49 | 00, 10 |
+| 0.5 up to 0.7 | 2 | 0.86 | 06, 34 |
+| 0.7 up to 0.8 | 4 | 0.73 | 18, 22, 36, 37 |
+| 0.8 up to 0.9 | 14 | 0.73 | 05, 08, 09, 12, 14, 16, 17, 21, 24, 28, 29, 30, 32, 33 |
+| 0.9 to 1.0 | 8 | 0.77 | 01, 02, 04, 13, 20, 25, 26, 38 |
+
+The two misses are worth reading. `shape-00` (overlap 0.00, confidence 0.29) is the case where the model took the circle's rows and the distractor square's columns: the box spans the circle's height at the square's position, a box over nothing. `shape-10` (overlap 0.24, confidence 0.70) is a box on the right circle, too large on one side. The first is the kind of miss a confidence gate catches and the second is the kind it does not: at the 0.5 bar the gate defers the first and acts on the second.
+
+## Confidence against the overlap
+
+| Confidence | Cases | Right at 0.5 | Mean overlap |
+|---|---|---|---|
+| 0.0 up to 0.3 | 3 | 2 | 0.58 |
+| 0.3 up to 0.5 | 4 | 4 | 0.83 |
+| 0.5 up to 0.7 | 2 | 2 | 0.80 |
+| 0.7 up to 0.9 | 12 | 11 | 0.79 |
+| 0.9 to 1.0 | 9 | 9 | 0.86 |
+
+On the ten images with no circle, the Box's confidence was 0.02 to 0.04: the box it returns there (it always returns one) comes with a confidence that says, by itself, that there was nothing to find. In this set the Box's confidence alone separates present from absent as cleanly as the Noul does; a harder set may not, and the rubric keeps the Noul beside the Box because the format's rule is that the Box answers where, never whether.
+
+What the policy's gate at 0.5 does with the forty answers: it acts on 23 (22 right, accuracy when acted 0.96) and defers 17: the ten empty images, one miss and 6 hits the model was unsure of (overlap 0.77 to 0.92 at confidence 0.27 to 0.48). The calibration error of 0.21 is the model's under-confidence on those: it was right at 0.3 to 0.5 more often than the number says. A caller that pads a deferred box and crops anyway loses little here; one that asks again on a larger crop spends a call on an answer that was already right in six cases of seven. `jud tune` would move the bar down on these recordings; the rubric's note says the bar is a starting point, and thirty cases are too few to move it on.
+
+## Scale against latency, tokens and the box
+
+The same image, `shape-01.png`, sent raw at five sizes and as a JPEG, with the same Box question, one request each:
+
+| Image | Bytes | Status | Latency (ms) | Input tokens | Overlap with the label | Confidence |
+|---|---|---|---|---|---|---|
+| 256x256 png | 1294 | 400 | 424 | - | - | - |
+| 320x320 png | 1645 | 200 | 194 | 860 | 0.93 | 0.81 |
+| 640x640 png | 3232 | 200 | 234 | 2400 | 0.93 | 0.82 |
+| 1024x1024 png | 6130 | 200 | 221 | 5760 | 0.92 | 0.69 |
+| 1568x1568 png | 11676 | 200 | 298 | 12828 | 0.91 | 0.69 |
+| 320x320 jpg q90 | 5530 | 200 | 196 | 860 | 0.95 | 0.80 |
+
+Input tokens grow with the pixels, about one token per 120 pixels at 320 by 320 and one per 190 at 1568 by 1568, so the largest image costs fifteen times the smallest; latency barely moves, since the answer is twenty tokens whatever the image. The box is as good at 320 as at 1568 on a target this large, and the confidence falls as the image grows. 256 by 256 is refused: each side is at the minimum but the product, 65,536 pixels, is under the 78,400 the API requires, which the crate's `Image` checks before anything is sent. The one PNG that stays within the pixel limits is at most a few megabytes, so the 16 MiB file limit and the 32 MiB request limit cannot be reached with a valid image; nothing was sent that would have been a 413.
+
+## What the hosted API refused, and what it did not
+
+| Request | Status | Body |
+|---|---|---|
+| A side under 256, a side over 1568, more than 2,458,624 pixels | 400 | `api_usage_error`, "Invalid image dimensions." |
+| An asset nothing in the state or the questions refers to | 400 | `api_usage_error`, "Invalid image request." |
+| An image without the `TypeSafe-Danger-Zone-Images` header | 400 | `api_usage_error`, "Images are experimental. Send the header …" |
+| A Box on `jev-latest` (Jev 1.13.0) | 400 | `api_usage_error`, "Invalid request." |
+| A Box with no image in the request | 200 | a box over nothing at confidence 0.03 |
+| A Box with `instructions: null` | 200 | a box, at confidence 0.75 |
+| A Box with `criteria` | 200 | the criteria ignored |
+| A PNG declared `format: jpg` | 200 | the bytes sniffed |
+| An image referenced by a Noul alone, on `jev-latest` | 200 | answered by `jev-1.13.0` |
+
+The crate refuses before the wire what the API refuses (the dimensions, the missing reference), and also what the API lets through but cannot mean anything (`null` instructions, criteria on a Box, a format that is not the bytes'); it sends a Box without an image, since the image may come with the request, and the gate catches the answer. [Jev 1.14 on the hosted API](hosted-typesafe-jev-1-14.md) is the verification record these probes belong to.
+
+## What to take from it, and what not
+
+- A Box on a clear target is accurate at the 0.5 bar and its overlap is high (0.80 on average); the bar is a floor, not a target, and a crop that needs the box tight sets `iou_at_least` higher in the label.
+- The confidence is informative in both directions: near zero when there is nothing, and lower on the boxes that were off. It is under-confident in the middle here, and `jud eval`'s calibration error is the number to watch when the target gets harder.
+- Send the smallest image that keeps the target legible: the tokens are the cost, the latency is not, and the box did not improve with size.
+- Thirty labelled boxes give an interval of 0.79 to 0.98 on the accuracy: wide. The set is a baseline and a regression check (`tests/jud.rs` fails if a re-recording changes the counts), not a measurement of the model.
+
+To repeat it against the live API: `TYPESAFE_API_KEY` in `.env`, `model: jev-preview` in `jud`'s configuration file ([Configuration](../../reference/configuration.md)), then the `jud record` line above with `--refresh` into a scratch directory, and `jud eval` with `--replay` pointed at it. To regenerate the images, the generator is Pillow drawing from a fixed seed, which is why the labels are exact; the committed PNGs are the ones the recordings were made on, and a redrawn set changes every request fingerprint.
 
 
 <!-- source: docs/project/verification/laya-typed-decisions.md -->
@@ -4793,10 +5551,14 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) | The .jud format 1.2 refuses what a reviewer cannot see, and names the policy | superseded by 0018 |
 | [0018](0018-jud-1-3-takes-the-manifest-envelope.md) | The .jud format 1.3 takes the manifest envelope and reads one apiVersion | accepted |
 | [0019](0019-a-command-line-for-the-format.md) | A command line for the format, released as a binary | accepted |
-| [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | proposed |
+| [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | accepted |
 | [0021](0021-record-eval-and-tune-from-the-command-line.md) | Record, evaluate and tune from the command line | accepted |
 | [0022](0022-jud-reports-what-the-tuning-loop-counted-by-hand.md) | jud reports what the tuning loop counted by hand | accepted |
 | [0023](0023-jud-rubric-takes-options-on-the-command-line.md) | jud RUBRIC takes per-request options on the command line | accepted |
+| [0024](0024-images-are-part-of-the-request.md) | Images are part of the request, not a call option | accepted |
+| [0025](0025-a-document-names-an-image-by-path.md) | A document names an image by a path relative to itself | accepted |
+| [0026](0026-a-box-is-graded-by-intersection-over-union.md) | A Box is graded by intersection over union | accepted |
+| [0027](0027-long-context-is-a-switch-on-the-call.md) | Long context is a switch on the call, not a request field or a default | accepted |
 
 ## Status notes
 
@@ -4811,12 +5573,13 @@ Records are not edited after acceptance; a fact that has moved since is noted he
 
 - 0016 and 0017 are superseded by [0018](0018-jud-1-3-takes-the-manifest-envelope.md) on 2026-10-06: the envelope is a manifest's, a reader reads exactly one `apiVersion` and any change of the format takes a new one, so the compatibility rule of 0016 and the exception 0017 made to it are both withdrawn. What the two records added to the format (declarations, bands and level gates, names, the refusal of what a reviewer cannot see, the policy fingerprint) stands as rules of the format, and 0018 is the one page that maps the earlier keys onto the new envelope.
 
-- 0018 says any change of the format, additive or not, takes a new `apiVersion` that a reader of the earlier one refuses. [Stability](../../reference/stability.md), on 2026-10-06, promises that a `v1` minor only adds and that readers accept every `v1` document for at least twelve months after a later minor is published; a reader of a later minor therefore reads earlier `v1` documents, and only a change of meaning takes a new major. How the minor is spelled is [0020](0020-how-a-v1-minor-is-spelled.md), proposed. Nothing moves in the code until it is accepted: one minor exists and the reader reads it exactly.
+- 0018 says any change of the format, additive or not, takes a new `apiVersion` that a reader of the earlier one refuses. [Stability](../../reference/stability.md), on 2026-10-06, promises that a `v1` minor only adds and that readers accept every `v1` document for at least twelve months after a later minor is published; a reader of a later minor therefore reads earlier `v1` documents, and only a change of meaning takes a new major. [0020](0020-how-a-v1-minor-is-spelled.md), accepted on 2026-10-15, spells the minor as `metadata.minor` under `apiVersion: jud/v1`; 0018's one-`apiVersion` rule stands for the string, and its rule that any change takes a new string is narrowed to a change of meaning. The spelling `jud/v1.3` that 0018 introduced is read as minor 3.
 
 - 0021 extends the command [0019](0019-a-command-line-for-the-format.md) defined: three subcommands (`record`, `eval`, `tune`), exit status 3 for `jud eval` alone, and two places that write files (`jud record --out` and `jud tune --out`). 0019 stands: its statuses 0, 1 and 2 keep their meaning, and `jud RUBRIC` still evaluates one state from stdin. 0021 was accepted on 2026-10-08, when the subcommands were implemented; its "As implemented" section records what the implementation settled, and where it differs from the proposal the implementation is the contract.
 - 0022 adds to 0021's commands without changing them: per-outcome counts, a majority and three signals in `jud eval`, `jud record --dry-run`, and a fourth subcommand, `jud split`, a third place that writes files.
 - 0019 says options supplied for a Choice that takes them from the request "are left for later". [0023](0023-jud-rubric-takes-options-on-the-command-line.md) settles it: `jud RUBRIC` takes them through `--options` and `--options-file`. 0019 stands otherwise.
 - 0021 says cases carry their options "where stdin cannot". Stdin still cannot; since [0023](0023-jud-rubric-takes-options-on-the-command-line.md) the command line can.
+- 0020's "As applied" section says every committed document was rewritten to `minor: 3`. Minor 4 ([0025](0025-a-document-names-an-image-by-path.md), [0026](0026-a-box-is-graded-by-intersection-over-union.md)) shipped in the same release, 0.14.0: the writer writes `minor: 4`, the documents that use nothing minor 4 added stay at `minor: 3`, and the twelve-month clock for a minor 3 document runs from 0.14.0.
 
 ## Writing a record
 
@@ -5386,7 +6149,7 @@ Options 1, 5, 7 and the hand-written matrix of 8.
 
 # 0020 How a v1 minor of the `.jud` format is spelled
 
-**Status: proposed.** Nothing in the code, the schemas or the documents moves until this record is accepted; the reader reads `apiVersion: jud/v1.3` exactly, as [decision 0018](0018-jud-1-3-takes-the-manifest-envelope.md) decided.
+**Status: accepted on 2026-10-15**, when the first additive change (a Box question and image assets, [decision 0025](0025-a-document-names-an-image-by-path.md)) was ready, and applied as option 2 below; the "As applied" section at the end records what the implementation settled.
 
 ## Context and problem statement
 
@@ -5477,6 +6240,15 @@ When applied: `tests/jud.rs` reads a document of every published minor and refus
 - [Decision 0016](0016-jud-takes-minor-versions.md), superseded: the earlier minor-version rule and what it cost, the table option 1 would bring back.
 - [The .jud format](../../reference/jud-format.md), "Extending the format": what a minor may add.
 - `src/jud/mod.rs` (`API_VERSION`, `Envelope::check`), `schemas/jud/`, `tests/jud.rs`: where the accepted option lands.
+
+## As applied
+
+Applied in crate 0.14.0, as option 2, with two points the proposal left open settled:
+
+- **The earlier spelling is read.** [Stability](../../reference/stability.md) promises that a reader accepts every `v1` document for at least twelve months after a later minor is published, and minor 3 was published as `apiVersion: jud/v1.3`. The reader therefore reads that string as `jud/v1` at minor 3, with no `metadata.minor` allowed beside it (`jud::EARLIER_SPELLINGS`), for at least twelve months from 0.14.0; the writer never writes it. The proposal's "refuses an apiVersion other than jud/v1 by name" stands for every other string.
+- **The writer writes the minor it implements** (`jud::MINOR`), not the lowest that reads the document: computing the lowest from content is the table [0018](0018-jud-1-3-takes-the-manifest-envelope.md) removed. A document read at a lower minor is written back at the writer's; nothing in `spec` moves, so no fingerprint does.
+- **Every committed document was rewritten** to `apiVersion: jud/v1` with `minor: 3` by a script (`examples/jud/`, `examples/recordings/`, the plugin's references and fixtures); the inline documents in the crate's tests keep the earlier spelling, which pins that it still reads.
+- `jud check` prints `jud/v1 minor 3` for a document in the new spelling and the string as written for the earlier one; `schemas/jud/common.schema.json` takes both spellings and requires `metadata.minor` under `jud/v1` only, with the minor's range growing by one per minor.
 
 
 <!-- source: docs/project/decisions/0021-record-eval-and-tune-from-the-command-line.md -->
@@ -5781,3 +6553,308 @@ The options are parsed before stdin is read and before the backend is opened, so
 - [The jud command line](../../reference/cli.md), `jud [OPTIONS] [RUBRIC]`: the flags, the refusals and an example.
 - [The .jud format](../../reference/jud-format.md): `options_from` and lowering.
 - `src/bin/jud/run.rs` reads and applies the flags; `src/bin/jud/tools.rs` holds the parser `jud lower` shares; `tests/jud_cli.rs` holds the tests (the order on the wire, the file form, each refusal).
+
+
+<!-- source: docs/project/decisions/0024-images-are-part-of-the-request.md -->
+
+
+# 0024 Images are part of the request, not a call option
+
+## Context and problem statement
+
+Jev 1.13 and 1.14 take images: a top-level `assets` map of reference to `{type: image, format, data_base64}`, each reference standing for its image wherever it appears as or inside a string in the `state`, a question's `instructions` or its `criteria`, under the header `TypeSafe-Danger-Zone-Images: true` ([Images](https://docs.typesafe.ai/images)). Until now a caller could only send one through `CallOptions::extra("assets", …)` and `CallOptions::header(…)`, by hand, with the base64 and the limits its own problem and no recording able to tell two images apart: the request fingerprint and hash were over the state and the questions alone, so two calls that differed only by their image collided in a `Replay`.
+
+Three things had to be decided: where the images live in the API, how a request names them, and who sends the header.
+
+## Decision drivers
+
+- An image changes the answer, so it is part of a request's identity: a recording must be found by it, and two requests with different images must never share one.
+- A request without images must be the same bytes on the wire, the same fingerprint and the same hash it always was, so every committed recording stays valid.
+- The documented limits (format, sides, pixels, file size, the request's total, the reference lengths) should be refused before the upload, with the limit named, not after it as a 413.
+- A caller that adds an image has already opted in; a second switch for the same decision is a 400 waiting to happen.
+- A backend written outside the crate against `SystemOne` must keep compiling.
+
+## Considered options
+
+1. **Images on `Request` and the `SystemOne` trait**, in the fingerprint by the bytes' digest, referenced by a name derived from the bytes, the header set by the client.
+2. **Images as a `CallOptions` field**, beside the headers and extra fields.
+3. **A random UUID reference per call**, as the Images page recommends for hand-written requests.
+4. **The caller sets the header**, as the SDKs have it.
+
+## Decision outcome
+
+Chosen option 1, for all three questions.
+
+- `Request` gains a fourth field, `assets: &Assets`, left off the wire when empty; `Request::new` builds one without images and `with_assets` adds them. `SystemOne` gains `answer_with_assets`, with a default that answers through `answer` when there are no images and refuses them otherwise, so an implementation written elsewhere keeps compiling and never drops an image on the floor; `Fake`, `Recorder`, `Replay` and `Client` implement it. `Fake::calls` records each image's reference and digest.
+- The request fingerprint and hash are over `{assets: {reference: "sha256:…"}, questions, state}`, the `assets` key present only with images, each named by the SHA-256 of its bytes rather than by its base64 (`canonical::request_fingerprint_with`, `eval::request_hash_with`). Re-encoding changes nothing; a different image is a different request; a request without images fingerprints as before.
+- `Image::reference` is `img-` and 32 hex digits of that digest: unique enough never to occur in text by accident, and the same every time the same image is sent, so a recording of one call answers the next. A caller may choose its own reference (`Assets::insert`); the fingerprint still names the image by its bytes.
+- The client sends `TypeSafe-Danger-Zone-Images: true` on every request that has an image or asks a Box question, and on no other; the header is reserved like the client's own, and `assets` is a reserved extra field.
+- `Image::from_bytes` reads the format and the size from the bytes and refuses what the page refuses (`Error::InvalidImage`); `Assets::insert` refuses a reference the page refuses and a total over 32 MiB (`Error::InvalidAsset`, `Error::RequestTooLarge`); the client refuses a reference that appears nowhere and a body over 32 MiB before sending. What needs the server (the expanded size, the re-encoded size) stays a 413, which `Error::is_request_too_large` names with the rest.
+- The `Observer` is told the images' count and bytes once per call (`on_assets`), and the `typesafe.evaluate` span carries the count as `images`.
+
+### Consequences
+
+- Good, because a recording is keyed by what the model saw, so a replay cannot answer one image with another's answer, and nothing recorded before images moves.
+- Good, because an image is refused with its limit named before any bytes leave the process, and the header cannot be forgotten.
+- Good, because the trait grows without breaking an implementation elsewhere.
+- Bad, because every `Request { .. }` literal gains a field and `Fake::Call` gains one; both are listed as breaking under the crate's 0.x rule, and `Request::new` is the spelling that does not break next time.
+- Bad, because a derived reference is not a fresh UUID: the same image sent twice in one request is one asset under one reference, which is what the page asks for, but a caller who wanted two copies under two names writes them with `Assets::insert`.
+- Bad, because the hosted API's image limits are checked for every server; a compatible server with other limits gets the hosted API's refusals.
+
+### Confirmation
+
+`tests/client.rs`: the assets map and the header on a request with an image, neither on one without, an unreferenced image refused before the wire, the server's 413 and 400 mapped and not retried, the header and the field reserved, the observer told the bytes. `tests/backend.rs`: a `Fake` takes and remembers images and refuses an unreferenced one, a `Recorder` keys by the image and a `Replay` finds it again (and not with other bytes), the fingerprint names the image by its digest and is unchanged without one, a backend without images refuses them. `tests/contract.rs`: a request with an image conforms to the vendored document with the request components closed, and the document names the header. `src/asset.rs`: the limits and the base64, against fixture images under `tests/fixtures/images/`.
+
+## Pros and cons of the options
+
+### 1. On `Request` and the trait
+
+- Good, because images are request content and the trait is where request content crosses into every backend; the fingerprint follows.
+- Bad, because the struct and the trait both change.
+
+### 2. A `CallOptions` field
+
+- Good, because `Request` and the trait stay as they are.
+- Bad, because options stop at the trait by design: a `Replay` cannot see them, so an image could not key a recording, and the one rule the options have (nothing in them changes the answer or the hash) would be broken by the first option that did.
+
+### 3. A random UUID per call
+
+- Good, because it is what the page recommends for a hand-written request, and can never match text by accident.
+- Bad, because the reference is in the state, so every call would fingerprint differently and no recording would ever replay; a digest-derived name is as safe from accidental matches and stable.
+
+### 4. The caller sets the header
+
+- Good, because the crate sends nothing the caller did not ask for, as the SDKs do.
+- Bad, because the caller already asked by adding the image; a second switch for one decision is a 400 after the upload when forgotten, and a header the client would otherwise reserve.
+
+## More information
+
+[Images](https://docs.typesafe.ai/images) is the page the limits and the header come from; `src/asset.rs` holds the types and the limits; `src/client.rs` sets the header and makes the pre-wire checks; `src/eval/canonical.rs` and `src/eval/mod.rs` fold the images into the fingerprint and the hash; [The .jud format](../../reference/jud-format.md) says how a document names an image ([decision 0025](0025-a-document-names-an-image-by-path.md)).
+
+
+<!-- source: docs/project/decisions/0025-a-document-names-an-image-by-path.md -->
+
+
+# 0025 A document names an image by a path relative to itself
+
+## Context and problem statement
+
+[Decision 0024](0024-images-are-part-of-the-request.md) put images on the request: an `Assets` map of reference to image, each reference the text the state or a question carries where the image belongs, each image in the request's fingerprint by the SHA-256 of its bytes. The `.jud` format had no way to say which image a case is about or which image a rubric's questions always look at, so a Box question could be written in a rubric but never recorded, replayed, evaluated or tuned from the command line, and a cases document for a visual judgment could label nothing. The format needed a declaration, and the declaration decides what a document can be moved with, what a reviewer sees, and what a fingerprint is over.
+
+## Decision drivers
+
+- A document and its images are reviewed and versioned together; a reviewer must be able to open the image a label is about.
+- The fingerprint of a cases document is over its `spec.cases`, and the request fingerprint over the bytes: a document moved to another directory, or with its images re-encoded, must keep the request fingerprints its recordings were keyed by, or say clearly that it did not.
+- A reference is what the API resolves; the document should carry the same text, once, where the image belongs, so the request the document builds is the request a caller would write by hand.
+- A document must still be readable without its images (`jud check` on a laptop without the image store), and fail by name when an image is missing at the time it is needed.
+- Nothing that lets a document read a file outside its own directory, since documents are shared and checked by tools that run on behalf of others.
+
+## Considered options
+
+1. **A path relative to the document, with the bytes inline allowed.** `assets: {ref: {type: image, path: images/x.png}}` beside the document, or `{type: image, format: png, data_base64: …}` for a small image; a reference appears in the state or the instructions as text.
+2. **The bytes always inline.** Every image as `data_base64` in the document; nothing to resolve.
+3. **A URL.** `{type: image, url: https://…}`, fetched when the request is built.
+4. **A separate asset manifest** beside the documents, mapping references to files, named from the rubric or the cases document.
+
+## Decision outcome
+
+Chosen option 1.
+
+- A Rubric's `spec.assets` holds the images every request sends; a case's `assets` holds the image that case is about. The two merge into one request, and a reference in both must name the same bytes. The map is keyed by the reference, exactly as the wire's `assets` is, and the state or the instructions carry the reference where the image belongs; a reader refuses a declared reference that appears in neither, as the API refuses an unreferenced asset with a 400, and refuses a reference over 1024 bytes or references over 65,536 bytes together, the API's own limits.
+- `path` is relative to the directory the document was read from; an absolute path or one with a `..` component is refused when the document is read, before any file is touched. `data_base64` with a required `format` is the inline form. Exactly one of the two.
+- The files are loaded when a request is built (`Rubric::load_assets`, `Case::load_assets`, by the `jud` command for every subcommand that builds one), not when the document is read, so a document checks without its images and a missing or malformed file fails by the entry's name at the point it is needed. The image's own limits are checked by `Image::read` and `Image::from_base64` as for any request.
+- The request fingerprint is over the bytes' digest under the reference, never over the path or the base64: moving the images with the document, or inlining one, changes no fingerprint; replacing the bytes does, and a replay then says so by finding no recording. A cases document's fingerprint is over `spec.cases`, which holds the asset declarations as written (the path or the base64), so the labels' identity changes when the declaration does, which a reviewer wants.
+- `jud RUBRIC` takes an image from the command line too, `--asset REF=PATH`, repeatable, beside the rubric's own; `--pixels WxH` names the size a located box is printed in pixels of, the one image's size when there is exactly one.
+
+### Consequences
+
+- Good: a reviewer opens the image beside the document; a repository moves as a whole; a small image that should never drift from its document can be inlined.
+- Good: recordings key by what the model saw, so a re-encoded or edited image invalidates its recordings and nothing else.
+- Bad: a cases document for hundreds of images carries hundreds of declarations, one line each. A generator writes them; the format does not fold them.
+- Bad: a path is relative to the document and nothing else, so two documents in different directories cannot share one declaration; they share the files.
+- A document at minor 4 is refused by a minor 3 reader by number ([decision 0020](0020-how-a-v1-minor-is-spelled.md)), and a minor 4 reader reads every minor 3 document unchanged.
+
+### Confirmation
+
+`tests/jud.rs` reads `examples/jud/shapes-cases.jud` (forty cases, each declaring its image by path), loads every image into a request under the reference the state carries, refuses the documents the schemas refuse (neither source, both, a path that leaves the directory, a format the API does not take, bytes without a format), and checks the request fingerprint of a request with an image against the known vector on the format page. `tests/jud_cli.rs` sends `--asset` with the images header and prints the box in pixels; `tests/jud_eval.rs` evaluates two cases by their images from hand-written recordings.
+
+## Pros and cons of the options
+
+### Option 1: a path relative to the document, inline allowed
+
+- Good, because the document and the image are reviewed and moved together, and the reference is the one text the wire uses.
+- Good, because a document reads without its images, and fails by name when one is needed and missing.
+- Neutral, because the relative path is a rule to state (no absolute, no `..`); the reader states it once and the schema's pattern says the same.
+- Bad, because a shared image is a shared file, not a shared declaration.
+
+### Option 2: the bytes always inline
+
+- Good, because nothing resolves: the document is the request.
+- Bad, because a 300 KiB image is 400 KiB of base64 that no reviewer reads and every diff carries; forty of them is a document no editor opens comfortably.
+- Bad, because the image's provenance (the file it was, the tool that made it) is lost in the encoding.
+
+### Option 3: a URL
+
+- Good, because images can live where they are served from.
+- Bad, because a document then reads the network, and a check on a laptop or in CI needs credentials and a connection for what should be a file; the request fingerprint would depend on what a server returned today.
+- Bad, because it is a fetch on behalf of whoever wrote the document, from wherever they chose.
+
+### Option 4: a separate asset manifest
+
+- Good, because many documents could share one map, and large sets have one place to list.
+- Bad, because a case's label and its image are then in two files that must be kept together, and a reviewer reads both.
+- Bad, because the format gains a fourth kind for what is one field on the two kinds that have states and questions.
+
+## More information
+
+[The .jud format](../../reference/jud-format.md) (Assets) is the specification; `src/jud/mod.rs` (`AssetSource`, `load_assets`, `check_assets`) and `src/bin/jud/batch.rs` implement it; `schemas/jud/common.schema.json` holds the `asset` definition; [decision 0024](0024-images-are-part-of-the-request.md) is where the request side of this was decided; [decision 0026](0026-a-box-is-graded-by-intersection-over-union.md) says how a Box label grades.
+
+
+<!-- source: docs/project/decisions/0026-a-box-is-graded-by-intersection-over-union.md -->
+
+
+# 0026 A Box is graded by intersection over union
+
+## Context and problem statement
+
+A Noul, a Choice and a Score answer in a vocabulary a label can be written in: `yes`, an option key, a level. A Box answers with four edges, and no label is the same four numbers; grading it needs a rule for when a box is close enough to count as right, and a report needs a number that says how close the boxes are on average, since a pass rate alone hides whether the misses were near or wild. The rule decides what `jud eval` counts, what `jud tune` can sweep, and what a cases document has to carry.
+
+## Decision drivers
+
+- One rule, stated once, that another implementation of the format computes identically from the same documents.
+- A label that fits the case: a crop can tolerate a loose box; an alignment cannot. The bar should be the labeller's to set, with a default most tasks accept.
+- A report that keeps the number, not only the verdict, so a threshold can be chosen from the recordings rather than fixed before them.
+- The calibration machinery (Brier score, expected calibration error, confidence when right and when wrong) applied only where it means something.
+
+## Considered options
+
+1. **Intersection over union against a bar**, 0.5 by default, settable per label; the overlap kept as a number, averaged into the report; no Brier score; confidence calibrated against hits.
+2. **Centre inside the label**: right when the answer's centre falls in the labelled box.
+3. **Corner distance under a tolerance**, in fractions of the image.
+4. **Exact match with a pixel tolerance**, at a known image size.
+
+## Decision outcome
+
+Chosen option 1.
+
+- A Box label is `{box: {top, bottom, left, right}}` with an optional `iou_at_least`, 0 to 1; `eval::DEFAULT_IOU_AT_LEAST` is 0.5, the bar object detection benchmarks have used since PASCAL VOC. `Judgment::located` computes `BoxEdges::iou` between the answer and the label, sets `correct` by the bar and keeps the number in `Judgment::iou`; `QuestionMetrics::mean_iou` averages it over the labelled cases, and a miss in `jud eval` says the overlap it reached.
+- A Box has no distribution, so no Brier score: `QuestionMetrics` skips it where `iou` is set, and the report prints the mean overlap in its place. The confidence is calibrated as any other question's, against hits under the bar, so `ece`, `confidence_when_right` and `confidence_when_wrong` keep their meaning: a model that says 0.9 for a box that misses is miscalibrated in exactly the sense the page on calibration means.
+- `jud tune` sweeps the gate's `confidence` for a Box as for a Choice: the bar at which the located boxes it acts on are right often enough. The IoU bar is the label's, not the gate's; it is not swept.
+- The rule is in fractions of the image, so it needs no image size, and a label written for a scaled image holds for the original.
+
+### Consequences
+
+- Good: one number everyone computes the same way, with a default that needs no argument for most crops, and a bar a label raises when the task is stricter.
+- Good: the mean overlap tells a near miss from a wild one, which the pass rate alone did not.
+- Bad: intersection over union is harsh on small boxes, where a few pixels of offset halve it; a label for a small target lowers `iou_at_least` and says why in its `note`.
+- Bad: a box that is right in one dimension and wrong in the other scores the same as one wrong in both; the rule does not say which edge was off. A reviewer reads the miss's two boxes for that.
+
+### Confirmation
+
+`src/eval/mod.rs` tests `Judgment::located` and the metrics without a Brier score; `src/jud/cases.rs` tests the label's shape and the bar's range; `tests/jud.rs` grades a shapes case with a padded box (right) and a box in the wrong corner (wrong, overlap 0); `tests/jud_eval.rs` checks the report's `mean_iou`, the miss's `iou` and the calibration error over two recordings.
+
+## Pros and cons of the options
+
+### Option 1: intersection over union against a bar
+
+- Good, because it is the measure the field grades boxes by, with a known default, and scale-free.
+- Good, because the number survives into the report and the bar is the label's.
+- Bad, because it is harsh on small targets and silent on which edge was off.
+
+### Option 2: centre inside the label
+
+- Good, because it is trivial to compute and forgiving of size.
+- Bad, because a box covering the whole image passes every label; it grades the centre, not the box.
+
+### Option 3: corner distance under a tolerance
+
+- Good, because it says which corner was off.
+- Bad, because a tolerance in fractions means different things for a small and a large box, and two corners give four numbers to argue about where one would do.
+
+### Option 4: exact match with a pixel tolerance
+
+- Good, because it is what a pixel-perfect task wants.
+- Bad, because it needs the image's size in the document, which the request does not carry, and fails every scaled image; it is `iou_at_least: 0.95` written awkwardly.
+
+## More information
+
+[The .jud format](../../reference/jud-format.md) (Cases) holds the label; `src/eval/mod.rs` (`Judgment::located`, `QuestionMetrics`) and `src/bin/jud/eval.rs` compute and print it; [decision 0025](0025-a-document-names-an-image-by-path.md) says how the image a Box is about is named; [decision 0024](0024-images-are-part-of-the-request.md) put the images on the request.
+
+
+<!-- source: docs/project/decisions/0027-long-context-is-a-switch-on-the-call.md -->
+
+
+# 0027 Long context is a switch on the call, not a request field or a default
+
+## Context and problem statement
+
+Jev fits a request into two context limits, 64k tokens for the state and every question together and 32k for the state and any one question; over either, the hosted API answers 400 `max_tokens_exceeded`, which the crate names `Error::is_request_too_large`. Jev 1.14's release raised both to 262k tokens, on Jev 1.13 as well, behind a header, `TypeSafe-Danger-Zone-Long-Context: true`, sent per request ([Models](https://docs.typesafe.ai/models#long-context)); the OpenAPI document lists the header as a parameter taking the one value `true`. The crate had no way to send it but `CallOptions::header`, by name, with the header's spelling the caller's problem and nothing on the span to say a long request went out. The question was where the switch belongs: on the request, on the call, on the client, or nowhere, with the crate deciding from the state's size.
+
+## Decision drivers
+
+- TypeSafe says a long-context request is slower and less accurate than one within the limits, so sending the header is a choice with a cost, not a transport detail.
+- A request without long context must be the same bytes, the same fingerprint and the same hash it always was.
+- The header changes the limits, not the request: two calls that differ only by it ask the same question of the same state, and a recording of one answers the other.
+- A client used for one kind of work (a batch over long transcripts) should not have to pass an option on every call; a client used for both should be able to say so per call.
+- The crate has no tokeniser, and the limits are the server's to count.
+
+## Considered options
+
+1. **A switch on the call and on the client**: `CallOptions::long_context(bool)` for one call, `ClientBuilder::long_context(bool)` for every call, off by default; the header reserved.
+2. **A field of `Request`**, beside `state`, `model`, `questions` and `assets`.
+3. **Always on**: send the header on every request.
+4. **Decided by the crate** from the request's size, with a token estimate.
+5. **Nothing**: leave `CallOptions::header` as the way.
+
+## Decision outcome
+
+Chosen option 1.
+
+- `CallOptions::long_context(true)` sends the header on that call; `ClientBuilder::long_context(true)` on every call of the client, and a call's `false` turns it off for that call. The header is reserved like the client's own (`DANGER_ZONE_LONG_CONTEXT_HEADER`), so it cannot be sent by name with another value or spelling, and the setting is the `typesafe.evaluate` span's `long_context` field. The body is untouched: the contract test pins that the request with the option is byte for byte the request without it, plus the header.
+- The setting stays on the client side of the `SystemOne` trait, as every call option does ([How judgment works](../../concepts/how-judgment-works.md)); a `Recorder` over a client built with it on sends it on every call, and the recordings are keyed as before.
+- `Error::is_request_too_large`'s documentation names the switch as the other remedy beside sending less.
+
+### Consequences
+
+- Good: a request without long context is unchanged on the wire and in every recording; a caller who needs it turns it on where the long states are, and the span says when it was on.
+- Good: the cost TypeSafe names is paid deliberately.
+- Bad: a caller whose states vary in size either turns it on for all of them, paying the accuracy cost on the short ones, or measures the state itself; the crate gives no estimate.
+- Bad: the `jud` command has no flag or setting for it yet; a long case is refused as too large until it does (a follow-up, tracked in beads).
+
+### Confirmation
+
+`tests/client.rs` sends the header for a call that asked, for every call of a client that asked, and not otherwise, and refuses the header as a per-call header and as a builder default; `tests/contract.rs` pins the header parameter and its one value in the OpenAPI document and the unchanged body; `tests/live.rs` sends a 40,000-token state, refused without the header as `max_tokens_exceeded`, and sees it answered with it (74,550 input tokens, 1.4 s, on 2026-10-15).
+
+## Pros and cons of the options
+
+### Option 1: a switch on the call and on the client
+
+- Good, because it is where every other per-call choice lives, with a client default for the batch case.
+- Good, because the request and the recordings do not change.
+- Bad, because it is one more thing to know about when a request is refused; the error's documentation points to it.
+
+### Option 2: a field of `Request`
+
+- Good, because the request says everything about itself.
+- Bad, because it would enter the request's serialisation, or need a serde skip and a special case in the fingerprint and the hash, for something that is not part of the question asked.
+- Bad, because a `Request` is built per call by `system_one`, so a client-wide default would still be needed.
+
+### Option 3: always on
+
+- Good, because no caller is ever refused for size.
+- Bad, because TypeSafe says the answers are less accurate and slower under it; every caller would pay for the few.
+
+### Option 4: decided by the crate from the request's size
+
+- Good, because the caller never thinks about it.
+- Bad, because the crate has no tokeniser, a byte estimate is wrong for JSON and for images, and a wrong guess either pays the accuracy cost or still gets the 400.
+- Bad, because the limit is the server's and changes with the model; a guess written today is a bug later.
+
+### Option 5: nothing
+
+- Good, because it already works through `CallOptions::header`.
+- Bad, because the header's name and value are then the caller's to spell, nothing on the span records it, and the error's remedy cannot name it.
+
+## More information
+
+[Models](https://docs.typesafe.ai/models#long-context) is the page the header comes from; `src/client.rs` (`# Long context`) implements it; [Configuration](../../reference/configuration.md#the-crates-client) lists the setting; [decision 0024](0024-images-are-part-of-the-request.md) made the same choice the other way for the images header, which the client sets itself because the image on the request is the opt-in.

@@ -71,11 +71,13 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   replay (`cargo test` runs them).
 - The `.jud` format (`docs/reference/jud-format.md`, `src/jud/`, feature `jud`) is a
   specification other tools implement. Its envelope is a manifest's
-  (`apiVersion`, `kind`, `metadata`, `spec`), and the reader reads exactly
-  one apiVersion, `jud/v1.3` (`jud::API_VERSION`), refusing any other by
-  name. A change to what a document may hold or how it is read takes a new
-  apiVersion (decision 0018) and moves `docs/reference/jud-format.md`, `schemas/jud/`,
-  `tests/jud.rs` and the documents under `examples/jud/` together. The
+  (`apiVersion`, `kind`, `metadata`, `spec`), and the reader reads one
+  line, `jud/v1` (`jud::API_VERSION`), at every `metadata.minor` up to
+  `jud::MINOR`, refusing any other apiVersion by name and a higher minor by
+  number; the earlier spelling `jud/v1.3` is read as minor 3. An addition
+  to what a document may hold is the next minor (decisions 0018 and 0020)
+  and moves `docs/reference/jud-format.md`, `schemas/jud/`, `tests/jud.rs`
+  and the documents under `examples/jud/` together. The
   questions in a rubric are the wire's shape, never a translation of it, and
   fingerprints are RFC 8785 canonical JSON (`src/eval/canonical.rs`) over
   values inside `spec`, so the envelope moves none of them; they are checked
@@ -138,7 +140,12 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   committing `.env`, `cargo publish` and `bd edit` (it opens an editor and
   hangs). In a cloud session `session-start.sh` installs the tools
   (`mise.cloud.toml`, pinned release URLs), imports the beads from the
-  committed export and warms the build; then `bd prime` runs.
+  committed export, installs the two Claude Code plugins
+  (`scripts/claude-plugins.sh`: `jud` from the checkout, `typesafe` from
+  `typesafe-ai/skills`, since a cloud session never installs what
+  `.claude/settings.json` declares) and warms the build; then `bd prime`
+  runs. `mise run plugins:install` does the same on a laptop and `mise run
+  plugins:update` moves both plugins to their latest.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker

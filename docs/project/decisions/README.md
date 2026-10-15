@@ -2,7 +2,7 @@
 title: Decisions
 description: The architecture decision records that govern the judgment crate's design, how they are numbered, how a record is written, and what has moved since each was accepted.
 status: current
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-15
 tags: [judgment, decisions, adr, madr]
 ---
 
@@ -21,10 +21,14 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) | The .jud format 1.2 refuses what a reviewer cannot see, and names the policy | superseded by 0018 |
 | [0018](0018-jud-1-3-takes-the-manifest-envelope.md) | The .jud format 1.3 takes the manifest envelope and reads one apiVersion | accepted |
 | [0019](0019-a-command-line-for-the-format.md) | A command line for the format, released as a binary | accepted |
-| [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | proposed |
+| [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | accepted |
 | [0021](0021-record-eval-and-tune-from-the-command-line.md) | Record, evaluate and tune from the command line | accepted |
 | [0022](0022-jud-reports-what-the-tuning-loop-counted-by-hand.md) | jud reports what the tuning loop counted by hand | accepted |
 | [0023](0023-jud-rubric-takes-options-on-the-command-line.md) | jud RUBRIC takes per-request options on the command line | accepted |
+| [0024](0024-images-are-part-of-the-request.md) | Images are part of the request, not a call option | accepted |
+| [0025](0025-a-document-names-an-image-by-path.md) | A document names an image by a path relative to itself | accepted |
+| [0026](0026-a-box-is-graded-by-intersection-over-union.md) | A Box is graded by intersection over union | accepted |
+| [0027](0027-long-context-is-a-switch-on-the-call.md) | Long context is a switch on the call, not a request field or a default | accepted |
 
 ## Status notes
 
@@ -39,12 +43,13 @@ Records are not edited after acceptance; a fact that has moved since is noted he
 
 - 0016 and 0017 are superseded by [0018](0018-jud-1-3-takes-the-manifest-envelope.md) on 2026-10-06: the envelope is a manifest's, a reader reads exactly one `apiVersion` and any change of the format takes a new one, so the compatibility rule of 0016 and the exception 0017 made to it are both withdrawn. What the two records added to the format (declarations, bands and level gates, names, the refusal of what a reviewer cannot see, the policy fingerprint) stands as rules of the format, and 0018 is the one page that maps the earlier keys onto the new envelope.
 
-- 0018 says any change of the format, additive or not, takes a new `apiVersion` that a reader of the earlier one refuses. [Stability](../../reference/stability.md), on 2026-10-06, promises that a `v1` minor only adds and that readers accept every `v1` document for at least twelve months after a later minor is published; a reader of a later minor therefore reads earlier `v1` documents, and only a change of meaning takes a new major. How the minor is spelled is [0020](0020-how-a-v1-minor-is-spelled.md), proposed. Nothing moves in the code until it is accepted: one minor exists and the reader reads it exactly.
+- 0018 says any change of the format, additive or not, takes a new `apiVersion` that a reader of the earlier one refuses. [Stability](../../reference/stability.md), on 2026-10-06, promises that a `v1` minor only adds and that readers accept every `v1` document for at least twelve months after a later minor is published; a reader of a later minor therefore reads earlier `v1` documents, and only a change of meaning takes a new major. [0020](0020-how-a-v1-minor-is-spelled.md), accepted on 2026-10-15, spells the minor as `metadata.minor` under `apiVersion: jud/v1`; 0018's one-`apiVersion` rule stands for the string, and its rule that any change takes a new string is narrowed to a change of meaning. The spelling `jud/v1.3` that 0018 introduced is read as minor 3.
 
 - 0021 extends the command [0019](0019-a-command-line-for-the-format.md) defined: three subcommands (`record`, `eval`, `tune`), exit status 3 for `jud eval` alone, and two places that write files (`jud record --out` and `jud tune --out`). 0019 stands: its statuses 0, 1 and 2 keep their meaning, and `jud RUBRIC` still evaluates one state from stdin. 0021 was accepted on 2026-10-08, when the subcommands were implemented; its "As implemented" section records what the implementation settled, and where it differs from the proposal the implementation is the contract.
 - 0022 adds to 0021's commands without changing them: per-outcome counts, a majority and three signals in `jud eval`, `jud record --dry-run`, and a fourth subcommand, `jud split`, a third place that writes files.
 - 0019 says options supplied for a Choice that takes them from the request "are left for later". [0023](0023-jud-rubric-takes-options-on-the-command-line.md) settles it: `jud RUBRIC` takes them through `--options` and `--options-file`. 0019 stands otherwise.
 - 0021 says cases carry their options "where stdin cannot". Stdin still cannot; since [0023](0023-jud-rubric-takes-options-on-the-command-line.md) the command line can.
+- 0020's "As applied" section says every committed document was rewritten to `minor: 3`. Minor 4 ([0025](0025-a-document-names-an-image-by-path.md), [0026](0026-a-box-is-graded-by-intersection-over-union.md)) shipped in the same release, 0.14.0: the writer writes `minor: 4`, the documents that use nothing minor 4 added stay at `minor: 3`, and the twelve-month clock for a minor 3 document runs from 0.14.0.
 
 ## Writing a record
 

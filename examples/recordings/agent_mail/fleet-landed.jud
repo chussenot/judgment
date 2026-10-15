@@ -1,8 +1,9 @@
 # Recorded answer for case `fleet-landed`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: fleet-landed
+  minor: 3
 spec:
   elapsed_ms: 162
   fingerprint: sha256:214074667c731706b70b66105cbe930c6cc2716784ac044b7253f309fff3c262

@@ -25,6 +25,11 @@ mod triage;
 #[path = "jud/routing.rs"]
 mod routing;
 
+// A rubric asked about an image, a Noul and a Box; exercised by the tests
+// below from the shapes recordings with the images they were keyed by.
+#[path = "jud/shapes.rs"]
+mod shapes;
+
 use triage::{Desk, Gated, Tone};
 
 /// What the program does with a message: the decision is the rubric's, the
@@ -116,6 +121,57 @@ mod tests {
                 rubric.lower(&case.state, &case.options).unwrap()
             );
         }
+    }
+
+    /// Every shapes case decides from its recording with its image, and the
+    /// typed Box verdict is the rubric's own gate: a located box on the
+    /// confident answers, every one on an image with a circle, and a
+    /// deferral on the rest, the ten empty images included.
+    #[tokio::test]
+    async fn the_shapes_module_decides_from_the_recordings_with_their_images() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let backend = Replay::open(&root.join("examples/recordings/shapes")).unwrap();
+        let text = std::fs::read_to_string(root.join("examples/jud/shapes-cases.jud")).unwrap();
+        let cases = Cases::parse(&text).unwrap();
+        let (mut located, mut deferred) = (0, 0);
+        for (i, case) in cases.cases.iter().enumerate() {
+            let mut assets = judgment::Assets::new();
+            case.load_assets(&root.join("examples/jud"), &mut assets)
+                .unwrap();
+            let decision = shapes::decide(&backend, "jev-preview", &case.state, &assets)
+                .await
+                .unwrap_or_else(|e| panic!("{}: {e}", case.name(i)));
+            let present = matches!(case.expect.get("circle_present"), Some(Expect::Bool(true)));
+            assert_eq!(decision.circle_present.yes, present, "{}", case.name(i));
+            match &decision.circle {
+                shapes::Located::Act {
+                    edges, confidence, ..
+                } => {
+                    located += 1;
+                    assert!(present, "{}: a box where there is nothing", case.name(i));
+                    assert!(confidence.is_some_and(|c| c >= 0.5), "{}", case.name(i));
+                    edges.check().unwrap();
+                }
+                shapes::Located::Defer {
+                    confidence, bar, ..
+                } => {
+                    deferred += 1;
+                    assert!(confidence < bar, "{}", case.name(i));
+                }
+            }
+        }
+        // Without the image the recording is not found: it is keyed by it.
+        let first = &cases.cases[0];
+        let err = shapes::decide(
+            &backend,
+            "jev-preview",
+            &first.state,
+            &judgment::Assets::new(),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, shapes::Error::Backend(_)), "{err}");
+        assert_eq!((located, deferred), (23, 17));
     }
 
     /// Bands, a strict threshold, `level_at_least` and the questions a state

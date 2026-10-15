@@ -6,7 +6,7 @@ use std::future::Future;
 use std::path::Path;
 use std::process::ExitCode;
 
-use judgment::{Error, Replay, SystemOne};
+use judgment::{Assets, Error, Replay, SystemOne};
 use serde_json::Value;
 use tokio::runtime::Runtime;
 
@@ -112,15 +112,18 @@ impl Backend {
         }
     }
 
+    /// Answer one request, its images included, from the server or the
+    /// recordings.
     pub(crate) fn answer(
         &self,
         state: &Value,
         questions: &judgment::Questions,
+        assets: &Assets,
     ) -> Result<judgment::Response, Failure> {
         match &self.kind {
             Kind::Server { client, resolved } => self
                 .runtime
-                .block_on(client.answer(state, self.model(), questions))
+                .block_on(client.answer_with_assets(state, self.model(), questions, assets))
                 .map_err(|e| {
                     Failure::Backend(format!(
                         "the backend at {} failed: {e}",
@@ -129,7 +132,7 @@ impl Backend {
                 }),
             Kind::Recordings { replay, dir } => self
                 .runtime
-                .block_on(replay.answer(state, self.model(), questions))
+                .block_on(replay.answer_with_assets(state, self.model(), questions, assets))
                 .map_err(|e| match e {
                     // The wording `jud RUBRIC --replay` has always used for a
                     // state nobody recorded.

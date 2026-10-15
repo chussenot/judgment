@@ -1,8 +1,9 @@
 # Recorded answer for case `detail-landed`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: detail-landed
+  minor: 3
 spec:
   elapsed_ms: 165
   fingerprint: sha256:0d0110ce6aa753988ce0c6195bf3e70f40af2c5df1d517dacf17fe45fbce08f4

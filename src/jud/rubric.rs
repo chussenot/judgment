@@ -5,11 +5,17 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
+use std::path::Path;
+
 use super::{
-    API_VERSION, Envelope, Error, Metadata, Result, check_name, check_path, from_text, present,
-    refuse_extra, some, to_yaml,
+    API_VERSION, AssetSource, Envelope, Error, MINOR, Metadata, Result, check_assets, check_name,
+    check_path, from_text, load_assets, present, refuse_extra, some, to_yaml,
 };
-use crate::answer::{Choice, Confidence, FromAnswer, Noul, Probability, Response, Score};
+use crate::answer::{
+    BoundingBox, BoxEdges, Choice, Confidence, FromAnswer, Noul, PixelBox, Probability, Response,
+    Score,
+};
+use crate::asset::Assets;
 use crate::eval::canonical;
 use crate::question::{NoulCriteria, Question, Questions, validate_with};
 
@@ -34,6 +40,10 @@ pub struct Rubric {
     pub annotations: IndexMap<String, String>,
     /// `spec.questions` as written, in wire order, with their declarations.
     pub questions: IndexMap<String, RubricQuestion>,
+    /// `spec.assets`: the images the questions refer to, by reference
+    /// ([`Rubric::load_assets`]); part of no fingerprint, the request's
+    /// names them by their bytes.
+    pub assets: IndexMap<String, AssetSource>,
     /// `spec.policy` and `spec.tuning`: the gates and their provenance.
     pub policy: Policy,
 }
@@ -247,18 +257,50 @@ pub enum Verdict {
         #[serde(skip_serializing_if = "Option::is_none")]
         reached: Option<bool>,
     },
-    /// A Choice or a Score below its last bar.
+    /// A Box that meets its confidence bar, or one of its bands, or that
+    /// has no bar: where the thing is, as fractions of the image.
+    Located {
+        /// The four edges, as the wire's `box`.
+        #[serde(rename = "box")]
+        edges: BoxEdges,
+        /// The model's confidence, when it gave one.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        confidence: Option<Confidence>,
+        /// The band it is in, when the gate has `bands`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        band: Option<String>,
+        /// The same box in the pixels of the image, once
+        /// [`Verdict::in_pixels`] was given its size; written only then.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pixels: Option<PixelBox>,
+    },
+    /// A Choice, a Score or a Box below its last bar.
     Deferred(Deferred),
 }
 
-/// A Choice or Score answer the gate did not let through.
+impl Verdict {
+    /// A located box put in the pixels of an image `width` by `height`
+    /// ([`BoxEdges::to_pixels`]), so a crop needs no arithmetic; any other
+    /// verdict is left as it is. The edges stay: they are the answer, the
+    /// pixels a reading of it.
+    #[must_use]
+    pub fn in_pixels(mut self, width: u32, height: u32) -> Self {
+        if let Self::Located { edges, pixels, .. } = &mut self {
+            *pixels = Some(edges.to_pixels(width, height));
+        }
+        self
+    }
+}
+
+/// A Choice, Score or Box answer the gate did not let through.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Deferred {
-    /// The gate's fallback, when it has one.
+    /// The gate's fallback, when it has one (never for a Box).
     pub fallback: Option<String>,
-    /// The chosen option key, or the nearest level's index as a string.
+    /// The chosen option key, the nearest level's index as a string, or a
+    /// Box's edges as `top,bottom,left,right`.
     pub nearest: String,
-    /// The answer's confidence.
+    /// The answer's confidence; 0 for a Box the model gave none for.
     pub confidence: Confidence,
     /// The bar it was below: the lowest, when the gate has bands.
     pub bar: f64,
@@ -281,6 +323,8 @@ struct RawRubric {
 #[serde(deny_unknown_fields)]
 struct RawRubricSpec {
     questions: IndexMap<String, RawQuestion>,
+    #[serde(default)]
+    assets: IndexMap<String, AssetSource>,
     #[serde(default)]
     policy: IndexMap<String, RawGate>,
     #[serde(default)]
@@ -319,6 +363,16 @@ enum RawQuestion {
         #[serde(default)]
         instructions: Value,
         criteria: Vec<Value>,
+        #[serde(default, deserialize_with = "some")]
+        when: Option<String>,
+        #[serde(default, deserialize_with = "some")]
+        part_when: Option<IndexMap<String, String>>,
+        #[serde(default, deserialize_with = "some")]
+        options_from: Option<String>,
+    },
+    Box {
+        #[serde(default)]
+        instructions: Value,
         #[serde(default, deserialize_with = "some")]
         when: Option<String>,
         #[serde(default, deserialize_with = "some")]
@@ -449,6 +503,17 @@ impl RawQuestion {
                 part_when,
                 options_from,
             ),
+            Self::Box {
+                instructions,
+                when,
+                part_when,
+                options_from,
+            } => (
+                Question::Box { instructions },
+                when,
+                part_when,
+                options_from,
+            ),
         };
         let options_from = match options_from.as_deref() {
             None => None,
@@ -498,11 +563,7 @@ fn check_question(id: &str, rq: &RubricQuestion) -> Result<()> {
         check_path(&format!("questions.{id}.when"), when)?;
     }
     if !rq.part_when.is_empty() {
-        let instructions = match &rq.question {
-            Question::Noul { instructions, .. }
-            | Question::Choice { instructions, .. }
-            | Question::Score { instructions, .. } => instructions,
-        };
+        let instructions = rq.question.instructions();
         let Some(parts) = instructions.as_object() else {
             return Err(Error::Invalid {
                 field: format!("questions.{id}.part_when"),
@@ -535,6 +596,8 @@ struct RubricDoc<'a> {
 struct RubricSpec<'a> {
     questions: &'a IndexMap<String, RubricQuestion>,
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
+    assets: &'a IndexMap<String, AssetSource>,
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     policy: &'a IndexMap<String, Gate>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tuning: Option<&'a Tuning>,
@@ -553,8 +616,18 @@ impl Rubric {
                 .into_iter()
                 .map(|(id, q)| (id, RubricQuestion::new(q)))
                 .collect(),
+            assets: IndexMap::new(),
             policy: Policy::default(),
         }
+    }
+
+    /// The images `spec.assets` declares, loaded relative to `base` (the
+    /// document's directory) into `into`, which a case's own images join
+    /// ([`Case::load_assets`](super::Case::load_assets)); a file that moved
+    /// fails by name. Part of no fingerprint: the request names each image
+    /// by its bytes.
+    pub fn load_assets(&self, base: &Path, into: &mut Assets) -> Result<()> {
+        load_assets("spec.assets", &self.assets, base, into)
     }
 
     /// Set a gate, checked against the question it is for.
@@ -583,6 +656,14 @@ impl Rubric {
         for (id, question) in raw.spec.questions {
             questions.insert(id.clone(), question.lower(&id)?);
         }
+        // Every declared image is referenced in some question, as the server
+        // requires, and is declared well; the file itself is read when the
+        // request is built.
+        check_assets(
+            "spec.assets",
+            &raw.spec.assets,
+            &serde_json::to_string(&questions).unwrap_or_default(),
+        )?;
         let mut gates = IndexMap::with_capacity(raw.spec.policy.len());
         for (id, raw_gate) in raw.spec.policy {
             let gate = raw_gate.into_gate(&id)?;
@@ -599,6 +680,7 @@ impl Rubric {
             labels: raw.metadata.labels,
             annotations: raw.metadata.annotations,
             questions,
+            assets: raw.spec.assets,
             policy: Policy {
                 gates,
                 tuning: raw.spec.tuning,
@@ -616,11 +698,17 @@ impl Rubric {
         for (id, gate) in &self.policy.gates {
             validate_gate(id, gate, &self.questions)?;
         }
+        check_assets(
+            "spec.assets",
+            &self.assets,
+            &serde_json::to_string(&self.questions).unwrap_or_default(),
+        )?;
         to_yaml(&RubricDoc {
             api_version: API_VERSION,
             kind: "Rubric",
             metadata: Metadata {
                 name: self.name.clone(),
+                minor: Some(MINOR),
                 version: self.version.clone().map(Value::String),
                 description: self.description.clone(),
                 labels: self.labels.clone(),
@@ -628,6 +716,7 @@ impl Rubric {
             },
             spec: RubricSpec {
                 questions: &self.questions,
+                assets: &self.assets,
                 policy: &self.policy.gates,
                 tuning: self.policy.tuning.as_ref(),
             },
@@ -691,9 +780,7 @@ impl Rubric {
                 });
             }
             let mut question = rq.question.clone();
-            let (Question::Noul { instructions, .. }
-            | Question::Choice { instructions, .. }
-            | Question::Score { instructions, .. }) = &mut question;
+            let instructions = question.instructions_mut();
             if let Some(parts) = instructions.as_object_mut() {
                 for (part, path) in &rq.part_when {
                     if !present(state, path) {
@@ -812,6 +899,10 @@ impl Rubric {
                         }),
                     }
                 }
+                Question::Box { .. } => {
+                    let located = BoundingBox::from_answer(id, answer).map_err(response_error)?;
+                    located_verdict(located, &band, lowest).map_err(response_error)?
+                }
             };
             verdicts.insert(id.to_owned(), verdict);
         }
@@ -839,6 +930,42 @@ impl Rubric {
             }),
         }
     }
+}
+
+/// A Box through its gate: located in its band, or deferred below the last
+/// bar. A box the model gave no confidence for meets no bar.
+fn located_verdict(
+    located: BoundingBox,
+    band: &impl Fn(f64) -> Option<Option<String>>,
+    lowest: f64,
+) -> crate::Result<Verdict> {
+    let confidence = match located.confidence {
+        Some(confidence) => confidence,
+        None => Confidence::new(0.0)?,
+    };
+    Ok(match band(confidence.value()) {
+        Some(band) => Verdict::Located {
+            edges: located.edges,
+            confidence: located.confidence,
+            band,
+            pixels: None,
+        },
+        None => Verdict::Deferred(Deferred {
+            fallback: None,
+            nearest: edges_text(&located.edges),
+            confidence,
+            bar: lowest,
+        }),
+    })
+}
+
+/// A Box's edges in one string, `top,bottom,left,right`, for
+/// [`Deferred::nearest`].
+fn edges_text(edges: &BoxEdges) -> String {
+    format!(
+        "{},{},{},{}",
+        edges.top, edges.bottom, edges.left, edges.right
+    )
 }
 
 /// A level's text as [`Score::levels`] reads it: compact JSON when structured.
@@ -911,6 +1038,18 @@ fn validate_gate(
             );
         }
     }
+    gate_fits_primitive(id, gate, rq)
+}
+
+/// The fields a gate may carry, by its question's primitive
+/// (`docs/reference/jud-format.md`, Policy).
+fn gate_fits_primitive(id: &str, gate: &Gate, rq: &RubricQuestion) -> Result<()> {
+    let policy = |reason: String| {
+        Err(Error::Policy {
+            id: id.to_owned(),
+            reason,
+        })
+    };
     let confidence_gate = gate.confidence.is_some() || !gate.bands.is_empty();
     match &rq.question {
         Question::Noul { .. } => {
@@ -959,6 +1098,22 @@ fn validate_gate(
             {
                 return policy(
                     "`level_at_least` is neither a level's text nor a level index".to_owned(),
+                );
+            }
+        }
+        Question::Box { .. } => {
+            if gate.threshold.is_some() {
+                return policy(
+                    "a Box is gated by `confidence` or `bands`, not `threshold`".to_owned(),
+                );
+            }
+            if gate.level_at_least.is_some() {
+                return policy("`level_at_least` is for a Score".to_owned());
+            }
+            if gate.fallback.is_some() {
+                return policy(
+                    "a Box has no `fallback`: there is no box to fall back to; a deferred box is for the caller to ignore or ask again about"
+                        .to_owned(),
                 );
             }
         }
@@ -1373,7 +1528,7 @@ spec:
             rubric
                 .to_yaml()
                 .unwrap()
-                .starts_with("apiVersion: jud/v1.3\nkind: Rubric\n")
+                .starts_with("apiVersion: jud/v1\nkind: Rubric\n")
         );
     }
 
@@ -1474,7 +1629,9 @@ spec:
         assert_eq!(rubric.annotations["owner"], "me");
         let yaml = rubric.to_yaml().unwrap();
         assert!(
-            yaml.starts_with("apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\n"),
+            yaml.starts_with(
+                "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\n"
+            ),
             "{yaml}"
         );
         assert_eq!(Rubric::parse(&yaml).unwrap(), rubric);
@@ -1700,6 +1857,132 @@ spec:
         let json = serde_json::to_value(&read(0.85, [0.0, 0.0, 1.0, 0.0], 0.9).await).unwrap();
         assert_eq!(json["desk"]["band"], "route");
         assert_eq!(json["tone"]["reached"], true);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn a_box_is_gated_by_confidence_and_located_or_deferred() {
+        let mut questions = Questions::new();
+        questions
+            .noul("present", "Is there a mug in `photo`?", None)
+            .unwrap();
+        questions.r#box("mug", "the mug in `photo`").unwrap();
+        let mut rubric = Rubric::new("mugs", questions);
+        for (gate, needle) in [
+            (
+                Gate {
+                    threshold: Some(0.5),
+                    ..Gate::default()
+                },
+                "not `threshold`",
+            ),
+            (
+                Gate {
+                    fallback: Some("none".to_owned()),
+                    ..Gate::default()
+                },
+                "no `fallback`",
+            ),
+            (
+                Gate {
+                    level_at_least: Some(LevelRef::Index(0)),
+                    ..Gate::default()
+                },
+                "for a Score",
+            ),
+        ] {
+            let err = rubric.gate("mug", gate).unwrap_err();
+            assert!(
+                matches!(&err, Error::Policy { id, reason } if id == "mug" && reason.contains(needle)),
+                "{err}"
+            );
+        }
+        rubric
+            .gate(
+                "mug",
+                Gate {
+                    confidence: Some(0.6),
+                    note: Some("tuned on 40 crops".to_owned()),
+                    ..Gate::default()
+                },
+            )
+            .unwrap();
+        let yaml = rubric.to_yaml().unwrap();
+        assert!(yaml.contains("type: box"), "{yaml}");
+        let asked = rubric
+            .lower(&json!({ "photo": "img-1" }), &Supplied::new())
+            .unwrap();
+        let edges = BoxEdges::new(0.25, 0.82, 0.44, 0.84);
+        let read = |confidence: Option<f64>| {
+            let fake = Fake::new()
+                .noul("present", 0.9)
+                .unwrap()
+                .r#box("mug", edges, confidence)
+                .unwrap();
+            let asked = asked.clone();
+            let rubric = rubric.clone();
+            async move {
+                let response = fake
+                    .answer(&json!({ "photo": "img-1" }), "m", &asked)
+                    .await
+                    .unwrap();
+                rubric.apply(&asked, &response).unwrap()
+            }
+        };
+        let v = read(Some(0.9)).await;
+        assert!(
+            matches!(&v["mug"], Verdict::Located { edges: e, band: None, confidence: Some(c), pixels: None } if *e == edges && c.value() == 0.9),
+            "{:?}",
+            v["mug"]
+        );
+        let shown = serde_json::to_value(&v["mug"]).unwrap();
+        assert_eq!(shown["verdict"], "located");
+        assert_eq!(shown["box"]["left"], 0.44);
+        assert!(shown.get("pixels").is_none(), "no size was given");
+        // Given the image's size, the box is also in pixels; the edges stay.
+        let in_pixels = serde_json::to_value(v["mug"].clone().in_pixels(1000, 500)).unwrap();
+        assert_eq!(in_pixels["box"], shown["box"]);
+        assert_eq!(in_pixels["pixels"]["left"], 440);
+        assert_eq!(in_pixels["pixels"].as_object().unwrap().len(), 4);
+        let v = read(Some(0.3)).await;
+        assert!(
+            matches!(&v["mug"], Verdict::Deferred(Deferred { fallback: None, nearest, bar, .. }) if nearest == "0.25,0.82,0.44,0.84" && *bar == 0.6),
+            "{:?}",
+            v["mug"]
+        );
+        // No confidence meets no bar.
+        let v = read(None).await;
+        assert!(
+            matches!(&v["mug"], Verdict::Deferred(Deferred { confidence, .. }) if confidence.value() == 0.0)
+        );
+        // Without a gate a box is always located.
+        let mut ungated = rubric.clone();
+        ungated.policy = Policy::default();
+        let asked = ungated
+            .lower(&json!({ "photo": "img-1" }), &Supplied::new())
+            .unwrap();
+        let response = Fake::new()
+            .noul("present", 0.9)
+            .unwrap()
+            .r#box("mug", edges, None)
+            .unwrap()
+            .answer(&json!({ "photo": "img-1" }), "m", &asked)
+            .await
+            .unwrap();
+        let v = ungated.apply(&asked, &response).unwrap();
+        assert!(matches!(
+            &v["mug"],
+            Verdict::Located {
+                confidence: None,
+                ..
+            }
+        ));
+        assert!(
+            serde_json::to_value(&v["mug"])
+                .unwrap()
+                .get("confidence")
+                .is_none()
+        );
     }
 
     #[test]

@@ -284,7 +284,9 @@ fn tune_question(
     );
     let proposed = match question {
         Question::Noul { .. } => tune_threshold(id, gate, judgments, labelled),
-        Question::Choice { .. } => tune_confidence(id, gate, judgments, labelled, settings, None),
+        Question::Choice { .. } | Question::Box { .. } => {
+            tune_confidence(id, gate, judgments, labelled, settings, None)
+        }
         Question::Score { criteria, .. } => tune_confidence(
             id,
             gate,
@@ -694,7 +696,8 @@ fn recorded_server(dir: &Path, answered: &[Answered]) -> Option<String> {
     let found = recordings::scan(dir);
     let mut servers = BTreeSet::new();
     for a in answered {
-        let fingerprint = canonical::request_fingerprint(&a.unit.case.state, &a.questions);
+        let fingerprint =
+            canonical::request_fingerprint_with(&a.unit.case.state, &a.questions, &a.assets);
         let mut matching: Vec<_> = found
             .iter()
             .map(|f| &f.recording)
@@ -702,7 +705,7 @@ fn recorded_server(dir: &Path, answered: &[Answered]) -> Option<String> {
             .collect();
         if matching.is_empty() {
             // The order the replay itself looks in: the fingerprint, then the hash.
-            let hash = eval::request_hash(&a.unit.case.state, &a.questions);
+            let hash = eval::request_hash_with(&a.unit.case.state, &a.questions, &a.assets);
             matching = found
                 .iter()
                 .map(|f| &f.recording)

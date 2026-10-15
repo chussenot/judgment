@@ -8,9 +8,10 @@ Write the Rust module for this rubric:
 $ARGUMENTS
 
 Follow the jud-rust skill: read `${CLAUDE_PLUGIN_ROOT}/skills/jud-rust/SKILL.md`
-and the templates it names (`references/triage.rs`, and `references/routing.rs`
-for `options_from: request` or `when`; step 4 says which parts come from
-which) before writing anything.
+and the templates it names (`references/triage.rs`; `references/routing.rs`
+for `options_from: request` or `when`; `references/shapes.rs` for a Box or a
+rubric with `assets`, whose `decide` takes the images; step 4 says which
+parts come from which) before writing anything.
 
 Run every `jud` command through `${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh`,
 written out in full, one command per Bash call, with nothing chained to it.

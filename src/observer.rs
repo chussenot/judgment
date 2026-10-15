@@ -23,6 +23,16 @@ pub trait Observer: Send + Sync + 'static {
         let _ = (model, usage);
     }
 
+    /// One request with images is about to be sent to `model`: how many
+    /// images and how many bytes of them together, before any base64.
+    /// Reported once per call, whether or not the call then succeeds, so
+    /// an application can count what it uploads the way it counts tokens
+    /// (an image is billed as input tokens, which [`Observer::on_usage`]
+    /// then reports among the rest). Nothing for a request without images.
+    fn on_assets(&self, model: &str, images: usize, bytes: u64) {
+        let _ = (model, images, bytes);
+    }
+
     /// One attempt against `service` failed with `status`: an HTTP status
     /// code, `transport` (no response), `too_large` (body over the policy's
     /// cap), or, from the TypeSafe client, `decode` (a 2xx whose body did not

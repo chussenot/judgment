@@ -22,9 +22,9 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use clap::{Args, ValueHint};
-use judgment::eval::{Recording, canonical, now_rfc3339, request_hash};
+use judgment::eval::{Recording, canonical, now_rfc3339, request_hash_with};
 use judgment::jud::{self, recording_to_yaml};
-use judgment::{Error, Questions, Replay, SystemOne};
+use judgment::{Assets, Error, Questions, Replay, SystemOne};
 
 use crate::backend::{Backend, Failure};
 use crate::batch::{self, Unit};
@@ -88,6 +88,7 @@ struct Planned {
     name: String,
     unit: Unit,
     questions: Questions,
+    assets: Assets,
 }
 
 /// What the recordings already known hold for a request.
@@ -139,6 +140,7 @@ fn plan_only(args: &Record) -> Result<String, Failure> {
             name,
             unit: p.unit,
             questions: p.questions,
+            assets: p.assets,
         })
         .collect();
     refuse_inputs(args, &planned)?;
@@ -174,15 +176,20 @@ fn plan_only(args: &Record) -> Result<String, Failure> {
     // kept from the first's recording (`Session::record_one`): count it so.
     let mut asked: Vec<String> = Vec::new();
     for step in &planned {
-        let fingerprint = canonical::request_fingerprint(&step.unit.case.state, &step.questions);
+        let fingerprint = canonical::request_fingerprint_with(
+            &step.unit.case.state,
+            &step.questions,
+            &step.assets,
+        );
         if asked.contains(&fingerprint) {
             kept += 1;
             continue;
         }
-        let held = runtime.block_on(known.answer(
+        let held = runtime.block_on(known.answer_with_assets(
             &step.unit.case.state,
             resolved.model(),
             &step.questions,
+            &step.assets,
         ));
         match held {
             Ok(_) => kept += 1,
@@ -291,8 +298,8 @@ fn refuse_stale_files(out: &Path, held_stale: &[&Planned]) -> Result<(), Failure
     let mut found: Option<Vec<recordings::Found>> = None;
     for step in held_stale {
         let state = &step.unit.case.state;
-        let fingerprint = canonical::request_fingerprint(state, &step.questions);
-        let hash = request_hash(state, &step.questions);
+        let fingerprint = canonical::request_fingerprint_with(state, &step.questions, &step.assets);
+        let hash = request_hash_with(state, &step.questions, &step.assets);
         let own = recording_path(out, &step.name);
         let files = found.get_or_insert_with(|| recordings::scan(out));
         for file in files.iter().filter(|f| {
@@ -353,6 +360,7 @@ fn record(args: &Record) -> Result<(), Failure> {
             name,
             unit: p.unit,
             questions: p.questions,
+            assets: p.assets,
         })
         .collect();
     // Before `Backend::open`, so that no key is needed to find that a case
@@ -430,10 +438,11 @@ impl Session<'_> {
     /// it sits in a file this run would not write, so a `Stale` here is the
     /// recording in the case's own file, which is replaced.
     fn held(&self, planned: &Planned) -> Held {
-        let answered = self.backend.block_on(self.known.answer(
+        let answered = self.backend.block_on(self.known.answer_with_assets(
             &planned.unit.case.state,
             self.backend.model(),
             &planned.questions,
+            &planned.assets,
         ));
         match answered {
             Ok(_) => Held::Answers,
@@ -463,11 +472,17 @@ impl Session<'_> {
     fn ask_and_write(&mut self, planned: &Planned) -> Result<u64, Failure> {
         let state = &planned.unit.case.state;
         let started = Instant::now();
-        let response = self.backend.answer(state, &planned.questions)?;
+        let response = self
+            .backend
+            .answer(state, &planned.questions, &planned.assets)?;
         let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
 
         let mut recording = Recording::new(planned.name.clone(), response, elapsed_ms);
-        recording.fingerprint = Some(canonical::request_fingerprint(state, &planned.questions));
+        recording.fingerprint = Some(canonical::request_fingerprint_with(
+            state,
+            &planned.questions,
+            &planned.assets,
+        ));
         recording.rubric = Some(self.rubric.to_owned());
         recording.server = self.backend.server();
         recording.recorded_at = Some(now_rfc3339());

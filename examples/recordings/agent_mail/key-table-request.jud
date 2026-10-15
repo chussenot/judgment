@@ -1,8 +1,9 @@
 # Recorded answer for case `key-table-request`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: key-table-request
+  minor: 3
 spec:
   elapsed_ms: 135
   fingerprint: sha256:cf40d599da607365fd7a51c47a972a0b7b33071d36ac5cb75fd09272694d629d

@@ -6,19 +6,35 @@
 //! Every step is the library's: `Cases::bind`, `Case::request`,
 //! `Case::per_turn`, `jud::grade`, `Rubric::apply`.
 
+use std::path::{Path, PathBuf};
+
 use indexmap::IndexMap;
-use judgment::Questions;
-use judgment::Response;
 use judgment::eval::{Judgment, is_name};
 use judgment::jud::{Case, Cases, Expect, Rubric, Verdict};
+use judgment::{Assets, Questions, Response};
 
 use crate::backend::{Backend, Failure};
 use crate::tools;
 
-/// A rubric and the cases bound to it.
+/// A rubric and the cases bound to it, with the directories their images
+/// are relative to.
 pub(crate) struct Loaded {
     pub rubric: Rubric,
     pub cases: Cases,
+    /// The rubric document's directory, which its `spec.assets` paths are
+    /// relative to.
+    pub rubric_base: PathBuf,
+    /// The cases document's directory, which each case's `assets` paths are
+    /// relative to.
+    pub cases_base: PathBuf,
+}
+
+/// The directory a document's relative paths are read from.
+pub(crate) fn base_of(path: &str) -> PathBuf {
+    Path::new(path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
 }
 
 /// Read both documents and bind the cases to the rubric, so a label that
@@ -31,7 +47,32 @@ pub(crate) fn load(rubric_path: &str, cases_path: &str) -> Result<Loaded, Failur
     cases
         .bind(&rubric)
         .map_err(|e| Failure::Usage(format!("{cases_path} does not fit {rubric_path}: {e}")))?;
-    Ok(Loaded { rubric, cases })
+    Ok(Loaded {
+        rubric,
+        cases,
+        rubric_base: base_of(rubric_path),
+        cases_base: base_of(cases_path),
+    })
+}
+
+/// The images a unit's request carries: the rubric's, then the case's,
+/// each read from its document's directory. A file that moved is a usage
+/// failure naming the case and the path, before any call.
+pub(crate) fn assets_of(loaded: &Loaded, unit: &Unit) -> Result<Assets, Failure> {
+    let mut assets = Assets::new();
+    loaded
+        .rubric
+        .load_assets(&loaded.rubric_base, &mut assets)
+        .map_err(|e| Failure::Usage(format!("the rubric's images cannot be loaded: {e}")))?;
+    unit.case
+        .load_assets(&loaded.cases_base, &mut assets)
+        .map_err(|e| {
+            Failure::Usage(format!(
+                "the images of case {} cannot be loaded: {e}",
+                unit.name
+            ))
+        })?;
+    Ok(assets)
 }
 
 /// One request a case asks: the case itself, or one turn of a conversation.
@@ -97,6 +138,8 @@ pub(crate) fn units(cases: &Cases) -> Vec<Unit> {
 pub(crate) struct Answered {
     pub unit: Unit,
     pub questions: Questions,
+    /// The images the request carried, part of its fingerprint.
+    pub assets: Assets,
     pub response: Response,
     /// What the rubric's policy makes of each answer, per question asked.
     pub verdicts: IndexMap<String, Verdict>,
@@ -104,10 +147,12 @@ pub(crate) struct Answered {
     pub judgments: Vec<(String, Judgment)>,
 }
 
-/// A unit with its request lowered: what [`plan`] hands to the commands.
+/// A unit with its request lowered and its images loaded: what [`plan`]
+/// hands to the commands.
 pub(crate) struct Planned {
     pub unit: Unit,
     pub questions: Questions,
+    pub assets: Assets,
 }
 
 /// Lower a unit's request, a usage failure when the rubric does not lower
@@ -142,7 +187,12 @@ pub(crate) fn plan(loaded: &Loaded) -> Result<Vec<Planned>, Failure> {
     let mut planned = Vec::with_capacity(units.len());
     for unit in units {
         let questions = request(&loaded.rubric, &unit)?;
-        planned.push(Planned { unit, questions });
+        let assets = assets_of(loaded, &unit)?;
+        planned.push(Planned {
+            unit,
+            questions,
+            assets,
+        });
     }
     let turns: Vec<Case> = planned
         .iter()
@@ -167,17 +217,25 @@ pub(crate) fn answer(
     loaded: &Loaded,
     planned: Planned,
 ) -> Result<Answered, Failure> {
-    let response = backend.answer(&planned.unit.case.state, &planned.questions)?;
-    grade(loaded, planned.unit, planned.questions, response)
+    let response = backend.answer(
+        &planned.unit.case.state,
+        &planned.questions,
+        &planned.assets,
+    )?;
+    grade(loaded, planned, response)
 }
 
 /// Read a response through the policy and against the labels.
 pub(crate) fn grade(
     loaded: &Loaded,
-    unit: Unit,
-    questions: Questions,
+    planned: Planned,
     response: Response,
 ) -> Result<Answered, Failure> {
+    let Planned {
+        unit,
+        questions,
+        assets,
+    } = planned;
     let verdicts = loaded.rubric.apply(&questions, &response).map_err(|e| {
         Failure::Backend(format!(
             "the answer for case {} does not fit the rubric: {e}",
@@ -194,6 +252,7 @@ pub(crate) fn grade(
     Ok(Answered {
         unit,
         questions,
+        assets,
         response,
         verdicts,
         judgments,

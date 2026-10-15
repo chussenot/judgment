@@ -1,8 +1,9 @@
 # Recorded answer for case `activity-landed`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: activity-landed
+  minor: 3
 spec:
   elapsed_ms: 137
   fingerprint: sha256:02b88584513d9209c75c702892e18af7f34cd415b822e73d287726ee8b237f67

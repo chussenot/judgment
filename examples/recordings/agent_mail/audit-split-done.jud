@@ -1,8 +1,9 @@
 # Recorded answer for case `audit-split-done`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: audit-split-done
+  minor: 3
 spec:
   elapsed_ms: 163
   fingerprint: sha256:462488dc433dd2c27262b4768051bd2faac8cc83703f94b5c60fd1a2d9dfa09f

@@ -1,6 +1,18 @@
 //! Answers: the wire shapes, the validated probabilities and the typed
 //! views that [`Response::get`] reads through a [`crate::Handle`].
 //!
+//! # A Box is a region, and always a region
+//!
+//! A Box answer ([`BoundingBox`]) is the four edges of a rectangle as
+//! fractions of the image's width and height, measured from the top-left
+//! corner, with a confidence the model may leave null. The API has no
+//! "not found" answer: a Box question about something absent still
+//! returns four edges, so a caller asks a Noul beside it ("is there a mug
+//! in `photo`?") and ignores the box when the Noul is low
+//! (<https://docs.typesafe.ai/primitives/box>). [`Response::verify`] holds
+//! each edge to `0..=1`, `left` below `right` and `top` below `bottom`;
+//! nothing is clamped.
+//!
 //! # Two newtypes, not one `f64`
 //!
 //! A [`Probability`] is the model's estimate for one outcome; a
@@ -45,7 +57,9 @@
 //! key), a Score on the scale sent: one legend entry per level keyed `"0"`
 //! to `"n-1"`, each the level as sent, probability keys among those exact
 //! indices (`"01"` is not one), a score within `0..=n-1` plus a float-error
-//! margin, NaN excluded. Every error carries [`Response::request_id`].
+//! margin, NaN excluded, a Box whose edges are each in `0..=1` with `left`
+//! below `right` and `top` below `bottom`. Every error carries
+//! [`Response::request_id`].
 //!
 //! Left out on purpose: distribution sums (rounding, and the API promises no
 //! tolerance); an offered option missing from a distribution (it reads as
@@ -175,6 +189,170 @@ impl fmt::Display for Confidence {
     }
 }
 
+/// The four edges of a box, each a fraction of the image's size from its
+/// top-left corner: `left` and `right` of the width, `top` and `bottom` of
+/// the height, so the same box fits any size of the image. The wire's
+/// `box` object, and a label's in a `.jud` cases document.
+///
+/// Built by hand or read from the wire as any four numbers; what makes a
+/// box a region (each edge in `0..=1`, `left < right`, `top < bottom`) is
+/// checked by [`Response::verify`] and by [`BoxEdges::check`], never
+/// assumed by the geometry here, which is plain arithmetic on the fields.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BoxEdges {
+    /// Top edge, as a fraction of the height from the top.
+    pub top: f64,
+    /// Bottom edge, as a fraction of the height from the top.
+    pub bottom: f64,
+    /// Left edge, as a fraction of the width from the left.
+    pub left: f64,
+    /// Right edge, as a fraction of the width from the left.
+    pub right: f64,
+}
+
+impl BoxEdges {
+    /// Edges in the wire's order: top, bottom, left, right.
+    pub const fn new(top: f64, bottom: f64, left: f64, right: f64) -> Self {
+        Self {
+            top,
+            bottom,
+            left,
+            right,
+        }
+    }
+
+    /// Why these edges are not a region, if they are not: an edge outside
+    /// `0..=1` (NaN included), or `left` not below `right`, or `top` not
+    /// below `bottom`. What [`Response::verify`] refuses an answer for.
+    pub fn check(&self) -> std::result::Result<(), String> {
+        for (name, value) in [
+            ("top", self.top),
+            ("bottom", self.bottom),
+            ("left", self.left),
+            ("right", self.right),
+        ] {
+            if !(0.0..=1.0).contains(&value) {
+                return Err(format!("{name} {value} is outside 0..=1"));
+            }
+        }
+        if self.left >= self.right {
+            return Err(format!(
+                "left {} is not below right {}",
+                self.left, self.right
+            ));
+        }
+        if self.top >= self.bottom {
+            return Err(format!(
+                "top {} is not below bottom {}",
+                self.top, self.bottom
+            ));
+        }
+        Ok(())
+    }
+
+    /// `right - left`, as a fraction of the image's width.
+    pub fn width(&self) -> f64 {
+        self.right - self.left
+    }
+
+    /// `bottom - top`, as a fraction of the image's height.
+    pub fn height(&self) -> f64 {
+        self.bottom - self.top
+    }
+
+    /// `width × height`, as a fraction of the image's area.
+    pub fn area(&self) -> f64 {
+        self.width() * self.height()
+    }
+
+    /// The centre, `(x, y)`, as fractions from the top-left corner.
+    pub fn center(&self) -> (f64, f64) {
+        (
+            f64::midpoint(self.left, self.right),
+            f64::midpoint(self.top, self.bottom),
+        )
+    }
+
+    /// Whether the point `(x, y)`, as fractions, is inside or on the edges.
+    pub fn contains(&self, x: f64, y: f64) -> bool {
+        (self.left..=self.right).contains(&x) && (self.top..=self.bottom).contains(&y)
+    }
+
+    /// The area shared with `other`, as a fraction of the image's area;
+    /// zero when they do not overlap.
+    pub fn intersection(&self, other: &Self) -> f64 {
+        let width = self.right.min(other.right) - self.left.max(other.left);
+        let height = self.bottom.min(other.bottom) - self.top.max(other.top);
+        width.max(0.0) * height.max(0.0)
+    }
+
+    /// Intersection over union with `other`: the shared area over the area
+    /// either covers, 1 for the same box, 0 for no overlap (and for two
+    /// boxes with no area). How a Box answer is graded against a labelled
+    /// box ([`crate::eval::Judgment::located`]), because an exact match of
+    /// four floats never happens and a point inside the box says nothing
+    /// about its size.
+    pub fn iou(&self, other: &Self) -> f64 {
+        let shared = self.intersection(other);
+        let union = self.area() + other.area() - shared;
+        if union <= 0.0 { 0.0 } else { shared / union }
+    }
+
+    /// Every edge moved outward by `pad`, as a fraction, and kept inside
+    /// the image: what the Box page does with a box whose confidence is
+    /// under a threshold before cropping to it, so a crop cuts nothing off.
+    #[must_use]
+    pub fn padded(&self, pad: f64) -> Self {
+        Self {
+            top: (self.top - pad).max(0.0),
+            bottom: (self.bottom + pad).min(1.0),
+            left: (self.left - pad).max(0.0),
+            right: (self.right + pad).min(1.0),
+        }
+    }
+
+    /// The edges in pixels of an image `width` by `height`, each rounded to
+    /// the nearest pixel as the Box page does, and kept inside the image.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // clamped first
+    pub fn to_pixels(&self, width: u32, height: u32) -> PixelBox {
+        let along = |edge: f64, size: u32| {
+            (edge * f64::from(size)).round().clamp(0.0, f64::from(size)) as u32
+        };
+        PixelBox {
+            left: along(self.left, width),
+            top: along(self.top, height),
+            right: along(self.right, width),
+            bottom: along(self.bottom, height),
+        }
+    }
+}
+
+/// [`BoxEdges`] in the pixels of one image ([`BoxEdges::to_pixels`]): the
+/// crop box an image library takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub struct PixelBox {
+    /// Left edge, in pixels from the left.
+    pub left: u32,
+    /// Top edge, in pixels from the top.
+    pub top: u32,
+    /// Right edge, in pixels from the left.
+    pub right: u32,
+    /// Bottom edge, in pixels from the top.
+    pub bottom: u32,
+}
+
+impl PixelBox {
+    /// `right - left`.
+    pub const fn width(&self) -> u32 {
+        self.right.saturating_sub(self.left)
+    }
+
+    /// `bottom - top`.
+    pub const fn height(&self) -> u32 {
+        self.bottom.saturating_sub(self.top)
+    }
+}
+
 /// One answer as returned on the wire, discriminated by `type`.
 ///
 /// Non-exhaustive: TypeSafe adds primitives, each learnt one becomes a
@@ -211,6 +389,15 @@ pub enum Answer {
         /// Distribution concentration.
         confidence: Confidence,
     },
+    /// Where something is in an image (module docs, `# A Box is a region`).
+    Box {
+        /// The wire's `box`: the four edges as fractions of the image.
+        #[serde(rename = "box")]
+        edges: BoxEdges,
+        /// Confidence in the box, `None` when the model gives none (the
+        /// document allows `null`; the hosted API has always sent a number).
+        confidence: Option<Confidence>,
+    },
     /// An answer whose `type` this release does not know, as the JSON
     /// object it came as; a handle reads it as [`Error::AnswerTypeMismatch`]
     /// and it serialises back as it came, so a recording keeps it. A later
@@ -221,15 +408,16 @@ pub enum Answer {
 }
 
 impl Answer {
-    /// The wire `type`: `noul`, `choice`, `score`, or an unknown answer's
-    /// own `type` as the server sent it (`unknown` when a hand-built
-    /// [`Answer::Unknown`] has none). Not sanitised: escape and cut it, as
-    /// the crate does, before it reaches a message or a log line.
+    /// The wire `type`: `noul`, `choice`, `score`, `box`, or an unknown
+    /// answer's own `type` as the server sent it (`unknown` when a
+    /// hand-built [`Answer::Unknown`] has none). Not sanitised: escape and
+    /// cut it, as the crate does, before it reaches a message or a log line.
     pub fn kind(&self) -> &str {
         match self {
             Self::Noul { .. } => "noul",
             Self::Choice { .. } => "choice",
             Self::Score { .. } => "score",
+            Self::Box { .. } => "box",
             Self::Unknown(raw) => raw.get("type").and_then(Value::as_str).unwrap_or("unknown"),
         }
     }
@@ -237,7 +425,7 @@ impl Answer {
 
 /// The kinds [`KnownAnswer`] decodes; any other string `type` is
 /// [`Answer::Unknown`].
-const KNOWN_KINDS: [&str; 3] = ["noul", "choice", "score"];
+const KNOWN_KINDS: [&str; 4] = ["noul", "choice", "score", "box"];
 
 /// Longest server-chosen string, in characters once escaped, that reaches an
 /// error message, a log line, a span event or a graded judgment.
@@ -271,6 +459,11 @@ enum KnownAnswer {
         probabilities: BTreeMap<String, Probability>,
         confidence: Confidence,
     },
+    Box {
+        #[serde(rename = "box")]
+        edges: BoxEdges,
+        confidence: Option<Confidence>,
+    },
 }
 
 impl From<KnownAnswer> for Answer {
@@ -299,6 +492,7 @@ impl From<KnownAnswer> for Answer {
                 probabilities,
                 confidence,
             },
+            KnownAnswer::Box { edges, confidence } => Self::Box { edges, confidence },
         }
     }
 }
@@ -526,6 +720,13 @@ impl Response {
                     request_id: request_id(),
                 }
             }),
+            (Question::Box { .. }, Answer::Box { edges, .. }) => {
+                edges.check().map_err(|reason| Error::InvalidAnswer {
+                    id: id.to_owned(),
+                    reason: format!("its box is not a region: {reason}"),
+                    request_id: request_id(),
+                })
+            }
             (question, answer) => {
                 Err(mismatch(id, question.kind(), answer)
                     .with_request_id(self.request_id.as_deref()))
@@ -604,7 +805,7 @@ fn legend_matches(echoed: &Value, sent: &Value) -> bool {
 }
 
 /// Conversion from a wire [`Answer`] into a typed view. Sealed in practice:
-/// implemented for [`Noul`], [`Choice<O>`] and [`Score`].
+/// implemented for [`Noul`], [`Choice<O>`], [`Score`] and [`BoundingBox`].
 pub trait FromAnswer: Sized {
     /// Primitive name this view expects, for error messages.
     const KIND: &'static str;
@@ -873,6 +1074,74 @@ impl FromAnswer for Score {
             probabilities: probs,
             confidence: *confidence,
         })
+    }
+}
+
+/// Typed view of a Box answer: where the thing the question described is
+/// in the image (module docs, `# A Box is a region, and always a region`).
+///
+/// A Box always answers with a box, found or not, so the pattern is a Noul
+/// gate in the same request: ask "is there a mug in `photo`?" beside "the
+/// mug in `photo`", and read the box only when the Noul says yes. The
+/// confidence is the model's own and may be `None`; there is no documented
+/// threshold yet, so a caller tunes one on its own images, and pads the
+/// box ([`BoxEdges::padded`]) or asks again on a larger crop below it.
+///
+/// ```
+/// use judgment::{BoundingBox, BoxEdges};
+///
+/// let found = BoundingBox { edges: BoxEdges::new(0.25, 0.82, 0.44, 0.84), confidence: None };
+/// let crop = found.to_pixels(1200, 800);
+/// assert_eq!((crop.left, crop.top, crop.right, crop.bottom), (528, 200, 1008, 656));
+/// assert!((found.width() - 0.40).abs() < 1e-9);
+/// assert!(!found.confidence_at_least(0.5), "no confidence meets no bar");
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BoundingBox {
+    /// The four edges, as fractions of the image.
+    pub edges: BoxEdges,
+    /// The model's confidence in the box, when it gave one.
+    pub confidence: Option<Confidence>,
+}
+
+impl BoundingBox {
+    /// True when the model gave a confidence at or above `threshold`; a
+    /// box without one meets no bar.
+    pub fn confidence_at_least(&self, threshold: f64) -> bool {
+        self.confidence.is_some_and(|c| c.at_least(threshold))
+    }
+
+    /// [`BoxEdges::width`].
+    pub fn width(&self) -> f64 {
+        self.edges.width()
+    }
+
+    /// [`BoxEdges::height`].
+    pub fn height(&self) -> f64 {
+        self.edges.height()
+    }
+
+    /// [`BoxEdges::center`].
+    pub fn center(&self) -> (f64, f64) {
+        self.edges.center()
+    }
+
+    /// [`BoxEdges::to_pixels`].
+    pub fn to_pixels(&self, width: u32, height: u32) -> PixelBox {
+        self.edges.to_pixels(width, height)
+    }
+}
+
+impl FromAnswer for BoundingBox {
+    const KIND: &'static str = "box";
+    fn from_answer(id: &str, answer: &Answer) -> Result<Self> {
+        match answer {
+            Answer::Box { edges, confidence } => Ok(Self {
+                edges: *edges,
+                confidence: *confidence,
+            }),
+            other => Err(mismatch(id, Self::KIND, other)),
+        }
     }
 }
 
@@ -1888,6 +2157,131 @@ mod tests {
         }
         let err = r.verify(&q).unwrap_err();
         assert!(reason(&err).contains("outside 0..=3"), "{err}");
+    }
+
+    #[test]
+    fn box_edges_are_plain_geometry_and_check_says_what_is_not_a_region() {
+        let mug = BoxEdges::new(0.25, 0.82, 0.44, 0.84);
+        mug.check().unwrap();
+        assert!((mug.width() - 0.40).abs() < 1e-12);
+        assert!((mug.height() - 0.57).abs() < 1e-12);
+        assert!((mug.area() - 0.228).abs() < 1e-12);
+        let (x, y) = mug.center();
+        assert!((x - 0.64).abs() < 1e-12 && (y - 0.535).abs() < 1e-12);
+        assert!(mug.contains(0.5, 0.5) && !mug.contains(0.1, 0.5));
+        assert_eq!(
+            mug.to_pixels(1000, 500),
+            PixelBox {
+                left: 440,
+                top: 125,
+                right: 840,
+                bottom: 410
+            }
+        );
+        assert_eq!(mug.to_pixels(1000, 500).width(), 400);
+        assert_eq!(
+            BoxEdges::new(0.0, 1.0, 0.0, 1.0).to_pixels(10, 20).bottom,
+            20
+        );
+        // IoU: the same box, no overlap, half overlap, and the page's padding.
+        assert!((mug.iou(&mug) - 1.0).abs() < 1e-12);
+        assert!(mug.iou(&BoxEdges::new(0.9, 1.0, 0.9, 1.0)).abs() < f64::EPSILON);
+        let a = BoxEdges::new(0.0, 1.0, 0.0, 0.5);
+        let b = BoxEdges::new(0.0, 1.0, 0.25, 0.75);
+        assert!((a.iou(&b) - 1.0 / 3.0).abs() < 1e-12);
+        assert!(
+            BoxEdges::new(0.5, 0.5, 0.5, 0.5)
+                .iou(&BoxEdges::new(0.5, 0.5, 0.5, 0.5))
+                .abs()
+                < f64::EPSILON
+        );
+        let padded = BoxEdges::new(0.02, 0.98, 0.44, 0.84).padded(0.05);
+        assert_eq!(padded, BoxEdges::new(0.0, 1.0, 0.39, 0.89));
+        for (edges, needle) in [
+            (
+                BoxEdges::new(0.25, 0.82, 0.44, 1.2),
+                "right 1.2 is outside 0..=1",
+            ),
+            (
+                BoxEdges::new(-0.1, 0.82, 0.44, 0.84),
+                "top -0.1 is outside 0..=1",
+            ),
+            (
+                BoxEdges::new(f64::NAN, 0.82, 0.44, 0.84),
+                "top NaN is outside 0..=1",
+            ),
+            (
+                BoxEdges::new(0.25, 0.82, 0.84, 0.44),
+                "left 0.84 is not below right 0.44",
+            ),
+            (
+                BoxEdges::new(0.25, 0.82, 0.5, 0.5),
+                "left 0.5 is not below right 0.5",
+            ),
+            (
+                BoxEdges::new(0.82, 0.25, 0.44, 0.84),
+                "top 0.82 is not below bottom 0.25",
+            ),
+        ] {
+            assert_eq!(edges.check().unwrap_err(), needle);
+        }
+    }
+
+    #[test]
+    fn verify_holds_a_box_to_being_a_region_and_get_reads_it() {
+        let mut q = Questions::new();
+        let mug = q.r#box("mug", "the mug in `photo`").unwrap();
+        let answer = |edges: BoxEdges, confidence: Value| json!({ "type": "box", "box": edges, "confidence": confidence });
+        let r =
+            response(&json!({ "mug": answer(BoxEdges::new(0.25, 0.82, 0.44, 0.84), json!(0.92)) }));
+        r.verify(&q).unwrap();
+        let found = r.get(&mug).unwrap();
+        assert_eq!(found.edges, BoxEdges::new(0.25, 0.82, 0.44, 0.84));
+        assert!(found.confidence_at_least(0.9));
+        assert_eq!(
+            serde_json::to_value(&r.answers["mug"]).unwrap()["box"]["top"],
+            0.25
+        );
+        let none =
+            response(&json!({ "mug": answer(BoxEdges::new(0.25, 0.82, 0.44, 0.84), Value::Null) }));
+        none.verify(&q).unwrap();
+        assert_eq!(none.get(&mug).unwrap().confidence, None);
+        assert_eq!(
+            serde_json::to_value(&none.answers["mug"]).unwrap()["confidence"],
+            Value::Null
+        );
+        let err =
+            response(&json!({ "mug": answer(BoxEdges::new(0.82, 0.25, 0.44, 0.84), json!(0.5)) }))
+                .verify(&q)
+                .unwrap_err();
+        assert_eq!(
+            reason(&err),
+            "its box is not a region: top 0.82 is not below bottom 0.25"
+        );
+        assert!(err.is_unfit());
+        // A Noul handle on a Box answer, and the reverse.
+        let err =
+            response(&json!({ "mug": answer(BoxEdges::new(0.1, 0.2, 0.3, 0.4), json!(0.5)) }))
+                .get(&q.handle::<Noul>("mug").unwrap_or_else(|| {
+                    let mut other = Questions::new();
+                    other.noul("mug", "?", None).unwrap();
+                    other.handle::<Noul>("mug").unwrap()
+                }))
+                .unwrap_err();
+        assert!(
+            matches!(&err, Error::AnswerTypeMismatch { expected: "noul", actual, .. } if actual == "box"),
+            "{err}"
+        );
+        assert_eq!(Answer::Unknown(json!({ "type": "box" })).kind(), "box");
+        let decoded: Answer = decode(&json!({ "type": "box", "box": { "top": 0.1, "bottom": 0.2, "left": 0.3, "right": 0.4 }, "confidence": 0.5 })).unwrap();
+        assert!(
+            matches!(decoded, Answer::Box { .. }),
+            "a known kind, decoded strictly"
+        );
+        assert!(
+            decode::<Answer>(&json!({ "type": "box", "box": { "top": 0.1 }, "confidence": 0.5 }))
+                .is_err()
+        );
     }
 
     #[test]

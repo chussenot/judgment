@@ -1,10 +1,11 @@
 # The rubric built step by step in docs/guides/write-a-rubric.md: whether a
 # support message asks for money back, why, and how upset the writer is.
 # Hand-written, so it carries no tuning block: the bars are stated guesses.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: refund-screening
+  minor: 3
   description: Screen a support message for a refund request before a person reads it.
 spec:
   questions:
