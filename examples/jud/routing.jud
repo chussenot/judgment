@@ -7,10 +7,11 @@
 #   - `part_when` and `when`: a part and two questions sent only when the
 #     state carries what they are about;
 #   - `bands`, `level_at_least` and `strict` in the policy.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: support-routing
+  minor: 3
   description: >-
     Route a support message: which desk takes it, how upset the writer is,
     whether it belongs to a ticket already open, and whether it asks for a

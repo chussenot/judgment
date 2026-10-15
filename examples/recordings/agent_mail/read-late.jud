@@ -1,8 +1,9 @@
 # Recorded answer for case `read-late`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: read-late
+  minor: 3
 spec:
   elapsed_ms: 167
   fingerprint: sha256:f8db8d38bfb7261a2e915799a63ac3d9f0d3688956260c4a81bd7794a047f6e5

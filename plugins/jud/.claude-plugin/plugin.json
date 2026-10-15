@@ -1,8 +1,8 @@
 {
   "name": "jud",
   "displayName": "jud",
-  "description": "Write, review, fix, measure and tune .jud documents (a Rubric with its policy, the Cases it is graded on, a Recording), and turn a rubric into a typed Rust module, with the judgment crate's own reader and jud command: three skills, and the /jud:rubric, /jud:cases, /jud:check, /jud:record, /jud:eval, /jud:tune and /jud:rust commands.",
-  "version": "0.3.1",
+  "description": "Write, review, fix, measure and tune .jud documents (a Rubric with its policy, the Cases it is graded on, a Recording), images and Box questions included, and turn a rubric into a typed Rust module, with the judgment crate's own reader and jud command: three skills, and the /jud:rubric, /jud:cases, /jud:check, /jud:record, /jud:eval, /jud:tune and /jud:rust commands.",
+  "version": "0.4.0",
   "author": {
     "name": "Clément Hussenot",
     "url": "https://github.com/chussenot"
@@ -20,6 +20,8 @@
     "tuning",
     "evaluation",
     "rust",
-    "codegen"
+    "codegen",
+    "box",
+    "images"
   ]
 }

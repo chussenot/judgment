@@ -1,18 +1,18 @@
 ---
 title: 0020 How a v1 minor of the .jud format is spelled
-description: Proposed and not applied; whether a minor version of the jud/v1 format stays in the apiVersion string (jud/v1.3, jud/v1.4) or moves to a field of its own under apiVersion jud/v1, now that the stability page promises that a minor only adds and that a reader accepts every v1 document for at least twelve months; each option priced in files rewritten, reader logic and what tools that key on apiVersion see.
-status: proposed
+description: Accepted on 2026-10-15 and applied in crate 0.14.0; whether a minor version of the jud/v1 format stays in the apiVersion string (jud/v1.3, jud/v1.4) or moves to a field of its own under apiVersion jud/v1, now that the stability page promises that a minor only adds and that a reader accepts every v1 document for at least twelve months; each option priced in files rewritten, reader logic and what tools that key on apiVersion see.
+status: accepted
 date: 2026-10-06
 decision-makers: [platform engineering]
 consulted: []
 informed: []
-last_reviewed: 2026-10-06
+last_reviewed: 2026-10-15
 tags: [decisions, jud, format, versioning, apiVersion, stability]
 ---
 
 # 0020 How a v1 minor of the `.jud` format is spelled
 
-**Status: proposed.** Nothing in the code, the schemas or the documents moves until this record is accepted; the reader reads `apiVersion: jud/v1.3` exactly, as [decision 0018](0018-jud-1-3-takes-the-manifest-envelope.md) decided.
+**Status: accepted on 2026-10-15**, when the first additive change (a Box question and image assets, [decision 0025](0025-a-document-names-an-image-by-path.md)) was ready, and applied as option 2 below; the "As applied" section at the end records what the implementation settled.
 
 ## Context and problem statement
 
@@ -103,3 +103,12 @@ When applied: `tests/jud.rs` reads a document of every published minor and refus
 - [Decision 0016](0016-jud-takes-minor-versions.md), superseded: the earlier minor-version rule and what it cost, the table option 1 would bring back.
 - [The .jud format](../../reference/jud-format.md), "Extending the format": what a minor may add.
 - `src/jud/mod.rs` (`API_VERSION`, `Envelope::check`), `schemas/jud/`, `tests/jud.rs`: where the accepted option lands.
+
+## As applied
+
+Applied in crate 0.14.0, as option 2, with two points the proposal left open settled:
+
+- **The earlier spelling is read.** [Stability](../../reference/stability.md) promises that a reader accepts every `v1` document for at least twelve months after a later minor is published, and minor 3 was published as `apiVersion: jud/v1.3`. The reader therefore reads that string as `jud/v1` at minor 3, with no `metadata.minor` allowed beside it (`jud::EARLIER_SPELLINGS`), for at least twelve months from 0.14.0; the writer never writes it. The proposal's "refuses an apiVersion other than jud/v1 by name" stands for every other string.
+- **The writer writes the minor it implements** (`jud::MINOR`), not the lowest that reads the document: computing the lowest from content is the table [0018](0018-jud-1-3-takes-the-manifest-envelope.md) removed. A document read at a lower minor is written back at the writer's; nothing in `spec` moves, so no fingerprint does.
+- **Every committed document was rewritten** to `apiVersion: jud/v1` with `minor: 3` by a script (`examples/jud/`, `examples/recordings/`, the plugin's references and fixtures); the inline documents in the crate's tests keep the earlier spelling, which pins that it still reads.
+- `jud check` prints `jud/v1 minor 3` for a document in the new spelling and the string as written for the earlier one; `schemas/jud/common.schema.json` takes both spellings and requires `metadata.minor` under `jud/v1` only, with the minor's range growing by one per minor.

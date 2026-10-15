@@ -69,10 +69,18 @@ This decides the order of everything else, so know it first.
 | A label in a case's `expect`, or a case's `note` | yes: labels are never sent | none |
 | A case's `state` or `options`, or a new case | no, for that case | one call per new request |
 | Anything under `questions` (instructions, criteria, options, levels, `when`) | no, for every case that asks it | one call per case |
+| An image's bytes (resized, re-encoded, replaced), under a case's or the rubric's `assets` | no, for every case that sends it: a recording is keyed by each image's digest as well as the state | one call per such case; a `path` that moves while the bytes stay costs nothing |
+| A label's `iou_at_least`, or the box in a label | yes: labels are never sent | none |
 | The model (`model` in `jud config`) | the old answers still replay, but they are the old model's | a full `record --refresh` to measure the new one |
 
+A state over the model's context (`max_tokens_exceeded`, 400, from the
+hosted API at 32k tokens for the state and one question, 64k for the
+whole request) fails that case's call; `jud` has no setting for long
+context yet (the crate's `CallOptions::long_context` raises both to 262k),
+so the state is the thing to shorten, or the case to leave out and say so.
+
 A recording is keyed by the request's fingerprint (the state and the
-questions sent). When the questions change, `eval --replay` exits with
+questions sent, and each image by its digest). When the questions change, `eval --replay` exits with
 status 1 and `no recording answers N cases: ...; record them first`. That
 message means the rubric and the recordings no longer match, not that
 something is broken. `jud.sh check RUBRIC CASES DIR/*.jud` shows which:
@@ -97,8 +105,12 @@ It asks nothing, writes nothing and needs no key, and prints the requests
 (a conversation labelled with `from_turn` counts once per turn), how many
 DIR already answers, the names to ask and the stale ones to replace, the
 backend and model with where the model came from, whether a key is set,
-and the time at the median pace of the recordings already in DIR. Read it
-and say:
+and the time at the median pace of the recordings already in DIR. To know
+which recordings answer, it loads every image the documents declare
+(`assets`, by paths relative to each file), so a file that is missing, is
+not a PNG or a JPEG, or is outside the API's limits fails the plan by the
+entry's name before any call; `check` reads the documents without their
+files, so this is where a bad path first shows. Read the plan and say:
 
 - **How many requests, and how many are new.** The run asks the `to ask`
   and `stale` names and keeps the rest; with `--refresh`, all of them.
@@ -106,7 +118,11 @@ and say:
   `git log -p -1 -- RUBRIC` for a committed change) and name it.
 - **Which backend and model.** `(from default)` means nothing chose the
   model; `jev-latest` is an alias, and the recordings will name the version
-  that answered.
+  that answered. A rubric with a Box needs Jev 1.14: on the hosted API
+  that is `jev-preview` (in the configuration file's `model`) until
+  `jev-latest` moves, and `jev-latest` refuses every such request with a
+  bare `Invalid request.`, one failed call per case. Images alone (a Noul,
+  a Choice or a Score about one) are answered by Jev 1.13 and later.
 - **Whether a key is set.** A missing one stops the run before the first
   call; any non-blank word does for a local server that ignores it. The
   user sets it outside the conversation: `export TYPESAFE_API_KEY=...` in
@@ -166,6 +182,21 @@ Per question:
   label every question, so the total to add is the largest shortfall, not
   the sum. Then name the outcomes the new cases should label, from the
   coverage count.
+- **A Box question's line.** `labelled` counts the cases with a box label:
+  an image without the thing labels the Noul beside it `false` and leaves
+  the Box unlabelled, so it is in the Noul's counts and the gate line, not
+  in the Box's accuracy. `correct` is a box whose intersection over union
+  with the label reaches the label's bar (`iou_at_least`, 0.5 when the
+  label does not say); `mean IoU` stands where a Brier score would (a Box
+  has no distribution to score; `brier -` is right, not missing);
+  `calibration error` and the confidence when right and wrong read as for
+  any question, the confidence against the hits. `outcomes` has the one
+  outcome `box` and `majority box, L of L (1.00)` says nothing: do not
+  compare the accuracy with it. The gate line covers every answer, the
+  unlabelled empty images included: `acts on 23 of 40, defers 17` with 30
+  labelled means the ten empties were deferred, which is what a confidence
+  bar on a Box is for. Each miss prints the overlap it reached (`a box at
+  IoU 0.24 with the label, confidence 0.70`), the number the triage reads.
 - **`majority OUTCOME, M of L (SHARE)`.** What a model that always gave
   the commonest label would score (`majority.share` in the JSON). Put it
   beside the accuracy. A `not shown to beat always answering ...` warning
@@ -252,6 +283,10 @@ the confidence. Then put it in exactly one row:
 | Several misses swap the same two options or adjacent levels | **The outcomes overlap** | Sharpen both criteria against each other, merge the options, or use fewer levels. Re-record. |
 | The miss's right answer is an outcome few or no other cases label | **A coverage gap** | Add cases for that outcome before reading anything into the bar. |
 | None of the above: the label is right, the question is clear, and the model is confidently wrong once | **The model** | Record it as a known miss. One such case does not move a bar or justify rewriting a question. |
+| A Box under the `confidence` bar written in the rubric being graded | **The bar's job** | As for a Choice: the gate defers it, it still counts in `accuracy`. Say so. |
+| A box on the right thing, overlap just under the label's bar (the box too loose or too tight on one side) | **The label's bar** | The bar is the label's `iou_at_least`, not the gate's, and `tune` never moves it. Say whether the task tolerates that box (a crop with a margin does; an alignment does not); the user raises or lowers the bar in the label, per case or set-wide, and says why in its `note`. A small target halves its overlap on a few pixels of offset: say so when the box is small. |
+| A box on something else in the image (overlap near 0), confidently | **The question is ambiguous**, or **the model** | Name the distractor the box landed on; if the instructions could be read as naming it (a square where a circle was asked), sharpen them and re-record; if not, the model. |
+| A box on an image where the thing is not there | **Not the Box's miss** | A Box always answers with a box; the case leaves it unlabelled and labels the Noul beside it `false`. Read the Noul's row for that case, and read the Box's confidence there: near zero is the model saying there was nothing, which the gate catches. |
 
 A miss that only a proposed bar would defer is triaged on its own merits
 (overlap, ambiguity, the model); the decision table then says the proposal
@@ -307,7 +342,10 @@ like that the named cases do not show. Flag:
 - a question labelled on under about two thirds as many cases as the
   others (through `when`, or labels left out). Its own
   `accuracy_interval95` already reflects its count: quote that. Say nothing
-  when the counts differ by one or two.
+  when the counts differ by one or two. A Box is labelled only on the images
+  that hold the thing, so its count is lower by design: say how many images
+  do, and how many do not, since the second number is the Noul's `false`
+  coverage and the Box's test of what it answers over nothing.
 
 ## Reading `jud tune`
 
@@ -324,6 +362,10 @@ How each bar is chosen:
   least `--min-covered` cases are still covered (3 by default).
 - **A Score's `level_at_least`**, when the gate has one: the one with the
   best F1.
+- **A Box's `confidence`:** as a Choice's, over the labelled cases alone
+  (`covered` counts cases with a box label; the empty images are not in
+  the table, so a bar cannot be read off them there). The overlap bar a
+  box is right at is the label's `iou_at_least`, never proposed.
 - A gate with `bands` gets its table and no proposal.
 
 Decide per gate, and say which you decided:
@@ -346,6 +388,12 @@ Decide per gate, and say which you decided:
   followed by what the note said before. The reason must agree with what
   you measured: put a bar on a label only if the what-if copy moved it at
   that target; otherwise name the cases that hold the next lower row.
+- **Check a Box's bar against the empty images.** The table does not see
+  them. Before accepting a bar, read `eval`'s gate line on the full cases
+  (`acts on x of n`): a bar under the confidence the model gives over
+  nothing (the study's empties sat at 0.02 to 0.04) would let a box over
+  nothing through on every empty image, which the Noul beside it must then
+  catch; say which of the two gates stops them.
 - **Re-run with another `--target-accuracy`** whenever the proposed bar
   covers less than about half the labelled cases, or you would call it too
   aggressive. Each run is free. Show the trade-off in one line: at 0.95 the
@@ -512,6 +560,10 @@ the misses left are the model's own and the bars rest on enough cases.
 - Mix two models' recordings in one directory. `tune` refuses them (`the
   recordings come from more than one model`); record each model into its own
   directory and compare the two `eval` reports.
+- Change a label's box or its `iou_at_least` to match the model's box. The
+  label is where the thing is; the bar is what the task needs.
+- Resize or re-encode a case's image to get a recording to answer. The
+  bytes are the key: a changed image is a new request, one call.
 - Present a bar read off a handful of cases as anything but a guess with a
   number on it.
 
@@ -531,7 +583,8 @@ case), and counts for every question. Items 1, 6
    the gate does (acts, defers, accuracy when acted), and, first, a
    collapse or a gate that defers nearly everything when there is one.
 3. Whether the labelled count supports a bar, and how many more cases each
-   question needs, for which outcomes.
+   question needs, for which outcomes; for a Box, how many images hold the
+   thing and how many do not.
 4. The triage table, a row for every miss.
 5. Coverage: the thin outcomes, with the cases behind them.
 6. For `tune`: the decision table (gate, primitive, now, proposed,

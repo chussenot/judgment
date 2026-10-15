@@ -1,8 +1,9 @@
 # Recorded answer for case `contract-corrected`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: contract-corrected
+  minor: 3
 spec:
   elapsed_ms: 114
   fingerprint: sha256:37d0dda586e873f3f04326ac20e8e07df3d269cebce9f9fa8f586cef7de2dda4

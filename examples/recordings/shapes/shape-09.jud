@@ -1,0 +1,30 @@
+# Recorded answer for case `shape-09`; found by fingerprint.
+apiVersion: jud/v1
+kind: Recording
+metadata:
+  name: shape-09
+  minor: 4
+spec:
+  elapsed_ms: 108
+  fingerprint: sha256:3d1628befe05245201ac20457e7f93e9f599bed3e18313aa81220885e46c51e5
+  recorded_at: "2026-10-15T11:16:52Z"
+  response:
+    answers:
+      circle:
+        box:
+          bottom: 0.71
+          left: 0.3
+          right: 0.52
+          top: 0.53
+        confidence: 0.93
+        type: box
+      circle_present:
+        noul: 0.99
+        type: noul
+    model: jev-1.14.0
+    request_id: req_01a13f47814872f58d86458687ae88ce
+    usage:
+      input_tokens: 625
+      output_tokens: 37
+  rubric: shapes
+  server: https://api.typesafe.ai

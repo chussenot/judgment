@@ -22,7 +22,7 @@ fi
 
 stale=0
 mkdir -p "$out"
-for name in triage.jud triage.rs routing.jud routing.rs; do
+for name in triage.jud triage.rs routing.jud routing.rs shapes.jud shapes.rs; do
   src=examples/jud/$name
   dst=$out/$name
   if cmp -s "$src" "$dst"; then

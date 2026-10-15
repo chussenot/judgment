@@ -1,10 +1,11 @@
 # Labelled cases for the refund-screening rubric, written in
 # docs/guides/label-cases.md. Each case labels the questions it is sure
 # about; a question left out is asked and not graded.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: refund-screening-cases
+  minor: 3
   description: Four messages, labelled by hand while writing the guide.
 spec:
   rubric: refund-screening

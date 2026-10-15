@@ -1,7 +1,8 @@
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: inbox-triage-cases
+  minor: 3
   description: Seven messages, labelled by the support lead.
 spec:
   rubric: inbox-triage

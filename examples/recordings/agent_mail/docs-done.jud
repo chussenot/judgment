@@ -1,8 +1,9 @@
 # Recorded answer for case `docs-done`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: docs-done
+  minor: 3
 spec:
   elapsed_ms: 130
   fingerprint: sha256:0474e5b88d6c064584f4e92397a8291e2b2eb6783ec72cd15de00dd5d908e0f7

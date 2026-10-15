@@ -8,6 +8,139 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- Images in a request, as Jev 1.13 and later take them
+  (<https://docs.typesafe.ai/images>): `Image` holds a PNG or a JPEG and
+  reads its format and size from the bytes, refusing what the hosted API
+  refuses before anything is sent (not a PNG or a JPEG, animated, a side
+  outside 256 to 1568 pixels, under 78,400 or over 2,458,624 pixels, over
+  16 MiB) as the new `Error::InvalidImage`; `Assets` is the wire's
+  `assets` map, each image under its own reference (`img-` and 32 hex
+  digits of the bytes' SHA-256, `Image::reference`) or one the caller
+  chooses, with the reference rules and the 32 MiB total checked
+  (`Error::InvalidAsset`, `Error::RequestTooLarge`). `Request::assets`
+  carries them (`Request::new(..).with_assets(&assets)`), left off the
+  wire when empty, and `SystemOne::answer_with_assets` takes them through
+  every backend. The client sends `TypeSafe-Danger-Zone-Images: true` on
+  every request that has an image and on no other, refuses a reference
+  that appears nowhere in the state or the questions and a body over
+  32 MiB before sending, reports the images' count and bytes to the
+  `Observer` (`on_assets`) and records the count on the
+  `typesafe.evaluate` span as `images`. `Error::is_request_too_large` is
+  also true of `RequestTooLarge`. Decision 0024 says why the images are on
+  the request rather than a call option, why the reference is derived from
+  the bytes and why the client sets the header.
+- `canonical::request_fingerprint_with` and `eval::request_hash_with`: the
+  request fingerprint and hash with the images, each named by the SHA-256
+  of its bytes under an `assets` key that is left out without any, so a
+  request without images fingerprints as it always has and every committed
+  recording still replays; `Recorder` and `Replay` key by them, so two
+  requests that differ only by an image are two recordings.
+- `Fake` takes images, remembers each one's reference and digest in its
+  `Call`, and refuses a reference the state does not carry as the hosted
+  API does.
+- The Box primitive, Jev 1.14's fourth question type
+  (<https://docs.typesafe.ai/primitives/box>): `Questions::r#box(id,
+  instructions)` asks where what the instructions describe is in an image
+  the request carries (no criteria; null instructions are refused, since
+  they are all the question is), and the client sends the images header
+  for it even without an image. The answer is `Answer::Box { edges,
+  confidence }`, the wire's `box` as `BoxEdges` (top, bottom, left, right
+  as fractions of the image) and a confidence the document lets be null;
+  `Response::verify` refuses a box that is not a region (an edge outside
+  `0..=1`, a left not below its right, a top not below its bottom) as
+  `Error::InvalidAnswer`, and reads it as `BoundingBox`, with `width`,
+  `height`, `center`, `to_pixels`, `confidence_at_least` and the geometry
+  on `BoxEdges` (`iou`, `padded`, `area`, `contains`). A Box always answers
+  with a box, so the typed view's documentation pairs it with a Noul gate.
+  `Fake::r#box` scripts one. `Judgment::located` grades a Box against a
+  labelled box by intersection over union at `eval::DEFAULT_IOU_AT_LEAST`
+  (0.5) or the label's own bar, with the number on `Judgment::iou` and
+  `QuestionMetrics::mean_iou`; a Box has no Brier score. In a rubric a Box
+  is gated by `confidence` or `bands` (never `threshold`, `fallback` or
+  `level_at_least`) into `Verdict::Located` or a deferral, and a case labels
+  it `{box: {top, bottom, left, right}, iou_at_least}`.
+- The `.jud` format at minor 4 (`jud::MINOR`): a `box` question, the images
+  a document names under `spec.assets` on a Rubric and `assets` on a case
+  (`jud::AssetSource`: a `path` relative to the document, or `format` and
+  `data_base64` inline; decision 0025), loaded into a request's `Assets` by
+  `Rubric::load_assets` and `Case::load_assets`, with a reference that
+  appears nowhere in the state or the questions refused as the API refuses
+  it; the Box label `{box, iou_at_least}` (`jud::BoxLabel`), graded by
+  intersection over union at 0.5 unless the label says otherwise (decision
+  0026); a Box in a gate's `confidence` or `bands`; `Verdict::in_pixels`,
+  which adds the located box in an image's pixels beside the edges. The
+  schemas, the format page and `examples/jud/shapes.jud` with its forty
+  labelled synthetic images (`examples/jud/images/`) move together, and the
+  format page carries a known fingerprint vector for a request with an
+  image. A minor 3 reader refuses a minor 4 document by number; a minor 4
+  reader reads every minor 3 document as it did.
+- `jud`: every subcommand that builds a request loads the documents' images
+  and keys recordings by them; `jud RUBRIC --asset REF=PATH` (repeatable)
+  adds an image from the command line and `--pixels WxH` names the size a
+  located box is also printed in pixels of (the one image's size when there
+  is exactly one); a located verdict prints as `located` with `box`, the
+  confidence, the band and `pixels`; `jud eval` reports a Box question's
+  `mean_iou` beside its accuracy, no Brier score, and a miss's `iou`; `jud
+  check` counts a document's images.
+- Long context (<https://docs.typesafe.ai/models#long-context>): both
+  context limits raised from 64k tokens per request and 32k per question
+  to 262k through the `TypeSafe-Danger-Zone-Long-Context: true` header,
+  on Jev 1.13 and 1.14. `CallOptions::long_context(true)` asks for it on
+  one call and `ClientBuilder::long_context(true)` on every call of a
+  client (a call's `false` turns it off again); the header is reserved
+  (`client::DANGER_ZONE_LONG_CONTEXT_HEADER`) and recorded on the
+  `typesafe.evaluate` span as `long_context`. Off by default, as TypeSafe
+  says a long request is slower and less accurate, and never read off the
+  request's size (decision 0027). Verified live: a 74,550-token state the
+  default budget refuses as `max_tokens_exceeded` was answered under the
+  header by `jev-1.13.0` in 1.4 s.
+
+- The Claude Code plugin (now 0.4.0) knows Jev 1.14: the `jud` skill's
+  rules and guidance for a Box question (what to locate, the Noul beside
+  it, the reference in the state, the images a document declares, the box
+  label in fractions and its bar), the `jud-tune` skill's reading of a
+  Box's `jud eval` and `jud tune` numbers (a mean IoU where a Brier score
+  would be, the labelled count, the empty images, the triage rows for a box
+  that is loose, on the wrong thing or over nothing) and what re-encoding
+  an image costs, and the `jud-rust` skill's third template,
+  `examples/jud/shapes.rs`, a module whose `decide` takes the request's
+  `Assets` and whose `Located` verdict carries a Box, exercised from the
+  shapes recordings by `examples/jud_typed.rs`; the commands follow, and a
+  seventh authoring eval asks for an image rubric. In a cloud session the
+  start hook installs the plugin from the checkout, with TypeSafe's
+  `typesafe` plugin, through `scripts/claude-plugins.sh` (`mise run
+  plugins:install`, `mise run plugins:update`).
+
+### Changed
+
+- **Breaking:** the `.jud` format spells its minor as `metadata.minor`
+  under `apiVersion: jud/v1` (decision 0020, accepted): `jud::API_VERSION`
+  is `jud/v1`, `jud::MINOR` the minor the crate reads up to and writes (4,
+  with this release's additions below), and `jud::EARLIER_SPELLINGS` names
+  `jud/v1.3`, the spelling minor 3 was published under, which the reader
+  keeps reading as minor 3, without a `metadata.minor`, for at least twelve
+  months from this release. A `metadata.minor` above the crate's is
+  `jud::Error::Minor`, refused by number before anything else is read.
+  Every document the crate writes now carries `apiVersion: jud/v1` and
+  `metadata.minor`; every committed example and recording was rewritten to
+  `minor: 3`, the lowest that reads it, and the documents that use minor 4
+  carry `minor: 4`; `jud check` prints `jud/v1 minor N`. No fingerprint
+  moves: the envelope is outside every one.
+- **Breaking:** `client::Request` has a fourth field, `assets: &Assets`;
+  a struct literal names it (`&Assets::new()` for none) or becomes
+  `Request::new(state, model, questions)`. `backend::Call` has an
+  `assets` field. `assets` is a reserved extra field and
+  `typesafe-danger-zone-images` a reserved header: a caller that sent
+  either through `CallOptions` passes the images through `Request` instead.
+- **Breaking:** `Question`, `Answer`, `jud::Verdict` and `jud::Expect` have
+  a Box variant, so a `match` outside the crate that named every variant
+  adds an arm; an answer of kind `box` no longer decodes as
+  `Answer::Unknown`. `eval::Judgment` has an `iou` field and
+  `eval::QuestionMetrics` a `mean_iou` field. `Question::instructions` and
+  `instructions_mut` read the instructions of any primitive. `jud::Rubric`
+  and `jud::Case` have an `assets` field, `jud::Verdict::Located` a
+  `pixels` field, and `jud eval --json` a `mean_iou` key on every question.
+
 - `examples/jud/agent-mail.jud`, a rubric asked about one message between
   coding agents sharing a repository (needs an action, warns that something
   broke, reports status only), with 33 labelled cases taken verbatim from

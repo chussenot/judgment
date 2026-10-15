@@ -1,6 +1,16 @@
-//! Questions: the three System One primitives, a request builder, and the
+//! Questions: the four System One primitives, a request builder, and the
 //! typed handles that tie each question to the shape of its answer
 //! (`docs/concepts/how-judgment-works.md` draws the mechanism).
+//!
+//! # A Box needs an image, and Jev 1.14
+//!
+//! A Box question (`Questions::r#box`) locates what its instructions
+//! describe in an image the request carries ([`crate::asset`]); it takes
+//! no criteria and its instructions cannot be null, since they are all
+//! the question is. The hosted API answers it on `jev-preview` or
+//! `jev-1.14.0`, under the images header the client sets; the answer is
+//! always a box, so the Box page pairs it with a Noul
+//! ([`crate::BoundingBox`]).
 //!
 //! # Ids are for code, not for the model
 //!
@@ -37,7 +47,7 @@ use std::marker::PhantomData;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::answer::{Choice, FromAnswer, Noul, Score};
+use crate::answer::{BoundingBox, Choice, FromAnswer, Noul, Score};
 use crate::error::{Error, Result};
 
 /// The reference page's maximum options per Choice (module docs, `# Limits are checked here`).
@@ -71,15 +81,41 @@ pub enum Question {
         /// Ordered level descriptions, lowest first.
         criteria: Vec<Value>,
     },
+    /// Where something is in an image (module docs, `# A Box needs an image`).
+    Box {
+        /// What to locate, and in which image; never `null`, there are no criteria.
+        instructions: Value,
+    },
 }
 
 impl Question {
-    /// The wire `type`: `noul`, `choice` or `score` ([`crate::Response::verify`]'s `expected`).
+    /// The wire `type`: `noul`, `choice`, `score` or `box` ([`crate::Response::verify`]'s `expected`).
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::Noul { .. } => "noul",
             Self::Choice { .. } => "choice",
             Self::Score { .. } => "score",
+            Self::Box { .. } => "box",
+        }
+    }
+
+    /// The instructions, whatever the primitive.
+    pub const fn instructions(&self) -> &Value {
+        match self {
+            Self::Noul { instructions, .. }
+            | Self::Choice { instructions, .. }
+            | Self::Score { instructions, .. }
+            | Self::Box { instructions } => instructions,
+        }
+    }
+
+    /// [`Question::instructions`], mutable.
+    pub const fn instructions_mut(&mut self) -> &mut Value {
+        match self {
+            Self::Noul { instructions, .. }
+            | Self::Choice { instructions, .. }
+            | Self::Score { instructions, .. }
+            | Self::Box { instructions } => instructions,
         }
     }
 }
@@ -320,6 +356,24 @@ impl Questions {
         )
     }
 
+    /// Add a Box: where what `instructions` describe is in an image the
+    /// request carries, read as a [`BoundingBox`]. Name the target and the
+    /// image ("the coffee mug in `photo`"); [`Error::InvalidQuestion`] for
+    /// null instructions, since a Box has no criteria to carry the
+    /// question. Needs `jev-preview` or `jev-1.14.0` on the hosted API.
+    pub fn r#box(
+        &mut self,
+        id: impl Into<String>,
+        instructions: impl Into<Value>,
+    ) -> Result<Handle<BoundingBox>> {
+        self.push(
+            id.into(),
+            Question::Box {
+                instructions: instructions.into(),
+            },
+        )
+    }
+
     /// Add a wire-shaped question, same checks, no handle: read it via [`Questions::handle`].
     pub fn add(&mut self, id: impl Into<String>, question: Question) -> Result<()> {
         self.push::<()>(id.into(), question).map(drop)
@@ -425,6 +479,14 @@ pub(crate) fn validate_with(id: &str, question: &Question, min_options: usize) -
                     "a Score needs between 2 and {MAX_SCORE_LEVELS} levels, got {}",
                     criteria.len()
                 ));
+            }
+        }
+        Question::Box { instructions } => {
+            if instructions.is_null() {
+                return refuse(
+                    "a Box needs instructions naming what to locate and in which image: it has no criteria"
+                        .to_owned(),
+                );
             }
         }
     }
@@ -629,14 +691,41 @@ mod tests {
         q.noul("n", "?", None).unwrap();
         q.choice::<Colour>("c", "?").unwrap();
         q.score("s", "?", ["low", "high"]).unwrap();
+        q.r#box("b", "the mug in `photo`").unwrap();
         let json = serde_json::to_value(&q).unwrap();
         for (id, question) in q.iter() {
             assert_eq!(json[id]["type"], question.kind(), "{id}");
         }
         let kinds: Vec<&str> = q.iter().map(|(_, question)| question.kind()).collect();
-        assert_eq!(kinds, ["noul", "choice", "score"]);
+        assert_eq!(kinds, ["noul", "choice", "score", "box"]);
         let ids: Vec<&str> = q.ids().collect();
-        assert_eq!(ids, ["n", "c", "s"]);
+        assert_eq!(ids, ["n", "c", "s", "b"]);
+    }
+
+    #[test]
+    fn a_box_is_its_instructions_alone_and_never_null() {
+        let mut q = Questions::new();
+        let handle = q.r#box("mug", "the coffee mug in `photo`").unwrap();
+        assert_eq!(handle.id(), "mug");
+        assert_eq!(
+            serde_json::to_string(&q).unwrap(),
+            r#"{"mug":{"type":"box","instructions":"the coffee mug in `photo`"}}"#,
+            "no criteria key at all"
+        );
+        for null in [Value::Null, Value::from(())] {
+            let err = q.r#box("none", null).unwrap_err();
+            assert!(
+                matches!(&err, Error::InvalidQuestion { id, reason } if id == "none" && reason.contains("no criteria")),
+                "{err}"
+            );
+        }
+        assert_eq!(q.len(), 1, "a refused question is not added");
+        assert!(q.handle::<BoundingBox>("mug").is_some());
+        assert!(q.handle::<Noul>("mug").is_none());
+        assert_eq!(
+            q.get("mug").unwrap().instructions(),
+            "the coffee mug in `photo`"
+        );
     }
 
     #[test]

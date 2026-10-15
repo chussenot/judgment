@@ -11,7 +11,7 @@
 //! # The fixture
 //!
 //! `tests/fixtures/typesafe-openapi.json` is <https://api.typesafe.ai/openapi.json>
-//! (`openapi` 3.1.0, `info.version` 0.2.0), fetched on 2026-09-25 by
+//! (`openapi` 3.1.0, `info.version` 0.2.0), fetched on 2026-10-15 by
 //! `tests/openapi_drift.rs` with `JUDGMENT_OPENAPI_WRITE=1`. It is never
 //! edited by hand: the drift test is the only writer, it writes the document
 //! canonically (sorted keys, two-space indent, final newline), and
@@ -150,6 +150,12 @@ static STRICT_COMPONENTS: LazyLock<Value> = LazyLock::new(|| {
         })
         .collect();
     let mut closed = BTreeSet::from([request_schema()]);
+    // The component each entry of the request's `assets` map is.
+    if let Some(asset) = component(
+        &schemas[request_schema().as_str()]["properties"]["assets"]["additionalProperties"]["$ref"],
+    ) {
+        closed.insert(asset);
+    }
     for member in &members {
         closed.insert(member.clone());
         let properties = schemas[member.as_str()]["properties"]
@@ -172,6 +178,8 @@ static STRICT_COMPONENTS: LazyLock<Value> = LazyLock::new(|| {
     assert_eq!(
         closed.iter().map(String::as_str).collect::<Vec<_>>(),
         [
+            "Asset",
+            "BoxQuestion",
             "ChoiceQuestion",
             "NoulCriteria",
             "NoulQuestion",
@@ -582,6 +590,12 @@ fn every_question_shape() -> Questions {
         ["No impact", "Some users", "Everyone"],
     )
     .unwrap();
+    q.r#box("box_string", "the coffee mug in `photo`").unwrap();
+    q.r#box(
+        "box_structured",
+        json!({ "find": "the person who matches `badge`", "in": "`photo`" }),
+    )
+    .unwrap();
     q
 }
 
@@ -608,6 +622,13 @@ fn fitting_fake(questions: &Questions) -> Fake {
                 fake.score(id, (0..n).map(|_| 1.0 / f64::from(n)), 0.3)
                     .unwrap()
             }
+            Question::Box { .. } => fake
+                .r#box(
+                    id,
+                    judgment::BoxEdges::new(0.25, 0.82, 0.44, 0.84),
+                    Some(0.9),
+                )
+                .unwrap(),
         };
     }
     fake
@@ -667,24 +688,46 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
         client.system_one(&array, &q).await,
         client.system_one(&ticket, &q).await,
         client
-            .evaluate(&Request {
-                state: &object,
-                model: "jev-latest",
-                questions: &q,
-            })
+            .evaluate(&Request::new(&object, "jev-latest", &q))
             .await,
         SystemOne::answer(&client, &object, "jev-latest", &q).await,
     ];
     let options = CallOptions::new().extra("beam_width", 4).unwrap();
     results.push(
         client
+            .evaluate_with(&Request::new(&object, "jev-1.13.0", &q), &options)
+            .await,
+    );
+    // With an image: the `assets` map and the header the Images page asks for.
+    let mut assets = judgment::Assets::new();
+    let door = assets
+        .add(
+            judgment::Image::read(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/images/square-300.png"),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let with_image = json!({ "door": door, "message": "Someone at the door." });
+    results.push(
+        client
+            .evaluate(&Request::new(&with_image, "jev-preview", &q).with_assets(&assets))
+            .await,
+    );
+    // Without a Box question and without an image: the request as it was
+    // before either existed.
+    let mut text_only = Questions::new();
+    text_only
+        .noul("urgent", "Does `message` convey urgency?", None)
+        .unwrap();
+    results.push(client.system_one(&object, &text_only).await);
+    // The same text-only request asking for long context: a header, and
+    // nothing in the body.
+    results.push(
+        client
             .evaluate_with(
-                &Request {
-                    state: &object,
-                    model: "jev-1.13.0",
-                    questions: &q,
-                },
-                &options,
+                &Request::new(&object, "jev-1.13.0", &text_only),
+                &judgment::CallOptions::new().long_context(true),
             )
             .await,
     );
@@ -706,7 +749,12 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
         .unwrap()
         .keys()
         .collect();
-    assert_eq!(content_types, ["application/json"]);
+    // The document also takes `multipart/form-data` (a JSON `request` part
+    // and one file part per image); the crate sends JSON only, images as
+    // base64 in it, which the document allows. A multipart body path is
+    // not written yet and is pinned absent here.
+    assert_eq!(content_types, ["application/json", "multipart/form-data"]);
+    let sent_content_type = "application/json";
     assert_eq!(operation["security"], json!([{ "HTTPBearer": [] }]));
     assert_eq!(
         SPEC["components"]["securitySchemes"]["HTTPBearer"],
@@ -730,7 +778,7 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or_else(|| panic!("request {i} has no {name} header"))
         };
-        assert_eq!(header("content-type"), content_types[0], "request {i}");
+        assert_eq!(header("content-type"), sent_content_type, "request {i}");
         // HTTP bearer (RFC 6750): the scheme name is case-insensitive.
         let (auth_scheme, token) = header("authorization").split_once(' ').unwrap();
         assert!(
@@ -747,9 +795,14 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
         let mut documented = sent.clone();
         documented.as_object_mut().unwrap().remove("beam_width");
         assert_conforms_strict(&schema, &documented, &format!("request {i}"));
+        let asked = if i >= received.len() - 2 {
+            &text_only
+        } else {
+            &q
+        };
         assert_eq!(
             sent["questions"],
-            serde_json::to_value(&q).unwrap(),
+            serde_json::to_value(asked).unwrap(),
             "request {i} carries the built questions"
         );
     }
@@ -764,6 +817,76 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
     assert_eq!(bodies[6]["beam_width"], 4, "the extra field is sent");
     // The body `body(..)` builds for the no-http tests is the client's.
     assert_eq!(bodies[1], body(object, "jev-1.13.0", &q));
+    // The image: under `assets` by its reference, base64 with its format,
+    // and the header on that request alone.
+    assert_eq!(bodies[7]["assets"][&door]["type"], "image");
+    assert_eq!(bodies[7]["assets"][&door]["format"], "png");
+    assert!(bodies[7]["assets"][&door]["data_base64"].is_string());
+    let images_header = received[7]
+        .headers
+        .get("typesafe-danger-zone-images")
+        .and_then(|v| v.to_str().ok());
+    assert_eq!(images_header, Some("true"));
+    let documented: Vec<&Value> = operation["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|p| p["in"] == "header")
+        .collect();
+    // The two danger-zone headers the document names, each taking the one
+    // value `true`, which is the value the client sends.
+    for name in [
+        "typesafe-danger-zone-images",
+        "typesafe-danger-zone-long-context",
+    ] {
+        let parameter = documented
+            .iter()
+            .find(|p| {
+                p["name"]
+                    .as_str()
+                    .is_some_and(|n| n.eq_ignore_ascii_case(name))
+            })
+            .unwrap_or_else(|| panic!("the document names the {name} header: {documented:?}"));
+        assert_eq!(parameter["schema"]["enum"], json!(["true"]), "{name}");
+    }
+    // Every request of the full set asks a Box, which needs the header too
+    // (the Box page), image or not; the text-only request gets neither the
+    // header nor an `assets` key.
+    for (i, request) in received[..8].iter().enumerate() {
+        assert!(
+            request.headers.get("typesafe-danger-zone-images").is_some(),
+            "request {i} asks a Box and needs the header"
+        );
+    }
+    for last in &received[8..] {
+        assert!(
+            last.headers.get("typesafe-danger-zone-images").is_none(),
+            "no images header without a Box or an image"
+        );
+    }
+    assert!(
+        bodies[8].get("assets").is_none(),
+        "no assets key without an image"
+    );
+    // Long context is the header alone, on the one request that asked.
+    for (i, request) in received.iter().enumerate() {
+        let header = request
+            .headers
+            .get("typesafe-danger-zone-long-context")
+            .and_then(|v| v.to_str().ok());
+        assert_eq!(
+            header,
+            (i == received.len() - 1).then_some("true"),
+            "request {i}"
+        );
+    }
+    assert_eq!(bodies[9], bodies[8], "long context changes no body");
+    for body in &bodies[..7] {
+        assert!(
+            body.get("assets").is_none(),
+            "no assets key without an image"
+        );
+    }
 }
 
 #[cfg(feature = "http")]
@@ -1015,8 +1138,9 @@ async fn every_fake_response_is_a_system_one_response() {
 
 /// Every `examples/recordings/<example>` directory: the benchmark sample's
 /// Laya answers, the four pattern examples' Jev answers, the `.jud`
-/// example's scripted recordings and the agent-mail rubric's Jev answers.
-/// Seven, so an example committed without its recordings fails here.
+/// example's scripted recordings, the agent-mail rubric's Jev answers and
+/// the shapes rubric's Jev 1.14 answers over its images. Eight, so an
+/// example committed without its recordings fails here.
 fn recording_dirs() -> Vec<std::path::PathBuf> {
     let recordings = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/recordings");
     let mut dirs: Vec<_> = std::fs::read_dir(&recordings)
@@ -1025,7 +1149,7 @@ fn recording_dirs() -> Vec<std::path::PathBuf> {
         .filter(|dir| dir.is_dir())
         .collect();
     dirs.sort();
-    assert_eq!(dirs.len(), 7, "{dirs:?}");
+    assert_eq!(dirs.len(), 8, "{dirs:?}");
     dirs
 }
 
@@ -1104,6 +1228,9 @@ fn the_schema_examples_decode_through_the_crate() {
             levels.as_array().unwrap().clone(),
         )
         .unwrap();
+    // The document gives a Box question's instructions no example; the Box
+    // page's own will do, and the answer example below is the document's.
+    let mug = q.r#box("mug", "the coffee mug in `photo`").unwrap();
     assert_eq!(
         serde_json::to_value(&q).unwrap()["tone"]["criteria"],
         criteria
@@ -1126,8 +1253,9 @@ fn the_schema_examples_decode_through_the_crate() {
         "spam": example_answer("noul"),
         "tone": example_answer("choice"),
         "urgency": example_answer("score"),
+        "mug": example_answer("box"),
     });
-    assert_conforms(&response_schema(), &assembled, "the three answer examples");
+    assert_conforms(&response_schema(), &assembled, "the four answer examples");
     let response: Response = serde_json::from_value(assembled.clone()).unwrap();
     assert!(response.extra.is_empty(), "{:?}", response.extra);
     assert_eq!(serde_json::to_value(&response).unwrap(), assembled);
@@ -1137,6 +1265,15 @@ fn the_schema_examples_decode_through_the_crate() {
     let score = response.get(&urgency).unwrap();
     assert!((score.value - 1.7).abs() < 1e-12);
     assert_eq!(score.nearest_label(), "Needs attention today");
+    // The Box example: the document's first confidence example is `null`,
+    // which reads as no confidence.
+    let located = response.get(&mug).unwrap();
+    assert_eq!(
+        located.edges,
+        judgment::BoxEdges::new(0.2, 0.66, 0.19, 0.68),
+        "the BoxCoordinates examples"
+    );
+    assert_eq!(located.confidence, None);
 
     // The response example as the document assembles it: `billing`, asked
     // by the request example's question, which the builder reproduces.
@@ -1297,6 +1434,7 @@ fn the_schema_has_the_kinds_and_paths_the_crate_has() {
     q.noul("n", "?", None).unwrap();
     q.choice::<Tone>("c", "?").unwrap();
     q.score("s", "?", ["low", "high"]).unwrap();
+    q.r#box("b", "the mug in `photo`").unwrap();
     let crate_kinds: BTreeSet<&str> = q.iter().map(|(_, question)| question.kind()).collect();
     for union in [question_union(), answer_union()] {
         let mapped: BTreeSet<&str> = SPEC["components"]["schemas"][union.as_str()]["discriminator"]

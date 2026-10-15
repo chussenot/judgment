@@ -2,7 +2,7 @@
 title: Your first decision from the command line
 description: From nothing to a verdict with the jud command and no account, by replaying a recorded answer; then the same command against the hosted API or a local model.
 status: current
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-15
 tags: [judgment, jud, cli, tutorial, getting-started, replay]
 ---
 
@@ -29,11 +29,11 @@ jud check examples/jud/triage.jud examples/jud/triage-cases.jud
 
 <!-- transcript: jud check examples/jud/triage.jud examples/jud/triage-cases.jud -->
 ```text
-rubric    examples/jud/triage.jud: name inbox-triage, jud/v1.3, 3 questions, 3 gates (tuned)
+rubric    examples/jud/triage.jud: name inbox-triage, jud/v1 minor 3, 3 questions, 3 gates (tuned)
           questions sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a
           policy    sha256:1585094f59711426a98044a00ded2ec747010b5369e941f33a2732a50262e99f
           tuned on  sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
-cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1.3, 7 cases, bound to examples/jud/triage.jud
+cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1 minor 3, 7 cases, bound to examples/jud/triage.jud
           cases     sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
 2 documents, 0 refused
 ```
@@ -104,6 +104,43 @@ echo '{"message": "My payouts have been failing for 3 days."}' | jud examples/ju
 ```
 
 Without a key the run is refused before any call, with status 2 and a message naming the variable and the configuration file. Without an account, an open-weight model on your own machine answers the same command through a configuration file: [Configure a backend](../guides/configure-a-backend.md) sets up `tev1` on Ollama in three commands.
+
+## 6. Ask about an image
+
+A state can carry an image, and a question can ask where something is in it. The shapes rubric (`examples/jud/shapes.jud`) asks two questions about one picture: whether there is a filled circle, and where. The image goes in with `--asset`, under the reference the state carries, and the recording is found by the image's bytes as well as the state:
+
+```sh
+echo '{"image": "shape-01"}' \
+  | jud --replay examples/recordings/shapes --asset shape-01=examples/jud/images/shape-01.png examples/jud/shapes.jud
+```
+
+<!-- transcript: replay shape-01 -->
+```json
+{
+  "circle_present": {
+    "verdict": "yes",
+    "probability": 0.99
+  },
+  "circle": {
+    "verdict": "located",
+    "box": {
+      "top": 0.36,
+      "bottom": 0.86,
+      "left": 0.2,
+      "right": 0.67
+    },
+    "confidence": 0.92,
+    "pixels": {
+      "left": 64,
+      "top": 115,
+      "right": 214,
+      "bottom": 275
+    }
+  }
+}
+```
+
+The Box's verdict is `located`: the edges as fractions of the image, the confidence, and the same box in the pixels of the 320 by 320 file. A Box always answers with a box, which is why the Noul is beside it ([Visual judgments](../concepts/visual-judgments.md)); [Locate something with a Box question](../guides/locate-with-a-box.md) goes on from here, image with no circle included.
 
 ## Next
 

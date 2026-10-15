@@ -2,10 +2,11 @@
 # time are not in the state, so each case supplies them under `options`;
 # the open tickets are, and are supplied too, as their keys and
 # descriptions.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: support-routing-cases
+  minor: 3
   annotations:
     labelled_by: support lead
     labelled_at: 2026-10-04

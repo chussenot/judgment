@@ -1,8 +1,9 @@
 # Recorded answer for case `accessor-options`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: accessor-options
+  minor: 3
 spec:
   elapsed_ms: 132
   fingerprint: sha256:3e9095c7cdf6bc5f6e538a2f8bc73aa5abcfa430a226c0c1ef3cbf1231c910d7

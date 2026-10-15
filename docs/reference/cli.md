@@ -52,6 +52,16 @@ Options:
       --options-file <PATH>
           --options, read from a file
 
+      --asset <REF=PATH>
+          An image the state refers to: the reference written in the state, and the PNG or JPEG file. Repeatable.
+
+          The file is checked against the hosted API's limits before anything is sent, base64-encoded by jud, and sent with the images header. The rubric's own `spec.assets` are read from the rubric's directory without a flag.
+
+      --pixels <WxH>
+          The image's size, so a located box is also printed in pixels.
+
+          Without it, the size of the request's one image is used; with several images, or none, a box is printed as fractions only.
+
   -h, --help
           Print help (see a summary with '-h')
 

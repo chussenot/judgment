@@ -120,10 +120,11 @@ fn every_example_document_validates_against_its_schema_and_parses() {
         );
         *kinds.entry(kind).or_default() += 1;
     }
-    // triage, routing, handoff, agent-mail, and the guide's screening rubric.
-    assert_eq!(kinds["Rubric"], 5);
+    // triage, routing, handoff, agent-mail, shapes, and the guide's
+    // screening rubric.
+    assert_eq!(kinds["Rubric"], 6);
     // Their cases, and the specification's example cases document.
-    assert_eq!(kinds["Cases"], 6);
+    assert_eq!(kinds["Cases"], 7);
     // The calibration recordings, and the specification's example recording.
     assert!(kinds["Recording"] >= 11, "{kinds:?}");
 }
@@ -214,6 +215,7 @@ fn what_the_crate_writes_validates() {
 }
 
 /// Documents the schemas and the reader must both refuse.
+#[allow(clippy::too_many_lines)]
 fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
     vec![
         // A misspelt gate field.
@@ -230,6 +232,116 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
         (
             &*RUBRIC,
             "apiVersion: jud/v1.2\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        // `jud/v1` without its minor, with one past this reader's, and the
+        // earlier spelling with a minor it did not have.
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 99\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: \"3\"\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\n  minor: 3\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        // A Box with what it does not take: criteria, null instructions,
+        // options to supply (minor 4).
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`, criteria: {a: A, b: B}}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: null}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`, options_from: request}\n",
+        ),
+        // An asset with neither source, with both, with a path that leaves
+        // the directory, with a format the API does not take, and with bytes
+        // but no format.
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: photo.png, format: png, data_base64: aGk=}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: ../photo.png}\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: cases\n  minor: 4\nspec:\n  cases:\n    - state: {photo: photo}\n      assets:\n        photo: {type: image, path: photo.webp, format: webp}\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: cases\n  minor: 4\nspec:\n  cases:\n    - state: {photo: photo}\n      assets:\n        photo: {type: image, data_base64: aGk=}\n",
+        ),
+        // A Box label without one of its edges, and one with a bar over 1.
+        (
+            &*CASES,
+            "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: cases\n  minor: 4\nspec:\n  cases:\n    - state: {photo: photo}\n      expect: {b: {box: {top: 0.2, bottom: 0.8, left: 0.2}}}\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: cases\n  minor: 4\nspec:\n  cases:\n    - state: {photo: photo}\n      expect: {b: {box: {top: 0.2, bottom: 0.8, left: 0.2, right: 0.8}, iou_at_least: 2}}\n",
+        ),
+        // A Box with what it does not take: criteria, null instructions,
+        // options to supply (minor 4).
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`, criteria: {a: A, b: B}}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: null}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`, options_from: request}\n",
+        ),
+        // An asset with neither source, with both, with a path that leaves
+        // the directory, with a format the API does not take, and with bytes
+        // but no format.
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: photo.png, format: png, data_base64: aGk=}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: ../photo.png}\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: cases\n  minor: 4\nspec:\n  cases:\n    - state: {photo: photo}\n      assets:\n        photo: {type: image, path: photo.webp, format: webp}\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: cases\n  minor: 4\nspec:\n  cases:\n    - state: {photo: photo}\n      assets:\n        photo: {type: image, data_base64: aGk=}\n",
+        ),
+        // A Box label without one of its edges, and one with a bar over 1.
+        (
+            &*CASES,
+            "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: cases\n  minor: 4\nspec:\n  cases:\n    - state: {photo: photo}\n      expect: {b: {box: {top: 0.2, bottom: 0.8, left: 0.2}}}\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: cases\n  minor: 4\nspec:\n  cases:\n    - state: {photo: photo}\n      expect: {b: {box: {top: 0.2, bottom: 0.8, left: 0.2, right: 0.8}, iou_at_least: 2}}\n",
         ),
         (
             &*RUBRIC,
@@ -406,20 +518,37 @@ fn a_syntax_error_quotes_no_part_of_the_document() {
     assert!(!shown.contains("TOPSECRET"), "{shown}");
 }
 
-/// Every document is written back under the one apiVersion, with the
-/// envelope's keys in manifest order, and validates against its schema.
+/// Every document is written back under `jud/v1` and the minor this crate
+/// implements, with the envelope's keys in manifest order, and validates
+/// against its schema; a document in the earlier spelling reads and is
+/// moved forward by the write.
 #[test]
 fn a_document_is_written_back_under_the_one_api_version() {
-    let plain = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n";
-    let rubric = Rubric::parse(plain).unwrap();
+    assert_eq!(jud::API_VERSION, "jud/v1");
+    assert_eq!(jud::MINOR, 4, "the minor this crate reads and writes");
+    let minor = jud::MINOR;
+    let plain = format!(
+        "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: {minor}\nspec:\n  questions:\n    n: {{type: noul, instructions: ok?}}\n"
+    );
+    let rubric = Rubric::parse(&plain).unwrap();
     let yaml = rubric.to_yaml().unwrap();
     assert!(
-        yaml.starts_with("apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n"),
+        yaml.starts_with(&format!(
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: {minor}\nspec:\n"
+        )),
         "{yaml}"
     );
-    assert!(RUBRIC.is_valid(&value_of(plain)));
+    assert!(RUBRIC.is_valid(&value_of(&plain)));
     assert!(RUBRIC.is_valid(&value_of(&yaml)));
-    assert_eq!(jud::API_VERSION, "jud/v1.3");
+    // The spelling minor 3 was published under: read, valid, and written
+    // back as `jud/v1` with the minor; a lower minor is read too.
+    let earlier = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n";
+    assert!(RUBRIC.is_valid(&value_of(earlier)));
+    assert_eq!(Rubric::parse(earlier).unwrap(), rubric);
+    assert_eq!(Rubric::parse(earlier).unwrap().to_yaml().unwrap(), yaml);
+    let lower = plain.replace(&format!("minor: {minor}"), "minor: 2");
+    assert!(RUBRIC.is_valid(&value_of(&lower)));
+    assert_eq!(Rubric::parse(&lower).unwrap(), rubric);
 }
 
 /// The policy fingerprint is the gates alone, so a moved bar is as
@@ -552,6 +681,166 @@ async fn the_agent_mail_recordings_replay_under_the_gates_they_tuned() {
     assert_eq!(right["needs_action"], 28);
     assert_eq!(right["breaks_something"], 26);
     assert_eq!(right["status_only"], 32);
+}
+
+/// The shapes example: a case names its image once, by a path relative to
+/// the document, under the reference its state carries; the rubric's and
+/// the case's images load into one request's assets, and a Box label
+/// grades by intersection over union against the box the model answers,
+/// 0.5 being the bar when the label names none.
+#[tokio::test]
+async fn the_shapes_cases_load_their_images_and_grade_a_box_by_iou() {
+    let rubric = Rubric::parse(&read(EXAMPLES, "shapes.jud")).unwrap();
+    let cases = Cases::parse(&read(EXAMPLES, "shapes-cases.jud")).unwrap();
+    cases.bind(&rubric).unwrap();
+    assert_eq!(cases.cases.len(), 40);
+    assert!(rubric.assets.is_empty(), "the images are the cases'");
+    let base = Path::new(EXAMPLES);
+    let mut labelled = Vec::new();
+    for case in &cases.cases {
+        let mut assets = judgment::Assets::new();
+        rubric.load_assets(base, &mut assets).unwrap();
+        case.load_assets(base, &mut assets).unwrap();
+        let reference = case.state["image"].as_str().unwrap();
+        assert_eq!(assets.len(), 1);
+        let image = assets.get(reference).unwrap();
+        assert_eq!((image.width(), image.height()), (320, 320));
+        assert_eq!(image.format(), judgment::ImageFormat::Png);
+        match case.expect.get("circle") {
+            Some(jud::Expect::Box(label)) => {
+                assert!(label.iou_at_least.is_none(), "the default bar");
+                labelled.push((case, label.edges));
+            }
+            None => assert_eq!(case.expect["circle_present"], jud::Expect::Bool(false)),
+            other => panic!("{other:?}"),
+        }
+    }
+    assert_eq!(labelled.len(), 30);
+    // A box a little wider than its label is right; one in the wrong corner
+    // is wrong, with the overlap it reached beside it.
+    let (case, edges) = labelled[0];
+    let asked = case.request(&rubric).unwrap();
+    let close = Fake::new()
+        .noul("circle_present", 0.9)
+        .unwrap()
+        .r#box("circle", edges.padded(0.02), Some(0.8))
+        .unwrap();
+    let response = close.answer(&case.state, "m", &asked).await.unwrap();
+    let graded: std::collections::BTreeMap<_, _> = jud::grade(&rubric, case, 0, &response)
+        .unwrap()
+        .into_iter()
+        .collect();
+    let circle = &graded["circle"];
+    assert_eq!(circle.correct, Some(true));
+    assert!(circle.iou.unwrap() > 0.5, "{circle:?}");
+    assert_eq!(graded["circle_present"].correct, Some(true));
+    let far = Fake::new()
+        .noul("circle_present", 0.9)
+        .unwrap()
+        .r#box(
+            "circle",
+            judgment::BoxEdges::new(0.0, 0.1, 0.0, 0.1),
+            Some(0.8),
+        )
+        .unwrap();
+    let response = far.answer(&case.state, "m", &asked).await.unwrap();
+    let graded: std::collections::BTreeMap<_, _> = jud::grade(&rubric, case, 0, &response)
+        .unwrap()
+        .into_iter()
+        .collect();
+    assert_eq!(graded["circle"].correct, Some(false));
+    assert_eq!(graded["circle"].iou, Some(0.0));
+}
+
+/// The format page's second known vector: a request with one image
+/// fingerprints over the image's digest under its reference, so another
+/// implementation can check itself against the same bytes.
+#[test]
+fn the_request_fingerprint_with_an_image_matches_the_known_vector() {
+    let image = judgment::Image::read(Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/images/square-300.png"
+    )))
+    .unwrap();
+    assert_eq!(image.len(), 717);
+    assert_eq!(
+        image.digest(),
+        "sha256:d1b456a83498c260c89efd73af6015d7260951224900d1d9c736bcd15d96ceb2"
+    );
+    let mut assets = judgment::Assets::new();
+    assets.insert("photo", image).unwrap();
+    let mut questions = judgment::Questions::new();
+    questions.r#box("mug", "the mug in `photo`").unwrap();
+    let state = json!({ "photo": "photo" });
+    assert_eq!(
+        judgment::eval::canonical::request_fingerprint_with(&state, &questions, &assets),
+        "sha256:7a492d9eb5e50d0413dfc3d3361e06dabc0ca9fe68e31860b923340d4258aa72"
+    );
+    // The same request without the image is the fingerprint it always was.
+    assert_eq!(
+        judgment::eval::canonical::request_fingerprint_with(
+            &state,
+            &questions,
+            &judgment::Assets::new()
+        ),
+        judgment::eval::canonical::request_fingerprint(&state, &questions)
+    );
+}
+
+/// The shapes recordings: `jev-1.14.0`'s live answers to the forty cases,
+/// each found by the fingerprint that folds its image in, each verified
+/// against the Box question before it is read, and graded as the
+/// calibration study tables it (`docs/project/verification/box-calibration-study.md`):
+/// every Noul right, twenty-eight of thirty boxes at the 0.5 bar, a mean
+/// overlap of 0.80. A re-recording that moves a count fails here.
+#[tokio::test]
+async fn the_shapes_recordings_replay_under_the_box_gate() {
+    const SHAPES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/recordings/shapes");
+    let rubric = Rubric::parse(&read(EXAMPLES, "shapes.jud")).unwrap();
+    let cases = Cases::parse(&read(EXAMPLES, "shapes-cases.jud")).unwrap();
+    cases.bind(&rubric).unwrap();
+    let replay = Replay::open(Path::new(SHAPES)).unwrap();
+    assert_eq!(replay.len(), cases.cases.len());
+    let base = Path::new(EXAMPLES);
+    let mut judgments = Vec::new();
+    let mut located = 0;
+    for (index, case) in cases.cases.iter().enumerate() {
+        let asked = case.request(&rubric).unwrap();
+        let mut assets = judgment::Assets::new();
+        case.load_assets(base, &mut assets).unwrap();
+        // Keyed by the image: without it there is no recording to find.
+        let err = replay.answer(&case.state, "any", &asked).await.unwrap_err();
+        assert!(matches!(err, judgment::Error::NoRecording(_)), "{err}");
+        let response = replay
+            .answer_with_assets(&case.state, "any", &asked, &assets)
+            .await
+            .unwrap();
+        assert_eq!(response.model, "jev-1.14.0");
+        for (id, verdict) in rubric.apply(&asked, &response).unwrap() {
+            if id == "circle" && matches!(verdict, jud::Verdict::Located { .. }) {
+                located += 1;
+            }
+        }
+        judgments.extend(jud::grade(&rubric, case, index, &response).unwrap());
+    }
+    let metrics = |id: &str| {
+        judgment::eval::QuestionMetrics::summarise(
+            judgments.iter().filter(|(q, _)| q == id).map(|(_, j)| j),
+            judgment::eval::ECE_BINS,
+        )
+    };
+    let present = metrics("circle_present");
+    assert_eq!((present.labelled, present.correct), (40, 40));
+    assert!(present.brier.unwrap() < 0.01, "{present:?}");
+    let circle = metrics("circle");
+    assert_eq!((circle.labelled, circle.correct), (30, 28));
+    assert_eq!(circle.brier, None, "a box has no distribution");
+    assert!(
+        (circle.mean_iou.unwrap() - 0.797).abs() < 0.005,
+        "{circle:?}"
+    );
+    // The gate at 0.5 acts on 23 of the 40 boxes and defers the rest.
+    assert_eq!(located, 23);
 }
 
 fn tempdir() -> PathBuf {

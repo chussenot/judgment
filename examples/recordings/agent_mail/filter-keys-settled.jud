@@ -1,8 +1,9 @@
 # Recorded answer for case `filter-keys-settled`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: filter-keys-settled
+  minor: 3
 spec:
   elapsed_ms: 133
   fingerprint: sha256:f34974fddbee0cd2afae7bd80f0fa8390508115d3d160abe5141d9220523dc02

@@ -101,6 +101,8 @@
       "Bash(bd export:*)",
       "Bash(scripts/check-frontmatter.sh:*)",
       "Bash(scripts/gen-llms-txt.sh:*)",
+      "Bash(scripts/claude-plugins.sh:*)",
+      "Bash(claude plugin:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)"

@@ -2,14 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/chussenot/judgment/schemas/jud/common.schema.json",
   "title": ".jud common definitions",
-  "description": "Definitions shared by the three document kinds of the .jud format (docs/reference/jud-format.md): the envelope of a manifest, the metadata, names, fingerprints and questions.",
+  "description": "Definitions shared by the three document kinds of the .jud format (docs/reference/jud-format.md): the envelope of a manifest, the metadata, names, fingerprints, questions, assets and box edges.",
   "$defs": {
     "envelope": {
       "type": "object",
       "properties": {
         "apiVersion": {
-          "const": "jud/v1.3",
-          "description": "The one version a reader reads; any other value is refused by name."
+          "enum": [
+            "jud/v1",
+            "jud/v1.3"
+          ],
+          "description": "The stable v1 line, whose minor is metadata.minor; `jud/v1.3` is the earlier spelling of minor 3, read as it stands and never written. Any other value is refused by name."
         },
         "kind": {
           "type": "string",
@@ -32,7 +35,38 @@
         "metadata",
         "spec"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "apiVersion": {
+                "const": "jud/v1"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "required": [
+                  "minor"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "metadata": {
+                "not": {
+                  "required": [
+                    "minor"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "name": {
       "type": "string",
@@ -178,6 +212,38 @@
           "type": "object",
           "properties": {
             "type": {
+              "const": "box"
+            },
+            "instructions": {
+              "description": "What to locate, and in which image; a string, an object or an array, never null: a Box has no criteria to carry the question.",
+              "type": [
+                "string",
+                "object",
+                "array"
+              ]
+            },
+            "when": {
+              "$ref": "#/$defs/statePath",
+              "description": "ask the question only when this state path is present."
+            },
+            "part_when": {
+              "type": "object",
+              "description": "instruction part name to the state path that must be present for the part to be sent.",
+              "additionalProperties": {
+                "$ref": "#/$defs/statePath"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "instructions"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
               "const": "score"
             },
             "instructions": {
@@ -215,6 +281,93 @@
         }
       ]
     },
+    "asset": {
+      "type": "object",
+      "description": "An image the document refers to by the key it sits under: a file by a path relative to the document, or the bytes inline with their format (docs/reference/jud-format.md, Assets).",
+      "properties": {
+        "type": {
+          "const": "image"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?![/\\\\])(?!.*(^|[/\\\\])\\.\\.([/\\\\]|$)).*$",
+          "description": "Relative to the document's directory, never absolute and never leaving it."
+        },
+        "format": {
+          "enum": [
+            "png",
+            "jpg",
+            "jpeg"
+          ]
+        },
+        "data_base64": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+        }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "path"
+          ],
+          "not": {
+            "required": [
+              "data_base64"
+            ]
+          }
+        },
+        {
+          "required": [
+            "data_base64",
+            "format"
+          ],
+          "not": {
+            "required": [
+              "path"
+            ]
+          }
+        }
+      ]
+    },
+    "assets": {
+      "type": "object",
+      "description": "Reference to asset. A reference is text a state or a question carries where the image belongs.",
+      "propertyNames": {
+        "minLength": 1,
+        "maxLength": 1024
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/asset"
+      }
+    },
+    "boxEdges": {
+      "type": "object",
+      "description": "The four edges of a box, as fractions of the image from its top-left corner.",
+      "properties": {
+        "top": {
+          "$ref": "#/$defs/unit"
+        },
+        "bottom": {
+          "$ref": "#/$defs/unit"
+        },
+        "left": {
+          "$ref": "#/$defs/unit"
+        },
+        "right": {
+          "$ref": "#/$defs/unit"
+        }
+      },
+      "required": [
+        "top",
+        "bottom",
+        "left",
+        "right"
+      ],
+      "additionalProperties": false
+    },
     "statePath": {
       "type": "string",
       "pattern": "^[^.\\s](?:[^.]*[^.\\s])?(?:\\.[^.\\s](?:[^.]*[^.\\s])?)*$",
@@ -226,6 +379,12 @@
       "properties": {
         "name": {
           "$ref": "#/$defs/name"
+        },
+        "minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "The minor of jud/v1 the document needs: required under apiVersion jud/v1, refused under the earlier spelling. A reader reads every minor up to its own and refuses a higher one by number."
         },
         "version": {
           "type": [

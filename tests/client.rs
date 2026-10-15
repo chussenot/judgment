@@ -1123,11 +1123,7 @@ async fn the_documented_body_is_all_that_is_sent_without_options() {
         .await;
     let c = client(&server, RetryPolicy::none());
     let q = one_noul();
-    let request = Request {
-        state: &"s",
-        model: "jev-latest",
-        questions: &q,
-    };
+    let request = Request::new(&"s", "jev-latest", &q);
     c.evaluate(&request).await.unwrap();
     c.evaluate_with(&request, &CallOptions::default())
         .await
@@ -1248,14 +1244,7 @@ async fn extra_fields_are_sent_beside_the_documented_ones() {
         .extra("tag", serde_json::Value::Null)
         .unwrap();
     client(&server, RetryPolicy::none())
-        .evaluate_with(
-            &Request {
-                state: &"s",
-                model: "jev-latest",
-                questions: &q,
-            },
-            &options,
-        )
+        .evaluate_with(&Request::new(&"s", "jev-latest", &q), &options)
         .await
         .unwrap();
 }
@@ -1278,11 +1267,7 @@ async fn call_headers_replace_builder_defaults_and_never_the_key() {
         .build()
         .unwrap();
     let q = one_noul();
-    let request = Request {
-        state: &"s",
-        model: "jev-latest",
-        questions: &q,
-    };
+    let request = Request::new(&"s", "jev-latest", &q);
     c.evaluate(&request).await.unwrap();
     let options = CallOptions::new()
         .header(name("x-team"), value("per-call"))
@@ -1340,14 +1325,7 @@ async fn per_call_headers_and_extras_reach_every_attempt() {
         .extra("beam_width", 4)
         .unwrap();
     client(&server, fast_retries(2))
-        .evaluate_with(
-            &Request {
-                state: &"s",
-                model: "jev-latest",
-                questions: &q,
-            },
-            &options,
-        )
+        .evaluate_with(&Request::new(&"s", "jev-latest", &q), &options)
         .await
         .unwrap();
     assert_eq!(calls.load(Ordering::SeqCst), 2);
@@ -1417,11 +1395,7 @@ async fn a_call_timeout_replaces_the_per_attempt_timeout() {
         .await;
     let c = client_at(&server.uri(), RetryPolicy::none(), Duration::from_secs(2));
     let q = one_noul();
-    let request = Request {
-        state: &"s",
-        model: "jev-latest",
-        questions: &q,
-    };
+    let request = Request::new(&"s", "jev-latest", &q);
     let short = CallOptions::new().timeout(Duration::from_millis(50));
     let err = c.evaluate_with(&request, &short).await.unwrap_err();
     assert!(
@@ -1451,16 +1425,9 @@ async fn a_longer_call_timeout_is_not_capped_by_the_builder() {
     );
     let q = one_noul();
     let long = CallOptions::new().timeout(Duration::from_secs(2));
-    c.evaluate_with(
-        &Request {
-            state: &"s",
-            model: "jev-latest",
-            questions: &q,
-        },
-        &long,
-    )
-    .await
-    .unwrap();
+    c.evaluate_with(&Request::new(&"s", "jev-latest", &q), &long)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -1472,11 +1439,7 @@ async fn a_call_retry_policy_replaces_the_client_policy() {
         .await;
     let c = client(&server, fast_retries(1));
     let q = one_noul();
-    let request = Request {
-        state: &"s",
-        model: "jev-latest",
-        questions: &q,
-    };
+    let request = Request::new(&"s", "jev-latest", &q);
     let once = CallOptions::new().retry(RetryPolicy::none());
     let err = c.evaluate_with(&request, &once).await.unwrap_err();
     assert!(
@@ -2075,4 +2038,470 @@ async fn a_body_id_unfit_to_log_is_not_the_request_id() {
             .unwrap();
         assert_eq!(response.request_id.as_deref(), expected, "{id:?}");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Images: the assets map, the danger-zone header and the pre-wire checks
+// ---------------------------------------------------------------------------
+
+fn fixture_image(name: &str) -> judgment::Image {
+    judgment::Image::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/images")
+            .join(name),
+    )
+    .unwrap()
+}
+
+/// A photo in the state and a Noul about it: the request the Images page
+/// documents, sent with the header and the base64 the page asks for.
+#[tokio::test]
+async fn a_request_with_an_image_carries_the_assets_map_and_the_header() {
+    let server = MockServer::start().await;
+    let png = fixture_image("square-300.png");
+    let mut assets = judgment::Assets::new();
+    let door = assets.add(png.clone()).unwrap();
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .and(header("typesafe-danger-zone-images", "true"))
+        .and(header("content-type", "application/json"))
+        .and(body_partial_json(json!({
+            "state": { "door": door },
+            "assets": { door.clone(): { "type": "image", "format": "png", "data_base64": png.to_base64() } },
+            "questions": { "person": { "type": "noul" } }
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "jev-1.14.0",
+            "answers": { "person": { "type": "noul", "noul": 0.93 } },
+            "usage": { "input_tokens": 290, "output_tokens": 20 }
+        })))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let mut q = Questions::new();
+    let person = q
+        .noul("person", "Is there a person in `door`?", None)
+        .unwrap();
+    let state = json!({ "door": door });
+    let c = client(&server, RetryPolicy::none());
+    let response = c
+        .evaluate(&Request::new(&state, "jev-preview", &q).with_assets(&assets))
+        .await
+        .unwrap();
+    assert!(response.get(&person).unwrap().is_yes(0.5));
+    // Through the trait, the same request.
+    let response = SystemOne::answer_with_assets(&c, &state, "jev-preview", &q, &assets)
+        .await
+        .unwrap();
+    assert!(response.get(&person).unwrap().is_yes(0.5));
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn a_request_without_images_sends_no_assets_and_no_header() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let c = client(&server, RetryPolicy::none());
+    c.system_one(&"text", &one_noul()).await.unwrap();
+    let received = server.received_requests().await.unwrap();
+    assert!(
+        received[0]
+            .headers
+            .get("typesafe-danger-zone-images")
+            .is_none()
+    );
+    let body: serde_json::Value = serde_json::from_slice(&received[0].body).unwrap();
+    assert!(body.get("assets").is_none(), "{body}");
+}
+
+#[tokio::test]
+async fn an_unreferenced_image_is_refused_before_the_wire() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let mut assets = judgment::Assets::new();
+    let door = assets.add(fixture_image("square-300.png")).unwrap();
+    let state = json!({ "door": "somewhere else" });
+    let err = client(&server, RetryPolicy::none())
+        .evaluate(&Request::new(&state, "jev-preview", &one_noul()).with_assets(&assets))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidAsset { reference, reason } if *reference == door && reason.contains("nowhere")),
+        "{err}"
+    );
+    assert_eq!(err.request_id(), None);
+}
+
+/// The server's own refusals of an image come back as the one error group
+/// the caller fixes by sending less or re-exporting: a 413 and the
+/// `max_tokens_exceeded` 400 both read as too large, the images-off 400 as an
+/// invalid request with the server's words.
+#[tokio::test]
+async fn the_servers_image_refusals_are_mapped_by_remedy_and_not_retried() {
+    let server = MockServer::start().await;
+    let mut assets = judgment::Assets::new();
+    let door = assets.add(fixture_image("square-300.jpg")).unwrap();
+    let state = json!({ "door": door });
+    let c = client(&server, fast_retries(3));
+    for (status, body, too_large, kind) in [
+        (
+            413,
+            json!({ "detail": "Request body too large." }),
+            true,
+            None,
+        ),
+        (
+            400,
+            json!({ "detail": { "error_type": "max_tokens_exceeded" } }),
+            true,
+            Some("max_tokens_exceeded"),
+        ),
+        (
+            400,
+            json!({ "detail": "Images are not enabled for this request." }),
+            false,
+            None,
+        ),
+    ] {
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(body))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = c
+            .evaluate(&Request::new(&state, "jev-preview", &one_noul()).with_assets(&assets))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::InvalidRequest { status: s, kind: k, .. } if *s == status && k.as_deref() == kind),
+            "{status}: {err:?}"
+        );
+        assert_eq!(err.is_request_too_large(), too_large, "{status}: {err}");
+        server.verify().await;
+    }
+}
+
+#[tokio::test]
+async fn the_images_header_and_the_assets_field_are_the_clients_own() {
+    let err = CallOptions::new()
+        .header(name("typesafe-danger-zone-images"), value("true"))
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::ReservedHeader(h) if h == "typesafe-danger-zone-images"),
+        "{err}"
+    );
+    let err = CallOptions::new().extra("assets", json!({})).unwrap_err();
+    assert!(
+        matches!(&err, Error::ReservedField(f) if f == "assets"),
+        "{err}"
+    );
+}
+
+/// What the observer sees of a request with images: the count and the
+/// bytes, before any base64, once per call, and nothing for a request
+/// without any.
+#[tokio::test]
+async fn the_observer_is_told_how_many_image_bytes_a_call_sends() {
+    #[derive(Default)]
+    struct Counting {
+        calls: std::sync::Mutex<Vec<(String, usize, u64)>>,
+    }
+    impl Observer for Counting {
+        fn on_assets(&self, model: &str, images: usize, bytes: u64) {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((model.to_owned(), images, bytes));
+        }
+    }
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .mount(&server)
+        .await;
+    let observer = Arc::new(Counting::default());
+    let c = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .observer(observer.clone())
+        .build()
+        .unwrap();
+    let mut assets = judgment::Assets::new();
+    let a = assets.add(fixture_image("square-300.png")).unwrap();
+    let b = assets.add(fixture_image("square-300.jpg")).unwrap();
+    let state = json!({ "before": a, "after": b });
+    c.evaluate(&Request::new(&state, "jev-preview", &one_noul()).with_assets(&assets))
+        .await
+        .unwrap();
+    c.system_one(&"text", &one_noul()).await.unwrap();
+    let calls = observer.calls.lock().unwrap().clone();
+    assert_eq!(calls, vec![("jev-preview".to_owned(), 2, 717 + 3357)]);
+}
+
+// ---------------------------------------------------------------------------
+// Box: the fourth primitive over the wire
+// ---------------------------------------------------------------------------
+
+fn box_body(answer: &serde_json::Value) -> serde_json::Value {
+    json!({
+        "model": "jev-1.14.0",
+        "answers": { "mug": answer },
+        "usage": { "input_tokens": 290, "output_tokens": 21 }
+    })
+}
+
+/// The Box page's request and response: the question is its instructions
+/// alone, the header is sent even without an image in the request, and the
+/// answer reads as a `BoundingBox` with its confidence.
+#[tokio::test]
+async fn a_box_question_is_sent_with_the_header_and_read_as_a_bounding_box() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(header("typesafe-danger-zone-images", "true"))
+        .and(body_partial_json(json!({
+            "model": "jev-preview",
+            "questions": { "mug": { "type": "box", "instructions": "the coffee mug in `photo`" } }
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(box_body(&json!({
+            "type": "box",
+            "box": { "top": 0.25, "bottom": 0.82, "left": 0.44, "right": 0.84 },
+            "confidence": 0.92
+        }))))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut q = Questions::new();
+    let mug = q.r#box("mug", "the coffee mug in `photo`").unwrap();
+    let state = json!({ "photo": "a reference the mock does not check" });
+    let c = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .model("jev-preview")
+        .retry(RetryPolicy::none())
+        .build()
+        .unwrap();
+    let response = c.system_one(&state, &q).await.unwrap();
+    let found = response.get(&mug).unwrap();
+    assert_eq!(found.edges, judgment::BoxEdges::new(0.25, 0.82, 0.44, 0.84));
+    assert!(found.confidence_at_least(0.9));
+    let crop = found.to_pixels(1000, 500);
+    assert_eq!(
+        (crop.left, crop.top, crop.right, crop.bottom),
+        (440, 125, 840, 410)
+    );
+    let sent: serde_json::Value =
+        serde_json::from_slice(&server.received_requests().await.unwrap()[0].body).unwrap();
+    assert!(
+        sent["questions"]["mug"].get("criteria").is_none(),
+        "a Box has no criteria key: {sent}"
+    );
+}
+
+/// A null confidence is allowed by the document and reads as none.
+#[tokio::test]
+async fn a_box_without_confidence_is_read_as_none() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(box_body(&json!({
+            "type": "box",
+            "box": { "top": 0.1, "bottom": 0.2, "left": 0.3, "right": 0.4 },
+            "confidence": null
+        }))))
+        .mount(&server)
+        .await;
+    let mut q = Questions::new();
+    let mug = q.r#box("mug", "the mug in `photo`").unwrap();
+    let found = client(&server, RetryPolicy::none())
+        .system_one(&"photo", &q)
+        .await
+        .unwrap()
+        .get(&mug)
+        .unwrap();
+    assert_eq!(found.confidence, None);
+    assert!(!found.confidence_at_least(0.0));
+}
+
+/// Every way a Box answer can fail to be a region is refused without a
+/// retry, naming the question and the edge; a confidence outside `[0, 1]`
+/// or a missing edge does not decode at all.
+#[tokio::test]
+async fn a_box_that_is_not_a_region_is_refused_and_not_retried() {
+    let server = MockServer::start().await;
+    let c = client(&server, fast_retries(2));
+    let mut q = Questions::new();
+    q.r#box("mug", "the mug in `photo`").unwrap();
+    let edges = |top: f64, bottom: f64, left: f64, right: f64| {
+        json!({ "type": "box", "box": { "top": top, "bottom": bottom, "left": left, "right": right },
+                "confidence": 0.5 })
+    };
+    for (answer, needle) in [
+        (edges(0.25, 0.82, 0.44, 1.2), "right 1.2 is outside"),
+        (edges(-0.1, 0.82, 0.44, 0.84), "top -0.1 is outside"),
+        (
+            edges(0.25, 0.82, 0.84, 0.44),
+            "left 0.84 is not below right 0.44",
+        ),
+        (
+            edges(0.82, 0.25, 0.44, 0.84),
+            "top 0.82 is not below bottom 0.25",
+        ),
+        (
+            edges(0.25, 0.25, 0.44, 0.84),
+            "top 0.25 is not below bottom 0.25",
+        ),
+    ] {
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(box_body(&answer)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = c.system_one(&"photo", &q).await.unwrap_err();
+        assert!(
+            matches!(&err, Error::InvalidAnswer { id, reason, .. } if id == "mug" && reason.contains(needle)),
+            "{needle}: {err}"
+        );
+        assert!(err.is_unfit());
+        server.verify().await;
+    }
+    for (answer, what) in [
+        (
+            json!({ "type": "box", "box": { "top": 0.1, "bottom": 0.2, "left": 0.3, "right": 0.4 }, "confidence": 1.5 }),
+            "a confidence over 1",
+        ),
+        (
+            json!({ "type": "box", "box": { "top": 0.1, "bottom": 0.2, "left": 0.3 }, "confidence": 0.5 }),
+            "a missing edge",
+        ),
+        (
+            json!({ "type": "box", "box": { "top": 0.1, "bottom": 0.2, "left": 0.3, "right": "far" }, "confidence": 0.5 }),
+            "a string edge",
+        ),
+    ] {
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(box_body(&answer)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = c.system_one(&"photo", &q).await.unwrap_err();
+        assert!(matches!(err, Error::Decode { .. }), "{what}: {err}");
+        server.verify().await;
+    }
+    // A Noul where a Box was asked, and a Box where a Noul was asked.
+    server.reset().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(box_body(&json!({ "type": "noul", "noul": 0.5 }))),
+        )
+        .mount(&server)
+        .await;
+    let err = c.system_one(&"photo", &q).await.unwrap_err();
+    assert!(
+        matches!(&err, Error::AnswerTypeMismatch { expected: "box", actual, .. } if actual == "noul"),
+        "{err}"
+    );
+    let mut noul = Questions::new();
+    noul.noul("mug", "a mug?", None).unwrap();
+    server.reset().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(box_body(&edges(0.1, 0.2, 0.3, 0.4))),
+        )
+        .mount(&server)
+        .await;
+    let err = c.system_one(&"photo", &noul).await.unwrap_err();
+    assert!(
+        matches!(&err, Error::AnswerTypeMismatch { expected: "noul", actual, .. } if actual == "box"),
+        "{err}"
+    );
+}
+
+// Long context: the second danger-zone header, sent only when asked for.
+
+/// `CallOptions::long_context(true)` sends the header on that call and
+/// nothing else changes; a client built with it on sends it on every call,
+/// and a call's `false` turns it off for that call.
+#[tokio::test]
+async fn long_context_is_a_header_sent_only_when_asked_for() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(4)
+        .mount(&server)
+        .await;
+    let q = one_noul();
+    let request = Request::new(&"a long state", "jev-latest", &q);
+    let c = client(&server, RetryPolicy::none());
+    c.evaluate(&request).await.unwrap();
+    c.evaluate_with(&request, &CallOptions::new().long_context(true))
+        .await
+        .unwrap();
+    let on = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .long_context(true)
+        .build()
+        .unwrap();
+    assert!(on.long_context());
+    assert!(!c.long_context());
+    on.evaluate(&request).await.unwrap();
+    on.evaluate_with(&request, &CallOptions::new().long_context(false))
+        .await
+        .unwrap();
+
+    let received = server.received_requests().await.unwrap();
+    let header = |i: usize| {
+        received[i]
+            .headers
+            .get("typesafe-danger-zone-long-context")
+            .map(|v| v.to_str().unwrap().to_owned())
+    };
+    assert_eq!(header(0), None, "off by default");
+    assert_eq!(header(1), Some("true".to_owned()), "the call asked");
+    assert_eq!(header(2), Some("true".to_owned()), "the client asked");
+    assert_eq!(header(3), None, "the call turned it off");
+    for (i, sent) in received.iter().enumerate() {
+        assert!(
+            sent.headers.get("typesafe-danger-zone-images").is_none(),
+            "request {i}: long context is not images"
+        );
+        let body: serde_json::Value = serde_json::from_slice(&sent.body).unwrap();
+        assert_eq!(
+            body,
+            serde_json::to_value(&request).unwrap(),
+            "request {i}: the body is the request, nothing added"
+        );
+    }
+}
+
+/// The header is the client's own: refused as a per-call header and as a
+/// builder default, so the one way to send it is the option.
+#[tokio::test]
+async fn the_long_context_header_is_the_clients_own() {
+    let err = CallOptions::new()
+        .header(name("typesafe-danger-zone-long-context"), value("true"))
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::ReservedHeader(h) if h == "typesafe-danger-zone-long-context"),
+        "{err}"
+    );
+    let err = Client::builder()
+        .api_key("test-key")
+        .default_header(name("typesafe-danger-zone-long-context"), value("true"))
+        .build()
+        .unwrap_err();
+    assert!(matches!(&err, Error::ReservedHeader(_)), "{err}");
 }

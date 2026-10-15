@@ -24,7 +24,7 @@ Use the keys the application really sends, in their real shape. An invented stat
 
 ## 3. Label what you are sure of
 
-A label is written in the answer's own vocabulary: `true` or `false` for a Noul, an offered option key for a Choice, a level's text or index for a Score. A question left out of `expect` is asked and not graded. A wrong label costs more than a missing one, because the bar moves to fit it.
+A label is written in the answer's own vocabulary: `true` or `false` for a Noul, an offered option key for a Choice, a level's text or index for a Score, `{box: {top, bottom, left, right}}` as fractions of the image for a Box, with the case's image declared under `assets` by a path relative to the file ([Locate something with a Box question](locate-with-a-box.md)). A question left out of `expect` is asked and not graded. A wrong label costs more than a missing one, because the bar moves to fit it.
 
 ```yaml
     - id: charged-twice
@@ -61,10 +61,10 @@ jud check examples/jud/screening.jud examples/jud/screening-cases.jud
 
 <!-- transcript: jud check examples/jud/screening.jud examples/jud/screening-cases.jud -->
 ```text
-rubric    examples/jud/screening.jud: name refund-screening, jud/v1.3, 3 questions, 3 gates (untuned)
+rubric    examples/jud/screening.jud: name refund-screening, jud/v1 minor 3, 3 questions, 3 gates (untuned)
           questions sha256:92a19d0948fdaa410401d8c22b43d1783ac291b40af210d4aa4c81e8275e0e17
           policy    sha256:2c4cfcb3d2b6f200242a8589f22ca64d0627a611860f5498be20424a73261766
-cases     examples/jud/screening-cases.jud: name refund-screening-cases, jud/v1.3, 4 cases, bound to examples/jud/screening.jud
+cases     examples/jud/screening-cases.jud: name refund-screening-cases, jud/v1 minor 3, 4 cases, bound to examples/jud/screening.jud
           cases     sha256:0e0d8b5cb14429de6ab723450402612fd326e7e6d98fe64f229e2235f62c6cc9
 2 documents, 0 refused
 ```
@@ -86,10 +86,11 @@ For a Choice with `options_from: request`, each case supplies its options under 
 # Labelled cases for the refund-screening rubric, written in
 # docs/guides/label-cases.md. Each case labels the questions it is sure
 # about; a question left out is asked and not graded.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: refund-screening-cases
+  minor: 3
   description: Four messages, labelled by hand while writing the guide.
 spec:
   rubric: refund-screening

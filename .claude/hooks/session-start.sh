@@ -17,7 +17,14 @@
 #      committed export (refs/dolt/data cannot be pushed from here;
 #      scripts/bd-sync.sh says how the file travels).
 #   6. `mise run setup`: the git hooks (prek block, then beads) and `cargo fetch`.
-#   7. A warm build of every test target through mbx, so the first
+#   7. The two Claude Code plugins (scripts/claude-plugins.sh): `jud` from
+#      this checkout and `typesafe` from typesafe-ai/skills. A cloud session
+#      never installs the plugins .claude/settings.json declares (that needs
+#      the trust dialog a laptop shows), so the hook does, at user scope;
+#      they load at the next session start, which the snapshot makes every
+#      later session of the container, and the hook asks for a skills
+#      reload so the first session may see them too.
+#   8. A warm build of every test target through mbx, so the first
 #      `cargo test` in the session is incremental.
 set -euo pipefail
 
@@ -101,7 +108,11 @@ fi
 # 6. The git hooks (prek block, then beads) and a fetched registry.
 mise run setup
 
-# 7. A warm build through mbx (mise.toml wraps cargo), so the first test run is
+# 7. The Claude Code plugins, through the `claude` command the image carries;
+#    idempotent, and a missing `claude` is logged, not fatal.
+scripts/claude-plugins.sh install
+
+# 8. A warm build through mbx (mise.toml wraps cargo), so the first test run is
 #    incremental. Every feature, every target, nothing executed.
 if [ "${JUDGMENT_SESSION_SKIP_BUILD:-}" != "1" ]; then
   log "warming the build (cargo test --all-features --no-run)"
@@ -110,3 +121,8 @@ if [ "${JUDGMENT_SESSION_SKIP_BUILD:-}" != "1" ]; then
 fi
 
 log "done"
+
+# The plugins installed above load at the next session start; this asks the
+# session that is starting to re-scan skills and commands as well
+# (https://code.claude.com/docs/en/hooks, SessionStart `reloadSkills`).
+printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","reloadSkills":true}}\n'

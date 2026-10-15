@@ -30,6 +30,10 @@
             "$ref": "common.schema.json#/$defs/question"
           }
         },
+        "assets": {
+          "$ref": "common.schema.json#/$defs/assets",
+          "description": "The images the questions refer to, by the reference written in their instructions or criteria; paths are relative to this file."
+        },
         "policy": {
           "type": "object",
           "description": "Gates by question id. Which fields fit which primitive is checked against the question: threshold for a Noul, confidence and fallback for a Choice or a Score.",
@@ -89,7 +93,7 @@
               }
             },
             "additionalProperties": false,
-            "description": "One question's gate. Which fields fit which primitive is checked against the question: threshold for a Noul; confidence, bands and fallback for a Choice or a Score; level_at_least for a Score; strict for every bar."
+            "description": "One question's gate. Which fields fit which primitive is checked against the question: threshold for a Noul; confidence and bands for a Choice, a Score or a Box; fallback for a Choice or a Score; level_at_least for a Score; strict for every bar."
           }
         },
         "tuning": {

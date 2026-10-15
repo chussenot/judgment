@@ -2,7 +2,7 @@
 title: Patterns
 description: TypeSafe's four patterns, speculative fan-out, confidence-gated routing, composite scoring and intent routing, mapped onto the crate's types, with one runnable example each that replays committed recordings and three things the recordings teach about thresholds.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-15
 tags: [judgment, patterns, examples, thresholds, how-to]
 ---
 
@@ -34,6 +34,18 @@ Three things the pattern pages say that the examples make concrete.
 ## Other shapes
 
 The same primitives take other shapes, each with a [cookbook](https://docs.typesafe.ai/cookbooks): select a value or a span from candidates found in code rather than generate it; rerank retrieved passages with one question per pair; verify a claim against its evidence and escalate what fails; turn scores into features for a classical model. None has an example here yet. They are the same `Questions`, handles and backends arranged differently.
+
+With an image in the state ([Visual judgments](../concepts/visual-judgments.md)) the same primitives take five more, none with an example here beyond the shapes rubric (`examples/jud/shapes.jud`, [Locate something with a Box question](locate-with-a-box.md)):
+
+| Shape | The questions | What carries it, and the gate |
+|---|---|---|
+| **UI screenshot verification** | A Noul per expected element ("is the Save button enabled in `screen`"), a Choice for which state the screen is in | A `Questions` fanned out over one screenshot, one `Handle` per check; a threshold per Noul, deterministic layout checks left in code |
+| **Document page triage** | A Choice for the page's kind (invoice, form, letter, blank), a Score for legibility, a Noul for a signature | `Choice::confidence` with a bar and `none_of_these` as the way out; the Score's nearest level sends the page to OCR or to a person |
+| **Image moderation gate** | A Noul per policy line, each with its criteria, over one image | Thresholds tuned per line from labelled cases, with the margin the calibration error says they need; a Box beside the Noul that fires, so a reviewer sees what the model saw |
+| **Visual regression review** | A Score for how different a rendered page is from its reference, a Choice for the kind of difference (layout, colour, text, nothing) | Two images in one `Assets`, referenced from the state by name; the Score's confidence floor sends the unsure diffs to a person and the rest to a threshold |
+| **Element location for cropping** | A Noul for whether, a Box for where | `BoundingBox::edges.padded(..).to_pixels(..)` for the crop, a confidence bar on the Box and the Noul's threshold in front of it; graded by intersection over union against labelled boxes |
+
+In every row the model is asked what the application cannot compute, and the pixel arithmetic, the layout rules and the thresholds stay in code.
 
 ## Next
 

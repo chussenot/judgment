@@ -1,8 +1,9 @@
 # Recorded answer for case `bump-is-yours`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: bump-is-yours
+  minor: 3
 spec:
   elapsed_ms: 526
   fingerprint: sha256:138937d5b55c34f1b644528e89d76947cd0c9be75cf1a726acaf42c0af5130d2

@@ -2,7 +2,7 @@
 title: The crate
 description: The judgment crate as a dependency; its features and what each compiles, its modules with a link to the rustdoc of each, the error groups, the limits and the defaults.
 status: current
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-15
 tags: [judgment, crate, features, modules, errors, reference]
 ---
 
@@ -34,22 +34,23 @@ In the order of one call: a question is built, sent through a backend, answered,
 
 | Module | What it is for | Reference |
 |---|---|---|
-| `question` | `Questions` collects the typed questions of one request; adding one returns a `Handle<A>` that fixes the answer type (`noul`, `choice::<T>`, `score`, `dynamic_choice`). The `options!` macro writes an enum and its wire keys together. The builder checks the limits below before anything is sent. | [docs.rs](https://docs.rs/judgment/latest/judgment/question/index.html) |
-| `answer` | `Response` and the wire `Answer`; `Probability` and `Confidence`, which refuse a value outside `[0, 1]`; `Response::verify` holds a response against the questions; `Response::get(&handle)` reads `Noul`, `Choice<T>` or `Score`. | [docs.rs](https://docs.rs/judgment/latest/judgment/answer/index.html) |
-| `backend` | The `SystemOne` trait and three implementations beside the client: `Fake`, `Recorder`, `Replay`. | [docs.rs](https://docs.rs/judgment/latest/judgment/backend/index.html) |
-| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions`: the wire with the official SDKs' retries. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
+| `question` | `Questions` collects the typed questions of one request; adding one returns a `Handle<A>` that fixes the answer type (`noul`, `choice::<T>`, `score`, `dynamic_choice`, `r#box`). The `options!` macro writes an enum and its wire keys together. The builder checks the limits below before anything is sent. | [docs.rs](https://docs.rs/judgment/latest/judgment/question/index.html) |
+| `answer` | `Response` and the wire `Answer`; `Probability` and `Confidence`, which refuse a value outside `[0, 1]`; `Response::verify` holds a response against the questions; `Response::get(&handle)` reads `Noul`, `Choice<T>`, `Score` or `BoundingBox` (`BoxEdges` as fractions of the image, `PixelBox` at a size). | [docs.rs](https://docs.rs/judgment/latest/judgment/answer/index.html) |
+| `asset` | `Image` (a PNG or a JPEG, its format and size read from the bytes, the hosted API's limits checked), `ImageFormat`, and `Assets`, the request's images by reference. |  [docs.rs](https://docs.rs/judgment/latest/judgment/asset/index.html) |
+| `backend` | The `SystemOne` trait (`answer`, and `answer_with_assets` for a request with images) and three implementations beside the client: `Fake`, `Recorder`, `Replay`. | [docs.rs](https://docs.rs/judgment/latest/judgment/backend/index.html) |
+| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields and long context for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
 | `http` (`http`) | `RetryPolicy` and `send_with_retries`, the retry loop behind the client, public so another `reqwest` client can retry the same way. | [docs.rs](https://docs.rs/judgment/latest/judgment/http/index.html) |
 | `error` | `Error`, `Result`, `ValidationIssue`. | [docs.rs](https://docs.rs/judgment/latest/judgment/error/index.html) |
 | `eval` | `Recording`, `Judgment`, the metrics (`metrics`), the fingerprints (`canonical`) and the sweeps (`tuning`). | [docs.rs](https://docs.rs/judgment/latest/judgment/eval/index.html) |
-| `jud` (`jud`) | `parse`, `Rubric`, `Cases`, `Case`, `Verdict`, `parse_recording`, `recording_to_yaml`, `present`, `API_VERSION`. | [docs.rs](https://docs.rs/judgment/latest/judgment/jud/index.html) |
+| `jud` (`jud`) | `parse`, `Rubric`, `Cases`, `Case`, `Verdict`, `AssetSource`, `load_assets`, `BoxLabel`, `parse_recording`, `recording_to_yaml`, `present`, `API_VERSION`, `MINOR`. | [docs.rs](https://docs.rs/judgment/latest/judgment/jud/index.html) |
 | `observer` | `Observer`, the seam through which token usage and failed attempts reach the application's metrics. The crate emits `tracing` spans (`typesafe.evaluate`, `typesafe.list_models`) and no metrics of its own. | [docs.rs](https://docs.rs/judgment/latest/judgment/observer/index.html) |
 | `contract` (`openapi`) | `OPENAPI_DOCUMENT`. | [docs.rs](https://docs.rs/judgment/latest/judgment/contract/index.html) |
 
-The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCriteria`, the answer types, `SystemOne`, `Fake`, `Recorder`, `Replay`, `Error`, `Result`, `ValidationIssue`, `Observer` and, with `http`, the client types.
+The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCriteria`, the answer types, `Assets`, `Image`, `ImageFormat`, `SystemOne`, `Fake`, `Recorder`, `Replay`, `Error`, `Result`, `ValidationIssue`, `Observer` and, with `http`, the client types.
 
 ### The `jud` feature
 
-`judgment::jud` implements [The .jud format](jud-format.md) at `API_VERSION` (`jud/v1.3`), the one apiVersion it reads and writes. `Rubric` has `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `gate`, `lower` and `apply`; `Cases` has `parse`, `to_yaml`, `fingerprint` and `bind`, with `Case::request` and `Case::per_turn`; `grade` grades one case against one response; `present` is the state-path test; `parse_recording` and `recording_to_yaml` read and write the third kind into `eval::Recording`. `Questions::handle` gives a typed handle to a question read from a file. `Replay` reads `.jud` recordings beside its `.json` ones.
+`judgment::jud` implements [The .jud format](jud-format.md) at `API_VERSION` (`jud/v1`) up to `MINOR` (4), the line it reads and writes; the earlier spelling of minor 3, `jud/v1.3`, is read as it stands (`EARLIER_SPELLINGS`). `Rubric` has `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `gate`, `lower` and `apply`; `Cases` has `parse`, `to_yaml`, `fingerprint` and `bind`, with `Case::request` and `Case::per_turn`; `grade` grades one case against one response (a Box label by intersection over union); `Rubric::load_assets` and `Case::load_assets` read a document's declared images into a request's `Assets`; `present` is the state-path test; `parse_recording` and `recording_to_yaml` read and write the third kind into `eval::Recording`. `Questions::handle` gives a typed handle to a question read from a file. `Replay` reads `.jud` recordings beside its `.json` ones.
 
 ## Errors
 
@@ -58,7 +59,7 @@ The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCri
 | Group | Variants | Remedy |
 |---|---|---|
 | Configuration | `MissingApiKey`, `InvalidApiKey`, `Url`, `ReservedHeader`, `ReservedField` | fix the builder's input; refused before any call |
-| Request refused | `Unauthorized`, `PermissionDenied`, `InvalidRequest`, `InvalidQuestion`, `DuplicateQuestionId` | fix the key, the permission or the question |
+| Request refused | `Unauthorized`, `PermissionDenied`, `InvalidRequest`, `InvalidQuestion`, `DuplicateQuestionId`, `InvalidImage`, `InvalidAsset`, `RequestTooLarge` | fix the key, the permission, the question or the image; an image outside the limits is refused before any call |
 | Account out of credit | `PaymentRequired` (a 402, OpenRouter's "Insufficient credits") | add credit; a retry or a new key does not help |
 | Transient, after the retries | `RateLimited`, `Overloaded`, `Http` | retry later, fall back, or raise the policy |
 | Transport | `Transport`, `ResponseTooLarge` | the network, the server, or the body cap |
@@ -78,6 +79,11 @@ Checked by the builder before a request is sent, and by the `.jud` reader:
 | Question ids | non-empty, unique | |
 | Option keys | non-empty | |
 | Response body | 8 MiB by default | `RetryPolicy::max_body_bytes` |
+| An image's side | 256 to 1568 pixels | `asset::MIN_SIDE_PX`, `asset::MAX_SIDE_PX` |
+| An image's pixels | 78,400 to 2,458,624 | `asset::MIN_PIXELS`, `asset::MAX_PIXELS` |
+| An image's bytes | 16 MiB | `asset::MAX_IMAGE_BYTES` |
+| A request's images, and its body | 32 MiB | `asset::MAX_REQUEST_BYTES` |
+| A reference | 1 to 1024 bytes, 65,536 bytes for all of a request's | `asset::MAX_REFERENCE_BYTES`, `asset::MAX_REFERENCES_BYTES` |
 
 ## Defaults
 

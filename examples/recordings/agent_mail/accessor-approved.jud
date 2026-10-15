@@ -1,8 +1,9 @@
 # Recorded answer for case `accessor-approved`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: accessor-approved
+  minor: 3
 spec:
   elapsed_ms: 141
   fingerprint: sha256:53e96a4f04a61dfe91a587c9d52eb349b30f70697f64c9ce51dd9ae6ab0fba45
