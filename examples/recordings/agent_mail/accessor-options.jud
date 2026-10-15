@@ -1,0 +1,27 @@
+# Recorded answer for case `accessor-options`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: accessor-options
+spec:
+  elapsed_ms: 132
+  fingerprint: sha256:3e9095c7cdf6bc5f6e538a2f8bc73aa5abcfa430a226c0c1ef3cbf1231c910d7
+  recorded_at: "2026-10-14T04:20:11Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.34
+        type: noul
+      needs_action:
+        noul: 0.97
+        type: noul
+      status_only:
+        noul: 0.02
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3a71b74ecb7cd15b28ac49533
+    usage:
+      input_tokens: 1046
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

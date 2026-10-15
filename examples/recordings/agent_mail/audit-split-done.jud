@@ -1,0 +1,27 @@
+# Recorded answer for case `audit-split-done`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: audit-split-done
+spec:
+  elapsed_ms: 163
+  fingerprint: sha256:462488dc433dd2c27262b4768051bd2faac8cc83703f94b5c60fd1a2d9dfa09f
+  recorded_at: "2026-10-14T04:20:14Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.91
+        type: noul
+      needs_action:
+        noul: 0.76
+        type: noul
+      status_only:
+        noul: 0.03
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3b02673ac916df59dc5479727
+    usage:
+      input_tokens: 1322
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

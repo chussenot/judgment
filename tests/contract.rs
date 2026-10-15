@@ -1014,9 +1014,9 @@ async fn every_fake_response_is_a_system_one_response() {
 }
 
 /// Every `examples/recordings/<example>` directory: the benchmark sample's
-/// Laya answers, the four pattern examples' Jev answers and the `.jud`
-/// example's scripted recordings. Six, so an example committed without its
-/// recordings fails here.
+/// Laya answers, the four pattern examples' Jev answers, the `.jud`
+/// example's scripted recordings and the agent-mail rubric's Jev answers.
+/// Seven, so an example committed without its recordings fails here.
 fn recording_dirs() -> Vec<std::path::PathBuf> {
     let recordings = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/recordings");
     let mut dirs: Vec<_> = std::fs::read_dir(&recordings)
@@ -1025,7 +1025,7 @@ fn recording_dirs() -> Vec<std::path::PathBuf> {
         .filter(|dir| dir.is_dir())
         .collect();
     dirs.sort();
-    assert_eq!(dirs.len(), 6, "{dirs:?}");
+    assert_eq!(dirs.len(), 7, "{dirs:?}");
     dirs
 }
 

@@ -1,0 +1,27 @@
+# Recorded answer for case `reverted-uncommitted`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: reverted-uncommitted
+spec:
+  elapsed_ms: 139
+  fingerprint: sha256:b6f30761a5c39b588e60dacae050895b0aa19b79b8b5ab3354dbcee33f82b04d
+  recorded_at: "2026-10-14T04:20:09Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.98
+        type: noul
+      needs_action:
+        noul: 0.98
+        type: noul
+      status_only:
+        noul: 0.02
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a39e5479549f8bdb34b350ef5a
+    usage:
+      input_tokens: 1075
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

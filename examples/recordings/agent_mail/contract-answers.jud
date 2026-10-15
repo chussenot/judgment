@@ -1,0 +1,27 @@
+# Recorded answer for case `contract-answers`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: contract-answers
+spec:
+  elapsed_ms: 141
+  fingerprint: sha256:1119c1f51a4da934d4e7c9f6abcc0e0f0d54b62d5c28d4cc816cb9d412e6d095
+  recorded_at: "2026-10-14T04:20:11Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.92
+        type: noul
+      needs_action:
+        noul: 0.79
+        type: noul
+      status_only:
+        noul: 0.03
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3a58273c2adc7c09e6db95733
+    usage:
+      input_tokens: 1057
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

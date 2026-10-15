@@ -1,0 +1,27 @@
+# Recorded answer for case `filter-landed`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: filter-landed
+spec:
+  elapsed_ms: 149
+  fingerprint: sha256:a6930474ad876a6c24f7bf0fe88ff2f2305e7dd87ba3bd051a8042962dc59ab3
+  recorded_at: "2026-10-14T04:20:13Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.2
+        type: noul
+      needs_action:
+        noul: 0.05
+        type: noul
+      status_only:
+        noul: 0.17
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3ae32725c9548bf6b3cdd75c8
+    usage:
+      input_tokens: 751
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

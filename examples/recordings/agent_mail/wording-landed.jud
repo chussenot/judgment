@@ -1,0 +1,27 @@
+# Recorded answer for case `wording-landed`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: wording-landed
+spec:
+  elapsed_ms: 170
+  fingerprint: sha256:59314b512a6bcde46ee53a4ffa18fbe4bdd22e1a892db632a52d160ab9f3bd2e
+  recorded_at: "2026-10-14T04:20:10Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.45
+        type: noul
+      needs_action:
+        noul: 0.3
+        type: noul
+      status_only:
+        noul: 0.18
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3a3a677909e7714e57e8e93b4
+    usage:
+      input_tokens: 1014
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

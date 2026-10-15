@@ -1,0 +1,27 @@
+# Recorded answer for case `confirmed-third-contradiction`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: confirmed-third-contradiction
+spec:
+  elapsed_ms: 144
+  fingerprint: sha256:9edc089a253dbf6263f64a9514990eda65666c4e5ec3937699eed70c74374124
+  recorded_at: "2026-10-14T04:20:10Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.86
+        type: noul
+      needs_action:
+        noul: 0.41
+        type: noul
+      status_only:
+        noul: 0.04
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3a3017f03b04dc5dc3812b7af
+    usage:
+      input_tokens: 1419
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai
