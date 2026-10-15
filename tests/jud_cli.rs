@@ -1367,13 +1367,51 @@ async fn an_asset_on_the_command_line_is_sent_and_a_box_is_printed_in_pixels() {
         assert_eq!(out.status.code(), Some(2), "{args:?}: {}", stderr(&out));
         assert!(stderr(&out).contains(needle), "{args:?}: {}", stderr(&out));
     }
-    // A reference the state does not carry is the client's refusal, before
-    // the wire: the server would answer 400 to an unreferenced asset.
-    let other = format!("other={image}");
-    let out = jud(&[rubric, "--asset", &other], state, &env, &home);
-    assert!(!out.status.success());
+}
+
+/// A reference the state does not carry is refused before any backend is
+/// opened, with the flag named and status 2, against a server (which would
+/// answer 400 to an unreferenced asset) and under a replay (which would
+/// find no recording) alike.
+#[test]
+fn an_asset_the_state_does_not_refer_to_is_refused_before_any_backend() {
+    let home = config_home();
+    let rubric_path = home.join("mug.jud");
+    std::fs::write(
+        &rubric_path,
+        "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: mug\n  minor: 4\nspec:\n  questions:\n    mug: {type: box, instructions: the mug in `photo`}\n",
+    )
+    .unwrap();
+    let rubric = rubric_path.to_str().unwrap();
+    let other = concat!(
+        "other=",
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/images/square-300.png"
+    );
+    let state = r#"{"photo": "photo"}"#;
+    // A key and a closed port: nothing is asked, so neither is reached.
+    let env = [
+        ("TYPESAFE_API_KEY", "test-key"),
+        ("TYPESAFE_BASE_URL", "http://127.0.0.1:9"),
+    ];
+    let out = jud(&[rubric, "--asset", other], state, &env, &home);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
     assert!(
-        stderr(&out).contains("referenced nowhere"),
+        stderr(&out)
+            .starts_with("jud: --asset other is referenced nowhere in the state or the questions"),
+        "{}",
+        stderr(&out)
+    );
+    let recordings = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/recordings/shapes");
+    let out = jud(
+        &[rubric, "--replay", recordings, "--asset", other],
+        state,
+        &[],
+        &home,
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("--asset other is referenced nowhere"),
         "{}",
         stderr(&out)
     );

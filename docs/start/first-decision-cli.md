@@ -140,7 +140,7 @@ echo '{"image": "shape-01"}' \
 }
 ```
 
-The Box's verdict is `located`: the edges as fractions of the image, the confidence, and the same box in the pixels of the 320 by 320 file. A Box always answers with a box, which is why the Noul is beside it ([Visual judgments](../concepts/visual-judgments.md)); [Locate something with a Box question](../guides/locate-with-a-box.md) goes on from here, image with no circle included.
+The Box's verdict is `located`: the edges as fractions of the image, the confidence, and the same box in the pixels of the 320 by 320 file. A Box always answers with a box, which is why the Noul is beside it ([Visual judgments](../concepts/visual-judgments.md)); [Get verdicts on images from the command line](../guides/images-from-the-command-line.md) goes on from here, image with nothing in it, refusals and the labelled loop included.
 
 ## Next
 

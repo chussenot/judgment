@@ -28,6 +28,7 @@ nav:
       - Patterns: guides/patterns.md
       - Ask a question about an image: guides/ask-about-an-image.md
       - Locate something with a Box question: guides/locate-with-a-box.md
+      - Get verdicts on images from the command line: guides/images-from-the-command-line.md
       - Use long context: guides/use-long-context.md
   - Reference:
       - The jud command line: reference/cli.md

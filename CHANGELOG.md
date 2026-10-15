@@ -114,6 +114,13 @@ All notable changes to the `judgment` crate. The format follows
   does not say "nothing here" when a round logo is on the page, which the
   Noul beside it does. `tests/jud.rs` replays the recordings and pins the
   counts.
+- [Get verdicts on images from the command line](docs/guides/images-from-the-command-line.md),
+  a guide that walks a shell user from a rubric that names an image to a
+  verdict with `jud` alone: `--asset` and `--pixels`, the verdicts a Noul
+  and a Box print and why the Noul is read first, what is refused before
+  any call, images a rubric always sends, the labelled loop over photos and
+  what a real run needs and costs; every transcript is replayed from the
+  stamps recordings and held to the binary by `tests/docs_examples.rs`.
 - Long context (<https://docs.typesafe.ai/models#long-context>): both
   context limits raised from 64k tokens per request and 32k per question
   to 262k through the `TypeSafe-Danger-Zone-Long-Context: true` header,
@@ -187,6 +194,14 @@ All notable changes to the `judgment` crate. The format follows
   the ROC curve 0.90, 0.89, 0.97) and threshold badly at 0.5, so the gates
   are the ones `jud tune` read off the 33 cases, marked as a starting point;
   `tests/jud.rs` replays every case under them.
+
+### Fixed
+
+- `jud RUBRIC --asset REF=PATH` with a reference the state does not carry is
+  refused before any backend is opened, with status 2 and a message naming
+  the flag, under `--replay` as against a server; it was the client's
+  refusal reported as a backend failure (status 1) against a server, and a
+  request nobody recorded under a replay.
 
 ## [0.13.0] - 2026-10-10
 

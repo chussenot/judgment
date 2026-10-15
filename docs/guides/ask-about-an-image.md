@@ -35,7 +35,7 @@ spec:
 echo '{"photo": "door", "when": "7 pm"}' | jud door.jud --asset door=frames/door-1912.png
 ```
 
-A reference the state does not carry is refused before any call ("referenced nowhere"), as is a file that is not a PNG or a JPEG, or one outside the limits. An image every request sends goes in the rubric instead, under `spec.assets` by a path relative to the file ([Assets](../reference/jud-format.md#assets)); a cases document declares each case's image the same way, so `jud record`, `jud eval` and `jud tune` need no flag.
+A reference the state does not carry is refused before any call ("referenced nowhere"), as is a file that is not a PNG or a JPEG, or one outside the limits. An image every request sends goes in the rubric instead, under `spec.assets` by a path relative to the file ([Assets](../reference/jud-format.md#assets)); a cases document declares each case's image the same way, so `jud record`, `jud eval` and `jud tune` need no flag. [Get verdicts on images from the command line](images-from-the-command-line.md) walks the whole of it from the shell, verdicts, refusals and the labelled loop included, replayed with no key.
 
 ## In Rust
 

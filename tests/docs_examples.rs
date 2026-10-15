@@ -360,6 +360,78 @@ fn the_tutorial_and_the_box_guide_replay_the_shapes_recordings() {
     );
 }
 
+/// The command-line image guide replays the stamps recordings, each keyed
+/// by its page, and shows `jud check`, a dry run over the committed
+/// directory and the `jud eval` report, all with no key.
+#[test]
+fn the_image_guide_replays_the_stamps_recordings() {
+    const GUIDE: &str = "docs/guides/images-from-the-command-line.md";
+    let replay = |page: &str, extra: &[&str], label: &str| {
+        let asset = format!("{page}=examples/jud/images/{page}.png");
+        let mut args = vec![
+            "--replay",
+            "examples/recordings/stamps",
+            "--asset",
+            asset.as_str(),
+        ];
+        args.extend_from_slice(extra);
+        args.push("examples/jud/stamps.jud");
+        assert_transcript(
+            GUIDE,
+            label,
+            &args,
+            &format!("{{\"page\": \"{page}\"}}"),
+            &[],
+        );
+    };
+    replay("page-00", &[], "replay page-00");
+    replay(
+        "page-00",
+        &["--pixels", "1200x1560"],
+        "replay page-00 --pixels 1200x1560",
+    );
+    replay("page-02", &[], "replay page-02");
+    replay("page-08", &[], "replay page-08");
+    assert_transcript(
+        GUIDE,
+        "jud check examples/jud/stamps.jud examples/jud/stamps-cases.jud",
+        &[
+            "check",
+            "examples/jud/stamps.jud",
+            "examples/jud/stamps-cases.jud",
+        ],
+        "",
+        &[],
+    );
+    assert_transcript(
+        GUIDE,
+        "jud record examples/jud/stamps.jud examples/jud/stamps-cases.jud --out examples/recordings/stamps --dry-run",
+        &[
+            "record",
+            "examples/jud/stamps.jud",
+            "examples/jud/stamps-cases.jud",
+            "--out",
+            "examples/recordings/stamps",
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    assert_transcript(
+        GUIDE,
+        "jud eval examples/jud/stamps.jud examples/jud/stamps-cases.jud --replay examples/recordings/stamps",
+        &[
+            "eval",
+            "examples/jud/stamps.jud",
+            "examples/jud/stamps-cases.jud",
+            "--replay",
+            "examples/recordings/stamps",
+        ],
+        "",
+        &[],
+    );
+}
+
 const TRIAGE: &str = "examples/jud/triage.jud";
 const TRIAGE_CASES: &str = "examples/jud/triage-cases.jud";
 const TRIAGE_RECORDINGS: &str = "examples/recordings/jud_calibration";
