@@ -1,0 +1,17 @@
+# Loaded on top of mise.toml when MISE_ENV=cloud, which .claude/hooks/session-start.sh
+# sets for a Claude Code cloud session (docs/project/contributing.md, "Cloud sessions").
+#
+# The sandbox cannot reach api.github.com for repositories other than this one,
+# so the backends mise.toml names cannot list versions (mr-boxington, prek,
+# github:gastownhall/beads) and mise's rust core cannot resolve a channel.
+# Direct release downloads and crates.io work, so the same tools, at the same
+# versions, come from pinned release URLs; rust stays rustup's, which reads
+# rust-toolchain.toml. Ollama (1.4 GB) serves only the live Ollama tests and is
+# not installed. Keep the versions in step with mise.toml.
+[settings]
+disable_tools = ["rust", "prek", "mr-boxington", "github:gastownhall/beads", "ollama"]
+
+[tools]
+"http:mbx" = { version = "1.22.0", url = "https://github.com/jdx/mr-boxington/releases/download/v1.22.0/mbx-x86_64-unknown-linux-gnu.tar.gz" }
+"http:prek" = { version = "0.5.5", url = "https://github.com/j178/prek/releases/download/v0.5.5/prek-x86_64-unknown-linux-gnu.tar.gz" }
+"http:bd" = { version = "1.3.1", url = "https://github.com/gastownhall/beads/releases/download/v1.3.1/beads_1.3.1_linux_amd64.tar.gz" }
