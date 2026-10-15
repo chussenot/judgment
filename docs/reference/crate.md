@@ -24,9 +24,9 @@ Without `http` the crate is the questions, the answers, `Fake`, `Recorder`, `Rep
 
 ```toml
 [dependencies]
-judgment = "0.13"                                   # the client; pin the minor, 0.x may break between minors
-judgment = { version = "0.13", features = ["jud"] } # with the .jud format
-judgment = { version = "0.13", default-features = false }   # no HTTP client
+judgment = "0.14"                                   # the client; pin the minor, 0.x may break between minors
+judgment = { version = "0.14", features = ["jud"] } # with the .jud format
+judgment = { version = "0.14", default-features = false }   # no HTTP client
 ```
 
 ## Modules

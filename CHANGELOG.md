@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-15
+
 ### Added
 
 - Images in a request, as Jev 1.13 and later take them
