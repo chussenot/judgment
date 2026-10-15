@@ -163,6 +163,18 @@ run = ["cargo clean", "mbx clean"]
 # Live checks (never part of `check`; the gate stays offline)
 # ---------------------------------------------------------------------------
 
+[tasks."openapi:drift"]
+description = "Compare the vendored OpenAPI document with the one api.typesafe.ai serves today (network, no key); names the paths and schemas that changed"
+run = "cargo test --test openapi_drift --features http -- --ignored --nocapture"
+
+[tasks."openapi:refresh"]
+description = "Rewrite tests/fixtures/typesafe-openapi.json from the live document (the only sanctioned way, tests/openapi_drift.rs), then run tests/contract.rs against it; review the diff before committing"
+run = [
+  "env JUDGMENT_OPENAPI_WRITE=1 cargo test --test openapi_drift --features http -- --ignored --nocapture",
+  "cargo test --test contract --all-features",
+  "git diff --stat -- tests/fixtures/typesafe-openapi.json",
+]
+
 [tasks."live:typesafe"]
 description = "The ignored live tests against the hosted TypeSafe API; needs TYPESAFE_API_KEY and spends a few model calls"
 run = '''
