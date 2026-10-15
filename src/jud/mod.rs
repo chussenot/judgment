@@ -20,6 +20,10 @@ mod cases;
 mod rubric;
 
 pub use cases::{BoxLabel, Case, Cases, Expect, FromTurn, Turn, grade, turns};
+
+use std::path::Path;
+
+use crate::asset::{Assets, Image, ImageFormat};
 pub use rubric::{
     Band, Deferred, Gate, LevelRef, OptionsFrom, Policy, Rubric, RubricQuestion, Supplied, Tuning,
     Verdict,
@@ -34,7 +38,7 @@ pub const API_VERSION: &str = "jud/v1";
 /// minor only adds (`docs/reference/stability.md`), so every lower minor
 /// is read too; a document declaring a higher one needs a later release
 /// and is refused by number ([`Error::Minor`]).
-pub const MINOR: u32 = 3;
+pub const MINOR: u32 = 4;
 
 /// How a minor was spelled before `metadata.minor` existed, with the
 /// minor it is: `jud/v1.3` wrote its minor into the `apiVersion` string.
@@ -156,6 +160,212 @@ pub enum Error {
 
 /// Result alias.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Where a document's image comes from (`docs/reference/jud-format.md`, Assets;
+/// decision 0025): a file beside the document, or the bytes inline. The
+/// map an entry sits in is keyed by the reference written where the image
+/// belongs, as the wire's `assets` is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssetSource {
+    /// `image`, the one kind; written always, read optionally.
+    #[serde(rename = "type", default = "image_type")]
+    pub kind: String,
+    /// A path relative to the document's directory, never absolute and never
+    /// leaving it; the format is read from the file and checked against
+    /// `format` when one is written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// `png`, `jpg` or `jpeg`: required with `data_base64`, optional with a path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    /// The file's bytes as the wire carries them, for a small image a
+    /// document keeps to itself; a path is the usual choice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_base64: Option<String>,
+}
+
+fn image_type() -> String {
+    "image".to_owned()
+}
+
+impl AssetSource {
+    /// An image at `path`, relative to the document.
+    pub fn path(path: impl Into<String>) -> Self {
+        Self {
+            kind: image_type(),
+            path: Some(path.into()),
+            format: None,
+            data_base64: None,
+        }
+    }
+
+    /// An image inline, as `format` and its base64.
+    pub fn inline(image: &Image) -> Self {
+        Self {
+            kind: image_type(),
+            path: None,
+            format: Some(image.format().wire_name().to_owned()),
+            data_base64: Some(image.to_base64()),
+        }
+    }
+
+    /// The shape checks a reader makes without touching a file: the kind is
+    /// `image`, exactly one of `path` and `data_base64`, a format the wire
+    /// takes, `format` beside `data_base64`, a relative path that stays in
+    /// the directory. `field` names the entry in a refusal.
+    pub(crate) fn check(&self, field: &str) -> Result<()> {
+        let refuse = |reason: String| {
+            Err(Error::Invalid {
+                field: field.to_owned(),
+                reason,
+            })
+        };
+        if self.kind != "image" {
+            return refuse(format!(
+                "`type: {}` is not an asset kind; the one kind is `image`",
+                self.kind
+            ));
+        }
+        match (&self.path, &self.data_base64) {
+            (Some(_), Some(_)) => {
+                return refuse(
+                    "has both `path` and `data_base64`; an image comes one way".to_owned(),
+                );
+            }
+            (None, None) => {
+                return refuse(
+                    "needs `path` (relative to the document) or `data_base64`".to_owned(),
+                );
+            }
+            (None, Some(_)) if self.format.is_none() => {
+                return refuse(
+                    "`format` (png, jpg or jpeg) is required with `data_base64`".to_owned(),
+                );
+            }
+            _ => {}
+        }
+        if let Some(format) = &self.format
+            && ImageFormat::from_wire_name(format).is_none()
+        {
+            return refuse(format!(
+                "`format: {format}` is not one the API takes: png, jpg or jpeg"
+            ));
+        }
+        if let Some(path) = &self.path {
+            let p = Path::new(path);
+            let leaves = p.is_absolute()
+                || p.components().any(|c| {
+                    matches!(
+                        c,
+                        std::path::Component::ParentDir | std::path::Component::Prefix(_)
+                    )
+                });
+            if path.is_empty() || leaves {
+                return refuse(format!(
+                    "`path: {path}` must be relative to the document and stay under its directory"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// The image: read from `base` joined with the path, or decoded from
+    /// the base64. [`Error::Invalid`] names the entry and what went wrong,
+    /// the path included, so a file that moved fails loudly by name.
+    pub fn load(&self, field: &str, base: &Path) -> Result<Image> {
+        self.check(field)?;
+        let invalid = |reason: String| Error::Invalid {
+            field: field.to_owned(),
+            reason,
+        };
+        let image = match (&self.path, &self.data_base64) {
+            (Some(path), _) => {
+                let full = base.join(path);
+                let image = Image::read(&full)
+                    .map_err(|e| invalid(format!("cannot load the image at {path}: {e}")))?;
+                if let Some(format) = &self.format
+                    && ImageFormat::from_wire_name(format) != Some(image.format())
+                {
+                    return Err(invalid(format!(
+                        "{path} is a {} but the entry says `format: {format}`",
+                        image.format()
+                    )));
+                }
+                image
+            }
+            (None, Some(text)) => Image::from_base64(text, self.format.as_deref())
+                .map_err(|e| invalid(e.to_string()))?,
+            (None, None) => unreachable!("checked above"),
+        };
+        Ok(image)
+    }
+}
+
+/// The reference and shape checks over a document's asset map, and that
+/// every reference appears in `referenced_json` (the questions' or the
+/// state's JSON text): the server refuses an unreferenced asset with a 400,
+/// and a reference that appears nowhere is a typo somewhere.
+pub(crate) fn check_assets(
+    field: &str,
+    assets: &IndexMap<String, AssetSource>,
+    referenced_json: &str,
+) -> Result<()> {
+    let mut total = 0;
+    for (reference, source) in assets {
+        let entry = format!("{field}.{reference}");
+        if reference.trim().is_empty() || reference.len() > crate::asset::MAX_REFERENCE_BYTES {
+            return Err(Error::Invalid {
+                field: entry,
+                reason: format!(
+                    "a reference is text, not empty and at most {} bytes",
+                    crate::asset::MAX_REFERENCE_BYTES
+                ),
+            });
+        }
+        total += reference.len();
+        source.check(&entry)?;
+        let quoted = serde_json::to_string(reference).unwrap_or_default();
+        if !referenced_json.contains(quoted.trim_matches('"')) {
+            return Err(Error::Invalid {
+                field: entry,
+                reason: "is referenced nowhere; write the reference where the image belongs, or drop the entry".to_owned(),
+            });
+        }
+    }
+    if total > crate::asset::MAX_REFERENCES_BYTES {
+        return Err(Error::Invalid {
+            field: field.to_owned(),
+            reason: format!(
+                "the references weigh {total} bytes together, over the {} the API allows",
+                crate::asset::MAX_REFERENCES_BYTES
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// Load a document's declared images into the request's [`Assets`], each
+/// path relative to `base`, the document's directory. A reference already
+/// in `into` must name the same bytes ([`Error::Invalid`] otherwise), so a
+/// rubric's images and a case's merge into one request.
+pub fn load_assets(
+    field: &str,
+    declared: &IndexMap<String, AssetSource>,
+    base: &Path,
+    into: &mut Assets,
+) -> Result<()> {
+    for (reference, source) in declared {
+        let entry = format!("{field}.{reference}");
+        let image = source.load(&entry, base)?;
+        into.insert(reference.clone(), image)
+            .map_err(|e| Error::Invalid {
+                field: entry,
+                reason: e.to_string(),
+            })?;
+    }
+    Ok(())
+}
 
 /// Parse a document of any kind, YAML or JSON, by its `kind`.
 pub fn parse(text: &str) -> Result<Document> {

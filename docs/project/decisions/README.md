@@ -2,7 +2,7 @@
 title: Decisions
 description: The architecture decision records that govern the judgment crate's design, how they are numbered, how a record is written, and what has moved since each was accepted.
 status: current
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-15
 tags: [judgment, decisions, adr, madr]
 ---
 
@@ -26,6 +26,8 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0022](0022-jud-reports-what-the-tuning-loop-counted-by-hand.md) | jud reports what the tuning loop counted by hand | accepted |
 | [0023](0023-jud-rubric-takes-options-on-the-command-line.md) | jud RUBRIC takes per-request options on the command line | accepted |
 | [0024](0024-images-are-part-of-the-request.md) | Images are part of the request, not a call option | accepted |
+| [0025](0025-a-document-names-an-image-by-path.md) | A document names an image by a path relative to itself | accepted |
+| [0026](0026-a-box-is-graded-by-intersection-over-union.md) | A Box is graded by intersection over union | accepted |
 
 ## Status notes
 
@@ -46,6 +48,7 @@ Records are not edited after acceptance; a fact that has moved since is noted he
 - 0022 adds to 0021's commands without changing them: per-outcome counts, a majority and three signals in `jud eval`, `jud record --dry-run`, and a fourth subcommand, `jud split`, a third place that writes files.
 - 0019 says options supplied for a Choice that takes them from the request "are left for later". [0023](0023-jud-rubric-takes-options-on-the-command-line.md) settles it: `jud RUBRIC` takes them through `--options` and `--options-file`. 0019 stands otherwise.
 - 0021 says cases carry their options "where stdin cannot". Stdin still cannot; since [0023](0023-jud-rubric-takes-options-on-the-command-line.md) the command line can.
+- 0020's "As applied" section says every committed document was rewritten to `minor: 3`. Minor 4 ([0025](0025-a-document-names-an-image-by-path.md), [0026](0026-a-box-is-graded-by-intersection-over-union.md)) shipped in the same release, 0.14.0: the writer writes `minor: 4`, the documents that use nothing minor 4 added stay at `minor: 3`, and the twelve-month clock for a minor 3 document runs from 0.14.0.
 
 ## Writing a record
 

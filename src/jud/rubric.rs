@@ -5,13 +5,17 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
+use std::path::Path;
+
 use super::{
-    API_VERSION, Envelope, Error, MINOR, Metadata, Result, check_name, check_path, from_text,
-    present, refuse_extra, some, to_yaml,
+    API_VERSION, AssetSource, Envelope, Error, MINOR, Metadata, Result, check_assets, check_name,
+    check_path, from_text, load_assets, present, refuse_extra, some, to_yaml,
 };
 use crate::answer::{
-    BoundingBox, BoxEdges, Choice, Confidence, FromAnswer, Noul, Probability, Response, Score,
+    BoundingBox, BoxEdges, Choice, Confidence, FromAnswer, Noul, PixelBox, Probability, Response,
+    Score,
 };
+use crate::asset::Assets;
 use crate::eval::canonical;
 use crate::question::{NoulCriteria, Question, Questions, validate_with};
 
@@ -36,6 +40,10 @@ pub struct Rubric {
     pub annotations: IndexMap<String, String>,
     /// `spec.questions` as written, in wire order, with their declarations.
     pub questions: IndexMap<String, RubricQuestion>,
+    /// `spec.assets`: the images the questions refer to, by reference
+    /// ([`Rubric::load_assets`]); part of no fingerprint, the request's
+    /// names them by their bytes.
+    pub assets: IndexMap<String, AssetSource>,
     /// `spec.policy` and `spec.tuning`: the gates and their provenance.
     pub policy: Policy,
 }
@@ -261,9 +269,27 @@ pub enum Verdict {
         /// The band it is in, when the gate has `bands`.
         #[serde(skip_serializing_if = "Option::is_none")]
         band: Option<String>,
+        /// The same box in the pixels of the image, once
+        /// [`Verdict::in_pixels`] was given its size; written only then.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pixels: Option<PixelBox>,
     },
     /// A Choice, a Score or a Box below its last bar.
     Deferred(Deferred),
+}
+
+impl Verdict {
+    /// A located box put in the pixels of an image `width` by `height`
+    /// ([`BoxEdges::to_pixels`]), so a crop needs no arithmetic; any other
+    /// verdict is left as it is. The edges stay: they are the answer, the
+    /// pixels a reading of it.
+    #[must_use]
+    pub fn in_pixels(mut self, width: u32, height: u32) -> Self {
+        if let Self::Located { edges, pixels, .. } = &mut self {
+            *pixels = Some(edges.to_pixels(width, height));
+        }
+        self
+    }
 }
 
 /// A Choice, Score or Box answer the gate did not let through.
@@ -297,6 +323,8 @@ struct RawRubric {
 #[serde(deny_unknown_fields)]
 struct RawRubricSpec {
     questions: IndexMap<String, RawQuestion>,
+    #[serde(default)]
+    assets: IndexMap<String, AssetSource>,
     #[serde(default)]
     policy: IndexMap<String, RawGate>,
     #[serde(default)]
@@ -335,6 +363,16 @@ enum RawQuestion {
         #[serde(default)]
         instructions: Value,
         criteria: Vec<Value>,
+        #[serde(default, deserialize_with = "some")]
+        when: Option<String>,
+        #[serde(default, deserialize_with = "some")]
+        part_when: Option<IndexMap<String, String>>,
+        #[serde(default, deserialize_with = "some")]
+        options_from: Option<String>,
+    },
+    Box {
+        #[serde(default)]
+        instructions: Value,
         #[serde(default, deserialize_with = "some")]
         when: Option<String>,
         #[serde(default, deserialize_with = "some")]
@@ -465,6 +503,17 @@ impl RawQuestion {
                 part_when,
                 options_from,
             ),
+            Self::Box {
+                instructions,
+                when,
+                part_when,
+                options_from,
+            } => (
+                Question::Box { instructions },
+                when,
+                part_when,
+                options_from,
+            ),
         };
         let options_from = match options_from.as_deref() {
             None => None,
@@ -547,6 +596,8 @@ struct RubricDoc<'a> {
 struct RubricSpec<'a> {
     questions: &'a IndexMap<String, RubricQuestion>,
     #[serde(skip_serializing_if = "IndexMap::is_empty")]
+    assets: &'a IndexMap<String, AssetSource>,
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     policy: &'a IndexMap<String, Gate>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tuning: Option<&'a Tuning>,
@@ -565,8 +616,18 @@ impl Rubric {
                 .into_iter()
                 .map(|(id, q)| (id, RubricQuestion::new(q)))
                 .collect(),
+            assets: IndexMap::new(),
             policy: Policy::default(),
         }
+    }
+
+    /// The images `spec.assets` declares, loaded relative to `base` (the
+    /// document's directory) into `into`, which a case's own images join
+    /// ([`Case::load_assets`](super::Case::load_assets)); a file that moved
+    /// fails by name. Part of no fingerprint: the request names each image
+    /// by its bytes.
+    pub fn load_assets(&self, base: &Path, into: &mut Assets) -> Result<()> {
+        load_assets("spec.assets", &self.assets, base, into)
     }
 
     /// Set a gate, checked against the question it is for.
@@ -595,6 +656,14 @@ impl Rubric {
         for (id, question) in raw.spec.questions {
             questions.insert(id.clone(), question.lower(&id)?);
         }
+        // Every declared image is referenced in some question, as the server
+        // requires, and is declared well; the file itself is read when the
+        // request is built.
+        check_assets(
+            "spec.assets",
+            &raw.spec.assets,
+            &serde_json::to_string(&questions).unwrap_or_default(),
+        )?;
         let mut gates = IndexMap::with_capacity(raw.spec.policy.len());
         for (id, raw_gate) in raw.spec.policy {
             let gate = raw_gate.into_gate(&id)?;
@@ -611,6 +680,7 @@ impl Rubric {
             labels: raw.metadata.labels,
             annotations: raw.metadata.annotations,
             questions,
+            assets: raw.spec.assets,
             policy: Policy {
                 gates,
                 tuning: raw.spec.tuning,
@@ -628,6 +698,11 @@ impl Rubric {
         for (id, gate) in &self.policy.gates {
             validate_gate(id, gate, &self.questions)?;
         }
+        check_assets(
+            "spec.assets",
+            &self.assets,
+            &serde_json::to_string(&self.questions).unwrap_or_default(),
+        )?;
         to_yaml(&RubricDoc {
             api_version: API_VERSION,
             kind: "Rubric",
@@ -641,6 +716,7 @@ impl Rubric {
             },
             spec: RubricSpec {
                 questions: &self.questions,
+                assets: &self.assets,
                 policy: &self.policy.gates,
                 tuning: self.policy.tuning.as_ref(),
             },
@@ -872,6 +948,7 @@ fn located_verdict(
             edges: located.edges,
             confidence: located.confidence,
             band,
+            pixels: None,
         },
         None => Verdict::Deferred(Deferred {
             fallback: None,
@@ -1553,7 +1630,7 @@ spec:
         let yaml = rubric.to_yaml().unwrap();
         assert!(
             yaml.starts_with(
-                "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 3\n"
+                "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\n"
             ),
             "{yaml}"
         );
@@ -1854,13 +1931,19 @@ spec:
         };
         let v = read(Some(0.9)).await;
         assert!(
-            matches!(&v["mug"], Verdict::Located { edges: e, band: None, confidence: Some(c) } if *e == edges && c.value() == 0.9),
+            matches!(&v["mug"], Verdict::Located { edges: e, band: None, confidence: Some(c), pixels: None } if *e == edges && c.value() == 0.9),
             "{:?}",
             v["mug"]
         );
         let shown = serde_json::to_value(&v["mug"]).unwrap();
         assert_eq!(shown["verdict"], "located");
         assert_eq!(shown["box"]["left"], 0.44);
+        assert!(shown.get("pixels").is_none(), "no size was given");
+        // Given the image's size, the box is also in pixels; the edges stay.
+        let in_pixels = serde_json::to_value(v["mug"].clone().in_pixels(1000, 500)).unwrap();
+        assert_eq!(in_pixels["box"], shown["box"]);
+        assert_eq!(in_pixels["pixels"]["left"], 440);
+        assert_eq!(in_pixels["pixels"].as_object().unwrap().len(), 4);
         let v = read(Some(0.3)).await;
         assert!(
             matches!(&v["mug"], Verdict::Deferred(Deferred { fallback: None, nearest, bar, .. }) if nearest == "0.25,0.82,0.44,0.84" && *bar == 0.6),

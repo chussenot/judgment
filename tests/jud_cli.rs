@@ -1084,3 +1084,110 @@ async fn options_that_cannot_be_asked_are_refused_before_any_call() {
         stderr(&missing_file)
     );
 }
+
+/// `--asset REF=PATH` sends the image under the reference the state carries,
+/// with the images header the API requires, and a located box is printed in
+/// the pixels of the one image, or of the size `--pixels` names. A file that
+/// is not there, a reference the state does not carry, a pair without `=`
+/// and a size that is not `WxH` are refused before any call.
+#[tokio::test]
+async fn an_asset_on_the_command_line_is_sent_and_a_box_is_printed_in_pixels() {
+    let home = config_home();
+    let rubric_path = home.join("mug.jud");
+    std::fs::write(
+        &rubric_path,
+        "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: mug\n  minor: 4\nspec:\n  questions:\n    mug: {type: box, instructions: the mug in `photo`}\n",
+    )
+    .unwrap();
+    let rubric = rubric_path.to_str().unwrap();
+    let image = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/images/square-300.png"
+    );
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .and(header("authorization", "Bearer test-key"))
+        .and(header("typesafe-danger-zone-images", "true"))
+        .and(body_partial_json(json!({
+            "state": { "photo": "photo" },
+            "assets": { "photo": { "type": "image", "format": "png" } },
+            "questions": { "mug": { "type": "box", "instructions": "the mug in `photo`" } }
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "jev-1.14.0",
+            "answers": {
+                "mug": { "type": "box",
+                         "box": { "top": 0.25, "bottom": 0.75, "left": 0.1, "right": 0.6 },
+                         "confidence": 0.8 }
+            },
+            "usage": { "input_tokens": 1000, "output_tokens": 20 }
+        })))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let uri = server.uri();
+    let env = [
+        ("TYPESAFE_API_KEY", "test-key"),
+        ("TYPESAFE_BASE_URL", &uri),
+    ];
+    let state = r#"{"photo": "photo"}"#;
+    let asset = format!("photo={image}");
+
+    let out = jud(&[rubric, "--asset", &asset], state, &env, &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let verdicts: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(verdicts["mug"]["verdict"], "located");
+    assert_eq!(verdicts["mug"]["box"]["top"], 0.25);
+    assert_eq!(verdicts["mug"]["confidence"], 0.8);
+    // The one image is 300 by 300.
+    assert_eq!(
+        verdicts["mug"]["pixels"],
+        json!({ "left": 30, "top": 75, "right": 180, "bottom": 225 })
+    );
+
+    // `--pixels` names the size the box is wanted in: the original the
+    // image was scaled down from, say.
+    let out = jud(
+        &[rubric, "--asset", &asset, "--pixels", "1000x500"],
+        state,
+        &env,
+        &home,
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let verdicts: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(
+        verdicts["mug"]["pixels"],
+        json!({ "left": 100, "top": 125, "right": 600, "bottom": 375 })
+    );
+
+    let refused = [
+        (
+            vec![rubric, "--asset", "photo=/nonexistent/mug.png"],
+            "cannot access",
+        ),
+        (
+            vec![rubric, "--asset", &asset, "--asset", "photo"],
+            "REF=PATH",
+        ),
+        (
+            vec![rubric, "--asset", &asset, "--pixels", "300"],
+            "WIDTHxHEIGHT",
+        ),
+    ];
+    for (args, needle) in refused {
+        let out = jud(&args, state, &env, &home);
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", stderr(&out));
+        assert!(stderr(&out).contains(needle), "{args:?}: {}", stderr(&out));
+    }
+    // A reference the state does not carry is the client's refusal, before
+    // the wire: the server would answer 400 to an unreferenced asset.
+    let other = format!("other={image}");
+    let out = jud(&[rubric, "--asset", &other], state, &env, &home);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("referenced nowhere"),
+        "{}",
+        stderr(&out)
+    );
+}

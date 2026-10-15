@@ -1,0 +1,30 @@
+# Recorded answer for case `shape-02`; found by fingerprint.
+apiVersion: jud/v1
+kind: Recording
+metadata:
+  name: shape-02
+  minor: 4
+spec:
+  elapsed_ms: 236
+  fingerprint: sha256:bc95a79eed8ec7e6bf116449f9a9e03fd4f31934c999d2e73bb1ca0075bd48f3
+  recorded_at: "2026-10-15T11:16:51Z"
+  response:
+    answers:
+      circle:
+        box:
+          bottom: 0.64
+          left: 0.48
+          right: 0.89
+          top: 0.22
+        confidence: 0.29
+        type: box
+      circle_present:
+        noul: 0.99
+        type: noul
+    model: jev-1.14.0
+    request_id: req_01a13f477bb77422a84ce4c3a9b7da4e
+    usage:
+      input_tokens: 625
+      output_tokens: 37
+  rubric: shapes
+  server: https://api.typesafe.ai

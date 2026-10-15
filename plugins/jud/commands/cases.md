@@ -12,9 +12,9 @@ Follow the jud skill: read `${CLAUDE_PLUGIN_ROOT}/skills/jud/SKILL.md` and
 its `references/format.md` first, in particular the sections on cases. Then:
 
 1. Read the rubric. List its questions, each primitive, each Choice's options
-   (and whether they come with the request), each Score's levels, and every
-   `when` or `part_when`, because a label is only valid for a question the
-   case's request actually asks.
+   (and whether they come with the request), each Score's levels, each Box's
+   image reference, and every `when` or `part_when`, because a label is only
+   valid for a question the case's request actually asks.
 2. Draft the states. Use the keys the application really sends, in their real
    shape; for a conversation, an array of turns. States taken from captured
    data stay verbatim: for dozens of them, generate the document from the
@@ -31,8 +31,11 @@ its `references/format.md` first, in particular the sections on cases. Then:
    `note` where it came from. Labels in the answer's own vocabulary: bare `true` or
    `false` for a Noul (`{from_turn: n}` or `{from_turn: null}` over a
    conversation), an offered option key for a Choice, a level's text or index
-   for a Score. For a Choice with `options_from: request`, supply each case's
-   options under `options`.
+   for a Score, `{box: {top, bottom, left, right}}` as fractions of the image
+   for a Box (with `iou_at_least` when 0.5 is not the bar). For a Choice with
+   `options_from: request`, supply each case's options under `options`; for
+   a Box, declare the case's image under `assets` by a path relative to the
+   cases file, under the reference the state carries.
 4. Name the rubric in `spec.rubric` (by name while the questions move, by
    fingerprint once a run must be reproducible) and give the document a
    `metadata.name`.

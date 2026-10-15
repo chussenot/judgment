@@ -5,14 +5,26 @@
 //! against the request it answers; `lower` prints the request one state
 //! produces, so a `when` or a `part_when` can be seen rather than guessed.
 
+use std::path::PathBuf;
+
 use clap::ValueHint;
-use judgment::Questions;
 use judgment::eval::Recording;
 use judgment::eval::canonical;
 use judgment::jud::{self, Case, Cases, Document, Rubric, Supplied};
+use judgment::{Assets, Questions};
 use serde_json::Value;
 
 use crate::Fallible;
+use crate::batch::base_of;
+
+/// A cases document bound to its rubric, each with the directory its
+/// images are read from.
+struct Bound<'a> {
+    cases: &'a Cases,
+    cases_base: PathBuf,
+    rubric: &'a Rubric,
+    rubric_base: PathBuf,
+}
 
 /// One document read from a file, with the version it declared.
 struct Loaded {
@@ -104,16 +116,21 @@ pub(crate) fn check(paths: &[String]) -> bool {
             _ => None,
         })
         .collect();
-    let mut bound: Vec<(&Cases, &Rubric)> = Vec::new();
+    let mut bound: Vec<Bound<'_>> = Vec::new();
     for l in &loaded {
         match &l.document {
             Document::Rubric(rubric) => print_rubric(l, rubric),
             Document::Cases(cases) => {
                 let rubric = find_rubric(cases.rubric.as_deref(), &rubrics);
                 print_cases(l, cases, rubric.map(|(p, _)| p));
-                if let Some((_, rubric)) = rubric {
+                if let Some((rubric_path, rubric)) = rubric {
                     match cases.bind(rubric) {
-                        Ok(()) => bound.push((cases, rubric)),
+                        Ok(()) => bound.push(Bound {
+                            cases,
+                            cases_base: base_of(&l.path),
+                            rubric,
+                            rubric_base: base_of(rubric_path),
+                        }),
                         Err(e) => {
                             crate::out::say!("error     {}: {e}", l.path);
                             errors += 1;
@@ -155,8 +172,13 @@ fn print_rubric(l: &Loaded, rubric: &Rubric) {
     } else {
         "untuned"
     };
+    let images = match rubric.assets.len() {
+        0 => String::new(),
+        1 => ", 1 image".to_owned(),
+        n => format!(", {n} images"),
+    };
     crate::out::say!(
-        "rubric    {}: name {}, {}, {} questions, {gates} gates ({tuned})",
+        "rubric    {}: name {}, {}, {} questions, {gates} gates ({tuned}){images}",
         l.path,
         rubric.name,
         l.declared,
@@ -193,16 +215,16 @@ fn print_cases(l: &Loaded, cases: &Cases, rubric_path: Option<&str>) {
 /// The state and the request a recording's `case` names among the bound
 /// cases: a case by its name, or one turn of a conversation case as
 /// `<case>-turn-<n>` (the names `examples/jud_calibration.rs` records under).
-fn find_request(bound: &[(&Cases, &Rubric)], name: &str) -> Option<Fallible<(Value, Questions)>> {
-    for (cases, rubric) in bound {
-        for (i, case) in cases.cases.iter().enumerate() {
+fn find_request(bound: &[Bound<'_>], name: &str) -> Option<Fallible<(Value, Questions, Assets)>> {
+    for b in bound {
+        for (i, case) in b.cases.cases.iter().enumerate() {
             let case_name = case.name(i);
             if case_name == name {
-                return Some(request_of(case, rubric));
+                return Some(request_of(case, b));
             }
             for turn in case.per_turn() {
                 if format!("{case_name}-turn-{}", turn.index) == name {
-                    return Some(request_of(&turn.case, rubric));
+                    return Some(request_of(&turn.case, b));
                 }
             }
         }
@@ -210,12 +232,17 @@ fn find_request(bound: &[(&Cases, &Rubric)], name: &str) -> Option<Fallible<(Val
     None
 }
 
-fn request_of(case: &Case, rubric: &Rubric) -> Fallible<(Value, Questions)> {
-    Ok((case.state.clone(), case.request(rubric)?))
+/// The state, the request and the images a case asks with: the rubric's
+/// images first, then the case's, each from its own document's directory.
+fn request_of(case: &Case, b: &Bound<'_>) -> Fallible<(Value, Questions, Assets)> {
+    let mut assets = Assets::new();
+    b.rubric.load_assets(&b.rubric_base, &mut assets)?;
+    case.load_assets(&b.cases_base, &mut assets)?;
+    Ok((case.state.clone(), case.request(b.rubric)?, assets))
 }
 
 /// Print one recording; false when it fails against the request it answers.
-fn print_recording(l: &Loaded, recording: &Recording, bound: &[(&Cases, &Rubric)]) -> bool {
+fn print_recording(l: &Loaded, recording: &Recording, bound: &[Bound<'_>]) -> bool {
     let mut line = format!(
         "recording {}: case {}, {}, model {}",
         l.path, recording.case, l.declared, recording.response.model
@@ -224,7 +251,7 @@ fn print_recording(l: &Loaded, recording: &Recording, bound: &[(&Cases, &Rubric)
         crate::out::say!("{line}, no bound case of that name, answers unchecked");
         return true;
     };
-    let (state, questions) = match found {
+    let (state, questions, assets) = match found {
         Ok(found) => found,
         Err(e) => {
             crate::out::say!("{line}");
@@ -237,7 +264,7 @@ fn print_recording(l: &Loaded, recording: &Recording, bound: &[(&Cases, &Rubric)
         crate::out::say!("error     {}: against the request: {e}", l.path);
         return false;
     }
-    let expected = canonical::request_fingerprint(&state, &questions);
+    let expected = canonical::request_fingerprint_with(&state, &questions, &assets);
     let verdict = match recording.fingerprint.as_deref() {
         Some(f) if f == expected => "fingerprint matches".to_owned(),
         Some(_) => format!("fingerprint differs (expected {expected})"),

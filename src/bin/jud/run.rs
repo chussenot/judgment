@@ -1,17 +1,71 @@
 //! `jud RUBRIC`: the state on stdin, the rubric from the file, the verdicts
 //! on stdout. Every step is the library's: `Rubric::parse`, `Rubric::lower`
-//! with the options `--options` or `--options-file` supply, the client's
-//! `answer` (or `Replay`'s, over a directory of recordings), `Rubric::apply`.
+//! with the options `--options` or `--options-file` supply, the images the
+//! rubric declares and `--asset` adds, the client's `answer` (or `Replay`'s,
+//! over a directory of recordings), `Rubric::apply`. A located box is also
+//! printed in pixels when the image's size is known (`--pixels`, or the one
+//! image of the request).
 
 use std::io::Read;
 use std::path::Path;
 use std::process::ExitCode;
 
 use judgment::jud::{Rubric, Supplied};
+use judgment::{Assets, Image};
 use serde_json::Value;
 
 use crate::backend::{Backend, Failure};
+use crate::batch::base_of;
 use crate::tools;
+
+/// The images of one run: `--asset REF=PATH`, repeatable, and `--pixels
+/// WxH`, the size a located box is printed in pixels of.
+#[derive(Clone, Copy)]
+pub(crate) struct AssetsArg<'a> {
+    pub(crate) pairs: &'a [String],
+    pub(crate) pixels: Option<&'a str>,
+}
+
+impl AssetsArg<'_> {
+    /// The images the command line adds, under the references given.
+    fn read(self, into: &mut Assets) -> Result<(), Failure> {
+        for pair in self.pairs {
+            let Some((reference, path)) = pair.split_once('=') else {
+                return Err(Failure::Usage(format!(
+                    "--asset takes REF=PATH, the reference the state uses and the image's file: `{pair}`"
+                )));
+            };
+            let image = Image::read(path)
+                .map_err(|e| Failure::Usage(format!("--asset {reference}: {e}")))?;
+            into.insert(reference, image)
+                .map_err(|e| Failure::Usage(format!("--asset {reference}: {e}")))?;
+        }
+        Ok(())
+    }
+
+    /// `--pixels WxH` as a size, or the one image's when there is exactly
+    /// one and no flag; `None` when a box cannot be put in pixels.
+    fn size(self, assets: &Assets) -> Result<Option<(u32, u32)>, Failure> {
+        if let Some(text) = self.pixels {
+            let parsed = text
+                .split_once(['x', 'X'])
+                .and_then(|(w, h)| {
+                    Some((w.trim().parse::<u32>().ok()?, h.trim().parse::<u32>().ok()?))
+                })
+                .filter(|(w, h)| *w > 0 && *h > 0);
+            return parsed.map(Some).ok_or_else(|| {
+                Failure::Usage(format!(
+                    "--pixels takes the image's size as WIDTHxHEIGHT, in pixels: `{text}`"
+                ))
+            });
+        }
+        let mut images = assets.iter().map(|(_, image)| image);
+        Ok(match (images.next(), images.next()) {
+            (Some(only), None) => Some((only.width(), only.height())),
+            _ => None,
+        })
+    }
+}
 
 /// Where the supplied options come from: `--options` inline, `--options-file`,
 /// or neither (clap refuses both).
@@ -34,8 +88,13 @@ impl OptionsArg<'_> {
     }
 }
 
-pub(crate) fn run(path: &str, replay: Option<&Path>, options: OptionsArg<'_>) -> ExitCode {
-    match evaluate(path, replay, options) {
+pub(crate) fn run(
+    path: &str,
+    replay: Option<&Path>,
+    options: OptionsArg<'_>,
+    assets: AssetsArg<'_>,
+) -> ExitCode {
+    match evaluate(path, replay, options, assets) {
         Ok(verdicts) => match crate::out::result(&format!("{verdicts}\n")) {
             Ok(()) => ExitCode::SUCCESS,
             Err(failure) => failure.report(),
@@ -74,11 +133,25 @@ fn read_state() -> Result<Value, Failure> {
     })
 }
 
-fn evaluate(path: &str, replay: Option<&Path>, options: OptionsArg<'_>) -> Result<String, Failure> {
+fn evaluate(
+    path: &str,
+    replay: Option<&Path>,
+    options: OptionsArg<'_>,
+    assets_arg: AssetsArg<'_>,
+) -> Result<String, Failure> {
     let rubric = read_rubric(path)?;
-    // Before stdin and the backend: a malformed options argument is wrong
-    // whatever the state, and needs no key to say so.
+    // Before stdin and the backend: a malformed options argument or an image
+    // that cannot be read is wrong whatever the state, and needs no key to
+    // say so.
     let supplied = options.read()?;
+    let mut assets = Assets::new();
+    rubric
+        .load_assets(&base_of(path), &mut assets)
+        .map_err(|e| {
+            Failure::Usage(format!("{path}: the rubric's images cannot be loaded: {e}"))
+        })?;
+    assets_arg.read(&mut assets)?;
+    let size = assets_arg.size(&assets)?;
     let state = read_state()?;
     let backend = Backend::open(replay)?;
     let questions = rubric.lower(&state, &supplied).map_err(|e| {
@@ -104,10 +177,18 @@ fn evaluate(path: &str, replay: Option<&Path>, options: OptionsArg<'_>) -> Resul
             "the rubric does not lower for this state: {e}{hint}"
         ))
     })?;
-    let response = backend.answer(&state, &questions)?;
-    let verdicts = rubric
+    let response = backend.answer(&state, &questions, &assets)?;
+    let mut verdicts = rubric
         .apply(&questions, &response)
         .map_err(|e| Failure::Backend(format!("the answers do not fit the rubric: {e}")))?;
+    if let Some((width, height)) = size {
+        // A located box also in the image's pixels, so a crop needs no
+        // arithmetic; the edges stay, as the answer.
+        verdicts = verdicts
+            .into_iter()
+            .map(|(id, verdict)| (id, verdict.in_pixels(width, height)))
+            .collect();
+    }
     serde_json::to_string_pretty(&verdicts)
         .map_err(|e| Failure::Backend(format!("cannot serialise the verdicts: {e}")))
 }

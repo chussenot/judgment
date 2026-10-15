@@ -59,20 +59,45 @@ All notable changes to the `judgment` crate. The format follows
   is gated by `confidence` or `bands` (never `threshold`, `fallback` or
   `level_at_least`) into `Verdict::Located` or a deferral, and a case labels
   it `{box: {top, bottom, left, right}, iou_at_least}`.
+- The `.jud` format at minor 4 (`jud::MINOR`): a `box` question, the images
+  a document names under `spec.assets` on a Rubric and `assets` on a case
+  (`jud::AssetSource`: a `path` relative to the document, or `format` and
+  `data_base64` inline; decision 0025), loaded into a request's `Assets` by
+  `Rubric::load_assets` and `Case::load_assets`, with a reference that
+  appears nowhere in the state or the questions refused as the API refuses
+  it; the Box label `{box, iou_at_least}` (`jud::BoxLabel`), graded by
+  intersection over union at 0.5 unless the label says otherwise (decision
+  0026); a Box in a gate's `confidence` or `bands`; `Verdict::in_pixels`,
+  which adds the located box in an image's pixels beside the edges. The
+  schemas, the format page and `examples/jud/shapes.jud` with its forty
+  labelled synthetic images (`examples/jud/images/`) move together, and the
+  format page carries a known fingerprint vector for a request with an
+  image. A minor 3 reader refuses a minor 4 document by number; a minor 4
+  reader reads every minor 3 document as it did.
+- `jud`: every subcommand that builds a request loads the documents' images
+  and keys recordings by them; `jud RUBRIC --asset REF=PATH` (repeatable)
+  adds an image from the command line and `--pixels WxH` names the size a
+  located box is also printed in pixels of (the one image's size when there
+  is exactly one); a located verdict prints as `located` with `box`, the
+  confidence, the band and `pixels`; `jud eval` reports a Box question's
+  `mean_iou` beside its accuracy, no Brier score, and a miss's `iou`; `jud
+  check` counts a document's images.
 
 ### Changed
 
 - **Breaking:** the `.jud` format spells its minor as `metadata.minor`
   under `apiVersion: jud/v1` (decision 0020, accepted): `jud::API_VERSION`
-  is `jud/v1`, `jud::MINOR` the minor the crate reads up to and writes (3),
-  and `jud::EARLIER_SPELLINGS` names `jud/v1.3`, the spelling minor 3 was
-  published under, which the reader keeps reading as minor 3, without a
-  `metadata.minor`, for at least twelve months from this release. A
-  `metadata.minor` above the crate's is `jud::Error::Minor`, refused by
-  number before anything else is read. Every document the crate writes now
-  carries `apiVersion: jud/v1` and `minor: 3`, and every committed example
-  and recording was rewritten the same way; `jud check` prints
-  `jud/v1 minor 3`. No fingerprint moves: the envelope is outside every one.
+  is `jud/v1`, `jud::MINOR` the minor the crate reads up to and writes (4,
+  with this release's additions below), and `jud::EARLIER_SPELLINGS` names
+  `jud/v1.3`, the spelling minor 3 was published under, which the reader
+  keeps reading as minor 3, without a `metadata.minor`, for at least twelve
+  months from this release. A `metadata.minor` above the crate's is
+  `jud::Error::Minor`, refused by number before anything else is read.
+  Every document the crate writes now carries `apiVersion: jud/v1` and
+  `metadata.minor`; every committed example and recording was rewritten to
+  `minor: 3`, the lowest that reads it, and the documents that use minor 4
+  carry `minor: 4`; `jud check` prints `jud/v1 minor N`. No fingerprint
+  moves: the envelope is outside every one.
 - **Breaking:** `client::Request` has a fourth field, `assets: &Assets`;
   a struct literal names it (`&Assets::new()` for none) or becomes
   `Request::new(state, model, questions)`. `backend::Call` has an
@@ -84,7 +109,9 @@ All notable changes to the `judgment` crate. The format follows
   adds an arm; an answer of kind `box` no longer decodes as
   `Answer::Unknown`. `eval::Judgment` has an `iou` field and
   `eval::QuestionMetrics` a `mean_iou` field. `Question::instructions` and
-  `instructions_mut` read the instructions of any primitive.
+  `instructions_mut` read the instructions of any primitive. `jud::Rubric`
+  and `jud::Case` have an `assets` field, `jud::Verdict::Located` a
+  `pixels` field, and `jud eval --json` a `mean_iou` key on every question.
 
 - `examples/jud/agent-mail.jud`, a rubric asked about one message between
   coding agents sharing a repository (needs an action, warns that something

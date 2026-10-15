@@ -101,7 +101,8 @@ Each of these is a refusal `jud check` will name; knowing them first saves the
 round trip.
 
 - `apiVersion` is the string `jud/v1`, exactly, and `metadata.minor` the
-  integer minor the document needs (3 today): the reader refuses any other
+  integer minor the document needs (4 today; 3 for a document with no Box
+  and no `assets`): the reader refuses any other
   apiVersion, a number, a missing key, a document that still starts with a
   `jud:` key, a missing `minor`, and a `minor` above the one it reads. The
   earlier spelling `jud/v1.3` (no `minor`) is still read. `kind` is
@@ -124,8 +125,20 @@ round trip.
 - A **Score** has 2 to 10 levels, lowest first, none null, each a plain
   string.
 - A **Noul**'s `criteria` keys are exactly `true` and `false`.
-- A gate fits its primitive: `threshold` is Noul-only; `confidence`, `bands`,
-  `fallback`, `level_at_least` are Choice or Score (`level_at_least` Score-only).
+- A **Box** (minor 4) has `instructions` only, never null and no `criteria`:
+  what to locate, and in which image, named by a *reference*, text the state
+  or the instructions carry where the image belongs (`state: {image:
+  shape-00}`). The reference is declared under `spec.assets` on the rubric
+  (an image every request sends) or `assets` on the case, as `{type: image,
+  path: images/shape-00.png}` relative to the document, or `{type: image,
+  format: png, data_base64: …}` inline; a declared reference that appears
+  nowhere is refused, and so is a path that is absolute or leaves the
+  directory. A Box always answers with a box, found or not: put a Noul
+  beside it that says whether there is anything to find, and gate the two
+  together.
+- A gate fits its primitive: `threshold` is Noul-only; `confidence` and
+  `bands` are Choice, Score or Box; `fallback` is Choice or Score;
+  `level_at_least` is Score-only.
 - `fallback` names an option the Choice offers **statically** in `criteria`,
   or a Score level by text or index-as-string. A supplied option cannot be a
   fallback.
@@ -133,9 +146,11 @@ round trip.
   and a gate has `bands` or `confidence`, not both.
 - A label in `expect` fits the question: `true`/`false` for a Noul,
   `{from_turn: n}` only for a Noul over an array state, an offered option key
-  for a Choice, a level index or text for a Score. A label for a question whose
-  `when` is not present in that case's state is refused: a question not asked
-  has no answer to grade.
+  for a Choice, a level index or text for a Score, `{box: {top, bottom, left,
+  right}}` as fractions of the image (top below bottom, left below right) for
+  a Box, with `iou_at_least` beside it when 0.5 is not the overlap the task
+  needs. A label for a question whose `when` is not present in that case's
+  state is refused: a question not asked has no answer to grade.
 - For a Choice with `options_from: request`, every case supplies its options
   under `options.<question id>`, and the request still needs 2 to 255 in total.
 - No merge keys (`<<`), no explicit tags. A plain anchor and alias on a scalar
@@ -250,7 +265,9 @@ wire's own shape: `questions.choice::<T>(id, instructions)` with an
 descriptions in declaration order; `questions.noul(id, instructions, None)`
 is a Noul with no `criteria` (leave the key out; `None` and absent are the
 same on the wire); `questions.score(id, instructions, levels)` is a Score
-with those levels. The map goes under `spec.questions`, in the code's order,
+with those levels; `questions.r#box(id, instructions)` is a Box, and the
+images the code adds with `Request::with_assets` are the rubric's or the
+case's `assets`, under the same references. The map goes under `spec.questions`, in the code's order,
 and the rubric's `metadata.name` is what `Rubric::new(name, questions)`
 would be given. What the code does with an answer is the policy:
 `confidence.at_least(0.7)` is `confidence: 0.7`, `is_yes(0.6)` is

@@ -2,7 +2,7 @@
 title: The .jud format
 description: The normative specification of apiVersion jud/v1 at minor 3, the YAML document format for a rubric with its policy, the labelled cases it is graded on and the recordings of what a model answered, in a manifest envelope with content fingerprints any implementation computes the same way.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-15
 tags: [judgment, jud, format, specification, reference, rubric, cases, recordings, yaml, fingerprint]
 ---
 
@@ -41,7 +41,7 @@ Every document has exactly four top-level fields, the envelope of a [Kubernetes 
 
 | Field | On | Required | Meaning |
 |---|---|---|---|
-| `minor` | every kind | yes | The minor of `jud/v1` the document needs, an integer: `3` today. [The apiVersion and the minor](#the-apiversion-and-the-minor). |
+| `minor` | every kind | yes | The minor of `jud/v1` the document needs, an integer: `4` today, `3` for a document that uses nothing minor 4 added. [The apiVersion and the minor](#the-apiversion-and-the-minor). |
 | `name` | every kind | yes | A [name](#names). On a Rubric, what a cases document's or a recording's `rubric` may name, stable across edits. On a Cases document, the name of the set. On a Recording, the case it answers: a case's name, `<case>-turn-<n>` for one turn of a conversation, or a request hash when a recorder keyed it by content. |
 | `version` | Rubric | no | An edition of the rubric, free-form; a number is read as its text. The questions' fingerprint is the exact identity. |
 | `description` | Rubric, Cases | no | What the rubric decides, or where the cases came from, for the person reading the file. |
@@ -70,6 +70,7 @@ Minor 3 was first published as `apiVersion: jud/v1.3`, with the minor in the str
 | Minor | Adds | First read by |
 |---|---|---|
 | 3 | The manifest envelope and everything on this page; spelled `jud/v1.3` until `metadata.minor` existed | crate 0.8.0 (as `jud/v1.3`), 0.14.0 (as `jud/v1`) |
+| 4 | The Box question ([Questions](#questions)), the images a document names (`assets` on a Rubric and on a case, [Assets](#assets)), the Box label (`{box, iou_at_least}`, [Cases](#cases)) and the Box in a gate's `confidence` and `bands`; the request fingerprint folds the images in ([Fingerprints](#fingerprints)) | crate 0.14.0 |
 
 ### Names
 
@@ -108,10 +109,11 @@ Labels and annotations are the only open maps outside `spec.tuning`, `spec.respo
 | `questions` | yes | A map of question id to question, at least one, in the order the model sees them. |
 | `policy` | no | A map of question id to gate. |
 | `tuning` | no | Where the gates came from. |
+| `assets` | no | The images the questions refer to, by reference (minor 4). [Assets](#assets). |
 
 ### Questions
 
-A question is exactly what the API receives. The reader MUST apply the checks a request builder applies before sending, and refuse a question that would be refused: a Choice needs 2 to 255 options with non-empty keys, a Score needs 2 to 10 levels none of which is null, a Noul needs instructions or criteria that describe at least one outcome, and no id is empty.
+A question is exactly what the API receives. The reader MUST apply the checks a request builder applies before sending, and refuse a question that would be refused: a Choice needs 2 to 255 options with non-empty keys, a Score needs 2 to 10 levels none of which is null, a Noul needs instructions or criteria that describe at least one outcome, a Box needs instructions that are not `null`, and no id is empty.
 
 ```yaml
 questions:
@@ -135,6 +137,18 @@ questions:
 ```
 
 `instructions` MAY be a string, an object, an array or `null`; absent and `null` are the same, and both are sent to the API as `null`. A Noul's criteria keys are `true` and `false`, which YAML reads as booleans and the wire carries as strings; a reader MUST accept them bare or quoted and MUST refuse any other key. The order of `questions` and of a Choice's `criteria` is significant: it is the order the model sees, and a reader MUST preserve it.
+
+A Box (minor 4) asks where something is in an image the request carries, and answers with a box, found or not: four edges as fractions of the image and a confidence. It has `instructions` and no `criteria`; `null` instructions MUST be refused, since the instructions are all the question is. The image is named by a *reference*, text that stands for it wherever it appears in the state or the instructions, declared under [`assets`](#assets). A reader does not refuse a Box in a rubric that declares no image, since the image may come with the case or the request (`jud RUBRIC --asset`); the hosted API answers a Box over no image at all with a box at a confidence near zero, which the gate catches. A Box always returns a box, so the question whether there is anything to find is a Noul beside it, and the policy reads the two together.
+
+```yaml
+questions:
+  circle_present:
+    type: noul
+    instructions: Is there a filled circle in `image`?
+  circle:
+    type: box
+    instructions: the filled circle in `image`   # `image` is a reference: the state carries it, `assets` declares it
+```
 
 ### Declarations
 
@@ -178,6 +192,26 @@ The syntax is not [JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901) (RFC 69
 
 A path is *present* in a state when it leads to a value that is not `null`, not an empty string, not an empty array and not an empty object; `false` and `0` are present. That is the one test the format makes on the state.
 
+### Assets
+
+The images a request carries (minor 4). `assets` is a map of reference to image, on a Rubric for the images every request sends and on a case for the image that case is about ([Cases](#cases)); the two merge into one request, and a reference declared in both MUST name the same bytes. A reference is text, 1 to 1024 bytes, that the state or a question's instructions carries where the image belongs (`state: {image: shape-00}`, or `instructions: the mug in `photo``): the API resolves it wherever it appears as or inside a string, and refuses an asset nothing refers to, so a reader MUST refuse a reference that appears in neither the case's state nor the rubric's questions. An image is declared one of two ways ([decision 0025](../project/decisions/0025-a-document-names-an-image-by-path.md)):
+
+| Field | Required | Meaning |
+|---|---|---|
+| `type` | no | `image`, the one kind; written always, read optionally. |
+| `path` | one of the two | The file, relative to the document's directory. An absolute path, or one that leaves the directory (`..`), MUST be refused. The format is read from the bytes. |
+| `data_base64` | one of the two | The bytes inline, base64 as the wire carries them, with `format` required: for a small image a document keeps to itself. |
+| `format` | with `data_base64` | `png`, `jpg` or `jpeg`. With a `path`, optional, and the file MUST match it. |
+
+```yaml
+spec:
+  assets:
+    logo: {type: image, path: images/logo.png}           # beside the document
+    mark: {type: image, format: png, data_base64: iVBORw0KGgo…}
+```
+
+A reader loads the files when it builds the request, not when it reads the document, so `jud check` reads a document whose images are elsewhere; a file that is missing or is not a PNG or a JPEG fails loudly, by the entry's name, when the request is built. The image's own limits (a side from 256 to 1568 pixels, 78,400 to 2,458,624 pixels in all, 16 MiB a file, 32 MiB a request) are the API's, checked before anything is sent.
+
 ### Policy
 
 A gate says where one question's answer becomes an action. Every field is OPTIONAL, and each applies to some primitives; a gate that does not fit its question, or names a question the rubric does not have, MUST be refused.
@@ -185,14 +219,14 @@ A gate says where one question's answer becomes an action. Every field is OPTION
 | Field | Applies to | Meaning | Absent |
 |---|---|---|---|
 | `threshold` | Noul | Yes at this probability of yes and above. | 0.5 |
-| `confidence` | Choice, Score | Acted on at this confidence and above; deferred below it. | 0, nothing deferred |
-| `bands` | Choice, Score | Confidence bands, highest bar first, each `{at_least, verdict}`: the first band the answer's confidence meets names the verdict; below the last, the answer is deferred. The generalisation of `confidence`, which is one unnamed band; a gate has one or the other. Bars strictly decrease, names are distinct, and the list is not empty. | |
+| `confidence` | Choice, Score, Box | Acted on at this confidence and above; deferred below it. A Box that gave no confidence is read at 0. | 0, nothing deferred |
+| `bands` | Choice, Score, Box | Confidence bands, highest bar first, each `{at_least, verdict}`: the first band the answer's confidence meets names the verdict; below the last, the answer is deferred. The generalisation of `confidence`, which is one unnamed band; a gate has one or the other. Bars strictly decrease, names are distinct, and the list is not empty. | |
 | `fallback` | Choice, Score | What a deferred answer falls back to: an offered option key (a static one, for a Choice whose options come from the request), or a level by its text or its index as a string. | none |
 | `level_at_least` | Score | A level, by index or text: the verdict says whether the nearest level reached it. | |
-| `strict` | every bar | `true`: a bar is met above it, not at it (`>` for `≥`), for the threshold, the confidence and every band. A Choice or Score gate with neither `confidence` nor `bands` has no bar, and defers nothing, strict or not. | `false` |
+| `strict` | every bar | `true`: a bar is met above it, not at it (`>` for `≥`), for the threshold, the confidence and every band. A Choice, Score or Box gate with neither `confidence` nor `bands` has no bar, and defers nothing, strict or not. | `false` |
 | `note` | any | Why the bar is where it is. | |
 
-Reading a response through the policy gives one verdict per question asked: for a Noul, yes or no with the probability; for a Choice, the chosen option with its confidence and its band, or deferred with the fallback, the option the model would have chosen and the bar (the lowest, with bands); for a Score, the level nearest to the weighted score with its index, text, confidence, band and whether it reached `level_at_least`, or deferred likewise. A verdict is derived, not stored.
+Reading a response through the policy gives one verdict per question asked: for a Noul, yes or no with the probability; for a Choice, the chosen option with its confidence and its band, or deferred with the fallback, the option the model would have chosen and the bar (the lowest, with bands); for a Score, the level nearest to the weighted score with its index, text, confidence, band and whether it reached `level_at_least`, or deferred likewise; for a Box, the box with its confidence and band (*located*), or deferred with the box the model gave as text and the bar. A verdict is derived, not stored.
 
 ```yaml
 policy:
@@ -257,6 +291,7 @@ A case:
 | `state` | yes | Any JSON: the state the questions are asked about. An array is a conversation, one element per turn. |
 | `expect` | no | The right answer, by question id, for the questions this case is labelled for. A question left out is asked and not graded. |
 | `options` | no | Options supplied for this case's request, by question id, then option key to description: what a Choice with `options_from: request` is asked over. |
+| `assets` | no | The images this case's state refers to, by reference, each a `path` relative to this document or inline `data_base64` (minor 4). [Assets](#assets). |
 | `tags` | no | Free labels for slicing a report. |
 | `note` | no | Why the label is what it is. |
 
@@ -268,8 +303,9 @@ Binding cases to a rubric lowers each case's request (its state and its `options
 | Noul, over a conversation | `{from_turn: n}`: true from turn `n` (zero-based) on; `{from_turn: null}`: never | `yes` when the conversation has a turn `n`, else `no`; per turn, [Conversations](#conversations) |
 | Choice | an option the case's request offers, static or supplied | the key |
 | Score | a level's index (a number) or a level's text | the index, as a string |
+| Box | `{box: {top, bottom, left, right}}`, the edges as fractions of the image, `top` below `bottom` and `left` below `right`; `iou_at_least` beside it, 0 to 1, the overlap that counts as right (0.5 when left out) | `box`; right when the intersection over union of the answer and the label reaches the bar ([decision 0026](../project/decisions/0026-a-box-is-graded-by-intersection-over-union.md)) |
 
-The "grades as" column is the vocabulary the API's own answers are graded in: a Noul answer is `yes` at 0.5 and above, a Choice answer is its option key, a Score answer's distribution is keyed by level index.
+The "grades as" column is the vocabulary the API's own answers are graded in: a Noul answer is `yes` at 0.5 and above, a Choice answer is its option key, a Score answer's distribution is keyed by level index, a Box answer is `box` with the overlap as the number a report keeps (the mean overlap stands where a Brier score would).
 
 <!-- file: examples/jud/spec-cases.jud -->
 ```yaml
@@ -388,7 +424,7 @@ A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 ([FIPS 
 | a rubric | its `spec.questions` map |
 | a rubric's policy | its `spec.policy` map |
 | a cases document | its `spec.cases` array |
-| a request | `{"questions": <the questions map>, "state": <the state>}` |
+| a request | `{"assets": {<reference>: "sha256:<hex of the image's bytes>", …}, "questions": <the questions map>, "state": <the state>}`, with `assets` left out when the request carries no image |
 
 Every fingerprint is over a value inside `spec`, never over the envelope: `apiVersion`, `kind` and `metadata` are part of none.
 
@@ -397,6 +433,8 @@ A fingerprint identifies content, not the order of object keys: canonical JSON s
 The request fingerprint leaves the model out: the same request answered by two models has the same fingerprint, and each recording says in `response.model`, `server` and `recorded_at` who answered it.
 
 Known vector: the fingerprint of `{"b": "x", "a": 1}` is `sha256:ecf9e98ec0641e23113ff3ce8bdc78d0ddd249886517fd4a7f68cc83d4e65667`, the SHA-256 of the fifteen bytes `{"a":1,"b":"x"}`.
+
+An image is in a request's fingerprint by the SHA-256 of its bytes, under its reference, never by its base64 or its path: the same image declared by another path, or inline, is the same request, and a request without an image fingerprints exactly as it did before `assets` existed. Known vector: the request `{"state": {"photo": "photo"}}` asking one Box `mug` with the instructions `` the mug in `photo` `` over `tests/fixtures/images/square-300.png` (717 bytes, SHA-256 `d1b456a83498c260c89efd73af6015d7260951224900d1d9c736bcd15d96ceb2`) canonicalises to `{"assets":{"photo":"sha256:d1b456a8…"},"questions":{"mug":{"instructions":"the mug in `photo`","type":"box"}},"state":{"photo":"photo"}}` and fingerprints as `sha256:7a492d9eb5e50d0413dfc3d3361e06dabc0ca9fe68e31860b923340d4258aa72`.
 
 `request_hash` is not part of the format: this crate's `Recorder` writes it, its `Replay` finds a recording by either key, and another implementation neither writes nor needs it.
 
@@ -410,8 +448,9 @@ An implementation MUST read a document under these rules.
 - A field the kind does not define is refused, with its path. The exceptions are `tuning` in a rubric and `response` in a recording, which keep what they are given, and `state`, which is any JSON.
 - Order is significant and preserved for `questions`, a Choice's `criteria`, a Score's `criteria`, `bands`, `cases`, `expect` and a case's supplied options. It is not for the parts of an instructions object, which is a JSON object like the state: an implementation MAY send its keys in any order (this crate sends them sorted).
 - A state path in `when` or `part_when` is well formed, and every `part_when` name is a key of its instructions object. `options_from` is `request`, on a Choice. None of the three is `null`.
+- An asset is `type: image` (or no `type`), has exactly one of `path` and `data_base64`, a `format` the API takes (`png`, `jpg`, `jpeg`) that is required with `data_base64`, and a path that is relative and stays under the document's directory. Every reference appears in the rubric's questions or the case's state; the references weigh at most 65,536 bytes together. A Box's `instructions` is not `null`.
 - A rubric's questions pass the request builder's checks, and each gate fits its question's primitive and names an offered option or an existing level. A cases document's labels fit their questions when the cases are bound to a rubric; a document MAY be read without its rubric, and is then only checked for shape.
-- A `threshold`, a `confidence` and a band's `at_least` are numbers from 0 to 1 inclusive. A level index is a non-negative integer below the number of levels.
+- A `threshold`, a `confidence`, a band's `at_least`, a box's four edges and a label's `iou_at_least` are numbers from 0 to 1 inclusive. A level index is a non-negative integer below the number of levels. A labelled box is a region: `top` below `bottom`, `left` below `right`.
 - A reader that writes a document back MUST write `apiVersion: jud/v1`, `kind`, `metadata` (`name`, `minor`, then `version`, `description`, `labels` and `annotations` when present) and `spec`, in that order, with the same fields, so a document survives a read and a write with its fingerprints unchanged; a document read in the earlier spelling is written in this one.
 
 ## Schemas and conformance
@@ -422,4 +461,4 @@ An implementation conforms when it reads all three kinds under the reading rules
 
 ## Extending the format
 
-Minor 3 of `jud/v1` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later minor is refused whole rather than half-read, and by its `metadata.minor` first, so the refusal names the minor the reader lacks. An addition (a field, a value a field may take, a kind) is the next minor, with this page, the schemas and `metadata.minor`'s range moving together; a change of meaning is `jud/v2`. Two additions are foreseen and not in this minor: a soft label (a distribution over options or levels) and a verdict kind (what an application decided).
+Minor 4 of `jud/v1` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later minor is refused whole rather than half-read, and by its `metadata.minor` first, so the refusal names the minor the reader lacks. An addition (a field, a value a field may take, a kind) is the next minor, with this page, the schemas and `metadata.minor`'s range moving together; a change of meaning is `jud/v2`. Two additions are foreseen and not in this minor: a soft label (a distribution over options or levels) and a verdict kind (what an application decided).

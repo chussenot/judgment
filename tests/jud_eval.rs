@@ -17,8 +17,8 @@ use std::process::{Output, Stdio};
 use judgment::jud::{Cases, Rubric};
 use serde_json::{Value, json};
 use support::{
-    HANDOFF, HANDOFF_CASES, RECORDINGS, TRIAGE, TRIAGE_CASES, cases_without_labels, code, copy_dir,
-    jud, scratch, server, stderr, stdout, triage_answers,
+    HANDOFF, HANDOFF_CASES, RECORDINGS, ROOT, TRIAGE, TRIAGE_CASES, cases_without_labels, code,
+    copy_dir, jud, scratch, server, stderr, stdout, triage_answers,
 };
 use wiremock::matchers::{any, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -344,6 +344,7 @@ fn the_json_report_has_every_documented_key_and_no_other() {
             "id",
             "labelled",
             "majority",
+            "mean_iou",
             "misses",
             "outcomes",
             "signals"
@@ -1536,6 +1537,110 @@ async fn one_answer_for_every_case_is_a_collapse_and_a_gate_that_defers_all_is_n
     );
     assert!(
         text.contains("  warning: never answered: technical (3 labelled), account (3 labelled), none_of_these (3 labelled); the model does not give them, whatever the bar\n"),
+        "{text}"
+    );
+}
+
+/// A Box question is graded by intersection over union with its label: the
+/// report counts a box over the bar as right, gives the mean overlap where
+/// a Noul or a Choice has a Brier score, and a miss says the overlap it
+/// reached.
+#[test]
+fn a_box_question_is_reported_by_its_iou() {
+    // Two shapes cases with their images beside the documents, so the paths
+    // resolve, and a recording per case written by hand: one box on its
+    // label exactly, one in the wrong corner under a bar of 0.9.
+    let dir = scratch("box-eval");
+    std::fs::create_dir_all(dir.join("images")).unwrap();
+    for name in ["shape-00.png", "shape-01.png"] {
+        std::fs::copy(
+            Path::new(ROOT).join("examples/jud/images").join(name),
+            dir.join("images").join(name),
+        )
+        .unwrap();
+    }
+    let rubric_path = dir.join("shapes.jud");
+    std::fs::copy(
+        Path::new(ROOT).join("examples/jud/shapes.jud"),
+        &rubric_path,
+    )
+    .unwrap();
+    let cases_text = "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: two-shapes\n  minor: 4\nspec:\n  rubric: shapes\n  cases:\n    - id: shape-00\n      state: {image: shape-00}\n      assets:\n        shape-00: {type: image, path: images/shape-00.png}\n      expect:\n        circle_present: true\n        circle: {box: {top: 0.6, bottom: 0.8, left: 0.7, right: 0.9}}\n    - id: shape-01\n      state: {image: shape-01}\n      assets:\n        shape-01: {type: image, path: images/shape-01.png}\n      expect:\n        circle_present: true\n        circle: {box: {top: 0.35, bottom: 0.85, left: 0.2, right: 0.7}, iou_at_least: 0.9}\n";
+    let cases_path = dir.join("two-shapes.jud");
+    std::fs::write(&cases_path, cases_text).unwrap();
+    let rubric = Rubric::parse(&read(rubric_path.to_str().unwrap())).unwrap();
+    let cases = Cases::parse(cases_text).unwrap();
+    let recordings = dir.join("recordings");
+    std::fs::create_dir_all(&recordings).unwrap();
+    let answered = [
+        (
+            json!({ "top": 0.6, "bottom": 0.8, "left": 0.7, "right": 0.9 }),
+            0.9,
+        ),
+        (
+            json!({ "top": 0.0, "bottom": 0.1, "left": 0.0, "right": 0.1 }),
+            0.4,
+        ),
+    ];
+    for (case, (edges, confidence)) in cases.cases.iter().zip(answered) {
+        let asked = case.request(&rubric).unwrap();
+        let mut assets = judgment::Assets::new();
+        case.load_assets(&dir, &mut assets).unwrap();
+        let fingerprint =
+            judgment::eval::canonical::request_fingerprint_with(&case.state, &asked, &assets);
+        let response: judgment::Response = serde_json::from_value(json!({
+            "model": "jev-1.14.0",
+            "answers": {
+                "circle_present": { "type": "noul", "noul": 0.9 },
+                "circle": { "type": "box", "box": edges, "confidence": confidence }
+            },
+            "usage": { "input_tokens": 1000, "output_tokens": 20 }
+        }))
+        .unwrap();
+        let id = case.id.clone().unwrap();
+        let mut recording = judgment::eval::Recording::new(id.clone(), response, 1);
+        recording.fingerprint = Some(fingerprint);
+        std::fs::write(
+            recordings.join(format!("{id}.jud")),
+            judgment::jud::recording_to_yaml(&recording).unwrap(),
+        )
+        .unwrap();
+    }
+    let (recordings, rubric, cases) = (
+        recordings.to_str().unwrap(),
+        rubric_path.to_str().unwrap(),
+        cases_path.to_str().unwrap(),
+    );
+
+    let out = eval_with(recordings, rubric, cases, &["--json"]);
+    let report = report(&out);
+    let circle = question(&report, "circle");
+    assert_eq!(circle["labelled"], 2);
+    assert_eq!(circle["correct"], 1);
+    assert_eq!(circle["accuracy"], 0.5);
+    assert_eq!(circle["brier"], Value::Null, "a box has no distribution");
+    // Its confidence is scored against the hits, as any other's: 0.9 on a
+    // hit and 0.4 on a miss is a calibration error of 0.25.
+    assert_eq!(circle["ece"], 0.25);
+    assert!(
+        (circle["mean_iou"].as_f64().unwrap() - 0.5).abs() < 1e-9,
+        "{circle}"
+    );
+    let misses = circle["misses"].as_array().unwrap();
+    assert_eq!(misses.len(), 1, "{circle}");
+    assert_eq!(misses[0]["case"], "shape-01");
+    assert_eq!(misses[0]["iou"], 0.0);
+    assert_eq!(misses[0]["confidence"], 0.4);
+    // The Noul beside it is graded as ever, without an IoU.
+    let present = question(&report, "circle_present");
+    assert_eq!(present["correct"], 2);
+    assert_eq!(present["mean_iou"], Value::Null);
+    assert!(present["brier"].is_number());
+
+    let text = stdout(&eval_with(recordings, rubric, cases, &[]));
+    assert!(text.contains("mean IoU 0.50"), "{text}");
+    assert!(
+        text.contains("a box at IoU 0.00 with the label, confidence 0.40"),
         "{text}"
     );
 }

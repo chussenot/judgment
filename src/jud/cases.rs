@@ -4,12 +4,15 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
+use std::path::Path;
+
 use super::rubric::level_index;
 use super::{
-    API_VERSION, Envelope, Error, MINOR, Metadata, Result, Rubric, Supplied, check_name, from_text,
-    refuse_extra, some, to_yaml,
+    API_VERSION, AssetSource, Envelope, Error, MINOR, Metadata, Result, Rubric, Supplied,
+    check_assets, check_name, from_text, load_assets, refuse_extra, some, to_yaml,
 };
 use crate::answer::{Answer, BoxEdges, Confidence, Response};
+use crate::asset::Assets;
 use crate::eval::{DEFAULT_IOU_AT_LEAST, Judgment, canonical};
 use crate::question::{Question, Questions};
 
@@ -47,6 +50,9 @@ pub struct Case {
     /// takes them: with them, a case is a complete request.
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub options: Supplied,
+    /// The images the state refers to, by reference ([`Case::load_assets`]).
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub assets: IndexMap<String, AssetSource>,
     /// Free labels for slicing a report.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
@@ -126,6 +132,7 @@ impl Case {
             state,
             expect: IndexMap::new(),
             options: IndexMap::new(),
+            assets: IndexMap::new(),
             tags: Vec::new(),
             note: None,
         }
@@ -134,6 +141,14 @@ impl Case {
     /// [`Rubric::lower`] over the case's state and options.
     pub fn request(&self, rubric: &Rubric) -> Result<Questions> {
         rubric.lower(&self.state, &self.options)
+    }
+
+    /// The images this case declares, loaded relative to `base` (the cases
+    /// document's directory) into `into`, after the rubric's own
+    /// ([`Rubric::load_assets`]); a reference both declare must name the
+    /// same bytes. A file that moved fails by name.
+    pub fn load_assets(&self, base: &Path, into: &mut Assets) -> Result<()> {
+        load_assets("assets", &self.assets, base, into)
     }
 
     /// The case's id, or `#index` for a case without one.
@@ -172,6 +187,7 @@ impl Case {
                         state: Value::Array(all[..=index].to_vec()),
                         expect,
                         options: self.options.clone(),
+                        assets: self.assets.clone(),
                         tags: self.tags.clone(),
                         note: self.note.clone(),
                     },
@@ -212,6 +228,8 @@ struct RawCase {
     expect: IndexMap<String, Expect>,
     #[serde(default, deserialize_with = "some")]
     options: Option<Supplied>,
+    #[serde(default)]
+    assets: IndexMap<String, AssetSource>,
     #[serde(default)]
     tags: Vec<String>,
     #[serde(default)]
@@ -264,6 +282,7 @@ impl Cases {
                     state: c.state,
                     expect: c.expect,
                     options: c.options.unwrap_or_default(),
+                    assets: c.assets,
                     tags: c.tags,
                     note: c.note,
                 })
@@ -285,6 +304,27 @@ impl Cases {
                         case: case.name(index),
                         reason: format!(
                             "`options.{question}`: an option needs a non-empty key and a description that is text, an object, an array or null (`{key}`)"
+                        ),
+                    });
+                }
+            }
+            // A case's images are declared well and referenced in its state.
+            check_assets("assets", &case.assets, &case.state.to_string()).map_err(|e| {
+                Error::Case {
+                    case: case.name(index),
+                    reason: e.to_string(),
+                }
+            })?;
+            // A Box label's bar is a fraction, as the schema has it.
+            for (question, expect) in &case.expect {
+                if let Expect::Box(label) = expect
+                    && let Some(bar) = label.iou_at_least
+                    && !(0.0..=1.0).contains(&bar)
+                {
+                    return Err(Error::Case {
+                        case: case.name(index),
+                        reason: format!(
+                            "`expect.{question}.iou_at_least` must be between 0 and 1, got {bar}"
                         ),
                     });
                 }
@@ -740,7 +780,12 @@ spec:
             let text = format!(
                 "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: crops\nspec:\n  cases:\n    - id: c\n      state: {{photo: img-1}}\n      {expect}\n"
             );
-            let err = Cases::parse(&text).unwrap().bind(&rubric).unwrap_err();
+            // The bar is checked as the document is read; the region and
+            // the kind, when the label is bound to its question.
+            let err = match Cases::parse(&text) {
+                Ok(cases) => cases.bind(&rubric).unwrap_err(),
+                Err(err) => err,
+            };
             assert!(
                 matches!(&err, Error::Case { case, reason } if case == "c" && reason.contains(needle)),
                 "{expect}: {err}"

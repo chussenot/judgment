@@ -15,7 +15,10 @@ particular:
    application needs to know and cannot compute itself. Give each outcome a
    criterion in plain words, name the state keys the application will send,
    and give a Choice a way out (`none_of_these`, `other`) when the state might
-   fit none of its options. Keep every threshold out of the instructions.
+   fit none of its options. A Box always answers with a box, so pair it with
+   a Noul that says whether there is anything to find, and declare the image
+   it looks in under `spec.assets` when every request sends the same one.
+   Keep every threshold out of the instructions.
    When real states are at hand (a sample, a log, the brief's examples), read
    them first: for each question, name the field its answer is read from
    (none means the caller must add one; say which), and leave to code what a
