@@ -50,7 +50,7 @@ This index is generated from the crate's documentation nav (`mkdocs.yml`) and ea
 
 ## Project
 
-- [Contributing](https://raw.githubusercontent.com/chussenot/judgment/main/docs/project/contributing.md): How the repository is worked on; the quality gates and the hooks, tracking work in beads, Conventional Commits, how the documentation is organised (Diátaxis) and checked, what is generated, how the container image is built locally, and how a decision is recorded.
+- [Contributing](https://raw.githubusercontent.com/chussenot/judgment/main/docs/project/contributing.md): How the repository is worked on; the quality gates and the hooks, tracking work in beads, Conventional Commits, how the documentation is organised (Diátaxis) and checked, what is generated, how the container image is built locally, how a cloud session is set up, and how a decision is recorded.
 - [Internals](https://raw.githubusercontent.com/chussenot/judgment/main/docs/project/internals.md): The rules the code applies that the rustdoc states only once, with the reason behind each; the client's key check, status classification and error-body reading, the per-call options, the retry loop's edges, the backends, the tolerant decoder, what the response check leaves unchecked, the observer, the recordings and metrics, the .jud reader, and the bounded proofs.
 - [Releasing](https://raw.githubusercontent.com/chussenot/judgment/main/docs/project/releasing.md): How a version of the judgment crate is cut from its Conventional Commits with cocogitto, how the pushed tag publishes it to crates.io, the jud binaries to a GitHub release, the Homebrew formula to the tap and the container image to ghcr.io from CI, what to set up once, and what to do when a release goes wrong.
 

@@ -124,7 +124,9 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   `docs/llms.txt` is regenerated after a page, the README, `llms-intro.txt`
   or `mkdocs.yml` is written; a Bash guard denies pushes to `main`,
   committing `.env`, `cargo publish` and `bd edit` (it opens an editor and
-  hangs). `bd prime` runs at session start.
+  hangs). In a cloud session `session-start.sh` installs the tools
+  (`mise.cloud.toml`, pinned release URLs), imports the beads from the
+  committed export and warms the build; then `bd prime` runs.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker
