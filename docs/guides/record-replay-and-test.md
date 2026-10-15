@@ -90,6 +90,8 @@ cat event.json | jud --replay examples/recordings/jud_calibration examples/jud/t
 
 A state nobody recorded is a backend failure (status 1, `no recording`); a directory that does not exist is a usage error (status 2). `jud eval` takes the same flag and variable, and `jud tune` requires one of them. [Run in CI](run-in-ci.md) turns this into a job.
 
+An image in the request is part of what a recording is keyed by: the fingerprint folds each image in by the SHA-256 of its bytes, so a replay finds the answer only when the same image is sent, and a re-encoded image is a request nobody recorded ([Ask a question about an image](ask-about-an-image.md)).
+
 ## Record a rubric's cases from the shell
 
 `jud record` answers every case of a Cases document once and keeps each answer as a `.jud` recording. It is the command that spends calls to keep the answers: a plain run and `jud eval` without `--replay` ask a backend too, and keep nothing. It needs a backend and a key, which a server that ignores the bearer takes as any non-blank word ([Configure a backend](configure-a-backend.md)). It always asks the configured backend. It has no `--replay` and never replays from `JUD_REPLAY`: a non-empty value is ignored, and an empty one is refused as everywhere else ([Replay](../reference/configuration.md#replay)). Every flag is in [The jud command line](../reference/cli.md#jud-record).

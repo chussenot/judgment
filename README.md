@@ -8,10 +8,11 @@ it is read, and testable with no key: typed judgments from TypeSafe System One
 models and every server that speaks the same wire, as a Rust crate and a
 command line.
 
-A System One model does not generate text. It evaluates a JSON state against
-typed questions and returns calibrated probabilities: a yes or no, one option
-out of a set with the distribution and a confidence, a position on ordered
-levels. The threshold that turns a number into an action is yours, written in
+A System One model does not generate text. It evaluates a JSON state, an
+image included, against typed questions and returns calibrated answers: a yes
+or no, one option out of a set with the distribution and a confidence, a
+position on ordered levels, where something is in an image. The threshold
+that turns a number into an action is yours, written in
 a file or in code, tested against labelled cases and tuned from recorded
 answers. This crate makes four things properties of the types rather than
 habits of the caller: an answer can only be read as what was asked, a
@@ -139,9 +140,9 @@ rustdoc on [docs.rs](https://docs.rs/judgment) is the reference for every
 type.
 
 - **Start**: [Install](docs/start/install.md), [first decision from the command line](docs/start/first-decision-cli.md), [first decision in Rust](docs/start/first-decision-rust.md).
-- **Guides**: [Configure a backend](docs/guides/configure-a-backend.md) (TypeSafe, Ollama, Laya, Clef, any server), [Write a rubric](docs/guides/write-a-rubric.md), [Label cases](docs/guides/label-cases.md), [Record, replay and test](docs/guides/record-replay-and-test.md), [Tune thresholds](docs/guides/tune-thresholds.md), [Run in CI](docs/guides/run-in-ci.md), [Run in a container](docs/guides/run-in-a-container.md), [Use the Claude Code plugin](docs/guides/use-the-claude-code-plugin.md), [Patterns](docs/guides/patterns.md).
+- **Guides**: [Configure a backend](docs/guides/configure-a-backend.md) (TypeSafe, Ollama, Laya, Clef, any server), [Write a rubric](docs/guides/write-a-rubric.md), [Label cases](docs/guides/label-cases.md), [Record, replay and test](docs/guides/record-replay-and-test.md), [Tune thresholds](docs/guides/tune-thresholds.md), [Run in CI](docs/guides/run-in-ci.md), [Run in a container](docs/guides/run-in-a-container.md), [Use the Claude Code plugin](docs/guides/use-the-claude-code-plugin.md), [Patterns](docs/guides/patterns.md), [Ask a question about an image](docs/guides/ask-about-an-image.md), [Locate something with a Box question](docs/guides/locate-with-a-box.md), [Use long context](docs/guides/use-long-context.md).
 - **Reference**: [The jud command line](docs/reference/cli.md), [Configuration](docs/reference/configuration.md), [The .jud format](docs/reference/jud-format.md), [The crate](docs/reference/crate.md), [The container image](docs/reference/container-image.md), [Stability](docs/reference/stability.md), [Glossary](docs/reference/glossary.md).
-- **Concepts**: [System One](docs/concepts/system-one.md), [Rubrics, cases and recordings](docs/concepts/rubrics-cases-recordings.md), [How judgment works](docs/concepts/how-judgment-works.md).
+- **Concepts**: [System One](docs/concepts/system-one.md), [Rubrics, cases and recordings](docs/concepts/rubrics-cases-recordings.md), [How judgment works](docs/concepts/how-judgment-works.md), [Visual judgments](docs/concepts/visual-judgments.md).
 - **Project**: [Contributing](docs/project/contributing.md), [Internals](docs/project/internals.md), [Releasing](docs/project/releasing.md), [verification](docs/project/verification/method.md) against real servers, [research](docs/project/research/client-comparison.md) including the comparison with the other Rust clients, [decisions](docs/project/decisions/README.md), [CHANGELOG](CHANGELOG.md), [llms.txt](docs/llms.txt).
 
 ## Status

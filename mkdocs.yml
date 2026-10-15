@@ -26,6 +26,9 @@ nav:
       - Run in a container: guides/run-in-a-container.md
       - Use the Claude Code plugin: guides/use-the-claude-code-plugin.md
       - Patterns: guides/patterns.md
+      - Ask a question about an image: guides/ask-about-an-image.md
+      - Locate something with a Box question: guides/locate-with-a-box.md
+      - Use long context: guides/use-long-context.md
   - Reference:
       - The jud command line: reference/cli.md
       - Configuration: reference/configuration.md
@@ -38,6 +41,7 @@ nav:
       - System One: concepts/system-one.md
       - Rubrics, cases and recordings: concepts/rubrics-cases-recordings.md
       - How judgment works: concepts/how-judgment-works.md
+      - Visual judgments: concepts/visual-judgments.md
   - Project:
       - Contributing: project/contributing.md
       - Internals: project/internals.md

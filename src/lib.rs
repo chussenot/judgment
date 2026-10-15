@@ -109,3 +109,12 @@ pub struct DocsRecordReplayAndTest;
 #[cfg(all(doctest, feature = "http"))]
 #[doc = include_str!("../docs/guides/configure-a-backend.md")]
 pub struct DocsConfigureABackend;
+#[cfg(all(doctest, feature = "http"))]
+#[doc = include_str!("../docs/guides/ask-about-an-image.md")]
+pub struct DocsAskAboutAnImage;
+#[cfg(all(doctest, feature = "http"))]
+#[doc = include_str!("../docs/guides/locate-with-a-box.md")]
+pub struct DocsLocateWithABox;
+#[cfg(all(doctest, feature = "http"))]
+#[doc = include_str!("../docs/guides/use-long-context.md")]
+pub struct DocsUseLongContext;

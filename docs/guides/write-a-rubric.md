@@ -31,7 +31,7 @@ A name is letters, digits, `.`, `_` and `-`, starting with a letter or a digit (
 
 ## 2. Write one question per thing
 
-List what the application needs to know and cannot compute itself. Each becomes one question of one primitive ([System One](../concepts/system-one.md)). "Does it ask for a refund, and why, and how angry are they?" is three questions.
+List what the application needs to know and cannot compute itself. Each becomes one question of one primitive ([System One](../concepts/system-one.md)). "Does it ask for a refund, and why, and how angry are they?" is three questions. A question about an image names the image by the reference the state carries, and a Box, which asks where, always goes beside a Noul that asks whether ([Locate something with a Box question](locate-with-a-box.md)).
 
 Give each outcome a criterion in plain words. `Does the message ask for money back?` reads differently to every grader; `true: a refund, a chargeback, a credit` reads the same to all of them, and to the model. Name the state key the question is about (`message`): the state is JSON and the model sees all of it.
 

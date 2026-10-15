@@ -1,8 +1,8 @@
 ---
 title: System One
-description: What a System One model answers, why a calibrated probability suits a decision better than generated text, and the three primitives (Noul, Choice, Score) with what each returns.
+description: What a System One model answers, why a calibrated probability suits a decision better than generated text, and the four primitives (Noul, Choice, Score, and the Box that locates something in an image) with what each returns.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-15
 tags: [judgment, typesafe, system-one, concepts, calibration]
 ---
 
@@ -10,21 +10,22 @@ tags: [judgment, typesafe, system-one, concepts, calibration]
 
 A generative model asked to classify something answers in prose, or in JSON it was told to produce. A `confidence` field in that JSON is generated text, not a measured probability, and a parse failure becomes a failure of the decision it was meant to inform.
 
-A [System One](https://docs.typesafe.ai) model does not generate text. It evaluates a `state` (any JSON) against typed questions and returns calibrated answers: a probability of yes, one option out of a defined set with the full distribution and a confidence, or a position on ordered levels. Calibrated means the probabilities can be measured against outcomes and held to account: among the answers given at 0.8, about eight in ten are right. That lets code own the workflow. The model supplies a number; the threshold that turns the number into an action is written, tested and tuned by the application.
+A [System One](https://docs.typesafe.ai) model does not generate text. It evaluates a `state` (any JSON, an image included) against typed questions and returns calibrated answers: a probability of yes, one option out of a defined set with the full distribution and a confidence, a position on ordered levels, or where something is in an image. Calibrated means the probabilities can be measured against outcomes and held to account: among the answers given at 0.8, about eight in ten are right. That lets code own the workflow. The model supplies a number; the threshold that turns the number into an action is written, tested and tuned by the application.
 
 TypeSafe's hosted models are the Jev family (`jev-latest`); the wire they speak, `POST /v1/systemone`, is spoken by other servers and open-weight models too ([Compatible servers and models](../project/research/compatible-servers-and-models.md)). This crate is a client to the wire, not to one server. It is not affiliated with TypeSafe AI.
 
-## The three primitives
+## The four primitives
 
 | Primitive | Asks | Answers with | A gate reads |
 |---|---|---|---|
 | **Noul** | A yes-or-no question | The probability of yes | a threshold on the probability |
 | **Choice** | One option among those offered | The chosen option, a probability per option, a confidence | a bar on the confidence, a fallback below it |
 | **Score** | A position on a scale of levels | A weighted position, a probability per level, a confidence | the nearest level, a bar on the confidence, a level to reach |
+| **Box** | Where something is in an image (Jev 1.14) | Four edges as fractions of the image, a confidence | a bar on the confidence; a Noul beside it says whether there is anything to find ([Visual judgments](visual-judgments.md)) |
 
 A question is narrow and atomic: one thing, answered with one number. "Which desk, and is it urgent, and should we refund?" is three questions. The model never sees the question's id, only its instructions and criteria, and never sees the threshold, which is why a bar can move without an answer changing.
 
-Confidence is not the probability of being right. For a Choice it is how far the distribution leans toward the chosen option; for a Score, how far it leans toward one level. A 60/40 split between two neighbouring levels is a confidence of 0.40 even when the weighted position is exact. A Noul has no confidence: it is thresholded on its probability. The crate keeps the two apart as types, `Probability` and `Confidence`, so a threshold meant for one is never applied to the other ([How judgment works](how-judgment-works.md)).
+Confidence is not the probability of being right. For a Choice it is how far the distribution leans toward the chosen option; for a Score, how far it leans toward one level. A 60/40 split between two neighbouring levels is a confidence of 0.40 even when the weighted position is exact. A Box's confidence is the model's in its box, and it may leave it out. A Noul has no confidence: it is thresholded on its probability. The crate keeps the two apart as types, `Probability` and `Confidence`, so a threshold meant for one is never applied to the other ([How judgment works](how-judgment-works.md)).
 
 ## What the model is not asked
 
@@ -37,4 +38,5 @@ A threshold is a claim about the model's probabilities: above this number, the m
 ## Next
 
 - [How judgment works](how-judgment-works.md): how the crate ties an answer to its question and what it checks before an answer is read.
+- [Visual judgments](visual-judgments.md): what changes when the state is an image.
 - [Your first decision from the command line](../start/first-decision-cli.md) or [in Rust](../start/first-decision-rust.md).

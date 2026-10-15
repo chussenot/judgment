@@ -24,7 +24,7 @@ Use the keys the application really sends, in their real shape. An invented stat
 
 ## 3. Label what you are sure of
 
-A label is written in the answer's own vocabulary: `true` or `false` for a Noul, an offered option key for a Choice, a level's text or index for a Score. A question left out of `expect` is asked and not graded. A wrong label costs more than a missing one, because the bar moves to fit it.
+A label is written in the answer's own vocabulary: `true` or `false` for a Noul, an offered option key for a Choice, a level's text or index for a Score, `{box: {top, bottom, left, right}}` as fractions of the image for a Box, with the case's image declared under `assets` by a path relative to the file ([Locate something with a Box question](locate-with-a-box.md)). A question left out of `expect` is asked and not graded. A wrong label costs more than a missing one, because the bar moves to fit it.
 
 ```yaml
     - id: charged-twice
