@@ -194,6 +194,7 @@ Twenty-eight of thirty at the bar, a mean overlap of 0.80, and a gate at 0.5 tha
 
 ## Next
 
+- [Get verdicts on images from the command line](images-from-the-command-line.md): the same from the shell alone, a page with a stamp, the refusals and the labelled loop.
 - [Visual judgments](../concepts/visual-judgments.md): why the Box is read beside a Noul.
 - [Other shapes](patterns.md#other-shapes): element location for cropping, visual regression review.
 - [Tune thresholds](tune-thresholds.md): the confidence bar from the recordings.

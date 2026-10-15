@@ -45,7 +45,7 @@ An image is a PNG or a JPEG, not animated, each side from 256 to 1568 pixels, 78
 
 ## Next
 
-- [Ask a question about an image](../guides/ask-about-an-image.md), [Locate something with a Box question](../guides/locate-with-a-box.md).
+- [Get verdicts on images from the command line](../guides/images-from-the-command-line.md), [Ask a question about an image](../guides/ask-about-an-image.md), [Locate something with a Box question](../guides/locate-with-a-box.md).
 - [Other shapes](../guides/patterns.md#other-shapes): screenshots, document pages, moderation, visual regression, cropping.
 - [A Box calibration study on synthetic shapes](../project/verification/box-calibration-study.md): the numbers behind this page.
 - [A Box calibration study on document pages](../project/verification/box-calibration-study-pages.md): the same questions on a small target among distractors, at two sizes.
