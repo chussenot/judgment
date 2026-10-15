@@ -4,8 +4,11 @@
 # Fast, file-level checks run on every commit, and the commit message is
 # checked against Conventional Commits (cog.toml). The test suite runs on push.
 # `.beads/` is bd's: it writes those files itself (metadata.json without a final
-# newline, the issues export), so the file fixers leave them alone. After a merge
-# or a checkout the export is imported into the database (scripts/bd-sync.sh).
+# newline, the issues export), so the file fixers leave them alone. The export is
+# imported into the database before every commit and after a merge or a checkout
+# (scripts/bd-sync.sh): before the commit because beads' own pre-commit hook then
+# exports the database over the file, and a merge resolved by hand has the file
+# ahead of the database until it is imported.
 
 minimum_pre_commit_version: "3.2.0"
 default_install_hook_types: [pre-commit, commit-msg, pre-push, post-merge, post-checkout]
@@ -72,12 +75,12 @@ repos:
         stages: [commit-msg]
 
       - id: beads-import
-        name: beads import after a merge or checkout
+        name: beads import (before a commit, after a merge or checkout)
         entry: scripts/bd-sync.sh import
         language: script
         pass_filenames: false
         always_run: true
-        stages: [post-merge, post-checkout]
+        stages: [pre-commit, post-merge, post-checkout]
 
       - id: cargo-test
         name: cargo test (pre-push)

@@ -8,8 +8,10 @@
 #                               after each of its writes: .beads/config.yaml)
 #   scripts/bd-sync.sh import   upsert the file into the local database: rows
 #                               older than the database's are skipped, nothing
-#                               is deleted (the post-merge and post-checkout
-#                               hooks, and a cloud session's start)
+#                               is deleted (the pre-commit, post-merge and
+#                               post-checkout hooks, and a cloud session's
+#                               start; before a commit so that beads' own
+#                               flush, which follows, exports the merged state)
 #   scripts/bd-sync.sh status   issue counts, and whether the file is current
 #
 # The file is a passive export: no history, no Dolt branches, reviewable in a

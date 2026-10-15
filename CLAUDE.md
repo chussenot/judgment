@@ -15,9 +15,10 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   the beads section in each, so `prek install` is never run directly.
 - The beads stay in sync through git, never by hand. bd rewrites and stages
   `.beads/issues.jsonl` after every write (`.beads/config.yaml`), the
-  pre-commit hook flushes it, so a commit carries the issues it touched; after
-  a merge or a checkout the hook imports it (newer rows win, nothing is
-  deleted), and a cloud session bootstraps its database from it. So: commit
+  pre-commit hook flushes it, so a commit carries the issues it touched; the
+  hook imports it before a commit and after a merge or a checkout (newer rows
+  win, nothing is deleted), and a cloud session bootstraps its database from
+  it. So: commit
   the staged export with the work it tracks, or alone as `chore(beads): ...`;
   end a session with it pushed, since the issues exist nowhere else; never
   edit the file or resolve a conflict in it by hand (`merge=union` merges
