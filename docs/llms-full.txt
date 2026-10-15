@@ -1924,6 +1924,33 @@ async fn run() -> judgment::Result<()> {
 
 `answer_with_assets` is on the `SystemOne` trait, so a `Fake`, a `Recorder` or a `Replay` takes the same call: the fake refuses a reference the state does not carry as the API does, and the recorder keys the recording by the image's bytes as well as the state. A backend written elsewhere that has not implemented it refuses a request with images rather than dropping them. `Request::new(..).with_assets(&assets)` is the same request for `Client::evaluate_with`, when the call needs options.
 
+## Send the images as parts
+
+Base64 in the JSON body costs a third more bytes than the file, and nothing else: the same image sent either way costs the same input tokens and is answered the same. When the bytes matter (many images, a slow link), the `multipart` feature sends them as the `multipart/form-data` body TypeSafe recommends for images: a first part named `request` holds the JSON body with each asset as `{type: image, part}` in place of its base64, then one part per image under its media type.
+
+```toml
+judgment = { version = "0.13", features = ["multipart"] }
+```
+
+```rust ignore
+use judgment::{CallOptions, Client, Request};
+
+async fn run(state: &serde_json::Value, questions: &judgment::Questions, assets: &judgment::Assets) -> judgment::Result<()> {
+    // Every call of this client, or one call through `CallOptions::multipart(true)`.
+    let client = Client::builder().multipart(true).build()?;
+    let request = Request::new(state, "jev-latest", questions).with_assets(assets);
+    let response = client.evaluate(&request).await?;
+    // Off for one call of a client built with it on.
+    let _ = client
+        .evaluate_with(&request, &CallOptions::new().multipart(false))
+        .await?;
+    let _ = response;
+    Ok(())
+}
+```
+
+A request without images is the JSON body it always was, whatever was asked. Nothing else moves: the reference check, the 32 MiB bound, the images header, the `Observer`'s report, the fingerprint and the recordings are the same under either transport, so a recording made under one answers a replay under the other, and the `typesafe.evaluate` span says which was sent as `multipart`. The parts are named `part-0`, `part-1`, … in reference order and the asset's `part` maps each reference to its part; the reference itself is not a part name, since it may hold text a header cannot carry ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)). The `jud` command sends base64.
+
 ## What the crate checks, and what it reports
 
 | Check | Where | Error |
@@ -3145,6 +3172,7 @@ A request nobody recorded is a backend failure (status 1); a directory that does
 | Timeout per attempt | `ClientBuilder::timeout`, or `CallOptions::timeout` for one call | 10 s |
 | Retries | `ClientBuilder::retry_policy`, or `CallOptions` for one call | `RetryPolicy::default()`: [The crate](crate.md#defaults) |
 | Long context | `ClientBuilder::long_context`, or `CallOptions::long_context` for one call | off: the model's own limits, 64k tokens per request and 32k per question; on, 262k for both through the `TypeSafe-Danger-Zone-Long-Context` header, slower and less accurate by TypeSafe's own account ([decision 0027](../project/decisions/0027-long-context-is-a-switch-on-the-call.md)) |
+| Images as parts (feature `multipart`) | `ClientBuilder::multipart`, or `CallOptions::multipart` for one call | off: the images as base64 in the JSON body; on, a `multipart/form-data` body with a JSON `request` part and one part per image, the request keyed and checked as before ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) |
 
 The crate's client reads no base URL from the environment; the `jud` command and the examples do, and pass it to the builder. The two timeouts differ on purpose: a library call is usually one of many on a request path and fails fast at 10 s; a command-line run has a person waiting and a local model that may be loading, so it waits 30 s.
 
@@ -3664,6 +3692,7 @@ Minor 4 of `jud/v1` names exactly the fields on this page. A reader refuses a fi
 | `jud` | no | The `jud` module: the `.jud` reader and writer, `Rubric`, `Cases`, `Verdict`, `Replay` reading `.jud` recordings | `serde-saphyr` |
 | `openapi` | no | `contract::OPENAPI_DOCUMENT`, the vendored TypeSafe OpenAPI document as text, about 25 KB | nothing |
 | `cli` | no | The `jud` binary (`src/bin/jud/`); implies `jud` and `http` | `clap`, `clap_complete` |
+| `multipart` | no | `CallOptions::multipart` and `ClientBuilder::multipart`: a request's images sent as `multipart/form-data` parts beside a JSON `request` part instead of base64 in the JSON body, the transport TypeSafe recommends for images; implies `http` ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) | `reqwest`'s multipart encoding, `mime_guess`, `bytes` |
 
 Without `http` the crate is the questions, the answers, `Fake`, `Recorder`, `Replay`, `eval`, `observer` and, with `jud`, the format: everything a project with its own transport needs. CI builds and tests that configuration (`cargo check --no-default-features --all-targets`).
 
@@ -3684,7 +3713,7 @@ In the order of one call: a question is built, sent through a backend, answered,
 | `answer` | `Response` and the wire `Answer`; `Probability` and `Confidence`, which refuse a value outside `[0, 1]`; `Response::verify` holds a response against the questions; `Response::get(&handle)` reads `Noul`, `Choice<T>`, `Score` or `BoundingBox` (`BoxEdges` as fractions of the image, `PixelBox` at a size). | [docs.rs](https://docs.rs/judgment/latest/judgment/answer/index.html) |
 | `asset` | `Image` (a PNG or a JPEG, its format and size read from the bytes, the hosted API's limits checked), `ImageFormat`, and `Assets`, the request's images by reference. |  [docs.rs](https://docs.rs/judgment/latest/judgment/asset/index.html) |
 | `backend` | The `SystemOne` trait (`answer`, and `answer_with_assets` for a request with images) and three implementations beside the client: `Fake`, `Recorder`, `Replay`. | [docs.rs](https://docs.rs/judgment/latest/judgment/backend/index.html) |
-| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields and long context for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
+| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields, long context and, with `multipart`, the images as parts, for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
 | `http` (`http`) | `RetryPolicy` and `send_with_retries`, the retry loop behind the client, public so another `reqwest` client can retry the same way. | [docs.rs](https://docs.rs/judgment/latest/judgment/http/index.html) |
 | `error` | `Error`, `Result`, `ValidationIssue`. | [docs.rs](https://docs.rs/judgment/latest/judgment/error/index.html) |
 | `eval` | `Recording`, `Judgment`, the metrics (`metrics`), the fingerprints (`canonical`) and the sweeps (`tuning`). | [docs.rs](https://docs.rs/judgment/latest/judgment/eval/index.html) |
@@ -4756,6 +4785,10 @@ JUDGMENT_LIVE_MODEL=jev-latest JUDGMENT_LIVE_PROFILE=typesafe \
 
 Nothing in the wire shape, which the OpenAPI refresh of the same day had already settled. Two things in words: the format page no longer says a reader must refuse a Box in a rubric without an image, and the Box's documentation names which alias answers it. The two live tests are the seventeenth and eighteenth in `tests/live.rs`; `mise run live:typesafe` runs them with the others, asking `jev-preview` for the Box part until `jev-latest` is 1.14.
 
+## Multipart, later the same day
+
+The document's second request body, `multipart/form-data`, was then implemented behind the `multipart` feature ([decision 0028](../decisions/0028-multipart-is-a-feature-and-a-switch.md)) and sent to the hosted API with the same shapes image and the same two questions: a `request` part holding the JSON body with the asset as `{type: image, part: part-0}`, and the PNG as `part-0` under `image/png`. `jev-1.14.0` answered in 0.7 s with a box at an overlap of 0.98 with the label, at the same 1,167 input tokens as the base64 body for the same request; two raw sends of each form, through `curl`, gave the same tokens every time and boxes within 0.01 of each other, so the transport changes neither the cost nor the answer. The nineteenth live test, `an_image_goes_as_a_multipart_part_too`, runs under the feature.
+
 
 <!-- source: docs/project/verification/box-calibration-study.md -->
 
@@ -5589,6 +5622,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0025](0025-a-document-names-an-image-by-path.md) | A document names an image by a path relative to itself | accepted |
 | [0026](0026-a-box-is-graded-by-intersection-over-union.md) | A Box is graded by intersection over union | accepted |
 | [0027](0027-long-context-is-a-switch-on-the-call.md) | Long context is a switch on the call, not a request field or a default | accepted |
+| [0028](0028-multipart-is-a-feature-and-a-switch.md) | Multipart upload is a feature and a switch on the call, off by default | accepted |
 
 ## Status notes
 
@@ -6889,3 +6923,82 @@ Chosen option 1.
 ## More information
 
 [Models](https://docs.typesafe.ai/models#long-context) is the page the header comes from; `src/client.rs` (`# Long context`) implements it; [Configuration](../../reference/configuration.md#the-crates-client) lists the setting; [decision 0024](0024-images-are-part-of-the-request.md) made the same choice the other way for the images header, which the client sets itself because the image on the request is the opt-in.
+
+
+<!-- source: docs/project/decisions/0028-multipart-is-a-feature-and-a-switch.md -->
+
+
+# 0028 Multipart upload is a feature and a switch on the call, off by default
+
+## Context and problem statement
+
+A request with images carries them as base64 in the JSON body, each asset `{type: image, format, data_base64}` ([decision 0024](0024-images-are-part-of-the-request.md)). The OpenAPI document also takes `multipart/form-data`: a first part named `request` holding the JSON body, in which an asset is `{type: image, part}` naming the part that holds its bytes, then one part per image with its media type; TypeSafe recommends it for images. Base64 costs a third more bytes on the wire and nothing else: on the hosted API the same image sent both ways costs the same input tokens and is answered within hundredths the same (1,167 tokens, a box within 0.01 of the base64 answer, on 2026-10-15). The question was whether the crate should send multipart at all, and if so, when.
+
+## Decision drivers
+
+- A request without images, and the recordings, must not change: a multipart body is the same request, and a `Replay` must answer it.
+- The crate's one body path had been verified live on every probe; a second path is a second thing to hold to the contract.
+- `reqwest`'s multipart encoding pulls in `mime_guess` and its generated table, a compile cost a client that sends no image should not pay.
+- The saving is bytes, not calls or tokens; a caller who measures it should be able to turn it on without touching the rest.
+- A part's name goes in a `Content-Disposition` header; a reference is any text up to 1024 bytes.
+
+## Considered options
+
+1. **A feature and a switch**: cargo feature `multipart`; `CallOptions::multipart(true)` for one call, `ClientBuilder::multipart(true)` for every call of a client; off by default; parts named `part-N` in reference order, with the asset's `part` mapping the reference to it.
+2. **Always multipart** for a request with images, the JSON body kept for one without.
+3. **By size**: multipart over some number of bytes, JSON under it.
+4. **A second request type** or a second method (`evaluate_multipart`), the caller choosing per call site.
+5. **Nothing**: base64 only, the design note on the bead kept for when a caller asks.
+
+## Decision outcome
+
+Chosen option 1.
+
+- The switch lives where long context does ([decision 0027](0027-long-context-is-a-switch-on-the-call.md)): on the call, with a client-wide default, and never on the `Request`, so the request's serialisation, its fingerprint and its hash (over the bytes' digests, decision 0024) are untouched; the `typesafe.evaluate` span records `multipart`.
+- The body is the document's: the `request` part first, under `application/json`, the request's fields in the JSON body's order with each asset as `{type: image, part}`; then the images in reference order as `part-0`, `part-1`, …, each under `image/png` or `image/jpeg` with a file name of its digest, every part with its length so the request carries a `content-length`. The part name is not the reference: a reference may hold text a header cannot carry, and the asset's `part` field is the document's own way of mapping one to the other.
+- Everything before and after the wire is shared with the JSON path: the reference check, the 32 MiB bound (the JSON part and the images' bytes together), the images header, the observer's report, the decode and the verification. The retry loop rebuilds the form per attempt from the image's shared bytes, so an attempt costs no copy.
+- The feature is off by default and implies `http`; without it the switch does not exist and the span's field is `false`.
+
+### Consequences
+
+- Good: a caller who measures the base64 cost turns it on in one place; everyone else's build, wire and recordings are as they were.
+- Good: the contract test reads the form back and holds the `request` part to the request schema and every image part to an asset's `part`.
+- Bad: a second body path to keep in step with the document, and a feature flag to know about.
+- Bad: the `jud` command has no setting for it; its images go as base64 (a follow-up if a run measures the cost).
+
+### Confirmation
+
+`tests/client.rs` (under the feature) reads the multipart body back part by part, holds the `request` part to the JSON body's fields and order and each image part to its bytes and media type, sends the images header, checks that the switch is off by default and turns on and off per call and per client, that a request without images is the JSON body whatever was asked, and that a retried attempt carries the whole form again; `tests/contract.rs` pins the document's multipart schema (the `request` part required and JSON, the extra properties `image/*`, an asset's `part`) and holds the `request` part to `SystemOneRequest` and every image part to exactly one asset; `tests/live.rs` sends the shapes image and its Box question as parts to the hosted API, answered by `jev-1.14.0` in 0.7 s at an overlap of 0.98 with the label ([Jev 1.14 on the hosted API](../verification/hosted-typesafe-jev-1-14.md)).
+
+## Pros and cons of the options
+
+### Option 1: a feature and a switch
+
+- Good, because the request, the recordings and the default build do not change.
+- Good, because the saving is measured by the caller who wants it, not assumed for everyone.
+- Bad, because it is one more switch; its documentation says what it buys and what it does not.
+
+### Option 2: always multipart
+
+- Good, because the recommended transport is the only one, and there is one body path with images.
+- Bad, because every client that sends an image compiles `mime_guess`, and every recording's request is sent in a form the earlier live runs never verified.
+- Bad, because a server that speaks the JSON wire and not the form (the compatible servers the crate is run against were never probed with one) would refuse every image.
+
+### Option 3: by size
+
+- Good, because small images stay on the verified path and large ones save the most.
+- Bad, because the threshold is a number nobody can justify, and the same request takes two forms depending on it, which is two paths to test and a surprise in a trace.
+
+### Option 4: a second request type or method
+
+- Good, because the choice is explicit at the call site.
+- Bad, because a `Request` is one thing with one fingerprint whatever its transport, and a second method on the trait would put a transport choice in front of every backend, `Fake` and `Replay` included, which have no transport.
+
+### Option 5: nothing
+
+- Good, because base64 carries every image the limits allow, and the hosted API accepted it on every probe.
+- Bad, because the saving is real for a caller who sends many images, and the document names the form as the recommended one.
+
+## More information
+
+The OpenAPI document's `multipart/form-data` request body and its `Asset.part` field (`tests/fixtures/typesafe-openapi.json`); `src/client.rs` (`# Multipart`) implements it; [Ask a question about an image](../../guides/ask-about-an-image.md#send-the-images-as-parts) is the procedure; [The crate](../../reference/crate.md#features) lists the feature; the design note that preceded this record is on beads issue `judgment-7k5.4`.

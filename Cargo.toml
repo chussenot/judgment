@@ -74,6 +74,12 @@ jud = ["dep:serde-saphyr"]
 # so that a library build with `jud` (the format) never compiles clap and its
 # derive macros for a command line it does not have.
 cli = ["jud", "http", "dep:clap", "dep:clap_complete"]
+# `CallOptions::multipart` and `ClientBuilder::multipart`: a request's images
+# sent as `multipart/form-data` parts beside a JSON `request` part instead of
+# base64 in the JSON body, the transport TypeSafe recommends for images. Off
+# by default: base64 carries every image the limits allow, and the feature
+# pulls in reqwest's multipart encoding and `mime_guess`.
+multipart = ["http", "reqwest/multipart", "dep:bytes"]
 
 [dependencies]
 # 1.0.181 is the first with `#[serde(untagged)]` on one variant, which
@@ -90,6 +96,8 @@ tracing = "0.1"
 # YAML for the `.jud` format (feature `jud`). Pure Rust, YAML 1.2, panic-free.
 serde-saphyr = { version = "1.3", optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "http2"], optional = true }
+# The image parts of a multipart body, sent on every attempt without a copy.
+bytes = { version = "1.9", optional = true }
 tokio = { version = "1", features = ["time", "rt"], optional = true }
 fastrand = { version = "2", optional = true }
 # HTTP dates in `Retry-After` (the retry loop).

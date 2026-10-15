@@ -1222,3 +1222,69 @@ async fn a_state_over_the_default_budget_is_answered_with_long_context() {
         }
     }
 }
+
+/// The shapes image and its Box question sent as multipart parts (the
+/// `multipart` feature, `ClientBuilder::multipart`): the hosted API takes
+/// the JSON `request` part with the asset naming its part and the image
+/// part beside it, under the images header, and answers as it does the
+/// base64 body; a server that does not take the form refuses it by name,
+/// which is printed.
+#[cfg(feature = "multipart")]
+#[tokio::test]
+#[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
+async fn an_image_goes_as_a_multipart_part_too() {
+    let (image, label) = shape_01();
+    let mut assets = Assets::new();
+    assets.insert("image", image).unwrap();
+    let state = json!({ "image": "image" });
+    let mut q = Questions::new();
+    let present = q
+        .noul(
+            "circle_present",
+            "Is there a filled circle in `image`?",
+            None,
+        )
+        .unwrap();
+    let circle = q.r#box("circle", "the filled circle in `image`").unwrap();
+    let profile = *PROFILE;
+    let model = if profile == Profile::Typesafe {
+        "jev-preview".to_owned()
+    } else {
+        requested_model()
+    };
+    let client = Client::builder()
+        .base_url(base_url())
+        .api_key(env_or("JUDGMENT_LIVE_API_KEY", "unused"))
+        .timeout(Duration::from_secs(120))
+        .multipart(true)
+        .build()
+        .unwrap();
+    let started = std::time::Instant::now();
+    match client
+        .evaluate(&Request::new(&state, &model, &q).with_assets(&assets))
+        .await
+    {
+        Ok(response) => {
+            let present = response.get(&present).unwrap();
+            let circle = response.get(&circle).unwrap();
+            let iou = circle.edges.iou(&label);
+            eprintln!(
+                "multipart: {} answered in {:?}, circle_present {:.2}, box {:?} at confidence {:?}, IoU {iou:.2} with the label, {} input tokens",
+                response.model,
+                started.elapsed(),
+                present.yes,
+                circle.edges,
+                circle.confidence,
+                response.usage.input_tokens
+            );
+            assert!(present.is_yes(0.5), "{present:?}");
+            if profile == Profile::Typesafe {
+                assert!(iou >= 0.5, "the box overlaps the drawn circle: {iou:.2}");
+            }
+        }
+        Err(err) => {
+            eprintln!("multipart: {err}");
+            assert!(profile != Profile::Typesafe, "{err:?}");
+        }
+    }
+}

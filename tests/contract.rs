@@ -1612,3 +1612,147 @@ fn openrouters_documented_response_conforms_and_decodes() {
         .unwrap();
     response.verify(&q).unwrap();
 }
+
+/// With the `multipart` feature and when asked, a request with images is
+/// the document's `multipart/form-data` body: a first part named `request`
+/// that is a `SystemOneRequest` whose every asset names a part in place of
+/// its base64, then one part per image under the `image/*` media type the
+/// document gives the extra properties, each part name used by exactly one
+/// asset. The document's encoding says the `request` part is JSON.
+#[cfg(feature = "multipart")]
+#[tokio::test]
+async fn a_multipart_request_is_the_documented_form() {
+    let multipart =
+        &SPEC["paths"]["/v1/systemone"]["post"]["requestBody"]["content"]["multipart/form-data"];
+    assert_eq!(
+        multipart["encoding"]["request"]["contentType"],
+        "application/json"
+    );
+    assert_eq!(multipart["schema"]["required"], json!(["request"]));
+    assert_eq!(
+        multipart["schema"]["properties"]["request"]["contentMediaType"],
+        "application/json"
+    );
+    assert_eq!(
+        multipart["schema"]["properties"]["request"]["contentSchema"]["$ref"],
+        "#/components/schemas/SystemOneRequest"
+    );
+    assert_eq!(
+        multipart["schema"]["additionalProperties"]["contentMediaType"],
+        "image/*"
+    );
+    let asset = &SPEC["components"]["schemas"]["Asset"]["properties"];
+    assert!(asset["part"].is_object(), "an asset may name a part");
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(example_response()))
+        .mount(&server)
+        .await;
+    let client = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .multipart(true)
+        .build()
+        .unwrap();
+    let images = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/images");
+    let mut assets = judgment::Assets::new();
+    let door = assets
+        .add(judgment::Image::read(images.join("square-300.png")).unwrap())
+        .unwrap();
+    assets
+        .insert(
+            "yard",
+            judgment::Image::read(images.join("square-300.jpg")).unwrap(),
+        )
+        .unwrap();
+    let state = json!({ "door": door, "yard": "yard" });
+    let q = every_question_shape();
+    let result = client
+        .evaluate(&Request::new(&state, "jev-preview", &q).with_assets(&assets))
+        .await;
+    assert!(
+        !matches!(result, Err(Error::Decode { .. })),
+        "the example response decodes: {result:?}"
+    );
+
+    let received = server.received_requests().await.unwrap();
+    let sent = &received[0];
+    let content_type = sent.headers.get("content-type").unwrap().to_str().unwrap();
+    let (media_type, boundary) = content_type.split_once("; boundary=").unwrap();
+    assert_eq!(media_type, "multipart/form-data");
+    assert_eq!(
+        sent.headers.get("typesafe-danger-zone-images").unwrap(),
+        "true"
+    );
+    let delimiter = format!("--{boundary}");
+    let body = String::from_utf8_lossy(&sent.body);
+    let mut chunks = body.split(&delimiter);
+    assert_eq!(chunks.next(), Some(""), "the body starts with a delimiter");
+    let mut parts: Vec<(String, String, String)> = Vec::new();
+    for chunk in chunks {
+        if chunk == "--\r\n" {
+            break;
+        }
+        let (headers, content) = chunk
+            .strip_prefix("\r\n")
+            .unwrap()
+            .split_once("\r\n\r\n")
+            .unwrap();
+        let disposition = headers
+            .lines()
+            .find_map(|l| l.strip_prefix("Content-Disposition: "))
+            .unwrap();
+        let name = disposition
+            .split("name=\"")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        let part_type = headers
+            .lines()
+            .find_map(|l| l.strip_prefix("Content-Type: "))
+            .unwrap();
+        parts.push((
+            name.to_owned(),
+            part_type.to_owned(),
+            content.strip_suffix("\r\n").unwrap().to_owned(),
+        ));
+    }
+    assert_eq!(parts[0].0, "request", "the JSON request as the first part");
+    assert_eq!(parts[0].1, "application/json");
+    let request: Value = serde_json::from_str(&parts[0].2).unwrap();
+    assert_conforms(&request_schema(), &request, "the request part");
+    let sent_assets = request["assets"].as_object().unwrap();
+    assert_eq!(sent_assets.len(), 2);
+    let mut named: BTreeSet<&str> = BTreeSet::new();
+    for (reference, asset) in sent_assets {
+        assert_conforms("Asset", asset, &format!("asset {reference}"));
+        assert_eq!(asset["type"], "image", "{reference}");
+        assert!(asset.get("data_base64").is_none(), "{reference}: no base64");
+        assert!(
+            asset.get("format").is_none(),
+            "{reference}: the part's media type says it"
+        );
+        let part = asset["part"].as_str().unwrap();
+        assert!(!part.is_empty(), "{reference}");
+        assert!(
+            named.insert(part),
+            "{reference}: {part} used by one asset only"
+        );
+    }
+    let image_parts: BTreeSet<&str> = parts[1..].iter().map(|(n, ..)| n.as_str()).collect();
+    assert_eq!(
+        image_parts, named,
+        "every image part used by exactly one asset"
+    );
+    for (name, part_type, _) in &parts[1..] {
+        assert!(
+            part_type.starts_with("image/"),
+            "{name}: {part_type} is an image/*"
+        );
+    }
+}

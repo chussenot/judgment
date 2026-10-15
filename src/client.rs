@@ -129,6 +129,27 @@
 //! tokeniser, and the caller who built a long state knows it did. The
 //! setting is the span's `long_context` field.
 //!
+//! # Multipart
+//!
+//! With the `multipart` feature, a request's images can go as
+//! `multipart/form-data` parts instead of base64 in the JSON body, the
+//! transport TypeSafe recommends for images: a first part named `request`
+//! holds the JSON body with each asset written as `{type: image, part}` in
+//! place of its `format` and `data_base64`, then one part per image, named
+//! `part-0`, `part-1`, … in reference order, under the file's media type
+//! and a file name of its digest. It is asked for per call
+//! ([`CallOptions::multipart`]) or for every call of a client
+//! ([`ClientBuilder::multipart`]) and applies to a request with images; one
+//! without is the JSON body it always was. Nothing else moves: the images
+//! header, the checks before the wire, the request fingerprint and hash
+//! (over the bytes' digests), the observer's report and the recordings are
+//! the same under either transport, so a recording made under one answers
+//! a replay under the other. What it buys is bytes on the wire, a third
+//! fewer than base64, and nothing else: not a call, not a token. It is off
+//! by default and behind a feature because base64 carries every image the
+//! limits allow, and the feature pulls in `reqwest`'s multipart encoding
+//! and `mime_guess`. The setting is the span's `multipart` field.
+//!
 //! # `GET /v1/models`
 //!
 //! [`Client::list_models`] lists the models and aliases the account may
@@ -310,17 +331,22 @@ pub struct CallOptions {
     headers: HeaderMap,
     extra: Map<String, Value>,
     long_context: Option<bool>,
+    #[cfg(feature = "multipart")]
+    multipart: Option<bool>,
 }
 
 impl fmt::Debug for CallOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CallOptions")
+        let mut debug = f.debug_struct("CallOptions");
+        debug
             .field("timeout", &self.timeout)
             .field("retry", &self.retry)
             .field("headers", &header_names(&self.headers))
             .field("extra", &self.extra.keys().collect::<Vec<_>>())
-            .field("long_context", &self.long_context)
-            .finish()
+            .field("long_context", &self.long_context);
+        #[cfg(feature = "multipart")]
+        debug.field("multipart", &self.multipart);
+        debug.finish()
     }
 }
 
@@ -367,6 +393,18 @@ impl CallOptions {
     #[must_use]
     pub fn long_context(mut self, on: bool) -> Self {
         self.long_context = Some(on);
+        self
+    }
+
+    /// The images of this call sent as multipart parts, in place of the
+    /// client's setting (module docs, `# Multipart`): a JSON `request`
+    /// part and one part per image, instead of base64 in the JSON body.
+    /// Nothing without an image in the request; `false` turns it off for
+    /// one call of a client built with it on.
+    #[cfg(feature = "multipart")]
+    #[must_use]
+    pub fn multipart(mut self, on: bool) -> Self {
+        self.multipart = Some(on);
         self
     }
 
@@ -444,11 +482,14 @@ pub struct ClientBuilder {
     observer: Option<Arc<dyn Observer>>,
     headers: HeaderMap,
     long_context: bool,
+    #[cfg(feature = "multipart")]
+    multipart: bool,
 }
 
 impl fmt::Debug for ClientBuilder {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ClientBuilder")
+        let mut debug = f.debug_struct("ClientBuilder");
+        debug
             .field("base_url", &self.base_url)
             .field("model", &self.model)
             .field("timeout", &self.timeout)
@@ -456,8 +497,10 @@ impl fmt::Debug for ClientBuilder {
             .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
             .field("observer", &self.observer.as_ref().map(|_| "set"))
             .field("default_headers", &header_names(&self.headers))
-            .field("long_context", &self.long_context)
-            .finish()
+            .field("long_context", &self.long_context);
+        #[cfg(feature = "multipart")]
+        debug.field("multipart", &self.multipart);
+        debug.finish()
     }
 }
 
@@ -472,6 +515,8 @@ impl Default for ClientBuilder {
             observer: None,
             headers: HeaderMap::new(),
             long_context: false,
+            #[cfg(feature = "multipart")]
+            multipart: false,
         }
     }
 }
@@ -528,6 +573,18 @@ impl ClientBuilder {
     #[must_use]
     pub fn long_context(mut self, on: bool) -> Self {
         self.long_context = on;
+        self
+    }
+
+    /// The images of every call this client makes sent as multipart parts
+    /// (module docs, `# Multipart`), a JSON `request` part and one part per
+    /// image, instead of base64 in the JSON body. Off by default;
+    /// [`CallOptions::multipart`] changes it for one call. A request
+    /// without images is the JSON body it always was.
+    #[cfg(feature = "multipart")]
+    #[must_use]
+    pub fn multipart(mut self, on: bool) -> Self {
+        self.multipart = on;
         self
     }
 
@@ -603,6 +660,8 @@ impl ClientBuilder {
             retry: self.retry,
             observer: self.observer,
             long_context: self.long_context,
+            #[cfg(feature = "multipart")]
+            multipart: self.multipart,
         })
     }
 }
@@ -616,15 +675,21 @@ pub struct Client {
     retry: RetryPolicy,
     observer: Option<Arc<dyn Observer>>,
     long_context: bool,
+    #[cfg(feature = "multipart")]
+    multipart: bool,
 }
 
 impl fmt::Debug for Client {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Client")
+        let mut debug = f.debug_struct("Client");
+        debug
             .field("base_url", &self.base_url.as_str())
             .field("model", &self.model)
             .field("retry", &self.retry)
-            .field("long_context", &self.long_context)
+            .field("long_context", &self.long_context);
+        #[cfg(feature = "multipart")]
+        debug.field("multipart", &self.multipart);
+        debug
             .field("api_key", &"<redacted>")
             .finish_non_exhaustive()
     }
@@ -655,6 +720,28 @@ impl Client {
     /// ([`ClientBuilder::long_context`]).
     pub const fn long_context(&self) -> bool {
         self.long_context
+    }
+
+    /// Whether this client sends the images of every call as multipart
+    /// parts ([`ClientBuilder::multipart`]).
+    #[cfg(feature = "multipart")]
+    pub const fn multipart(&self) -> bool {
+        self.multipart
+    }
+
+    /// Whether a call sends its images as multipart parts (module docs,
+    /// `# Multipart`): asked for by the call or the client, and an image to
+    /// send. Never without the `multipart` feature.
+    fn multipart_for<S: Serialize>(&self, request: &Request<'_, S>, options: &CallOptions) -> bool {
+        #[cfg(feature = "multipart")]
+        {
+            options.multipart.unwrap_or(self.multipart) && !request.assets.is_empty()
+        }
+        #[cfg(not(feature = "multipart"))]
+        {
+            let _ = (request, options);
+            false
+        }
     }
 
     /// Evaluate `state` against `questions` with the default model.
@@ -688,6 +775,7 @@ impl Client {
             model = request.model,
             images = request.assets.len(),
             long_context = options.long_context.unwrap_or(self.long_context),
+            multipart = self.multipart_for(request, options),
             input_tokens = tracing::field::Empty,
             request_id = tracing::field::Empty
         )
@@ -707,12 +795,13 @@ impl Client {
             let questions = serde_json::to_string(request.questions)?;
             request.assets.check_referenced(&state, &questions)?;
         }
-        let body = serde_json::to_vec(&Body {
+        let payload = Payload::build(
             request,
-            extra: &options.extra,
-        })?;
+            &options.extra,
+            self.multipart_for(request, options),
+        )?;
         if !request.assets.is_empty() {
-            let bytes = u64::try_from(body.len()).unwrap_or(u64::MAX);
+            let bytes = payload.len();
             if bytes > MAX_REQUEST_BYTES {
                 return Err(Error::RequestTooLarge {
                     what: "body",
@@ -729,7 +818,7 @@ impl Client {
         let policy = options.retry.as_ref().unwrap_or(&self.retry);
         let reply = self
             .send(policy, || {
-                let mut rb = self.http.post(url.clone()).body(body.clone());
+                let mut rb = payload.apply(self.http.post(url.clone()));
                 if dangerous {
                     rb = rb.header(DANGER_ZONE_IMAGES_HEADER, HeaderValue::from_static("true"));
                 }
@@ -841,6 +930,188 @@ impl Client {
             }
             Err(Exhausted::TooLarge { limit, .. }) => Err(Error::ResponseTooLarge { limit }),
         }
+    }
+}
+
+/// The body of one call, built once and sent on every attempt: the JSON
+/// body, or, with the `multipart` feature and when asked, a JSON `request`
+/// part and one part per image (module docs, `# Multipart`).
+enum Payload {
+    Json(Vec<u8>),
+    #[cfg(feature = "multipart")]
+    Multipart(multipart::Parts),
+}
+
+impl Payload {
+    /// `multipart` is [`Client::multipart_for`]'s answer: never true
+    /// without the feature.
+    fn build<S: Serialize>(
+        request: &Request<'_, S>,
+        extra: &Map<String, Value>,
+        multipart: bool,
+    ) -> Result<Self> {
+        #[cfg(feature = "multipart")]
+        if multipart {
+            return multipart::Parts::new(request, extra).map(Self::Multipart);
+        }
+        #[cfg(not(feature = "multipart"))]
+        debug_assert!(!multipart, "multipart is asked for only with the feature");
+        Ok(Self::Json(serde_json::to_vec(&Body { request, extra })?))
+    }
+
+    /// The bytes the body weighs, what [`MAX_REQUEST_BYTES`] bounds: the
+    /// JSON, or the JSON part and the images' bytes (the boundaries and the
+    /// part headers, a few hundred bytes, are not counted).
+    fn len(&self) -> u64 {
+        match self {
+            Self::Json(body) => u64::try_from(body.len()).unwrap_or(u64::MAX),
+            #[cfg(feature = "multipart")]
+            Self::Multipart(parts) => parts.len(),
+        }
+    }
+
+    /// Put the body on one attempt's request. Inside the retry loop's
+    /// `make`, so every attempt carries the whole body.
+    fn apply(&self, rb: RequestBuilder) -> RequestBuilder {
+        match self {
+            Self::Json(body) => rb.body(body.clone()),
+            // `multipart` sets the request's own `content-type` with the
+            // form's boundary, which wins over the client's default header.
+            #[cfg(feature = "multipart")]
+            Self::Multipart(parts) => rb.multipart(parts.form()),
+        }
+    }
+}
+
+/// The multipart body (module docs, `# Multipart`): the JSON `request`
+/// part, in which each asset names the part that holds its bytes, and one
+/// part per image.
+#[cfg(feature = "multipart")]
+mod multipart {
+    use std::collections::BTreeMap;
+
+    use bytes::Bytes;
+    use reqwest::multipart::{Form, Part};
+    use serde::Serialize;
+    use serde_json::{Map, Value};
+
+    use super::Request;
+    use crate::{Questions, Result};
+
+    /// The name of the JSON part, the document's: the first part of the body.
+    pub const REQUEST_PART: &str = "request";
+
+    /// The name of the `i`th image part, in reference order: `part-0`,
+    /// `part-1`, … Not the reference itself, which may hold text a
+    /// `Content-Disposition` cannot carry; the asset's `part` field maps
+    /// the reference to it.
+    pub fn part_name(i: usize) -> String {
+        format!("part-{i}")
+    }
+
+    /// An asset as the JSON part writes it: the part that holds its bytes,
+    /// in place of `format` and `data_base64`.
+    #[derive(Serialize)]
+    struct ByPart {
+        r#type: &'static str,
+        part: String,
+    }
+
+    /// The JSON part: the request's fields in the order of the JSON body
+    /// (pinned by `tests/contract.rs`), the assets by part.
+    #[derive(Serialize)]
+    struct JsonPart<'r, 'a, S: Serialize> {
+        state: &'a S,
+        model: &'a str,
+        questions: &'a Questions,
+        assets: BTreeMap<&'r str, ByPart>,
+        #[serde(flatten)]
+        extra: &'r Map<String, Value>,
+    }
+
+    /// One image part, its bytes shared with the [`crate::Image`] so that
+    /// every attempt sends them without a copy.
+    struct ImagePart {
+        name: String,
+        file_name: String,
+        content_type: &'static str,
+        bytes: Bytes,
+    }
+
+    /// The parts of one call's body, built once; [`Parts::form`] gives the
+    /// form each attempt consumes.
+    pub struct Parts {
+        json: Bytes,
+        images: Vec<ImagePart>,
+    }
+
+    impl Parts {
+        pub fn new<S: Serialize>(
+            request: &Request<'_, S>,
+            extra: &Map<String, Value>,
+        ) -> Result<Self> {
+            let mut images = Vec::with_capacity(request.assets.len());
+            let mut assets = BTreeMap::new();
+            for (i, (reference, image)) in request.assets.iter().enumerate() {
+                let name = part_name(i);
+                assets.insert(
+                    reference,
+                    ByPart {
+                        r#type: "image",
+                        part: name.clone(),
+                    },
+                );
+                images.push(ImagePart {
+                    name,
+                    file_name: format!("{}.{}", image.reference(), image.format().wire_name()),
+                    content_type: image.format().content_type(),
+                    bytes: Bytes::from_owner(image.shared_bytes()),
+                });
+            }
+            let json = serde_json::to_vec(&JsonPart {
+                state: request.state,
+                model: request.model,
+                questions: request.questions,
+                assets,
+                extra,
+            })?;
+            Ok(Self {
+                json: Bytes::from(json),
+                images,
+            })
+        }
+
+        /// The JSON part's bytes and the images' together.
+        pub fn len(&self) -> u64 {
+            let images: usize = self.images.iter().map(|i| i.bytes.len()).sum();
+            u64::try_from(self.json.len() + images).unwrap_or(u64::MAX)
+        }
+
+        /// The form for one attempt: `reqwest` consumes one per request,
+        /// so it is built each time from the shared bytes. Every part
+        /// carries its length, so the request carries a `content-length`
+        /// rather than a chunked body.
+        pub fn form(&self) -> Form {
+            let json = Part::stream_with_length(self.json.clone(), length(self.json.len()));
+            let mut form = Form::new().part(REQUEST_PART, typed(json, "application/json"));
+            for image in &self.images {
+                let part = Part::stream_with_length(image.bytes.clone(), length(image.bytes.len()))
+                    .file_name(image.file_name.clone());
+                form = form.part(image.name.clone(), typed(part, image.content_type));
+            }
+            form
+        }
+    }
+
+    fn length(bytes: usize) -> u64 {
+        u64::try_from(bytes).unwrap_or(u64::MAX)
+    }
+
+    /// `mime_str` parses its argument and refuses what is not a media
+    /// type; the three this module sends are, so the refusal cannot happen.
+    fn typed(part: Part, content_type: &'static str) -> Part {
+        part.mime_str(content_type)
+            .unwrap_or_else(|e| unreachable!("{content_type} is a media type: {e}"))
     }
 }
 

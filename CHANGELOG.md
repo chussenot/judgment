@@ -89,6 +89,19 @@ All notable changes to the `judgment` crate. The format follows
   ignores both since it asks nothing. `jud config` reports `long_context`
   and `long_context_from`, `jud record --dry-run` prints a `long context:`
   line, and the line before a run's first call names it when it is on.
+- The `multipart` feature: `CallOptions::multipart` for one call and
+  `ClientBuilder::multipart` for every call of a client send a request's
+  images as the `multipart/form-data` body TypeSafe recommends, a JSON
+  `request` part in which each asset is `{type: image, part}` and one part
+  per image (`part-0`, `part-1`, … in reference order, under `image/png` or
+  `image/jpeg`), instead of base64 in the JSON body; off by default, and
+  nothing without an image in the request. The request's fingerprint and
+  hash, the recordings, the checks before the wire, the images header and
+  the observer's report are the same under either transport, and the
+  `typesafe.evaluate` span records `multipart`. `ImageFormat::content_type`
+  names the media type. Decision 0028 says why it is a feature and a switch
+  and not the default; verified against the hosted API, which answers the
+  form at the same tokens as the JSON body.
 - Long context (<https://docs.typesafe.ai/models#long-context>): both
   context limits raised from 64k tokens per request and 32k per question
   to 262k through the `TypeSafe-Danger-Zone-Long-Context: true` header,

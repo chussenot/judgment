@@ -69,6 +69,33 @@ async fn run() -> judgment::Result<()> {
 
 `answer_with_assets` is on the `SystemOne` trait, so a `Fake`, a `Recorder` or a `Replay` takes the same call: the fake refuses a reference the state does not carry as the API does, and the recorder keys the recording by the image's bytes as well as the state. A backend written elsewhere that has not implemented it refuses a request with images rather than dropping them. `Request::new(..).with_assets(&assets)` is the same request for `Client::evaluate_with`, when the call needs options.
 
+## Send the images as parts
+
+Base64 in the JSON body costs a third more bytes than the file, and nothing else: the same image sent either way costs the same input tokens and is answered the same. When the bytes matter (many images, a slow link), the `multipart` feature sends them as the `multipart/form-data` body TypeSafe recommends for images: a first part named `request` holds the JSON body with each asset as `{type: image, part}` in place of its base64, then one part per image under its media type.
+
+```toml
+judgment = { version = "0.13", features = ["multipart"] }
+```
+
+```rust ignore
+use judgment::{CallOptions, Client, Request};
+
+async fn run(state: &serde_json::Value, questions: &judgment::Questions, assets: &judgment::Assets) -> judgment::Result<()> {
+    // Every call of this client, or one call through `CallOptions::multipart(true)`.
+    let client = Client::builder().multipart(true).build()?;
+    let request = Request::new(state, "jev-latest", questions).with_assets(assets);
+    let response = client.evaluate(&request).await?;
+    // Off for one call of a client built with it on.
+    let _ = client
+        .evaluate_with(&request, &CallOptions::new().multipart(false))
+        .await?;
+    let _ = response;
+    Ok(())
+}
+```
+
+A request without images is the JSON body it always was, whatever was asked. Nothing else moves: the reference check, the 32 MiB bound, the images header, the `Observer`'s report, the fingerprint and the recordings are the same under either transport, so a recording made under one answers a replay under the other, and the `typesafe.evaluate` span says which was sent as `multipart`. The parts are named `part-0`, `part-1`, … in reference order and the asset's `part` maps each reference to its part; the reference itself is not a part name, since it may hold text a header cannot carry ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)). The `jud` command sends base64.
+
 ## What the crate checks, and what it reports
 
 | Check | Where | Error |
