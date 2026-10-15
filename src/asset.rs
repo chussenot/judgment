@@ -94,6 +94,15 @@ impl ImageFormat {
         }
     }
 
+    /// The media type a file of this format is sent under in a multipart
+    /// body: `image/png` or `image/jpeg`.
+    pub const fn content_type(self) -> &'static str {
+        match self {
+            Self::Png => "image/png",
+            Self::Jpeg => "image/jpeg",
+        }
+    }
+
     /// The format a document or a wire body names, `None` for any other word.
     pub fn from_wire_name(name: &str) -> Option<Self> {
         match name {
@@ -225,6 +234,13 @@ impl Image {
     /// The file's bytes, as given.
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
+    }
+
+    /// The bytes behind their shared pointer, for a body that is sent on
+    /// every attempt of a call without copying them.
+    #[cfg(feature = "multipart")]
+    pub(crate) fn shared_bytes(&self) -> Arc<[u8]> {
+        Arc::clone(&self.bytes)
     }
 
     /// The format, read from the bytes.

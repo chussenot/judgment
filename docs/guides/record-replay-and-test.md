@@ -109,6 +109,7 @@ jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out rec
 4 requests: 0 already recorded in recordings/screening, 4 to ask (0 replacing a stale recording)
 to ask: charged-twice, cancelled-last-week, how-does-billing-work, furious-outage
 backend https://api.typesafe.ai, model jev-latest (from default)
+long context: off
 API key: missing; the run would stop before the first call (a local server that ignores it takes any word)
 time: unknown until the first request answers (no recording in the directory to read it from)
 ```

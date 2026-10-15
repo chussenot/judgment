@@ -82,6 +82,38 @@ All notable changes to the `judgment` crate. The format follows
   confidence, the band and `pixels`; `jud eval` reports a Box question's
   `mean_iou` beside its accuracy, no Brier score, and a miss's `iou`; `jud
   check` counts a document's images.
+- `jud`: `long_context: true` in its configuration file, or `--long-context`
+  on `jud RUBRIC`, `jud record` and `jud eval`, asks for long context on
+  every call of the run (the switch of decision 0027, passed to
+  `ClientBuilder::long_context`); the flag wins over the file, and a replay
+  ignores both since it asks nothing. `jud config` reports `long_context`
+  and `long_context_from`, `jud record --dry-run` prints a `long context:`
+  line, and the line before a run's first call names it when it is on.
+- The `multipart` feature: `CallOptions::multipart` for one call and
+  `ClientBuilder::multipart` for every call of a client send a request's
+  images as the `multipart/form-data` body TypeSafe recommends, a JSON
+  `request` part in which each asset is `{type: image, part}` and one part
+  per image (`part-0`, `part-1`, … in reference order, under `image/png` or
+  `image/jpeg`), instead of base64 in the JSON body; off by default, and
+  nothing without an image in the request. The request's fingerprint and
+  hash, the recordings, the checks before the wire, the images header and
+  the observer's report are the same under either transport, and the
+  `typesafe.evaluate` span records `multipart`. `ImageFormat::content_type`
+  names the media type. Decision 0028 says why it is a feature and a switch
+  and not the default; verified against the hosted API, which answers the
+  form at the same tokens as the JSON body.
+- A second Box calibration study, on forty generated document pages with a
+  round ink stamp a tenth of the page wide among a round logo, a signature
+  and a barcode (`examples/jud/stamps.jud`, `stamps-cases.jud` and
+  `images/page-*.png`, drawn by `scripts/gen-document-pages.py` from one
+  seed), recorded on `jev-1.14.0` under `examples/recordings/stamps/` and
+  set against the shapes baseline at two sizes
+  (`docs/project/verification/box-calibration-study-pages.md`): the misses
+  are near misses at an overlap of 0.45 to 0.49, twice the pixels turn
+  every one into a hit at three times the tokens, and the Box's confidence
+  does not say "nothing here" when a round logo is on the page, which the
+  Noul beside it does. `tests/jud.rs` replays the recordings and pins the
+  counts.
 - Long context (<https://docs.typesafe.ai/models#long-context>): both
   context limits raised from 64k tokens per request and 32k per question
   to 262k through the `TypeSafe-Danger-Zone-Long-Context: true` header,
@@ -106,7 +138,12 @@ All notable changes to the `judgment` crate. The format follows
   `examples/jud/shapes.rs`, a module whose `decide` takes the request's
   `Assets` and whose `Located` verdict carries a Box, exercised from the
   shapes recordings by `examples/jud_typed.rs`; the commands follow, and a
-  seventh authoring eval asks for an image rubric. In a cloud session the
+  seventh authoring eval asks for an image rubric over five parcel photos
+  and their annotator's boxes (`skills/jud/evals/files/images/`), run once
+  with the skill and once without through the new
+  `skills/jud/evals/run.py`, and a ninth `jud-rust` scenario asks for the
+  shapes module and replays the recordings with their images through the
+  module it gets; the plugin guide records both. In a cloud session the
   start hook installs the plugin from the checkout, with TypeSafe's
   `typesafe` plugin, through `scripts/claude-plugins.sh` (`mise run
   plugins:install`, `mise run plugins:update`).

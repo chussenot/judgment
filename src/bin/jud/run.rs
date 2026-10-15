@@ -91,10 +91,11 @@ impl OptionsArg<'_> {
 pub(crate) fn run(
     path: &str,
     replay: Option<&Path>,
+    long_context: bool,
     options: OptionsArg<'_>,
     assets: AssetsArg<'_>,
 ) -> ExitCode {
-    match evaluate(path, replay, options, assets) {
+    match evaluate(path, replay, long_context, options, assets) {
         Ok(verdicts) => match crate::out::result(&format!("{verdicts}\n")) {
             Ok(()) => ExitCode::SUCCESS,
             Err(failure) => failure.report(),
@@ -136,6 +137,7 @@ fn read_state() -> Result<Value, Failure> {
 fn evaluate(
     path: &str,
     replay: Option<&Path>,
+    long_context: bool,
     options: OptionsArg<'_>,
     assets_arg: AssetsArg<'_>,
 ) -> Result<String, Failure> {
@@ -153,7 +155,7 @@ fn evaluate(
     assets_arg.read(&mut assets)?;
     let size = assets_arg.size(&assets)?;
     let state = read_state()?;
-    let backend = Backend::open(replay)?;
+    let backend = Backend::open(replay, long_context.then_some(true))?;
     let questions = rubric.lower(&state, &supplied).map_err(|e| {
         // The questions that take options and were given none: the likely
         // cause whatever the builder's own words, when some were supplied

@@ -1,0 +1,27 @@
+{
+  "image_size": {
+    "width": 320,
+    "height": 320
+  },
+  "unit": "pixels",
+  "boxes": {
+    "label-1.png": {
+      "left": 24,
+      "top": 139,
+      "right": 157,
+      "bottom": 246
+    },
+    "label-2.png": {
+      "left": 81,
+      "top": 190,
+      "right": 243,
+      "bottom": 287
+    },
+    "label-3.png": {
+      "left": 129,
+      "top": 177,
+      "right": 248,
+      "bottom": 284
+    }
+  }
+}

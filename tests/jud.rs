@@ -120,11 +120,11 @@ fn every_example_document_validates_against_its_schema_and_parses() {
         );
         *kinds.entry(kind).or_default() += 1;
     }
-    // triage, routing, handoff, agent-mail, shapes, and the guide's
-    // screening rubric.
-    assert_eq!(kinds["Rubric"], 6);
+    // triage, routing, handoff, agent-mail, shapes, stamps, and the
+    // guide's screening rubric.
+    assert_eq!(kinds["Rubric"], 7);
     // Their cases, and the specification's example cases document.
-    assert_eq!(kinds["Cases"], 7);
+    assert_eq!(kinds["Cases"], 8);
     // The calibration recordings, and the specification's example recording.
     assert!(kinds["Recording"] >= 11, "{kinds:?}");
 }
@@ -841,6 +841,67 @@ async fn the_shapes_recordings_replay_under_the_box_gate() {
     );
     // The gate at 0.5 acts on 23 of the 40 boxes and defers the rest.
     assert_eq!(located, 23);
+}
+
+/// The stamps recordings: `jev-1.14.0`'s live answers to the forty
+/// document pages, each found by the fingerprint that folds its page in,
+/// and graded as the second calibration study tables it
+/// (`docs/project/verification/box-calibration-study-pages.md`): every
+/// Noul right, twenty-four of thirty boxes at the 0.5 bar on a target a
+/// tenth of the page wide, a mean overlap of 0.65, and a gate at 0.5 that
+/// acts on 32 answers because the Box's confidence crosses the bar on
+/// three pages with no stamp, where the box sits on the round logo. A
+/// re-recording that moves a count fails here.
+#[tokio::test]
+async fn the_stamps_recordings_replay_under_the_box_gate() {
+    const STAMPS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/recordings/stamps");
+    let rubric = Rubric::parse(&read(EXAMPLES, "stamps.jud")).unwrap();
+    let cases = Cases::parse(&read(EXAMPLES, "stamps-cases.jud")).unwrap();
+    cases.bind(&rubric).unwrap();
+    let replay = Replay::open(Path::new(STAMPS)).unwrap();
+    assert_eq!(replay.len(), cases.cases.len());
+    let base = Path::new(EXAMPLES);
+    let mut judgments = Vec::new();
+    let (mut located, mut located_on_empty) = (0, 0);
+    for (index, case) in cases.cases.iter().enumerate() {
+        let asked = case.request(&rubric).unwrap();
+        let mut assets = judgment::Assets::new();
+        case.load_assets(base, &mut assets).unwrap();
+        let response = replay
+            .answer_with_assets(&case.state, "any", &asked, &assets)
+            .await
+            .unwrap();
+        assert_eq!(response.model, "jev-1.14.0");
+        let present = matches!(
+            case.expect.get("stamp_present"),
+            Some(jud::Expect::Bool(true))
+        );
+        for (id, verdict) in rubric.apply(&asked, &response).unwrap() {
+            if id == "stamp" && matches!(verdict, jud::Verdict::Located { .. }) {
+                located += 1;
+                if !present {
+                    located_on_empty += 1;
+                }
+            }
+        }
+        judgments.extend(jud::grade(&rubric, case, index, &response).unwrap());
+    }
+    let metrics = |id: &str| {
+        judgment::eval::QuestionMetrics::summarise(
+            judgments.iter().filter(|(q, _)| q == id).map(|(_, j)| j),
+            judgment::eval::ECE_BINS,
+        )
+    };
+    let present = metrics("stamp_present");
+    assert_eq!((present.labelled, present.correct), (40, 40));
+    assert!(present.brier.unwrap() < 0.01, "{present:?}");
+    let stamp = metrics("stamp");
+    assert_eq!((stamp.labelled, stamp.correct), (30, 24));
+    assert!((stamp.mean_iou.unwrap() - 0.645).abs() < 0.005, "{stamp:?}");
+    // The Box's confidence does not say "nothing here" when a round logo
+    // is on the page: the gate acts on three of the ten empty pages, and
+    // only the Noul beside it keeps the application from cropping a logo.
+    assert_eq!((located, located_on_empty), (32, 3));
 }
 
 fn tempdir() -> PathBuf {

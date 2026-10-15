@@ -290,6 +290,41 @@
         "Says which question changed and that callers matching on Desk must now handle Security",
         "Says that recordings made before the change no longer replay and the bars want re-tuning"
       ]
+    },
+    {
+      "id": "shapes-in-crate",
+      "prompt": "/jud:rust rubrics/shapes.jud",
+      "setup": {
+        "copy": {
+          "Cargo.toml": "plugins/jud/skills/jud-rust/evals/files/app/Cargo.toml",
+          "src/main.rs": "plugins/jud/skills/jud-rust/evals/files/app/src/main.rs",
+          "rubrics/shapes.jud": "examples/jud/shapes.jud"
+        }
+      },
+      "module": {
+        "path": "src/shapes.rs",
+        "name": "shapes",
+        "rubric": "rubrics/shapes.jud"
+      },
+      "snippet": "\nuse crate::shapes::{self, Located};\n\n#[tokio::test]\nasync fn decides_from_the_recordings_with_their_images() {\n    let root = std::path::Path::new(\"REPO_ROOT\");\n    let backend = judgment::Replay::open(&root.join(\"examples/recordings/shapes\")).unwrap();\n    let text = std::fs::read_to_string(root.join(\"examples/jud/shapes-cases.jud\")).unwrap();\n    let cases = judgment::jud::Cases::parse(&text).unwrap();\n    let (mut acted, mut deferred) = (0, 0);\n    for case in &cases.cases {\n        let mut assets = judgment::Assets::new();\n        case.load_assets(&root.join(\"examples/jud\"), &mut assets).unwrap();\n        let d = shapes::decide(&backend, \"jev-preview\", &case.state, &assets).await.unwrap();\n        let _: bool = d.circle_present.yes;\n        match d.circle {\n            Located::Act { edges, confidence, .. } => {\n                acted += 1;\n                assert!(confidence.is_some_and(|c| c >= 0.5));\n                edges.check().unwrap();\n            }\n            Located::Defer { nearest, confidence, bar } => {\n                deferred += 1;\n                assert!(confidence < bar);\n                nearest.check().unwrap();\n            }\n        }\n    }\n    assert_eq!((acted, deferred), (23, 17));\n    // Without the image there is no recording to find: it is keyed by it.\n    let err = shapes::decide(&backend, \"jev-preview\", &cases.cases[0].state, &judgment::Assets::new())\n        .await\n        .unwrap_err();\n    assert!(matches!(err, shapes::Error::Backend(_)), \"{err}\");\n}\n",
+      "checks": {
+        "unchanged": [
+          "rubrics/shapes.jud",
+          "Cargo.toml",
+          "src/main.rs"
+        ],
+        "new_files": [
+          "src/shapes.rs"
+        ],
+        "drift": true
+      },
+      "expectations": [
+        "Follows the shapes template: `decide` takes `assets: &Assets` beside the state and calls `answer_with_assets`; the Box's verdict is `Located` with `Act { edges, confidence, band }` and `Defer { nearest, confidence, bar }`, the deferred edges read back by `edges_from_text`",
+        "The header's usage example reads the image with `Image::read`, keeps its size, puts it in an `Assets` under the reference the state carries (`image`), reads the Noul before the Box and turns the box into pixels with the image's size",
+        "Says in the reply that a Box always answers with a box, found or not, so `circle_present` decides whether the box is used; that the box is in fractions and the caller's image size makes it pixels; and that a Box needs Jev 1.14 (`jev-preview` on the hosted API until `jev-latest` moves)",
+        "Says which references the caller owes in the `Assets` and names the image limits or the token cost of an image",
+        "Verifies the module with cargo before replying and leaves nothing behind in the project"
+      ]
     }
   ]
 }

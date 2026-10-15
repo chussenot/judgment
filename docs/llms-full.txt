@@ -24,7 +24,7 @@ Not affiliated with TypeSafe AI.
 | Using `jud` from a shell, no Rust | [Install](start/install.md), [Your first decision from the command line](start/first-decision-cli.md) | [Configure a backend](guides/configure-a-backend.md), [Record, replay and test](guides/record-replay-and-test.md#record-a-rubrics-cases-from-the-shell), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [The jud command line](reference/cli.md) |
 | Writing `.jud` documents | [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [Write a rubric](guides/write-a-rubric.md) | [Label cases](guides/label-cases.md), [Tune thresholds](guides/tune-thresholds.md), [The .jud format](reference/jud-format.md) |
 | Using the crate from Rust | [Your first decision in Rust](start/first-decision-rust.md) | [Record, replay and test](guides/record-replay-and-test.md), [Patterns](guides/patterns.md), [The crate](reference/crate.md) and the [rustdoc](https://docs.rs/judgment) |
-| Asking about images | [Visual judgments](concepts/visual-judgments.md) | [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [A Box calibration study](project/verification/box-calibration-study.md) |
+| Asking about images | [Visual judgments](concepts/visual-judgments.md) | [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [A Box calibration study](project/verification/box-calibration-study.md) and [its second run on document pages](project/verification/box-calibration-study-pages.md) |
 | Contributing | [Contributing](project/contributing.md) | [Internals](project/internals.md), [How the crate is checked](project/verification/method.md), [Decisions](project/decisions/README.md) |
 
 ## The documentation
@@ -1060,6 +1060,7 @@ jud record examples/jud/screening.jud examples/jud/screening-cases.jud --out rec
 4 requests: 0 already recorded in recordings/screening, 4 to ask (0 replacing a stale recording)
 to ask: charged-twice, cancelled-last-week, how-does-billing-work, furious-outage
 backend https://api.typesafe.ai, model jev-latest (from default)
+long context: off
 API key: missing; the run would stop before the first call (a local server that ignores it takes any word)
 time: unknown until the first request answers (no recording in the directory to read it from)
 ```
@@ -1662,7 +1663,7 @@ The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric
 | `skills/jud-rust/SKILL.md` | The Rust guide: what the generated module is and why the rubric stays its source, the naming rules from `.jud` keys to Rust identifiers, the mapping per primitive and declaration, how to wire and verify it. |
 | `skills/jud-rust/references/` | The three modules the skill copies its shape from, with their rubrics: copies of `examples/jud/triage.rs`, `routing.rs` and `shapes.rs` (a Noul and a Box over an image), which `cargo test` compiles and runs (`examples/jud_typed.rs`); `scripts/gen-plugin-rust.sh --check` keeps the copies equal. |
 | `commands/rubric.md`, `cases.md`, `check.md`, `record.md`, `eval.md`, `tune.md`, `rust.md` | The seven commands, each a page of instructions that follows its skill. |
-| `skills/jud/evals/` | The six tasks the authoring skill was tested on, and a seventh for an image rubric with a Box, added with Jev 1.14 and not yet run. |
+| `skills/jud/evals/` | The seven tasks the authoring skill was tested on, the seventh an image rubric with a Box over five parcel photos and their annotator's boxes (`files/images/`), and `run.py`, which runs one task with the skill or without it and checks what was written. |
 | `skills/jud-tune/evals/` | The battle test of the tuning commands: the scenarios, the support fixture with its planted wrong labels, a mock System One server and the runner (below). |
 
 ## How the skill works
@@ -1711,8 +1712,30 @@ The skill was run against six tasks of the kind a user would give, each once wit
 4. Two broken documents from "last quarter" (a merge key, ids with spaces, `yes` and `no` as Noul criteria, a one-option Choice, gates on the wrong primitive, a level past the scale, a path-shaped case id) to repair, with a report of what was wrong.
 5. The two questions of `examples/quickstart.rs` turned into a rubric whose request is byte for byte the code's, checked by fingerprint, with a labelled case and a hand-written recording.
 6. A brief with traps: a name with spaces, a threshold asked for in the instructions, a twelve-level scale, a one-option Choice and a request to invent a `tuning` block.
+7. An image rubric, added with Jev 1.14: whether a warehouse photo shows a readable shipping label and where, over five 320 by 320 photos and the annotator's boxes in pixels (`evals/files/images/`), to be written as a Noul and a Box at minor 4, the cases declaring their images and labelling the boxes in fractions.
 
 Every document written with the skill passed every assertion (49 of 49); without it, 48 of 49. The difference the skill makes is mostly in cost and method: in the first round, 14 % fewer tokens and 24 % less wall-clock on average, ten tool calls per task against fifteen, and no agent with the skill built a throwaway crate to validate its documents, which two baselines did. The test was run before the manifest envelope; the skill and its eval set were carried over to it afterwards, so a later change to the format or the guide can be run against the same tasks.
+
+The seventh task was run on its own on 2026-10-15, once with the skill and once without, through `evals/run.py`, which copies the task's files into a fresh workspace, runs `claude -p` there (with `--plugin-dir plugins/jud`, or without it in a configuration directory of its own so that no installed plugin loads), then runs `jud check` on what was written and checks the task's assertions against the parsed documents. Both runs met every assertion (9 of 9) and both wrote the same two documents in substance: a Noul whose `false` criterion names the tape and the background, a Box with instructions only, a confidence gate, the images declared by relative path, the three boxes in fractions within a hundredth of the pixels divided by 320, the empty photos labelled `false` with no box, no `tuning` block, and a reply saying a Box answers with a box even over nothing, so the Noul decides whether to crop. The difference was again cost and method:
+
+| | With the skill | Without |
+|---|---|---|
+| Turns, tool calls | 11, 9 | 21, 20 |
+| Cost, wall-clock | $0.18, 35 s | $0.34, 61 s |
+| Output tokens | 3.0k | 6.6k |
+| Verified with `jud check` | yes, 0 refused, and said so | could not reach `jud` from its sandbox, said so, and asked for the check to be run |
+| What it read | the skill, the format reference's Box section, the shapes example, three of the five photos | the whole filesystem for `.jud` (a `Grep` over `/home/user`), then the checkout's concepts page, format page, the shapes example, the five photos, and the skill's own page |
+
+The baseline is not clean: with the checkout on the same machine, the agent without the plugin found `plugins/jud/skills/jud/SKILL.md` and read it, as the first rounds' baselines could have. What the comparison measures is the skill loaded as a skill, with its workflow, against the same text found as a file: a third of the calls, half the cost, and the check run rather than delegated. A clean baseline needs the checkout out of reach, which `run.py` cannot arrange on its own.
+
+To run the seventh task again, with `claude` logged in and `jud` built, with the skill and then without it:
+
+```sh
+JUD=target/debug/jud python3 plugins/jud/skills/jud/evals/run.py --task 6 --mode with --out /tmp/jud-authoring-with
+JUD=target/debug/jud python3 plugins/jud/skills/jud/evals/run.py --task 6 --mode without --out /tmp/jud-authoring-without
+```
+
+The other six tasks run the same way, with their assertions graded by a reader from `reply.md` and the documents under `ws/`.
 
 ### The tuning commands
 
@@ -1764,7 +1787,7 @@ JUD=target/debug/jud python3 plugins/jud/skills/jud-tune/evals/run.py --out /tmp
 
 `/jud:rust` was battle-tested the same way: one prompt per scenario through `claude -p --plugin-dir plugins/jud`, in a fresh git workspace holding a small Rust application (`skills/jud-rust/evals/files/app/`, with `clippy::pedantic`, `unwrap_used` and `expect_used` on). The allow-list is the plugin's script, `cargo`, file edits and a few read-only commands. No scenario calls a backend.
 
-The 8 scenarios cover:
+The 9 scenarios cover:
 
 - the triage rubric in a crate, and in a crate whose `src/lib.rs` already declares the module;
 - the routing rubric, with options supplied per request, `when`, bands, `strict` and `level_at_least`;
@@ -1772,7 +1795,8 @@ The 8 scenarios cover:
 - a rubric of hostile names (a keyword, a dotted id, a leading digit, `self`, two keys that collide, a level with no letters);
 - a plain-language request that names neither the command nor the skill;
 - the embedded form;
-- a regeneration after an option was added to the rubric.
+- a regeneration after an option was added to the rubric;
+- the shapes rubric, a Noul and a Box over an image, whose `decide` takes the request's `Assets` and whose hidden test replays the shapes recordings with their images.
 
 Each run is held to two kinds of check:
 
@@ -1791,8 +1815,9 @@ Each run is held to two kinds of check:
 | 4 | 88 of 88 | 25 of 25 | 7 | the `mod` line given once; `level_at_least` read through `reached` |
 | 5 | 88 of 88 | 24 of 25 | 2 | a sync `main`'s changes a bullet of their own; the usage example compiled in the throwaway crate as well as the module |
 | confirm | 38 of 38 (3 scenarios) | spot-checked | not counted | none: every run compiled its usage example and listed a sync `main`'s changes |
+| shapes | 12 of 12 (1 scenario) | 5 of 5 | 1 | none: the scenario was added with Jev 1.14 and run once; the module is the template with its paths, and the reply names what the caller owes in the `Assets`, the limits, the token cost and the alias; its one contradicted claim is the version floor the skill gives (0.14) against a checkout still at 0.13.0 with the Box unreleased |
 
-Round 2's one missed check was the harness's: it forbade any `include_str!` in the embedded form, which the copy test the skill asks for uses. Round 3's grader found the one defect the scripted checks could not: a retune that gives a Score `fallback: calm` made every deferred answer fail at run time, since the module read levels by index only. The last two rounds passed every scripted check; round 5's one missed expectation was a sync `main` whose changed lines the reply did not list, and the confirmation round, on the three scenarios with a sync `main`, found every reply listing them. Every round cost $2.41 to $2.88 for the 7 runs on Sonnet 5.5, $0.27 to $0.52 each.
+The shapes round is one scenario on one run, after the others: 12 of 12 scripted checks at $0.31 and 69 s on Sonnet 5.5, and the harness run first on the repository's own `examples/jud/shapes.rs` (`--reference`) to hold the hidden test to code known to be right. Round 2's one missed check was the harness's: it forbade any `include_str!` in the embedded form, which the copy test the skill asks for uses. Round 3's grader found the one defect the scripted checks could not: a retune that gives a Score `fallback: calm` made every deferred answer fail at run time, since the module read levels by index only. The last two rounds passed every scripted check; round 5's one missed expectation was a sync `main` whose changed lines the reply did not list, and the confirmation round, on the three scenarios with a sync `main`, found every reply listing them. Every round cost $2.41 to $2.88 for the 7 runs on Sonnet 5.5, $0.27 to $0.52 each.
 
 To run them again, with `claude` logged in and `jud` built:
 
@@ -1922,6 +1947,33 @@ async fn run() -> judgment::Result<()> {
 ```
 
 `answer_with_assets` is on the `SystemOne` trait, so a `Fake`, a `Recorder` or a `Replay` takes the same call: the fake refuses a reference the state does not carry as the API does, and the recorder keys the recording by the image's bytes as well as the state. A backend written elsewhere that has not implemented it refuses a request with images rather than dropping them. `Request::new(..).with_assets(&assets)` is the same request for `Client::evaluate_with`, when the call needs options.
+
+## Send the images as parts
+
+Base64 in the JSON body costs a third more bytes than the file, and nothing else: the same image sent either way costs the same input tokens and is answered the same. When the bytes matter (many images, a slow link), the `multipart` feature sends them as the `multipart/form-data` body TypeSafe recommends for images: a first part named `request` holds the JSON body with each asset as `{type: image, part}` in place of its base64, then one part per image under its media type.
+
+```toml
+judgment = { version = "0.13", features = ["multipart"] }
+```
+
+```rust ignore
+use judgment::{CallOptions, Client, Request};
+
+async fn run(state: &serde_json::Value, questions: &judgment::Questions, assets: &judgment::Assets) -> judgment::Result<()> {
+    // Every call of this client, or one call through `CallOptions::multipart(true)`.
+    let client = Client::builder().multipart(true).build()?;
+    let request = Request::new(state, "jev-latest", questions).with_assets(assets);
+    let response = client.evaluate(&request).await?;
+    // Off for one call of a client built with it on.
+    let _ = client
+        .evaluate_with(&request, &CallOptions::new().multipart(false))
+        .await?;
+    let _ = response;
+    Ok(())
+}
+```
+
+A request without images is the JSON body it always was, whatever was asked. Nothing else moves: the reference check, the 32 MiB bound, the images header, the `Observer`'s report, the fingerprint and the recordings are the same under either transport, so a recording made under one answers a replay under the other, and the `typesafe.evaluate` span says which was sent as `multipart`. The parts are named `part-0`, `part-1`, … in reference order and the asset's `part` maps each reference to its part; the reference itself is not a part name, since it may hold text a header cannot carry ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)). The `jud` command sends base64.
 
 ## What the crate checks, and what it reports
 
@@ -2143,13 +2195,23 @@ Twenty-eight of thirty at the bar, a mean overlap of 0.80, and a gate at 0.5 tha
 
 # Use long context
 
-**You will** send a state that the default limits refuse, and know when not to. **Prerequisites:** [Your first decision in Rust](../start/first-decision-rust.md). The `jud` command has no setting for this yet.
+**You will** send a state that the default limits refuse, and know when not to. **Prerequisites:** [Your first decision in Rust](../start/first-decision-rust.md) for the Rust sections, [Your first decision from the shell](../start/first-decision-cli.md) for the `jud` one.
 
 ## The limits, and the switch
 
 Jev reads the state once and answers every question against it, inside two limits: 64k tokens for the state and all the questions together, 32k for the state and any one question ([Models](https://docs.typesafe.ai/models#context-length)). Over either, the hosted API answers 400 `max_tokens_exceeded`, which the crate reports as `Error::InvalidRequest` with `is_request_too_large()` true: the one refusal fixed by sending less, or by this page.
 
 Long context raises both limits to 262k tokens, on Jev 1.13 and 1.14, behind a header the client sends when asked and never otherwise ([decision 0027](../project/decisions/0027-long-context-is-a-switch-on-the-call.md)). TypeSafe says a request under it is slower and less accurate than one within the limits, which is why it is a switch and not a default, and why the crate does not guess from the state's size: the caller who built a long state knows it did.
+
+## From the shell
+
+`jud RUBRIC`, `jud record` and `jud eval` take `--long-context`, which turns it on for every call of that run; `long_context: true` in `~/.config/jud/config.yaml` turns it on for every run, and the flag wins over the file ([Configuration](../reference/configuration.md#the-jud-command)). A replay ignores both, since it asks nothing.
+
+```sh
+jud record transcripts.jud transcripts-cases.jud --out recordings/transcripts --long-context
+```
+
+`jud record --dry-run` prints `long context: on (from command line)`, or `(from config file)`, where a run's target is checked, and the line before a run's first call says the same, so a run that would pay the cost on every request can be stopped first; off, the dry run says `long context: off` and the announcement says nothing. The recordings are keyed as without it: the header changes the limits, not the request, so a recording made under long context answers a replay that never mentions it. `jud tune` reads recordings only and takes no flag.
 
 ## For one call
 
@@ -2289,6 +2351,11 @@ Options:
           The image's size, so a located box is also printed in pixels.
 
           Without it, the size of the request's one image is used; with several images, or none, a box is printed as fractions only.
+
+      --long-context
+          Ask for long context: both context limits raised to 262k tokens, whatever the configuration file says.
+
+          Without it a request is held to 64k tokens, and the state with any one question to 32k, and one over either is refused as `max_tokens_exceeded`. Under long context it is answered, slower and less accurately by TypeSafe's own account, which is why it is a switch and never the default; `long_context: true` in the configuration file turns it on for every run. Nothing under --replay, which asks no server.
 
   -h, --help
           Print help (see a summary with '-h')
@@ -2489,6 +2556,11 @@ Options:
       --dry-run
           Ask nothing and write nothing: print what a run would do. The requests, how many DIR already answers, which are to be asked or replaced, the backend and model it would ask, whether a key is set, and how long the run would take at the median time of the recordings in DIR
 
+      --long-context
+          Ask for long context on every call: both context limits raised to 262k tokens, whatever the configuration file says.
+
+          Without it a request is held to 64k tokens, and the state with any one question to 32k, and a case over either fails its call as `max_tokens_exceeded`. Under long context it is answered, slower and less accurately by TypeSafe's own account, which is why it is a switch and never the default; `long_context: true` in the configuration file turns it on for every run. The recordings are keyed as without it: the header changes the limits, not the request.
+
   -h, --help
           Print help (see a summary with '-h')
 ```
@@ -2540,7 +2612,7 @@ kept invoice-vat
 recorded 2, kept 5 in recordings
 ```
 
-First `asking MODEL at URL for up to N requests (base URL from SOURCE)`, before anything is asked, where `SOURCE` is `environment`, `config file` or `default`. An unset base URL is the hosted API, so a run pointed at the wrong server, by a misspelt variable say, can be stopped before it has paid for every request; it is a line and not a prompt, so a script never waits on it. `N` counts every request planned, those the directory already answers included, which is why it says "up to". Then a line for each of `recorded NAME (N/TOTAL, MS ms)`, `kept NAME` and `replaced NAME (stale)`, then `recorded R, kept K in DIR`, where a replaced recording counts as recorded. When two files in `DIR` record one request, a `jud: warning:` line names them, since a replay answers from one of them.
+First `asking MODEL at URL for up to N requests (base URL from SOURCE)`, before anything is asked, where `SOURCE` is `environment`, `config file` or `default`; with long context on, the parenthesis goes on `, long context on (from config file)` or `(from command line)`, and says nothing when it is off. An unset base URL is the hosted API, so a run pointed at the wrong server, by a misspelt variable say, can be stopped before it has paid for every request; it is a line and not a prompt, so a script never waits on it. `N` counts every request planned, those the directory already answers included, which is why it says "up to". Then a line for each of `recorded NAME (N/TOTAL, MS ms)`, `kept NAME` and `replaced NAME (stale)`, then `recorded R, kept K in DIR`, where a replaced recording counts as recorded. When two files in `DIR` record one request, a `jud: warning:` line names them, since a replay answers from one of them.
 
 A call that fails stops the run at that case with status 1. The message names the case, its position, how many were recorded and kept before it, and `DIR`. The recordings already written stay, and the next run resumes from them. Exit status: 0 when every request has a recording, written or kept; 1 when a call failed or a recording could not be written; 2 for a refusal.
 
@@ -2553,11 +2625,12 @@ A call that fails stops the run at that case with status 1. The message names th
 to ask: NAME, NAME, ...
 stale, to replace: NAME, ...
 backend http://127.0.0.1:11434, model tev1:0.8b (from config_file)
+long context: off
 API key: set (config_file)
 time: about 10.7 s a request (median of 88 recordings in recordings/tev1), about 53.6 s for 5
 ```
 
-The `to ask` and `stale` lines appear only when there is a name to give. The model's source is `environment`, `config_file` or `default`; the key's is `environment` or `config_file`, or the line says it is missing and that the run would stop before the first call. The time is the median `elapsed_ms` of the recordings already in `DIR`, so it is the backend's own pace; with none it is unknown until the first request answers. With `--refresh` nothing is counted as kept. Two cases that lower to one request are counted once to ask and once kept, as a run asks once. The refusals a run makes before any call are status 2 here as in a run: a document that does not read or bind, a case without an id, an `--out` that is a file rather than a directory, and a stale recording that sits in a file the run would not write.
+The `to ask` and `stale` lines appear only when there is a name to give. The model's source is `environment`, `config_file` or `default`; the long context line is `off`, `on (from config file)` or `on (from command line)` ([Configuration](configuration.md#the-jud-command)); the key's source is `environment` or `config_file`, or the line says it is missing and that the run would stop before the first call. The time is the median `elapsed_ms` of the recordings already in `DIR`, so it is the backend's own pace; with none it is unknown until the first request answers. With `--refresh` nothing is counted as kept. Two cases that lower to one request are counted once to ask and once kept, as a run asks once. The refusals a run makes before any call are status 2 here as in a run: a document that does not read or bind, a case without an id, an `--out` that is a file rather than a directory, and a stale recording that sits in a file the run would not write.
 
 ## `jud eval`
 
@@ -2587,6 +2660,11 @@ Options:
 
       --min-accuracy <[QUESTION=]ACCURACY>
           Fail with status 3 when accuracy is below this, 0 to 1: `0.9` for every labelled question, `desk=0.95` for one. Repeatable. It is the model's accuracy per question, not the policy's. A question with no labelled case does not meet its bar
+
+      --long-context
+          Ask for long context on every call: both context limits raised to 262k tokens, whatever the configuration file says.
+
+          Without it a request is held to 64k tokens, and the state with any one question to 32k, and a case over either fails its call as `max_tokens_exceeded`. Under long context it is answered, slower and less accurately by TypeSafe's own account, which is why it is a switch and never the default; `long_context: true` in the configuration file turns it on for every run. Nothing under --replay, which asks no server.
 
   -h, --help
           Print help (see a summary with '-h')
@@ -3021,22 +3099,24 @@ The settings of the `jud` command and of the crate's `Client`, as `src/bin/jud/c
 
 ### Precedence
 
-Each level overrides the one below it. The environment wins over the file, the file over the defaults.
+Each level overrides the one below it. The environment wins over the file, the file over the defaults; a flag on the command line, where a setting has one, wins over all three.
 
 ```mermaid
 flowchart TD
+    C["Command line<br/>--replay DIR, --long-context"] --> E
     E["Environment<br/>TYPESAFE_API_KEY, TYPESAFE_BASE_URL, JUD_REPLAY"] --> F
-    F["Configuration file<br/>$XDG_CONFIG_HOME/jud/config.yaml, else ~/.config/jud/config.yaml<br/>base_url, api_key, model, timeout_secs"] --> D
-    D["Defaults<br/>https://api.typesafe.ai, jev-latest, 30 s, no key"]
+    F["Configuration file<br/>$XDG_CONFIG_HOME/jud/config.yaml, else ~/.config/jud/config.yaml<br/>base_url, api_key, model, timeout_secs, long_context"] --> D
+    D["Defaults<br/>https://api.typesafe.ai, jev-latest, 30 s, no key, long context off"]
 ```
 
-| Setting | Environment | File field | Default |
-|---|---|---|---|
-| Base URL | `TYPESAFE_BASE_URL` | `base_url` | `https://api.typesafe.ai` |
-| API key | `TYPESAFE_API_KEY` | `api_key` | none; a command that asks a backend with no key is refused with status 2 |
-| Model | | `model` | `jev-latest` |
-| Timeout per attempt | | `timeout_secs` | `30` |
-| Replay directory | `JUD_REPLAY` | | none; the flag `--replay DIR` overrides the variable; [which commands read it](#replay) |
+| Setting | Command line | Environment | File field | Default |
+|---|---|---|---|---|
+| Base URL | | `TYPESAFE_BASE_URL` | `base_url` | `https://api.typesafe.ai` |
+| API key | | `TYPESAFE_API_KEY` | `api_key` | none; a command that asks a backend with no key is refused with status 2 |
+| Model | | | `model` | `jev-latest` |
+| Timeout per attempt | | | `timeout_secs` | `30` |
+| Long context | `--long-context` on `jud RUBRIC`, `jud record` and `jud eval` | | `long_context` | `false`: the model's own limits, 64k tokens per request and 32k per question; `true` raises both to 262k on every call of the run through the crate's `ClientBuilder::long_context`, slower and less accurate by TypeSafe's own account ([Use long context](../guides/use-long-context.md#from-the-shell)). Nothing under a replay, which asks no server. |
+| Replay directory | `--replay DIR` | `JUD_REPLAY` | | none; [which commands read it](#replay) |
 
 `TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL` set to an empty or blank value count as unset. `JUD_REPLAY` set to an empty or blank value does not: [Replay](#replay) says what happens. No environment variable names the model for the command; the examples under `examples/` read `TYPESAFE_MODEL` for their `--live` runs, the command does not ([beads issue `judgment-rxl`](../project/contributing.md#tracking-work)).
 
@@ -3060,6 +3140,7 @@ jud: JUD_BASE_URL is set but jud does not read it (it reads TYPESAFE_BASE_URL, T
 base_url: https://api.typesafe.ai
 model: jev-latest
 timeout_secs: 30
+long_context: false   # true: both context limits raised to 262k tokens on every call
 # api_key: ...   # prefer TYPESAFE_API_KEY, which no file on disk holds
 ```
 
@@ -3077,11 +3158,13 @@ Prints the resolved backend and where each value came from, as JSON on stdout. T
   "model": "jev-latest",
   "model_from": "default",
   "timeout_secs": 30,
+  "long_context": false,
+  "long_context_from": "default",
   "api_key": "missing"
 }
 ```
 
-`*_from` is `environment`, `config_file` or `default`. `ignored_environment`, the [variables jud does not read](#variables-jud-does-not-read) that are set, is there only when there are some.
+`*_from` is `environment`, `config_file` or `default`; `long_context_from` is `config_file` or `default`, since `jud config` takes no `--long-context` (a run that does says `from command line` in its dry run and before its first call). `ignored_environment`, the [variables jud does not read](#variables-jud-does-not-read) that are set, is there only when there are some.
 
 ### Replay
 
@@ -3113,6 +3196,7 @@ A request nobody recorded is a backend failure (status 1); a directory that does
 | Timeout per attempt | `ClientBuilder::timeout`, or `CallOptions::timeout` for one call | 10 s |
 | Retries | `ClientBuilder::retry_policy`, or `CallOptions` for one call | `RetryPolicy::default()`: [The crate](crate.md#defaults) |
 | Long context | `ClientBuilder::long_context`, or `CallOptions::long_context` for one call | off: the model's own limits, 64k tokens per request and 32k per question; on, 262k for both through the `TypeSafe-Danger-Zone-Long-Context` header, slower and less accurate by TypeSafe's own account ([decision 0027](../project/decisions/0027-long-context-is-a-switch-on-the-call.md)) |
+| Images as parts (feature `multipart`) | `ClientBuilder::multipart`, or `CallOptions::multipart` for one call | off: the images as base64 in the JSON body; on, a `multipart/form-data` body with a JSON `request` part and one part per image, the request keyed and checked as before ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) |
 
 The crate's client reads no base URL from the environment; the `jud` command and the examples do, and pass it to the builder. The two timeouts differ on purpose: a library call is usually one of many on a request path and fails fast at 10 s; a command-line run has a person waiting and a local model that may be loading, so it waits 30 s.
 
@@ -3632,6 +3716,7 @@ Minor 4 of `jud/v1` names exactly the fields on this page. A reader refuses a fi
 | `jud` | no | The `jud` module: the `.jud` reader and writer, `Rubric`, `Cases`, `Verdict`, `Replay` reading `.jud` recordings | `serde-saphyr` |
 | `openapi` | no | `contract::OPENAPI_DOCUMENT`, the vendored TypeSafe OpenAPI document as text, about 25 KB | nothing |
 | `cli` | no | The `jud` binary (`src/bin/jud/`); implies `jud` and `http` | `clap`, `clap_complete` |
+| `multipart` | no | `CallOptions::multipart` and `ClientBuilder::multipart`: a request's images sent as `multipart/form-data` parts beside a JSON `request` part instead of base64 in the JSON body, the transport TypeSafe recommends for images; implies `http` ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) | `reqwest`'s multipart encoding, `mime_guess`, `bytes` |
 
 Without `http` the crate is the questions, the answers, `Fake`, `Recorder`, `Replay`, `eval`, `observer` and, with `jud`, the format: everything a project with its own transport needs. CI builds and tests that configuration (`cargo check --no-default-features --all-targets`).
 
@@ -3652,7 +3737,7 @@ In the order of one call: a question is built, sent through a backend, answered,
 | `answer` | `Response` and the wire `Answer`; `Probability` and `Confidence`, which refuse a value outside `[0, 1]`; `Response::verify` holds a response against the questions; `Response::get(&handle)` reads `Noul`, `Choice<T>`, `Score` or `BoundingBox` (`BoxEdges` as fractions of the image, `PixelBox` at a size). | [docs.rs](https://docs.rs/judgment/latest/judgment/answer/index.html) |
 | `asset` | `Image` (a PNG or a JPEG, its format and size read from the bytes, the hosted API's limits checked), `ImageFormat`, and `Assets`, the request's images by reference. |  [docs.rs](https://docs.rs/judgment/latest/judgment/asset/index.html) |
 | `backend` | The `SystemOne` trait (`answer`, and `answer_with_assets` for a request with images) and three implementations beside the client: `Fake`, `Recorder`, `Replay`. | [docs.rs](https://docs.rs/judgment/latest/judgment/backend/index.html) |
-| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields and long context for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
+| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields, long context and, with `multipart`, the images as parts, for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
 | `http` (`http`) | `RetryPolicy` and `send_with_retries`, the retry loop behind the client, public so another `reqwest` client can retry the same way. | [docs.rs](https://docs.rs/judgment/latest/judgment/http/index.html) |
 | `error` | `Error`, `Result`, `ValidationIssue`. | [docs.rs](https://docs.rs/judgment/latest/judgment/error/index.html) |
 | `eval` | `Recording`, `Judgment`, the metrics (`metrics`), the fingerprints (`canonical`) and the sweeps (`tuning`). | [docs.rs](https://docs.rs/judgment/latest/judgment/eval/index.html) |
@@ -4187,7 +4272,7 @@ The first three are the text primitives asked about a picture; everything on [Sy
 
 ## A Box always returns a box
 
-A Box does not say whether the thing is there. Asked for the filled circle in an image with no circle, Jev 1.14 returns a box all the same, with a confidence near zero ([the calibration study](../project/verification/box-calibration-study.md): 0.02 to 0.04 on ten empty images). That is the primitive's contract, not a defect: a Box answers *where*, and *whether* is a Noul's question. The crate's documentation and the `.jud` format therefore pair every Box with a Noul beside it, and the application reads the two together: the Noul says whether to use the box, the Box's confidence says how far to trust it, and a gate on each turns the pair into an action (locate, pad and crop; ask again on a larger crop; send to a person). A Box's `confidence` may be absent on the wire; the crate reads it as `None`, and a gate reads an absent confidence as 0.
+A Box does not say whether the thing is there. Asked for the filled circle in an image with no circle, Jev 1.14 returns a box all the same, with a confidence near zero ([the calibration study](../project/verification/box-calibration-study.md): 0.02 to 0.04 on ten empty images); asked for a round stamp on a page that has none but has a round logo, it returns a box on the logo at a confidence of 0.4 to 0.6, over the gate's bar on three pages of ten ([the second study](../project/verification/box-calibration-study-pages.md)), so the confidence says nothing about presence once something resembles the target. That is the primitive's contract, not a defect: a Box answers *where*, and *whether* is a Noul's question. The crate's documentation and the `.jud` format therefore pair every Box with a Noul beside it, and the application reads the two together: the Noul says whether to use the box, the Box's confidence says how far to trust it, and a gate on each turns the pair into an action (locate, pad and crop; ask again on a larger crop; send to a person). A Box's `confidence` may be absent on the wire; the crate reads it as `None`, and a gate reads an absent confidence as 0.
 
 The confidence is informative in both directions on the study's images: near zero when there was nothing, lower on the boxes that were off, and under-confident in the middle. It is not a probability that the box is right; it is measured the same way a Choice's is, against hits under a bar, and `jud eval` reports its calibration error.
 
@@ -4204,6 +4289,7 @@ An image is a PNG or a JPEG, not animated, each side from 256 to 1568 pixels, 78
 - [Ask a question about an image](../guides/ask-about-an-image.md), [Locate something with a Box question](../guides/locate-with-a-box.md).
 - [Other shapes](../guides/patterns.md#other-shapes): screenshots, document pages, moderation, visual regression, cropping.
 - [A Box calibration study on synthetic shapes](../project/verification/box-calibration-study.md): the numbers behind this page.
+- [A Box calibration study on document pages](../project/verification/box-calibration-study-pages.md): the same questions on a small target among distractors, at two sizes.
 
 
 <!-- source: docs/project/contributing.md -->
@@ -4257,6 +4343,7 @@ Generated, never edited by hand:
 | `plugins/jud/skills/jud/references/format.md` | `scripts/gen-plugin-format.sh`, from `docs/reference/jud-format.md` | the same, `--check` |
 | `docs/llms.txt`, `docs/llms-full.txt` | `scripts/gen-llms-txt.sh` | the same, `--check` |
 | `docs/demo.cast` | `scripts/record_demo.sh` (`mise run demo`), from the example recordings | a pre-bump hook re-records it |
+| `examples/jud/images/page-*.png`, `examples/jud/stamps-cases.jud` | `scripts/gen-document-pages.py`, from one seed | nothing: the committed pages are the ones `examples/recordings/stamps/` was recorded on, and a redrawn page is a request nobody recorded (`tests/jud.rs` fails) |
 
 Code on the pages is held to the code: a Rust block in a tutorial or the README is an `examples/` file between `README:BEGIN` and `README:END` markers, compared verbatim by `tests/docs_examples.rs`, and a Rust block in a guide is compiled as a documentation test (`src/lib.rs` includes the page under `#[cfg(doctest)]`); a whole `.jud` document or configuration file on a page is a file under `examples/`, named in an HTML comment before the fence (`file: PATH` between `<!--` and `-->`) and compared verbatim (a `.jud` one is also read by `jud check`, `mise run jud:check`); a command transcript is held only when it is marked with an HTML comment (`transcript: LABEL` between `<!--` and `-->`), which the same test reproduces from the binary, offline; a step that needs a key or a server stays plain text. `mise run docs:check` runs the frontmatter, generated-file and link checks (`lychee --offline`); `mise run docs:links` also checks the external links, which a weekly workflow does in CI.
 
@@ -4724,13 +4811,17 @@ JUDGMENT_LIVE_MODEL=jev-latest JUDGMENT_LIVE_PROFILE=typesafe \
 
 Nothing in the wire shape, which the OpenAPI refresh of the same day had already settled. Two things in words: the format page no longer says a reader must refuse a Box in a rubric without an image, and the Box's documentation names which alias answers it. The two live tests are the seventeenth and eighteenth in `tests/live.rs`; `mise run live:typesafe` runs them with the others, asking `jev-preview` for the Box part until `jev-latest` is 1.14.
 
+## Multipart, later the same day
+
+The document's second request body, `multipart/form-data`, was then implemented behind the `multipart` feature ([decision 0028](../decisions/0028-multipart-is-a-feature-and-a-switch.md)) and sent to the hosted API with the same shapes image and the same two questions: a `request` part holding the JSON body with the asset as `{type: image, part: part-0}`, and the PNG as `part-0` under `image/png`. `jev-1.14.0` answered in 0.7 s with a box at an overlap of 0.98 with the label, at the same 1,167 input tokens as the base64 body for the same request; two raw sends of each form, through `curl`, gave the same tokens every time and boxes within 0.01 of each other, so the transport changes neither the cost nor the answer. The nineteenth live test, `an_image_goes_as_a_multipart_part_too`, runs under the feature.
+
 
 <!-- source: docs/project/verification/box-calibration-study.md -->
 
 
 # A Box calibration study on synthetic shapes
 
-[The .jud format](../../reference/jud-format.md) grades a Box by intersection over union against a labelled box ([decision 0026](../decisions/0026-a-box-is-graded-by-intersection-over-union.md)) and reports the confidence the model gives beside it. Whether the two numbers mean anything, and what a gate on the confidence buys, is a question for recordings, not for a page. This is the first such run: small, synthetic and committed, so that it replays with no key, and so that the next run (real photographs, a harder target) has a baseline to be set against.
+[The .jud format](../../reference/jud-format.md) grades a Box by intersection over union against a labelled box ([decision 0026](../decisions/0026-a-box-is-graded-by-intersection-over-union.md)) and reports the confidence the model gives beside it. Whether the two numbers mean anything, and what a gate on the confidence buys, is a question for recordings, not for a page. This is the first such run: small, synthetic and committed, so that it replays with no key, and so that the next run has a baseline to be set against. [The second run](box-calibration-study-pages.md), on generated document pages with a stamp a tenth of the page wide among a logo, a signature and a barcode, is set against it.
 
 ## What was run
 
@@ -4829,6 +4920,115 @@ The crate refuses before the wire what the API refuses (the dimensions, the miss
 - Thirty labelled boxes give an interval of 0.79 to 0.98 on the accuracy: wide. The set is a baseline and a regression check (`tests/jud.rs` fails if a re-recording changes the counts), not a measurement of the model.
 
 To repeat it against the live API: `TYPESAFE_API_KEY` in `.env`, `model: jev-preview` in `jud`'s configuration file ([Configuration](../../reference/configuration.md)), then the `jud record` line above with `--refresh` into a scratch directory, and `jud eval` with `--replay` pointed at it. To regenerate the images, the generator is Pillow drawing from a fixed seed, which is why the labels are exact; the committed PNGs are the ones the recordings were made on, and a redrawn set changes every request fingerprint.
+
+
+<!-- source: docs/project/verification/box-calibration-study-pages.md -->
+
+
+# A Box calibration study on document pages
+
+[The first study](box-calibration-study.md) asked Jev 1.14 for a filled circle on a flat background: a target a sixth to a half of the image wide, with nothing else round in it. It ended with the questions a harder set should answer: how the overlap falls on a small target, whether the confidence still tracks the overlap, what the gate's accuracy becomes when it acts, and whether the under-confidence it found between 0.3 and 0.5 holds. This is that run, on something closer to a document a service would crop: a generated invoice with a round ink stamp a tenth of the page wide, over printed text, among three things that are round, inked or black and are not a stamp. The pages are drawn, not photographed, for the same reason the shapes were: the generator's coordinates are the labels, the set regenerates from one seed, and nothing in it belongs to anyone.
+
+## What was run
+
+| | |
+|---|---|
+| Pages | `examples/jud/images/page-00.png` to `page-39.png`: forty 600 by 780 pixel pages drawn by `scripts/gen-document-pages.py` from one seed, each an invoice, delivery note, purchase order or receipt with a round two-letter logo in the header, two address blocks, a table of five to nine lines, a totals block, a signature scribble and a barcode. Thirty carry one stamp: two rings with a word (`RECEIVED`, `PAID`, …) and a date inside, 48 to 72 pixels across (median 60, 8 to 12 % of the width, under 1 % of the area), rotated up to 28°, in red, blue, green or purple ink at 78 % opacity, anywhere under the header, text and table included; ten carry none. Saved with a 64-colour palette: 12 to 15 KB each. |
+| Rubric | `examples/jud/stamps.jud`: `stamp_present`, a Noul whose `false` criterion names the logo, the signature, the barcode and the table as not a stamp, and `stamp`, a Box asking for the round ink stamp on `page`; the policy is the shapes rubric's, a threshold of 0.5 on the Noul and a confidence of 0.5 on the Box, so the two studies compare |
+| Cases | `examples/jud/stamps-cases.jud`, written by the generator: forty cases, each naming its page by a path relative to the document and labelled `true` with the stamp's bounding box (the outer ring's, which a rotation keeps), or `false` with no box |
+| Server, model | `https://api.typesafe.ai`, `jev-preview`, answered by `jev-1.14.0` |
+| Run | `jud record examples/jud/stamps.jud examples/jud/stamps-cases.jud --out examples/recordings/stamps` on 2026-10-15, with `model: jev-preview` in the configuration file; forty requests in six seconds, 114 to 678 ms each, median 124 ms, 1,596 input tokens and 37 output tokens a request |
+| A second size | the same forty pages drawn at scale 2 (1200 by 1560 pixels, every coordinate doubled, so the labels in fractions are the same) and recorded the same way into a scratch directory, not committed: 161 to 644 ms, median 179 ms, 5,180 input tokens a request |
+| Report | `jud eval … --replay examples/recordings/stamps`, replayed in `tests/jud.rs`, which pins the counts below; the per-case tables come from the recordings' boxes against the cases' labels |
+
+## The Noul: forty of forty at both sizes
+
+| | 600 by 780 | 1200 by 1560 |
+|---|---|---|
+| Labelled, right | 40, 40 (accuracy 1.00, 95 % interval 0.91 to 1.00) | 40, 40 |
+| Brier score, calibration error | 0.007, 0.040 | 0.001, 0.020 |
+| Probability of yes, with a stamp | 0.75 to 0.99 (one page at 0.75, the next at 0.89) | 0.98 to 0.99 |
+| Probability of yes, without | 0.05 to 0.08 | 0.04 to 0.06 |
+| Gate at 0.5 | acts on 40, defers 0, right on 40 | the same |
+
+A stamp over text among a logo, a signature and a barcode is a harder question than a circle on a flat background, and the Noul answers it as well: not one of the ten pages without a stamp got more than 0.08, with the round logo in every header. `jud tune` proposes a threshold of 0.10 on these recordings, because every bar from 0.10 to 0.75 is forty of forty and ties go to the lower one; that is the tie rule speaking, not evidence, and the bar stays at 0.5.
+
+## The Box: twenty-four of thirty at the 0.5 bar, thirty of thirty at twice the pixels
+
+| | 600 by 780 | 1200 by 1560 | Shapes, 320 by 320 |
+|---|---|---|---|
+| Labelled, right at 0.5 | 30, 24 (accuracy 0.80, 95 % interval 0.63 to 0.90) | 30, 30 (1.00, 0.89 to 1.00) | 30, 28 (0.93) |
+| Mean intersection over union, median | 0.65, 0.64 | 0.70, 0.71 | 0.80 |
+| Confidence when right, when wrong | 0.81, 0.81 | 0.86, none wrong | 0.75, 0.49 |
+| Calibration error, over the confidence against hits | 0.096, over-confident | 0.137, under-confident | 0.21, under-confident |
+| Target's width, as a share of the image's | 8 to 12 % | 8 to 12 % | 16 to 48 % |
+| Input tokens a request | 1,596 | 5,180 | 625 |
+
+Where the overlap fell, with the model's mean confidence in each band:
+
+| Intersection over union | Pages at 600 by 780 | Mean confidence | Which | At 1200 by 1560 | Mean confidence |
+|---|---|---|---|---|---|
+| 0.0 up to 0.5 | 6 | 0.81 | 09, 23, 31, 33, 34, 37 | 0 | |
+| 0.5 up to 0.7 | 12 | 0.75 | 00, 01, 03, 04, 10, 13, 19, 20, 21, 27, 35, 38 | 14 | 0.83 |
+| 0.7 up to 0.8 | 10 | 0.87 | 07, 11, 14, 16, 17, 22, 25, 26, 28, 39 | 10 | 0.87 |
+| 0.8 up to 0.9 | 2 | 0.86 | 06, 12 | 6 | 0.93 |
+| 0.9 to 1.0 | 0 | | | 0 | |
+
+The first thing the small target changes is the shape of the distribution. On the shapes it ran from 0.00 to 0.98, with two misses that were a box over nothing and a box too large on one side; here it runs from 0.45 to 0.85, every box on the stamp and none tight. The six misses are all at 0.45 to 0.49, a hair under the bar, and they look alike:
+
+| Page | Overlap | Confidence | The stamp (label) | The box the model gave | Its centre against the stamp's |
+|---|---|---|---|---|---|
+| 09 | 0.46 | 0.85 | 48 by 48 px | 36 by 47 px | 9 px left, 10 px down |
+| 23 | 0.46 | 0.86 | 72 by 72 | 90 by 62 | 2 px left, 20 px down |
+| 31 | 0.49 | 0.94 | 62 by 62 | 90 by 39 | 12 px left, 2 px down |
+| 33 | 0.45 | 0.78 | 64 by 64 | 90 by 47 | 13 px left, 15 px down |
+| 34 | 0.45 | 0.87 | 70 by 70 | 84 by 62 | 3 px right, 21 px down |
+| 37 | 0.49 | 0.59 | 66 by 66 | 78 by 70 | 3 px left, 19 px down |
+
+Five of the six boxes are wider than the ring and shorter than it, as if the model boxed the word across the stamp's middle rather than the ring around it, and five sit 10 to 21 pixels low. On a 60-pixel target a 15-pixel shift alone takes a box of the right size from an overlap of 1.0 to 0.6. Over all thirty, the box covers 82 % of the stamp's area on average (54 % at worst) and 76 % of the box is stamp; a service that pads the box before cropping gets the whole stamp in 20 of 30 crops at a quarter of the box's size each side and in 29 of 30 at half, and at the larger size in 29 and 30 of 30. The 0.5 bar measures the box's precision, not whether the stamp was found: it was found on every page.
+
+## Confidence against the overlap, and against nothing
+
+| Confidence | Pages at 600 by 780 | Right at 0.5 | Mean overlap | At 1200 by 1560 | Right | Mean overlap |
+|---|---|---|---|---|---|---|
+| 0.0 up to 0.3 | 0 | | | 0 | | |
+| 0.3 up to 0.5 | 1 | 1 | 0.64 | 0 | | |
+| 0.5 up to 0.7 | 4 | 3 | 0.58 | 1 | 1 | 0.66 |
+| 0.7 up to 0.9 | 15 | 11 | 0.63 | 17 | 17 | 0.65 |
+| 0.9 to 1.0 | 10 | 9 | 0.69 | 12 | 12 | 0.78 |
+
+The confidence does not tell a near miss from a hit here: 0.81 on average for both, with the worst-overlapping box (page 33) at 0.78 and the box that missed by the least margin in shape (page 31) at 0.94. The under-confidence the first study found between 0.3 and 0.5 cannot be tested on these pages: one answer fell in that band, none at the larger size. On a document the model is sure of its box whether or not the box is tight, and at the larger size slightly more sure of boxes that are tighter (0.78 mean overlap in the top band against 0.65 below it), which is as much relation as there is.
+
+What it says about presence is the finding of this run. On the ten pages with no stamp, the Box put its box on the round logo in the header every time, at a confidence of 0.36 to 0.54 at the smaller size and 0.49 to 0.59 at the larger: over the gate's bar on three pages of ten, then on nine. On the shapes it had given 0.02 to 0.04 on an empty image, and the first study allowed that a harder set might not; this one does not. Once something on the page resembles the target, the Box's confidence stops saying whether the target is there, and a rubric that read the Box alone would crop a logo. The Noul beside it, at 0.05 to 0.08 on the same pages, is what keeps that from happening, which is the format's rule ([Visual judgments](../../concepts/visual-judgments.md)): the Box answers where, never whether.
+
+What the gate at 0.5 does with the forty answers, at 600 by 780: it acts on 32 (29 stamps, of which 23 at or over the bar, and 3 logos) and defers 8 (7 empty pages and one stamp, whose box was right); accuracy when acted 0.79 over the boxes, where the shapes gate was right on 22 of the 23 it acted on. At 1200 by 1560 it acts on 39, every stamp right and nine logos with them. `jud tune`, which sweeps the bar over the labelled boxes, finds no bar that reaches 95 % accuracy over three cases at the smaller size (accuracy sits at 0.79 to 0.81 from a bar of 0 to 0.80, with coverage falling) and leaves the confidence as written; at the larger size it proposes 0, since every labelled box is right with no bar, and says so. Neither sweep sees the logos: a page with no stamp has no box label, so the pages the bar should defer are not in the table the bar is read from. A proposal of 0 for a Box means the labelled boxes are good, not that the gate is needless.
+
+## Resolution, for a small target
+
+The first study sent one image at five sizes and found the box as good at 320 pixels as at 1568, for a target a third of the image wide. On a target a tenth of the page wide, twice the pixels did something:
+
+| | 600 by 780 | 1200 by 1560 |
+|---|---|---|
+| Stamp, in pixels | 48 to 72 | 96 to 144 |
+| Right at the 0.5 bar | 24 of 30 | 30 of 30 |
+| Mean overlap | 0.65 | 0.70 |
+| The six misses | 0.45 to 0.49 | 0.51 to 0.83 (page 09 from 0.46 to 0.83) |
+| Pages whose overlap fell | | 11 of 30 (page 12 from 0.85 to 0.70, 17 from 0.73 to 0.58) |
+| Best overlap | 0.85 | 0.88 |
+| Input tokens, latency (median) | 1,596, 124 ms | 5,180, 179 ms |
+
+More pixels raised the floor and left the ceiling: no box got tight, the near misses became hits, and a third of the pages lost some overlap. The price is 3.2 times the tokens for 55 ms, so the rule the first study gave stands with a number on it: send the smallest image that keeps the target legible, where legible for a Box means about a hundred pixels across. A page whose stamps are smaller than that is better cropped first, by the Noul's page and a coarse box, then asked again on the crop, than sent whole at the API's largest size.
+
+## What to take from it, and what not
+
+- On a small target the misses are near misses: every box was on the stamp, at an overlap of 0.45 to 0.85. A `iou_at_least` of 0.5 in a label says how tight the application needs the box, not whether the model can find the thing; label it at what the crop needs.
+- The Box's confidence is not a presence signal once the page holds something round: 0.4 to 0.6 on a logo, 0.8 on a stamp. Gate on the Noul first, as the format asks, and read the Box's confidence as a measure of the box, which here it barely is.
+- Pad before cropping: a quarter of the box each side contained the whole stamp in two crops of three, half of it in all but one. A tight box wants a second call on the crop.
+- Pixels buy accuracy on a small target and nothing on a large one; about a hundred pixels across is where the near misses turned into hits here, at three times the tokens.
+- `jud tune` sweeps labelled boxes; pages without the target are not in its table. Read a Box proposal as a statement about the boxes it saw.
+- Thirty stamps give an interval of 0.63 to 0.90 on the accuracy, and the ten empty pages all carry the same logo in the same corner: a second distractor at another position is the next thing to add. The set is a baseline and a regression check (`tests/jud.rs` fails if a re-recording changes the counts), not a measurement of the model.
+
+To repeat it against the live API: `TYPESAFE_API_KEY` in `.env`, `model: jev-preview` in `jud`'s configuration file ([Configuration](../../reference/configuration.md)), then the `jud record` line above with `--refresh` into a scratch directory and `jud eval` with `--replay` pointed at it. `python3 -I scripts/gen-document-pages.py --out DIR --scale 2` draws the larger set with its cases document; a page drawn with another Pillow or another font is other bytes, so the committed pages are the ones the recordings answer, and a redrawn set is a new run.
 
 
 <!-- source: docs/project/verification/laya-typed-decisions.md -->
@@ -5557,6 +5757,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0025](0025-a-document-names-an-image-by-path.md) | A document names an image by a path relative to itself | accepted |
 | [0026](0026-a-box-is-graded-by-intersection-over-union.md) | A Box is graded by intersection over union | accepted |
 | [0027](0027-long-context-is-a-switch-on-the-call.md) | Long context is a switch on the call, not a request field or a default | accepted |
+| [0028](0028-multipart-is-a-feature-and-a-switch.md) | Multipart upload is a feature and a switch on the call, off by default | accepted |
 
 ## Status notes
 
@@ -5577,6 +5778,7 @@ Records are not edited after acceptance; a fact that has moved since is noted he
 - 0022 adds to 0021's commands without changing them: per-outcome counts, a majority and three signals in `jud eval`, `jud record --dry-run`, and a fourth subcommand, `jud split`, a third place that writes files.
 - 0019 says options supplied for a Choice that takes them from the request "are left for later". [0023](0023-jud-rubric-takes-options-on-the-command-line.md) settles it: `jud RUBRIC` takes them through `--options` and `--options-file`. 0019 stands otherwise.
 - 0021 says cases carry their options "where stdin cannot". Stdin still cannot; since [0023](0023-jud-rubric-takes-options-on-the-command-line.md) the command line can.
+- 0027's consequences say the `jud` command has no flag or setting for long context yet. It has both since the release after 0027: `long_context: true` in its configuration file and `--long-context` on `jud RUBRIC`, `jud record` and `jud eval`, the flag winning over the file, both passed to `ClientBuilder::long_context` and both nothing under a replay ([Configuration](../../reference/configuration.md#the-jud-command)). The rest of 0027 stands: the switch is still the caller's, never the crate's, and a recording is keyed as without it.
 - 0020's "As applied" section says every committed document was rewritten to `minor: 3`. Minor 4 ([0025](0025-a-document-names-an-image-by-path.md), [0026](0026-a-box-is-graded-by-intersection-over-union.md)) shipped in the same release, 0.14.0: the writer writes `minor: 4`, the documents that use nothing minor 4 added stay at `minor: 3`, and the twelve-month clock for a minor 3 document runs from 0.14.0.
 
 ## Writing a record
@@ -6856,3 +7058,82 @@ Chosen option 1.
 ## More information
 
 [Models](https://docs.typesafe.ai/models#long-context) is the page the header comes from; `src/client.rs` (`# Long context`) implements it; [Configuration](../../reference/configuration.md#the-crates-client) lists the setting; [decision 0024](0024-images-are-part-of-the-request.md) made the same choice the other way for the images header, which the client sets itself because the image on the request is the opt-in.
+
+
+<!-- source: docs/project/decisions/0028-multipart-is-a-feature-and-a-switch.md -->
+
+
+# 0028 Multipart upload is a feature and a switch on the call, off by default
+
+## Context and problem statement
+
+A request with images carries them as base64 in the JSON body, each asset `{type: image, format, data_base64}` ([decision 0024](0024-images-are-part-of-the-request.md)). The OpenAPI document also takes `multipart/form-data`: a first part named `request` holding the JSON body, in which an asset is `{type: image, part}` naming the part that holds its bytes, then one part per image with its media type; TypeSafe recommends it for images. Base64 costs a third more bytes on the wire and nothing else: on the hosted API the same image sent both ways costs the same input tokens and is answered within hundredths the same (1,167 tokens, a box within 0.01 of the base64 answer, on 2026-10-15). The question was whether the crate should send multipart at all, and if so, when.
+
+## Decision drivers
+
+- A request without images, and the recordings, must not change: a multipart body is the same request, and a `Replay` must answer it.
+- The crate's one body path had been verified live on every probe; a second path is a second thing to hold to the contract.
+- `reqwest`'s multipart encoding pulls in `mime_guess` and its generated table, a compile cost a client that sends no image should not pay.
+- The saving is bytes, not calls or tokens; a caller who measures it should be able to turn it on without touching the rest.
+- A part's name goes in a `Content-Disposition` header; a reference is any text up to 1024 bytes.
+
+## Considered options
+
+1. **A feature and a switch**: cargo feature `multipart`; `CallOptions::multipart(true)` for one call, `ClientBuilder::multipart(true)` for every call of a client; off by default; parts named `part-N` in reference order, with the asset's `part` mapping the reference to it.
+2. **Always multipart** for a request with images, the JSON body kept for one without.
+3. **By size**: multipart over some number of bytes, JSON under it.
+4. **A second request type** or a second method (`evaluate_multipart`), the caller choosing per call site.
+5. **Nothing**: base64 only, the design note on the bead kept for when a caller asks.
+
+## Decision outcome
+
+Chosen option 1.
+
+- The switch lives where long context does ([decision 0027](0027-long-context-is-a-switch-on-the-call.md)): on the call, with a client-wide default, and never on the `Request`, so the request's serialisation, its fingerprint and its hash (over the bytes' digests, decision 0024) are untouched; the `typesafe.evaluate` span records `multipart`.
+- The body is the document's: the `request` part first, under `application/json`, the request's fields in the JSON body's order with each asset as `{type: image, part}`; then the images in reference order as `part-0`, `part-1`, …, each under `image/png` or `image/jpeg` with a file name of its digest, every part with its length so the request carries a `content-length`. The part name is not the reference: a reference may hold text a header cannot carry, and the asset's `part` field is the document's own way of mapping one to the other.
+- Everything before and after the wire is shared with the JSON path: the reference check, the 32 MiB bound (the JSON part and the images' bytes together), the images header, the observer's report, the decode and the verification. The retry loop rebuilds the form per attempt from the image's shared bytes, so an attempt costs no copy.
+- The feature is off by default and implies `http`; without it the switch does not exist and the span's field is `false`.
+
+### Consequences
+
+- Good: a caller who measures the base64 cost turns it on in one place; everyone else's build, wire and recordings are as they were.
+- Good: the contract test reads the form back and holds the `request` part to the request schema and every image part to an asset's `part`.
+- Bad: a second body path to keep in step with the document, and a feature flag to know about.
+- Bad: the `jud` command has no setting for it; its images go as base64 (a follow-up if a run measures the cost).
+
+### Confirmation
+
+`tests/client.rs` (under the feature) reads the multipart body back part by part, holds the `request` part to the JSON body's fields and order and each image part to its bytes and media type, sends the images header, checks that the switch is off by default and turns on and off per call and per client, that a request without images is the JSON body whatever was asked, and that a retried attempt carries the whole form again; `tests/contract.rs` pins the document's multipart schema (the `request` part required and JSON, the extra properties `image/*`, an asset's `part`) and holds the `request` part to `SystemOneRequest` and every image part to exactly one asset; `tests/live.rs` sends the shapes image and its Box question as parts to the hosted API, answered by `jev-1.14.0` in 0.7 s at an overlap of 0.98 with the label ([Jev 1.14 on the hosted API](../verification/hosted-typesafe-jev-1-14.md)).
+
+## Pros and cons of the options
+
+### Option 1: a feature and a switch
+
+- Good, because the request, the recordings and the default build do not change.
+- Good, because the saving is measured by the caller who wants it, not assumed for everyone.
+- Bad, because it is one more switch; its documentation says what it buys and what it does not.
+
+### Option 2: always multipart
+
+- Good, because the recommended transport is the only one, and there is one body path with images.
+- Bad, because every client that sends an image compiles `mime_guess`, and every recording's request is sent in a form the earlier live runs never verified.
+- Bad, because a server that speaks the JSON wire and not the form (the compatible servers the crate is run against were never probed with one) would refuse every image.
+
+### Option 3: by size
+
+- Good, because small images stay on the verified path and large ones save the most.
+- Bad, because the threshold is a number nobody can justify, and the same request takes two forms depending on it, which is two paths to test and a surprise in a trace.
+
+### Option 4: a second request type or method
+
+- Good, because the choice is explicit at the call site.
+- Bad, because a `Request` is one thing with one fingerprint whatever its transport, and a second method on the trait would put a transport choice in front of every backend, `Fake` and `Replay` included, which have no transport.
+
+### Option 5: nothing
+
+- Good, because base64 carries every image the limits allow, and the hosted API accepted it on every probe.
+- Bad, because the saving is real for a caller who sends many images, and the document names the form as the recommended one.
+
+## More information
+
+The OpenAPI document's `multipart/form-data` request body and its `Asset.part` field (`tests/fixtures/typesafe-openapi.json`); `src/client.rs` (`# Multipart`) implements it; [Ask a question about an image](../../guides/ask-about-an-image.md#send-the-images-as-parts) is the procedure; [The crate](../../reference/crate.md#features) lists the feature; the design note that preceded this record is on beads issue `judgment-7k5.4`.

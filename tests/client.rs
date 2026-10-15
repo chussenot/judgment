@@ -2505,3 +2505,261 @@ async fn the_long_context_header_is_the_clients_own() {
         .unwrap_err();
     assert!(matches!(&err, Error::ReservedHeader(_)), "{err}");
 }
+
+// Multipart: the images as parts beside a JSON `request` part, when asked.
+
+/// The parts of a `multipart/form-data` body, each as its headers (names
+/// lowercased) and its bytes, read back from the boundary the content type
+/// names; what a server parses.
+#[cfg(feature = "multipart")]
+fn multipart_parts(
+    content_type: &str,
+    body: &[u8],
+) -> Vec<(std::collections::HashMap<String, String>, Vec<u8>)> {
+    let boundary = content_type
+        .split("boundary=")
+        .nth(1)
+        .unwrap_or_else(|| panic!("no boundary in {content_type}"));
+    let delimiter = format!("--{boundary}").into_bytes();
+    let positions: Vec<usize> = (0..body.len())
+        .filter(|&i| body[i..].starts_with(&delimiter))
+        .collect();
+    let mut parts = Vec::new();
+    for pair in positions.windows(2) {
+        let chunk = &body[pair[0] + delimiter.len()..pair[1]];
+        let chunk = chunk.strip_prefix(b"\r\n").unwrap();
+        let split = chunk.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
+        let headers = std::str::from_utf8(&chunk[..split])
+            .unwrap()
+            .lines()
+            .map(|line| {
+                let (name, value) = line.split_once(':').unwrap();
+                (name.trim().to_ascii_lowercase(), value.trim().to_owned())
+            })
+            .collect();
+        let content = chunk[split + 4..].strip_suffix(b"\r\n").unwrap();
+        parts.push((headers, content.to_vec()));
+    }
+    assert!(
+        body[positions[positions.len() - 1]..].starts_with(&[delimiter.as_slice(), b"--"].concat()),
+        "the body ends with the closing delimiter"
+    );
+    parts
+}
+
+/// With the images as parts: the JSON `request` part first, byte for byte
+/// the JSON body but for each asset naming its part, then one part per
+/// image in reference order with the file's media type and bytes; the
+/// images header still set, and the request's fingerprint the same.
+#[cfg(feature = "multipart")]
+#[tokio::test]
+async fn images_go_as_multipart_parts_when_asked() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .and(header("typesafe-danger-zone-images", "true"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let png = fixture_image("square-300.png");
+    let jpg = fixture_image("square-300.jpg");
+    let mut assets = judgment::Assets::new();
+    assets.insert("yard", jpg.clone()).unwrap();
+    assets.insert("door", png.clone()).unwrap();
+    let state = json!({ "door": "door", "yard": "yard" });
+    let q = one_noul();
+    let request = Request::new(&state, "jev-preview", &q).with_assets(&assets);
+    let c = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .multipart(true)
+        .build()
+        .unwrap();
+    assert!(c.multipart());
+    c.evaluate_with(
+        &request,
+        &CallOptions::new().extra("beam_width", 4).unwrap(),
+    )
+    .await
+    .unwrap();
+
+    let received = server.received_requests().await.unwrap();
+    let sent = &received[0];
+    let content_type = sent.headers.get("content-type").unwrap().to_str().unwrap();
+    assert!(
+        content_type.starts_with("multipart/form-data; boundary="),
+        "{content_type}"
+    );
+    assert_eq!(
+        sent.headers
+            .get("content-length")
+            .map(|v| v.to_str().unwrap().parse::<usize>().unwrap()),
+        Some(sent.body.len()),
+        "every part has a length, so the body is not chunked"
+    );
+    let parts = multipart_parts(content_type, &sent.body);
+    assert_eq!(parts.len(), 3, "the request and two images");
+
+    let (headers, body) = &parts[0];
+    assert_eq!(
+        headers["content-disposition"],
+        "form-data; name=\"request\""
+    );
+    assert_eq!(headers["content-type"], "application/json");
+    let json: serde_json::Value = serde_json::from_slice(body).unwrap();
+    let mut expected = serde_json::to_value(&request).unwrap();
+    expected["beam_width"] = json!(4);
+    expected["assets"] = json!({
+        "door": { "type": "image", "part": "part-0" },
+        "yard": { "type": "image", "part": "part-1" }
+    });
+    assert_eq!(json, expected);
+    let text = std::str::from_utf8(body).unwrap();
+    let at = |key: &str| text.find(&format!("\"{key}\":")).unwrap();
+    assert!(
+        at("state") < at("model")
+            && at("model") < at("questions")
+            && at("questions") < at("assets"),
+        "the fields in the JSON body's order: {text}"
+    );
+
+    for (i, (reference, image, content_type)) in
+        [("door", &png, "image/png"), ("yard", &jpg, "image/jpeg")]
+            .into_iter()
+            .enumerate()
+    {
+        let (headers, body) = &parts[i + 1];
+        assert_eq!(
+            headers["content-disposition"],
+            format!(
+                "form-data; name=\"part-{i}\"; filename=\"{}.{}\"",
+                image.reference(),
+                image.format().wire_name()
+            ),
+            "{reference}"
+        );
+        assert_eq!(headers["content-type"], content_type, "{reference}");
+        assert_eq!(body, image.bytes(), "{reference}: the bytes as given");
+    }
+    // The same request, keyed as under base64: the fingerprint is over the
+    // bytes' digests, not their transport.
+    assert_eq!(
+        judgment::eval::canonical::request_fingerprint_with(&state, &q, &assets),
+        judgment::eval::canonical::request_fingerprint_with(&state, &q, &assets)
+    );
+}
+
+/// Multipart is off unless the call or the client asks: a client built
+/// with it sends it, a call's `false` turns it off, a call's `true` turns
+/// it on for a client without it, and a request without images is the
+/// JSON body whatever was asked.
+#[cfg(feature = "multipart")]
+#[tokio::test]
+async fn multipart_is_a_switch_on_the_call_and_the_client() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(5)
+        .mount(&server)
+        .await;
+    let png = fixture_image("square-300.png");
+    let mut assets = judgment::Assets::new();
+    let door = assets.add(png).unwrap();
+    let state = json!({ "door": door });
+    let q = one_noul();
+    let with_image = Request::new(&state, "jev-preview", &q).with_assets(&assets);
+    let without = Request::new(&state, "jev-preview", &q);
+    let plain = client(&server, RetryPolicy::none());
+    assert!(!plain.multipart(), "off by default");
+    let on = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .multipart(true)
+        .build()
+        .unwrap();
+    plain.evaluate(&with_image).await.unwrap();
+    plain
+        .evaluate_with(&with_image, &CallOptions::new().multipart(true))
+        .await
+        .unwrap();
+    on.evaluate(&with_image).await.unwrap();
+    on.evaluate_with(&with_image, &CallOptions::new().multipart(false))
+        .await
+        .unwrap();
+    on.evaluate(&without).await.unwrap();
+
+    let received = server.received_requests().await.unwrap();
+    let content_type = |i: usize| {
+        received[i]
+            .headers
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned()
+    };
+    assert_eq!(content_type(0), "application/json", "off by default");
+    assert_eq!(content_type(1), "multipart/form-data", "the call asked");
+    assert_eq!(content_type(2), "multipart/form-data", "the client asked");
+    assert_eq!(
+        content_type(3),
+        "application/json",
+        "the call turned it off"
+    );
+    assert_eq!(content_type(4), "application/json", "no image to send");
+    let body: serde_json::Value = serde_json::from_slice(&received[4].body).unwrap();
+    assert!(body.get("assets").is_none(), "{body}");
+    assert!(format!("{:?}", CallOptions::new().multipart(true)).contains("multipart: Some(true)"));
+    assert!(format!("{on:?}").contains("multipart: true"));
+}
+
+/// The retry loop rebuilds the request per attempt: a multipart body is
+/// whole on the second attempt too, the same parts with the same bytes.
+#[cfg(feature = "multipart")]
+#[tokio::test]
+async fn a_multipart_body_is_sent_whole_on_every_attempt() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429).insert_header("retry-after-ms", "1"))
+        .up_to_n_times(1)
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let png = fixture_image("square-300.png");
+    let mut assets = judgment::Assets::new();
+    let door = assets.add(png.clone()).unwrap();
+    let state = json!({ "door": door });
+    let q = one_noul();
+    let c = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(fast_retries(2))
+        .multipart(true)
+        .build()
+        .unwrap();
+    c.evaluate(&Request::new(&state, "jev-preview", &q).with_assets(&assets))
+        .await
+        .unwrap();
+    let received = server.received_requests().await.unwrap();
+    assert_eq!(received.len(), 2);
+    let parts: Vec<_> = received
+        .iter()
+        .map(|sent| {
+            let content_type = sent.headers.get("content-type").unwrap().to_str().unwrap();
+            multipart_parts(content_type, &sent.body)
+        })
+        .collect();
+    assert_eq!(parts[0], parts[1], "the boundary differs, the parts do not");
+    assert_eq!(parts[1][1].1, png.bytes());
+}

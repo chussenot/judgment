@@ -80,7 +80,11 @@ fn runtime() -> Result<Runtime, Failure> {
 }
 
 impl Backend {
-    pub(crate) fn open(replay: Option<&Path>) -> Result<Self, Failure> {
+    /// The recordings under `replay`, or the configured server;
+    /// `long_context` is the run's own `--long-context` (`Some(true)` when
+    /// given), which wins over the configuration file and means nothing
+    /// under a replay.
+    pub(crate) fn open(replay: Option<&Path>, long_context: Option<bool>) -> Result<Self, Failure> {
         let kind = if let Some(dir) = replay {
             let replay = Replay::open(dir).map_err(|e| {
                 Failure::Usage(format!("cannot replay from {}: {e}", dir.display()))
@@ -90,7 +94,8 @@ impl Backend {
                 dir: dir.display().to_string(),
             }
         } else {
-            let resolved = config::resolve().map_err(|e| Failure::Usage(e.to_string()))?;
+            let resolved =
+                config::resolve_with(long_context).map_err(|e| Failure::Usage(e.to_string()))?;
             let client = resolved
                 .client()
                 .map_err(|e| Failure::Usage(e.to_string()))?;
@@ -155,11 +160,18 @@ impl Backend {
     /// API by default, can be stopped before it has paid for every request.
     /// The count is of the requests planned, before `jud record` knows
     /// which its directory already answers, hence "up to". Nothing under a
-    /// replay, which costs nothing.
+    /// replay, which costs nothing. Long context is named only when it is
+    /// on: it is the one setting that changes what the server does with
+    /// every request, and it is off by default.
     pub(crate) fn announce(&self, requests: usize) {
         if let Kind::Server { resolved, .. } = &self.kind {
+            let long_context = if resolved.long_context() {
+                format!(", long context {}", resolved.describe_long_context())
+            } else {
+                String::new()
+            };
             crate::out::note!(
-                "asking {} at {} for up to {requests} request{} (base URL from {})",
+                "asking {} at {} for up to {requests} request{} (base URL from {}{long_context})",
                 resolved.model(),
                 public_url(resolved.base_url()),
                 if requests == 1 { "" } else { "s" },
