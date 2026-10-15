@@ -111,9 +111,16 @@
     {
       "id": 6,
       "name": "image-rubric-with-a-box",
-      "prompt": "We get photos of parcel labels from a warehouse camera. Write a .jud rubric that says whether a photo shows a readable shipping label at all and where the label is in the photo, so our service can crop it, plus a cases file with 5 photos: 3 with a label (the images are OUT/images/label-1.png to label-3.png, 320x320, and the label boxes are known from the annotator), 2 without (OUT/images/empty-1.png, empty-2.png). The state will be {\"photo\": <reference>}. Write them to OUT/labels.jud and OUT/labels-cases.jud. We will run it on jev-preview.",
-      "expected_output": "A rubric at minor 4 with a Noul for whether and a Box for where, the Box with instructions only, gated by confidence; cases that declare each image under assets by a relative path under the reference the state carries, label the three boxes in fractions and leave the Box unlabelled on the two empty photos, binding under jud check.",
-      "files": [],
+      "prompt": "We get photos of parcel labels from a warehouse camera. Write a .jud rubric that says whether a photo shows a readable shipping label at all and where the label is in the photo, so our service can crop it, plus a cases file with 5 photos: 3 with a label (OUT/images/label-1.png to label-3.png, 320x320; the annotator's boxes are in OUT/images/annotations.json, in pixels), 2 without (OUT/images/empty-1.png, empty-2.png). The state will be {\"photo\": <reference>}. Write them to OUT/labels.jud and OUT/labels-cases.jud. We will run it on jev-preview.",
+      "expected_output": "A rubric at minor 4 with a Noul for whether and a Box for where, the Box with instructions only, gated by confidence; cases that declare each image under assets by a relative path (images/...) under the reference the state carries, label the three boxes in fractions of 320 computed from the annotator's pixels and leave the Box unlabelled on the two empty photos, binding under jud check.",
+      "files": [
+        "evals/files/images/label-1.png",
+        "evals/files/images/label-2.png",
+        "evals/files/images/label-3.png",
+        "evals/files/images/empty-1.png",
+        "evals/files/images/empty-2.png",
+        "evals/files/images/annotations.json"
+      ],
       "expectations": [
         "Both files declare `apiVersion: jud/v1` with `metadata.minor: 4` and a PascalCase kind",
         "`jud check` accepts the rubric and the cases together with 0 refused",
@@ -121,7 +128,7 @@
         "The box's instructions name the image by the reference the state carries (photo)",
         "The policy gates the box with confidence or bands, never threshold or fallback",
         "Every case's state carries the reference and declares its image under assets with a relative path",
-        "The three label cases label the box question with {box: {top, bottom, left, right}} in fractions",
+        "The three label cases label the box question with {box: {top, bottom, left, right}} in fractions of the image, within 0.01 of the annotator's pixels divided by 320",
         "The two empty cases label the noul false and do not label the box question",
         "The reply says that a Box always answers with a box and that the Noul decides whether to use it"
       ]

@@ -138,7 +138,12 @@ All notable changes to the `judgment` crate. The format follows
   `examples/jud/shapes.rs`, a module whose `decide` takes the request's
   `Assets` and whose `Located` verdict carries a Box, exercised from the
   shapes recordings by `examples/jud_typed.rs`; the commands follow, and a
-  seventh authoring eval asks for an image rubric. In a cloud session the
+  seventh authoring eval asks for an image rubric over five parcel photos
+  and their annotator's boxes (`skills/jud/evals/files/images/`), run once
+  with the skill and once without through the new
+  `skills/jud/evals/run.py`, and a ninth `jud-rust` scenario asks for the
+  shapes module and replays the recordings with their images through the
+  module it gets; the plugin guide records both. In a cloud session the
   start hook installs the plugin from the checkout, with TypeSafe's
   `typesafe` plugin, through `scripts/claude-plugins.sh` (`mise run
   plugins:install`, `mise run plugins:update`).

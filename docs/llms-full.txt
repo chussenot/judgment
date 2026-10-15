@@ -1663,7 +1663,7 @@ The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric
 | `skills/jud-rust/SKILL.md` | The Rust guide: what the generated module is and why the rubric stays its source, the naming rules from `.jud` keys to Rust identifiers, the mapping per primitive and declaration, how to wire and verify it. |
 | `skills/jud-rust/references/` | The three modules the skill copies its shape from, with their rubrics: copies of `examples/jud/triage.rs`, `routing.rs` and `shapes.rs` (a Noul and a Box over an image), which `cargo test` compiles and runs (`examples/jud_typed.rs`); `scripts/gen-plugin-rust.sh --check` keeps the copies equal. |
 | `commands/rubric.md`, `cases.md`, `check.md`, `record.md`, `eval.md`, `tune.md`, `rust.md` | The seven commands, each a page of instructions that follows its skill. |
-| `skills/jud/evals/` | The six tasks the authoring skill was tested on, and a seventh for an image rubric with a Box, added with Jev 1.14 and not yet run. |
+| `skills/jud/evals/` | The seven tasks the authoring skill was tested on, the seventh an image rubric with a Box over five parcel photos and their annotator's boxes (`files/images/`), and `run.py`, which runs one task with the skill or without it and checks what was written. |
 | `skills/jud-tune/evals/` | The battle test of the tuning commands: the scenarios, the support fixture with its planted wrong labels, a mock System One server and the runner (below). |
 
 ## How the skill works
@@ -1712,8 +1712,30 @@ The skill was run against six tasks of the kind a user would give, each once wit
 4. Two broken documents from "last quarter" (a merge key, ids with spaces, `yes` and `no` as Noul criteria, a one-option Choice, gates on the wrong primitive, a level past the scale, a path-shaped case id) to repair, with a report of what was wrong.
 5. The two questions of `examples/quickstart.rs` turned into a rubric whose request is byte for byte the code's, checked by fingerprint, with a labelled case and a hand-written recording.
 6. A brief with traps: a name with spaces, a threshold asked for in the instructions, a twelve-level scale, a one-option Choice and a request to invent a `tuning` block.
+7. An image rubric, added with Jev 1.14: whether a warehouse photo shows a readable shipping label and where, over five 320 by 320 photos and the annotator's boxes in pixels (`evals/files/images/`), to be written as a Noul and a Box at minor 4, the cases declaring their images and labelling the boxes in fractions.
 
 Every document written with the skill passed every assertion (49 of 49); without it, 48 of 49. The difference the skill makes is mostly in cost and method: in the first round, 14 % fewer tokens and 24 % less wall-clock on average, ten tool calls per task against fifteen, and no agent with the skill built a throwaway crate to validate its documents, which two baselines did. The test was run before the manifest envelope; the skill and its eval set were carried over to it afterwards, so a later change to the format or the guide can be run against the same tasks.
+
+The seventh task was run on its own on 2026-10-15, once with the skill and once without, through `evals/run.py`, which copies the task's files into a fresh workspace, runs `claude -p` there (with `--plugin-dir plugins/jud`, or without it in a configuration directory of its own so that no installed plugin loads), then runs `jud check` on what was written and checks the task's assertions against the parsed documents. Both runs met every assertion (9 of 9) and both wrote the same two documents in substance: a Noul whose `false` criterion names the tape and the background, a Box with instructions only, a confidence gate, the images declared by relative path, the three boxes in fractions within a hundredth of the pixels divided by 320, the empty photos labelled `false` with no box, no `tuning` block, and a reply saying a Box answers with a box even over nothing, so the Noul decides whether to crop. The difference was again cost and method:
+
+| | With the skill | Without |
+|---|---|---|
+| Turns, tool calls | 11, 9 | 21, 20 |
+| Cost, wall-clock | $0.18, 35 s | $0.34, 61 s |
+| Output tokens | 3.0k | 6.6k |
+| Verified with `jud check` | yes, 0 refused, and said so | could not reach `jud` from its sandbox, said so, and asked for the check to be run |
+| What it read | the skill, the format reference's Box section, the shapes example, three of the five photos | the whole filesystem for `.jud` (a `Grep` over `/home/user`), then the checkout's concepts page, format page, the shapes example, the five photos, and the skill's own page |
+
+The baseline is not clean: with the checkout on the same machine, the agent without the plugin found `plugins/jud/skills/jud/SKILL.md` and read it, as the first rounds' baselines could have. What the comparison measures is the skill loaded as a skill, with its workflow, against the same text found as a file: a third of the calls, half the cost, and the check run rather than delegated. A clean baseline needs the checkout out of reach, which `run.py` cannot arrange on its own.
+
+To run the seventh task again, with `claude` logged in and `jud` built, with the skill and then without it:
+
+```sh
+JUD=target/debug/jud python3 plugins/jud/skills/jud/evals/run.py --task 6 --mode with --out /tmp/jud-authoring-with
+JUD=target/debug/jud python3 plugins/jud/skills/jud/evals/run.py --task 6 --mode without --out /tmp/jud-authoring-without
+```
+
+The other six tasks run the same way, with their assertions graded by a reader from `reply.md` and the documents under `ws/`.
 
 ### The tuning commands
 
@@ -1765,7 +1787,7 @@ JUD=target/debug/jud python3 plugins/jud/skills/jud-tune/evals/run.py --out /tmp
 
 `/jud:rust` was battle-tested the same way: one prompt per scenario through `claude -p --plugin-dir plugins/jud`, in a fresh git workspace holding a small Rust application (`skills/jud-rust/evals/files/app/`, with `clippy::pedantic`, `unwrap_used` and `expect_used` on). The allow-list is the plugin's script, `cargo`, file edits and a few read-only commands. No scenario calls a backend.
 
-The 8 scenarios cover:
+The 9 scenarios cover:
 
 - the triage rubric in a crate, and in a crate whose `src/lib.rs` already declares the module;
 - the routing rubric, with options supplied per request, `when`, bands, `strict` and `level_at_least`;
@@ -1773,7 +1795,8 @@ The 8 scenarios cover:
 - a rubric of hostile names (a keyword, a dotted id, a leading digit, `self`, two keys that collide, a level with no letters);
 - a plain-language request that names neither the command nor the skill;
 - the embedded form;
-- a regeneration after an option was added to the rubric.
+- a regeneration after an option was added to the rubric;
+- the shapes rubric, a Noul and a Box over an image, whose `decide` takes the request's `Assets` and whose hidden test replays the shapes recordings with their images.
 
 Each run is held to two kinds of check:
 
@@ -1792,8 +1815,9 @@ Each run is held to two kinds of check:
 | 4 | 88 of 88 | 25 of 25 | 7 | the `mod` line given once; `level_at_least` read through `reached` |
 | 5 | 88 of 88 | 24 of 25 | 2 | a sync `main`'s changes a bullet of their own; the usage example compiled in the throwaway crate as well as the module |
 | confirm | 38 of 38 (3 scenarios) | spot-checked | not counted | none: every run compiled its usage example and listed a sync `main`'s changes |
+| shapes | 12 of 12 (1 scenario) | 5 of 5 | 1 | none: the scenario was added with Jev 1.14 and run once; the module is the template with its paths, and the reply names what the caller owes in the `Assets`, the limits, the token cost and the alias; its one contradicted claim is the version floor the skill gives (0.14) against a checkout still at 0.13.0 with the Box unreleased |
 
-Round 2's one missed check was the harness's: it forbade any `include_str!` in the embedded form, which the copy test the skill asks for uses. Round 3's grader found the one defect the scripted checks could not: a retune that gives a Score `fallback: calm` made every deferred answer fail at run time, since the module read levels by index only. The last two rounds passed every scripted check; round 5's one missed expectation was a sync `main` whose changed lines the reply did not list, and the confirmation round, on the three scenarios with a sync `main`, found every reply listing them. Every round cost $2.41 to $2.88 for the 7 runs on Sonnet 5.5, $0.27 to $0.52 each.
+The shapes round is one scenario on one run, after the others: 12 of 12 scripted checks at $0.31 and 69 s on Sonnet 5.5, and the harness run first on the repository's own `examples/jud/shapes.rs` (`--reference`) to hold the hidden test to code known to be right. Round 2's one missed check was the harness's: it forbade any `include_str!` in the embedded form, which the copy test the skill asks for uses. Round 3's grader found the one defect the scripted checks could not: a retune that gives a Score `fallback: calm` made every deferred answer fail at run time, since the module read levels by index only. The last two rounds passed every scripted check; round 5's one missed expectation was a sync `main` whose changed lines the reply did not list, and the confirmation round, on the three scenarios with a sync `main`, found every reply listing them. Every round cost $2.41 to $2.88 for the 7 runs on Sonnet 5.5, $0.27 to $0.52 each.
 
 To run them again, with `claude` logged in and `jud` built:
 
