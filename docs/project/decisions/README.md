@@ -28,6 +28,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0024](0024-images-are-part-of-the-request.md) | Images are part of the request, not a call option | accepted |
 | [0025](0025-a-document-names-an-image-by-path.md) | A document names an image by a path relative to itself | accepted |
 | [0026](0026-a-box-is-graded-by-intersection-over-union.md) | A Box is graded by intersection over union | accepted |
+| [0027](0027-long-context-is-a-switch-on-the-call.md) | Long context is a switch on the call, not a request field or a default | accepted |
 
 ## Status notes
 

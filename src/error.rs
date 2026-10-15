@@ -455,7 +455,9 @@ impl Error {
     /// `max_tokens_exceeded` (the hosted API's 400 for a state, images
     /// included, over its context length), or an [`Error::RequestTooLarge`]
     /// found before sending. Named because it is the one refused request
-    /// fixed by sending less: state first, then fewer or smaller images.
+    /// fixed by sending less, state first, then fewer or smaller images, or,
+    /// when the state is the point, by asking for long context
+    /// (`CallOptions::long_context`, 262k tokens for both limits).
     pub fn is_request_too_large(&self) -> bool {
         match self {
             Self::InvalidRequest { status: 413, .. } | Self::RequestTooLarge { .. } => true,

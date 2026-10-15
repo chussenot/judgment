@@ -2427,3 +2427,81 @@ async fn a_box_that_is_not_a_region_is_refused_and_not_retried() {
         "{err}"
     );
 }
+
+// Long context: the second danger-zone header, sent only when asked for.
+
+/// `CallOptions::long_context(true)` sends the header on that call and
+/// nothing else changes; a client built with it on sends it on every call,
+/// and a call's `false` turns it off for that call.
+#[tokio::test]
+async fn long_context_is_a_header_sent_only_when_asked_for() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(4)
+        .mount(&server)
+        .await;
+    let q = one_noul();
+    let request = Request::new(&"a long state", "jev-latest", &q);
+    let c = client(&server, RetryPolicy::none());
+    c.evaluate(&request).await.unwrap();
+    c.evaluate_with(&request, &CallOptions::new().long_context(true))
+        .await
+        .unwrap();
+    let on = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .long_context(true)
+        .build()
+        .unwrap();
+    assert!(on.long_context());
+    assert!(!c.long_context());
+    on.evaluate(&request).await.unwrap();
+    on.evaluate_with(&request, &CallOptions::new().long_context(false))
+        .await
+        .unwrap();
+
+    let received = server.received_requests().await.unwrap();
+    let header = |i: usize| {
+        received[i]
+            .headers
+            .get("typesafe-danger-zone-long-context")
+            .map(|v| v.to_str().unwrap().to_owned())
+    };
+    assert_eq!(header(0), None, "off by default");
+    assert_eq!(header(1), Some("true".to_owned()), "the call asked");
+    assert_eq!(header(2), Some("true".to_owned()), "the client asked");
+    assert_eq!(header(3), None, "the call turned it off");
+    for (i, sent) in received.iter().enumerate() {
+        assert!(
+            sent.headers.get("typesafe-danger-zone-images").is_none(),
+            "request {i}: long context is not images"
+        );
+        let body: serde_json::Value = serde_json::from_slice(&sent.body).unwrap();
+        assert_eq!(
+            body,
+            serde_json::to_value(&request).unwrap(),
+            "request {i}: the body is the request, nothing added"
+        );
+    }
+}
+
+/// The header is the client's own: refused as a per-call header and as a
+/// builder default, so the one way to send it is the option.
+#[tokio::test]
+async fn the_long_context_header_is_the_clients_own() {
+    let err = CallOptions::new()
+        .header(name("typesafe-danger-zone-long-context"), value("true"))
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::ReservedHeader(h) if h == "typesafe-danger-zone-long-context"),
+        "{err}"
+    );
+    let err = Client::builder()
+        .api_key("test-key")
+        .default_header(name("typesafe-danger-zone-long-context"), value("true"))
+        .build()
+        .unwrap_err();
+    assert!(matches!(&err, Error::ReservedHeader(_)), "{err}");
+}

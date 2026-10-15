@@ -1172,3 +1172,53 @@ async fn an_image_and_a_box_question_round_trip() {
         assert_eq!(status, 400, "the images header is required");
     }
 }
+
+/// The state [`a_state_over_the_budget_is_refused_as_too_large`] sends,
+/// about 40,000 tokens against the 32,000-token per-question budget, with
+/// long context asked for: the hosted API answers it, on Jev 1.13 and 1.14
+/// alike, since the header raises both limits to 262k; a server without
+/// the header's meaning answers or refuses as it did without it (printed).
+#[tokio::test]
+#[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
+async fn a_state_over_the_default_budget_is_answered_with_long_context() {
+    let noise = vec!["lorem ipsum dolor sit amet consectetur adipiscing elit ".repeat(20); 450];
+    let state = json!({ "message": STATE_PAYOUTS, "noise": noise });
+    let mut q = Questions::new();
+    let urgent = q
+        .noul("urgent", "Does `message` convey urgency?", None)
+        .unwrap();
+    let profile = *PROFILE;
+    let started = std::time::Instant::now();
+    let result = client()
+        .evaluate_with(
+            &Request::new(&state, &requested_model(), &q),
+            &CallOptions::new().long_context(true),
+        )
+        .await;
+    match result {
+        Ok(response) => {
+            let answer = response.get(&urgent).unwrap();
+            eprintln!(
+                "long context: {} answered in {:?}, urgent {:.2}, {:?} input tokens",
+                response.model,
+                started.elapsed(),
+                answer.yes,
+                response.usage.input_tokens
+            );
+            if profile == Profile::Typesafe {
+                assert!(
+                    response.usage.input_tokens > 32_000,
+                    "over the default per-question budget: {:?}",
+                    response.usage
+                );
+            }
+        }
+        Err(err) => {
+            eprintln!("long context: {err}");
+            assert!(
+                profile != Profile::Typesafe,
+                "the header lifts the budget: {err:?}"
+            );
+        }
+    }
+}

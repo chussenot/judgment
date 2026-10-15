@@ -1,6 +1,6 @@
 ---
 title: Jev 1.14 on the hosted API, images and the Box
-description: The live run of 2026-10-15 against api.typesafe.ai with jev-preview (Jev 1.14.0) that verified the crate's image support and its Box primitive against the hosted wire, with the seventeenth live test and forty-odd raw probes; what the hosted API did on each point, where it departs from its own documentation, and what the crate does about each departure.
+description: The live run of 2026-10-15 against api.typesafe.ai with jev-preview (Jev 1.14.0) that verified the crate's image support, its Box primitive and long context against the hosted wire, with two new live tests and forty-odd raw probes; what the hosted API did on each point, where it departs from its own documentation, and what the crate does about each departure.
 status: current
 last_reviewed: 2026-10-15
 tags: [judgment, typesafe, jev, images, box, compatibility, verification]
@@ -17,7 +17,7 @@ tags: [judgment, typesafe, jev, images, box, compatibility, verification]
 | Server | `https://api.typesafe.ai` |
 | Model requested | `jev-preview`, which resolved to `jev-1.14.0`; `jev-latest` was still `jev-1.13.0` |
 | Crate | `judgment` at the commit this page was added in, with the `http` and `jud` features |
-| Live test | `an_image_and_a_box_question_round_trip` in `tests/live.rs`, under the `typesafe` profile: a 320 by 320 PNG through `Client::answer_with_assets` with a Noul and a Box, then the same body raw with and without the images header, each body held to the OpenAPI document |
+| Live tests | `an_image_and_a_box_question_round_trip` in `tests/live.rs`, under the `typesafe` profile: a 320 by 320 PNG through `Client::answer_with_assets` with a Noul and a Box, then the same body raw with and without the images header, each body held to the OpenAPI document; `a_state_over_the_default_budget_is_answered_with_long_context`, the budget test's state with the long-context header |
 | Recording run | `jud record` over the forty shapes cases, committed under `examples/recordings/shapes/` ([the calibration study](box-calibration-study.md)) |
 | Probes | about twenty raw requests past what the client lets through: the image at five sizes and as a JPEG, dimensions outside the limits, an unreferenced asset, a Box with no image, with `null` instructions, with criteria, a wrong `format`, a Box on `jev-latest`, an image on `jev-latest` |
 
@@ -30,8 +30,9 @@ tags: [judgment, typesafe, jev, images, box, compatibility, verification]
 - **An unreferenced asset is refused**, 400 `api_usage_error`, "Invalid image request.", whether it is the only asset or one of two. The client refuses it first, by the reference's name (`Error::InvalidAsset`).
 - **A Box without an image is answered**, with a box over nothing at confidence 0.03. The reference page says a Box locates something in an image; the server does not insist on one. The crate sends such a request as written (a rubric's image may come with the case, or `jud RUBRIC --asset`), and the gate catches the answer: this is the strongest reason the Box documentation pairs it with a Noul.
 - **`null` instructions and `criteria` on a Box are accepted** and the criteria ignored; a PNG declared `format: jpg` is accepted and sniffed. The crate refuses all three before the wire, since none can mean what the caller meant: the instructions are all a Box is, a Box has no outcomes to describe, and a format that is not the bytes' is a mistake somewhere.
+- **Long context lifts the budget on Jev 1.13 as the page says.** The 40,000-token state the budget test sends, refused without the header as 400 `max_tokens_exceeded`, was answered under `TypeSafe-Danger-Zone-Long-Context: true` by `jev-1.13.0` in 1.4 s, 74,550 input tokens counted (the eighteenth live test). The crate sends the header through `CallOptions::long_context` and `ClientBuilder::long_context` ([decision 0027](../decisions/0027-long-context-is-a-switch-on-the-call.md)).
 - **Input tokens follow the pixels**: 860 at 320 by 320, 2,400 at 640, 5,760 at 1024, 12,828 at 1568, for the same twenty output tokens and a latency between 190 and 300 ms. [The calibration study](box-calibration-study.md) tables it.
 
 ## What the crate changed for it
 
-Nothing in the wire shape, which the OpenAPI refresh of the same day had already settled. Two things in words: the format page no longer says a reader must refuse a Box in a rubric without an image, and the Box's documentation names which alias answers it. The live test is the seventeenth in `tests/live.rs`; `mise run live:typesafe` runs it with the others, asking `jev-preview` for the Box part until `jev-latest` is 1.14.
+Nothing in the wire shape, which the OpenAPI refresh of the same day had already settled. Two things in words: the format page no longer says a reader must refuse a Box in a rubric without an image, and the Box's documentation names which alias answers it. The two live tests are the seventeenth and eighteenth in `tests/live.rs`; `mise run live:typesafe` runs them with the others, asking `jev-preview` for the Box part until `jev-latest` is 1.14.

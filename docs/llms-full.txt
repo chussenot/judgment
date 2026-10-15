@@ -2666,10 +2666,11 @@ A request nobody recorded is a backend failure (status 1); a directory that does
 | Model | the `model` argument of `SystemOne::answer`, or `ClientBuilder::model` for `Client::system_one` | `jev-latest` |
 | Timeout per attempt | `ClientBuilder::timeout`, or `CallOptions::timeout` for one call | 10 s |
 | Retries | `ClientBuilder::retry_policy`, or `CallOptions` for one call | `RetryPolicy::default()`: [The crate](crate.md#defaults) |
+| Long context | `ClientBuilder::long_context`, or `CallOptions::long_context` for one call | off: the model's own limits, 64k tokens per request and 32k per question; on, 262k for both through the `TypeSafe-Danger-Zone-Long-Context` header, slower and less accurate by TypeSafe's own account ([decision 0027](../project/decisions/0027-long-context-is-a-switch-on-the-call.md)) |
 
 The crate's client reads no base URL from the environment; the `jud` command and the examples do, and pass it to the builder. The two timeouts differ on purpose: a library call is usually one of many on a request path and fails fast at 10 s; a command-line run has a person waiting and a local model that may be loading, so it waits 30 s.
 
-The constants are public: `judgment::client::{API_KEY_ENV, DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_TIMEOUT, REQUEST_ID_HEADER}` ([docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html)).
+The constants are public: `judgment::client::{API_KEY_ENV, DEFAULT_BASE_URL, DEFAULT_MODEL, DEFAULT_TIMEOUT, REQUEST_ID_HEADER, DANGER_ZONE_IMAGES_HEADER, DANGER_ZONE_LONG_CONTEXT_HEADER}` ([docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html)).
 
 
 <!-- source: docs/reference/jud-format.md -->
@@ -3168,7 +3169,7 @@ In the order of one call: a question is built, sent through a backend, answered,
 | `answer` | `Response` and the wire `Answer`; `Probability` and `Confidence`, which refuse a value outside `[0, 1]`; `Response::verify` holds a response against the questions; `Response::get(&handle)` reads `Noul`, `Choice<T>`, `Score` or `BoundingBox` (`BoxEdges` as fractions of the image, `PixelBox` at a size). | [docs.rs](https://docs.rs/judgment/latest/judgment/answer/index.html) |
 | `asset` | `Image` (a PNG or a JPEG, its format and size read from the bytes, the hosted API's limits checked), `ImageFormat`, and `Assets`, the request's images by reference. |  [docs.rs](https://docs.rs/judgment/latest/judgment/asset/index.html) |
 | `backend` | The `SystemOne` trait (`answer`, and `answer_with_assets` for a request with images) and three implementations beside the client: `Fake`, `Recorder`, `Replay`. | [docs.rs](https://docs.rs/judgment/latest/judgment/backend/index.html) |
-| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions`: the wire with the official SDKs' retries. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
+| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields and long context for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
 | `http` (`http`) | `RetryPolicy` and `send_with_retries`, the retry loop behind the client, public so another `reqwest` client can retry the same way. | [docs.rs](https://docs.rs/judgment/latest/judgment/http/index.html) |
 | `error` | `Error`, `Result`, `ValidationIssue`. | [docs.rs](https://docs.rs/judgment/latest/judgment/error/index.html) |
 | `eval` | `Recording`, `Judgment`, the metrics (`metrics`), the fingerprints (`canonical`) and the sweeps (`tuning`). | [docs.rs](https://docs.rs/judgment/latest/judgment/eval/index.html) |
@@ -3663,7 +3664,7 @@ It is the last attempt's id when the call was retried, and there is none after a
 - **No sync client.** The API documents one evaluation endpoint and a model listing, and every consumer so far is async. A caller that must block can block on the future.
 - **No batching or streaming.** The API documents one request shape, and one request already carries many questions.
 - **No metrics backend.** A library that named instruments would force its telemetry stack on every consumer. The crate emits `tracing` spans and hands token usage and failed attempts to an `Observer`; the application counts them where it counts everything else.
-- **No per-call options across the `SystemOne` trait.** `Client::evaluate_with` takes a `CallOptions` for one call's timeout, retry policy, headers and extra body fields. A recording is filed under a hash of the state and the questions, and an extra field can change the answer, so options could cross the trait only by entering that hash. Keeping them off leaves every existing recording valid.
+- **No per-call options across the `SystemOne` trait.** `Client::evaluate_with` takes a `CallOptions` for one call's timeout, retry policy, headers and extra body fields. A recording is filed under a hash of the state and the questions, and an extra field can change the answer, so options could cross the trait only by entering that hash. Keeping them off leaves every existing recording valid. Long context is the one option with a client-wide default (`ClientBuilder::long_context`): a `Recorder` over such a client sends the header on every call, and the recordings it writes are keyed as any other, since the header changes the limits, not the request.
 - **No provider switch.** Any server that speaks the wire is a base URL and nothing more; `SystemOne` is already the abstraction.
 
 ## Next
@@ -4011,7 +4012,7 @@ The unit and integration tests never leave the process: wiremock for the client,
 
 ## Does a real server speak the wire this way?
 
-`tests/live.rs` holds seventeen `#[ignore]` tests that run the three text primitives, an image with a Box question about it (on `jev-preview` against the hosted API, where `jev-latest` is still Jev 1.13), the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Six tasks run them:
+`tests/live.rs` holds eighteen `#[ignore]` tests that run the three text primitives, an image with a Box question about it (on `jev-preview` against the hosted API, where `jev-latest` is still Jev 1.13), a state over the default budget under long context, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Six tasks run them:
 
 | Task | Against | Needs |
 |---|---|---|
@@ -4074,7 +4075,7 @@ The live tests show that one server, on one day, accepted and answered what the 
 
 The [judgment crate](../../../README.md) is tested against mocks of TypeSafe's wire and the vendored OpenAPI document. A mock and a schema both encode what someone believed about the wire; only the server can contradict that belief. The [Laya run](laya-typed-decisions.md) checked the crate against a second implementation of System One, but no TypeSafe key was available then, so the hosted API itself had answered this client only once, through a set of triage questions (2026-09-23). That run proved those questions round-trip; it did not exercise the crate's edges: structured Score levels, null option descriptions, an unknown extra field, the model list, a wrong key.
 
-This page records the run that did. All ten tests in `tests/live.rs`, the same file the Laya run used, passed against `https://api.typesafe.ai` with a real key on 2026-10-03; five more, written from the probes [below](#beyond-the-test-file), passed the same day. `mise run live:typesafe` runs them all under the `typesafe` profile, with a sixteenth added since, which holds every success body to the published document ([How the crate is checked](method.md)), and a seventeenth for an image and a Box question, run on 2026-10-15 against Jev 1.14.0 ([Jev 1.14 on the hosted API](hosted-typesafe-jev-1-14.md)).
+This page records the run that did. All ten tests in `tests/live.rs`, the same file the Laya run used, passed against `https://api.typesafe.ai` with a real key on 2026-10-03; five more, written from the probes [below](#beyond-the-test-file), passed the same day. `mise run live:typesafe` runs them all under the `typesafe` profile, with a sixteenth added since, which holds every success body to the published document ([How the crate is checked](method.md)), and two more for an image with a Box question and for long context, run on 2026-10-15 against Jev 1.14.0 ([Jev 1.14 on the hosted API](hosted-typesafe-jev-1-14.md)).
 
 ## What was tested, and with what
 
@@ -4169,7 +4170,7 @@ JUDGMENT_LIVE_MODEL=jev-latest JUDGMENT_LIVE_PROFILE=typesafe \
 | Server | `https://api.typesafe.ai` |
 | Model requested | `jev-preview`, which resolved to `jev-1.14.0`; `jev-latest` was still `jev-1.13.0` |
 | Crate | `judgment` at the commit this page was added in, with the `http` and `jud` features |
-| Live test | `an_image_and_a_box_question_round_trip` in `tests/live.rs`, under the `typesafe` profile: a 320 by 320 PNG through `Client::answer_with_assets` with a Noul and a Box, then the same body raw with and without the images header, each body held to the OpenAPI document |
+| Live tests | `an_image_and_a_box_question_round_trip` in `tests/live.rs`, under the `typesafe` profile: a 320 by 320 PNG through `Client::answer_with_assets` with a Noul and a Box, then the same body raw with and without the images header, each body held to the OpenAPI document; `a_state_over_the_default_budget_is_answered_with_long_context`, the budget test's state with the long-context header |
 | Recording run | `jud record` over the forty shapes cases, committed under `examples/recordings/shapes/` ([the calibration study](box-calibration-study.md)) |
 | Probes | about twenty raw requests past what the client lets through: the image at five sizes and as a JPEG, dimensions outside the limits, an unreferenced asset, a Box with no image, with `null` instructions, with criteria, a wrong `format`, a Box on `jev-latest`, an image on `jev-latest` |
 
@@ -4182,11 +4183,12 @@ JUDGMENT_LIVE_MODEL=jev-latest JUDGMENT_LIVE_PROFILE=typesafe \
 - **An unreferenced asset is refused**, 400 `api_usage_error`, "Invalid image request.", whether it is the only asset or one of two. The client refuses it first, by the reference's name (`Error::InvalidAsset`).
 - **A Box without an image is answered**, with a box over nothing at confidence 0.03. The reference page says a Box locates something in an image; the server does not insist on one. The crate sends such a request as written (a rubric's image may come with the case, or `jud RUBRIC --asset`), and the gate catches the answer: this is the strongest reason the Box documentation pairs it with a Noul.
 - **`null` instructions and `criteria` on a Box are accepted** and the criteria ignored; a PNG declared `format: jpg` is accepted and sniffed. The crate refuses all three before the wire, since none can mean what the caller meant: the instructions are all a Box is, a Box has no outcomes to describe, and a format that is not the bytes' is a mistake somewhere.
+- **Long context lifts the budget on Jev 1.13 as the page says.** The 40,000-token state the budget test sends, refused without the header as 400 `max_tokens_exceeded`, was answered under `TypeSafe-Danger-Zone-Long-Context: true` by `jev-1.13.0` in 1.4 s, 74,550 input tokens counted (the eighteenth live test). The crate sends the header through `CallOptions::long_context` and `ClientBuilder::long_context` ([decision 0027](../decisions/0027-long-context-is-a-switch-on-the-call.md)).
 - **Input tokens follow the pixels**: 860 at 320 by 320, 2,400 at 640, 5,760 at 1024, 12,828 at 1568, for the same twenty output tokens and a latency between 190 and 300 ms. [The calibration study](box-calibration-study.md) tables it.
 
 ## What the crate changed for it
 
-Nothing in the wire shape, which the OpenAPI refresh of the same day had already settled. Two things in words: the format page no longer says a reader must refuse a Box in a rubric without an image, and the Box's documentation names which alias answers it. The live test is the seventeenth in `tests/live.rs`; `mise run live:typesafe` runs it with the others, asking `jev-preview` for the Box part until `jev-latest` is 1.14.
+Nothing in the wire shape, which the OpenAPI refresh of the same day had already settled. Two things in words: the format page no longer says a reader must refuse a Box in a rubric without an image, and the Box's documentation names which alias answers it. The two live tests are the seventeenth and eighteenth in `tests/live.rs`; `mise run live:typesafe` runs them with the others, asking `jev-preview` for the Box part until `jev-latest` is 1.14.
 
 
 <!-- source: docs/project/verification/box-calibration-study.md -->
@@ -5020,6 +5022,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0024](0024-images-are-part-of-the-request.md) | Images are part of the request, not a call option | accepted |
 | [0025](0025-a-document-names-an-image-by-path.md) | A document names an image by a path relative to itself | accepted |
 | [0026](0026-a-box-is-graded-by-intersection-over-union.md) | A Box is graded by intersection over union | accepted |
+| [0027](0027-long-context-is-a-switch-on-the-call.md) | Long context is a switch on the call, not a request field or a default | accepted |
 
 ## Status notes
 
@@ -6240,3 +6243,82 @@ Chosen option 1.
 ## More information
 
 [The .jud format](../../reference/jud-format.md) (Cases) holds the label; `src/eval/mod.rs` (`Judgment::located`, `QuestionMetrics`) and `src/bin/jud/eval.rs` compute and print it; [decision 0025](0025-a-document-names-an-image-by-path.md) says how the image a Box is about is named; [decision 0024](0024-images-are-part-of-the-request.md) put the images on the request.
+
+
+<!-- source: docs/project/decisions/0027-long-context-is-a-switch-on-the-call.md -->
+
+
+# 0027 Long context is a switch on the call, not a request field or a default
+
+## Context and problem statement
+
+Jev fits a request into two context limits, 64k tokens for the state and every question together and 32k for the state and any one question; over either, the hosted API answers 400 `max_tokens_exceeded`, which the crate names `Error::is_request_too_large`. Jev 1.14's release raised both to 262k tokens, on Jev 1.13 as well, behind a header, `TypeSafe-Danger-Zone-Long-Context: true`, sent per request ([Models](https://docs.typesafe.ai/models#long-context)); the OpenAPI document lists the header as a parameter taking the one value `true`. The crate had no way to send it but `CallOptions::header`, by name, with the header's spelling the caller's problem and nothing on the span to say a long request went out. The question was where the switch belongs: on the request, on the call, on the client, or nowhere, with the crate deciding from the state's size.
+
+## Decision drivers
+
+- TypeSafe says a long-context request is slower and less accurate than one within the limits, so sending the header is a choice with a cost, not a transport detail.
+- A request without long context must be the same bytes, the same fingerprint and the same hash it always was.
+- The header changes the limits, not the request: two calls that differ only by it ask the same question of the same state, and a recording of one answers the other.
+- A client used for one kind of work (a batch over long transcripts) should not have to pass an option on every call; a client used for both should be able to say so per call.
+- The crate has no tokeniser, and the limits are the server's to count.
+
+## Considered options
+
+1. **A switch on the call and on the client**: `CallOptions::long_context(bool)` for one call, `ClientBuilder::long_context(bool)` for every call, off by default; the header reserved.
+2. **A field of `Request`**, beside `state`, `model`, `questions` and `assets`.
+3. **Always on**: send the header on every request.
+4. **Decided by the crate** from the request's size, with a token estimate.
+5. **Nothing**: leave `CallOptions::header` as the way.
+
+## Decision outcome
+
+Chosen option 1.
+
+- `CallOptions::long_context(true)` sends the header on that call; `ClientBuilder::long_context(true)` on every call of the client, and a call's `false` turns it off for that call. The header is reserved like the client's own (`DANGER_ZONE_LONG_CONTEXT_HEADER`), so it cannot be sent by name with another value or spelling, and the setting is the `typesafe.evaluate` span's `long_context` field. The body is untouched: the contract test pins that the request with the option is byte for byte the request without it, plus the header.
+- The setting stays on the client side of the `SystemOne` trait, as every call option does ([How judgment works](../../concepts/how-judgment-works.md)); a `Recorder` over a client built with it on sends it on every call, and the recordings are keyed as before.
+- `Error::is_request_too_large`'s documentation names the switch as the other remedy beside sending less.
+
+### Consequences
+
+- Good: a request without long context is unchanged on the wire and in every recording; a caller who needs it turns it on where the long states are, and the span says when it was on.
+- Good: the cost TypeSafe names is paid deliberately.
+- Bad: a caller whose states vary in size either turns it on for all of them, paying the accuracy cost on the short ones, or measures the state itself; the crate gives no estimate.
+- Bad: the `jud` command has no flag or setting for it yet; a long case is refused as too large until it does (a follow-up, tracked in beads).
+
+### Confirmation
+
+`tests/client.rs` sends the header for a call that asked, for every call of a client that asked, and not otherwise, and refuses the header as a per-call header and as a builder default; `tests/contract.rs` pins the header parameter and its one value in the OpenAPI document and the unchanged body; `tests/live.rs` sends a 40,000-token state, refused without the header as `max_tokens_exceeded`, and sees it answered with it (74,550 input tokens, 1.4 s, on 2026-10-15).
+
+## Pros and cons of the options
+
+### Option 1: a switch on the call and on the client
+
+- Good, because it is where every other per-call choice lives, with a client default for the batch case.
+- Good, because the request and the recordings do not change.
+- Bad, because it is one more thing to know about when a request is refused; the error's documentation points to it.
+
+### Option 2: a field of `Request`
+
+- Good, because the request says everything about itself.
+- Bad, because it would enter the request's serialisation, or need a serde skip and a special case in the fingerprint and the hash, for something that is not part of the question asked.
+- Bad, because a `Request` is built per call by `system_one`, so a client-wide default would still be needed.
+
+### Option 3: always on
+
+- Good, because no caller is ever refused for size.
+- Bad, because TypeSafe says the answers are less accurate and slower under it; every caller would pay for the few.
+
+### Option 4: decided by the crate from the request's size
+
+- Good, because the caller never thinks about it.
+- Bad, because the crate has no tokeniser, a byte estimate is wrong for JSON and for images, and a wrong guess either pays the accuracy cost or still gets the 400.
+- Bad, because the limit is the server's and changes with the model; a guess written today is a bug later.
+
+### Option 5: nothing
+
+- Good, because it already works through `CallOptions::header`.
+- Bad, because the header's name and value are then the caller's to spell, nothing on the span records it, and the error's remedy cannot name it.
+
+## More information
+
+[Models](https://docs.typesafe.ai/models#long-context) is the page the header comes from; `src/client.rs` (`# Long context`) implements it; [Configuration](../../reference/configuration.md#the-crates-client) lists the setting; [decision 0024](0024-images-are-part-of-the-request.md) made the same choice the other way for the images header, which the client sets itself because the image on the request is the opt-in.

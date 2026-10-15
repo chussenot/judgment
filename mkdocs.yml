@@ -70,6 +70,7 @@ nav:
           - 0024 Images are part of the request, not a call option: project/decisions/0024-images-are-part-of-the-request.md
           - 0025 A document names an image by a path relative to itself: project/decisions/0025-a-document-names-an-image-by-path.md
           - 0026 A Box is graded by intersection over union: project/decisions/0026-a-box-is-graded-by-intersection-over-union.md
+          - 0027 Long context is a switch on the call: project/decisions/0027-long-context-is-a-switch-on-the-call.md
 
 # Pages link to files outside docs/ (the examples, the README, the CHANGELOG)
 # by relative path, the repository's convention, which GitHub and crates.io

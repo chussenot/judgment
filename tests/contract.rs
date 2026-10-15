@@ -721,6 +721,16 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
         .noul("urgent", "Does `message` convey urgency?", None)
         .unwrap();
     results.push(client.system_one(&object, &text_only).await);
+    // The same text-only request asking for long context: a header, and
+    // nothing in the body.
+    results.push(
+        client
+            .evaluate_with(
+                &Request::new(&object, "jev-1.13.0", &text_only),
+                &judgment::CallOptions::new().long_context(true),
+            )
+            .await,
+    );
     for result in &results {
         assert!(
             matches!(result, Err(Error::InvalidRequest { status: 422, .. })),
@@ -785,7 +795,7 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
         let mut documented = sent.clone();
         documented.as_object_mut().unwrap().remove("beam_width");
         assert_conforms_strict(&schema, &documented, &format!("request {i}"));
-        let asked = if i == received.len() - 1 {
+        let asked = if i >= received.len() - 2 {
             &text_only
         } else {
             &q
@@ -823,12 +833,22 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
         .iter()
         .filter(|p| p["in"] == "header")
         .collect();
-    assert!(
-        documented.iter().any(|p| p["name"]
-            .as_str()
-            .is_some_and(|n| n.eq_ignore_ascii_case("typesafe-danger-zone-images"))),
-        "the document names the images header: {documented:?}"
-    );
+    // The two danger-zone headers the document names, each taking the one
+    // value `true`, which is the value the client sends.
+    for name in [
+        "typesafe-danger-zone-images",
+        "typesafe-danger-zone-long-context",
+    ] {
+        let parameter = documented
+            .iter()
+            .find(|p| {
+                p["name"]
+                    .as_str()
+                    .is_some_and(|n| n.eq_ignore_ascii_case(name))
+            })
+            .unwrap_or_else(|| panic!("the document names the {name} header: {documented:?}"));
+        assert_eq!(parameter["schema"]["enum"], json!(["true"]), "{name}");
+    }
     // Every request of the full set asks a Box, which needs the header too
     // (the Box page), image or not; the text-only request gets neither the
     // header nor an `assets` key.
@@ -838,15 +858,29 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
             "request {i} asks a Box and needs the header"
         );
     }
-    let last = received.last().unwrap();
-    assert!(
-        last.headers.get("typesafe-danger-zone-images").is_none(),
-        "no header without a Box or an image"
-    );
+    for last in &received[8..] {
+        assert!(
+            last.headers.get("typesafe-danger-zone-images").is_none(),
+            "no images header without a Box or an image"
+        );
+    }
     assert!(
         bodies[8].get("assets").is_none(),
         "no assets key without an image"
     );
+    // Long context is the header alone, on the one request that asked.
+    for (i, request) in received.iter().enumerate() {
+        let header = request
+            .headers
+            .get("typesafe-danger-zone-long-context")
+            .and_then(|v| v.to_str().ok());
+        assert_eq!(
+            header,
+            (i == received.len() - 1).then_some("true"),
+            "request {i}"
+        );
+    }
+    assert_eq!(bodies[9], bodies[8], "long context changes no body");
     for body in &bodies[..7] {
         assert!(
             body.get("assets").is_none(),

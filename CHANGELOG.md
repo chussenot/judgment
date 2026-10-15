@@ -82,6 +82,18 @@ All notable changes to the `judgment` crate. The format follows
   confidence, the band and `pixels`; `jud eval` reports a Box question's
   `mean_iou` beside its accuracy, no Brier score, and a miss's `iou`; `jud
   check` counts a document's images.
+- Long context (<https://docs.typesafe.ai/models#long-context>): both
+  context limits raised from 64k tokens per request and 32k per question
+  to 262k through the `TypeSafe-Danger-Zone-Long-Context: true` header,
+  on Jev 1.13 and 1.14. `CallOptions::long_context(true)` asks for it on
+  one call and `ClientBuilder::long_context(true)` on every call of a
+  client (a call's `false` turns it off again); the header is reserved
+  (`client::DANGER_ZONE_LONG_CONTEXT_HEADER`) and recorded on the
+  `typesafe.evaluate` span as `long_context`. Off by default, as TypeSafe
+  says a long request is slower and less accurate, and never read off the
+  request's size (decision 0027). Verified live: a 74,550-token state the
+  default budget refuses as `max_tokens_exceeded` was answered under the
+  header by `jev-1.13.0` in 1.4 s.
 
 ### Changed
 

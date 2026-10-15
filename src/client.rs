@@ -110,6 +110,25 @@
 //! The images' count and bytes are reported to the [`Observer`]
 //! ([`Observer::on_assets`]) and the count is the span's `images` field.
 //!
+//! # Long context
+//!
+//! A request fits two context limits, 64k tokens for the state and every
+//! question together and 32k for the state and any one question
+//! (<https://docs.typesafe.ai/models#context-length>); over either, the
+//! hosted API answers 400 `max_tokens_exceeded`
+//! ([`Error::is_request_too_large`]). Long context raises both to 262k, on
+//! Jev 1.13 and 1.14, behind a second header,
+//! `TypeSafe-Danger-Zone-Long-Context: true`
+//! ([`DANGER_ZONE_LONG_CONTEXT_HEADER`], reserved like the others). It is
+//! a switch, not a default: TypeSafe says a long request is slower and less
+//! accurate than one within the limits, so the crate sends the header only
+//! when asked, for one call ([`CallOptions::long_context`]) or for every
+//! call of a client ([`ClientBuilder::long_context`], the one option with a
+//! client-wide default, so a [`Recorder`](crate::Recorder) over the client
+//! sends it too). It is not read off the request: the crate has no
+//! tokeniser, and the caller who built a long state knows it did. The
+//! setting is the span's `long_context` field.
+//!
 //! # `GET /v1/models`
 //!
 //! [`Client::list_models`] lists the models and aliases the account may
@@ -168,13 +187,19 @@ const RETRY_COUNT_HEADER: HeaderName = HeaderName::from_static("x-typesafe-retry
 /// client on every request that carries an image or asks a Box question
 /// and on no other (module docs, `# Images`).
 pub const DANGER_ZONE_IMAGES_HEADER: &str = "typesafe-danger-zone-images";
+/// The header that raises both context limits to 262k tokens
+/// (<https://docs.typesafe.ai/models#long-context>), sent by the client
+/// when [`CallOptions::long_context`] or [`ClientBuilder::long_context`]
+/// asks for it and never otherwise (module docs, `# Long context`).
+pub const DANGER_ZONE_LONG_CONTEXT_HEADER: &str = "typesafe-danger-zone-long-context";
 /// Headers the client sets itself, refused as a per-call or default header.
-const RESERVED_HEADERS: [HeaderName; 5] = [
+const RESERVED_HEADERS: [HeaderName; 6] = [
     AUTHORIZATION,
     CONTENT_TYPE,
     USER_AGENT,
     RETRY_COUNT_HEADER,
     HeaderName::from_static(DANGER_ZONE_IMAGES_HEADER),
+    HeaderName::from_static(DANGER_ZONE_LONG_CONTEXT_HEADER),
 ];
 /// Headers HTTP itself owns, refused because the stack would keep a caller's
 /// value over the one it computes.
@@ -284,6 +309,7 @@ pub struct CallOptions {
     retry: Option<RetryPolicy>,
     headers: HeaderMap,
     extra: Map<String, Value>,
+    long_context: Option<bool>,
 }
 
 impl fmt::Debug for CallOptions {
@@ -293,6 +319,7 @@ impl fmt::Debug for CallOptions {
             .field("retry", &self.retry)
             .field("headers", &header_names(&self.headers))
             .field("extra", &self.extra.keys().collect::<Vec<_>>())
+            .field("long_context", &self.long_context)
             .finish()
     }
 }
@@ -333,14 +360,25 @@ impl CallOptions {
         self
     }
 
+    /// Long context for this call, in place of the client's setting: both
+    /// context limits raised to 262k tokens through the header TypeSafe
+    /// keeps the feature behind (module docs, `# Long context`). `false`
+    /// turns it off for one call of a client built with it on.
+    #[must_use]
+    pub fn long_context(mut self, on: bool) -> Self {
+        self.long_context = Some(on);
+        self
+    }
+
     /// A header sent on every attempt of this call, replacing a
     /// [`ClientBuilder::default_header`] of the same (case-insensitive) name.
     ///
     /// `authorization`, `content-type`, `user-agent`,
     /// `x-typesafe-retry-count`, `typesafe-danger-zone-images`,
-    /// `content-length`, `transfer-encoding`, `host`, `connection`, `te`
-    /// and `upgrade` are [`Error::ReservedHeader`] (module docs, `# Per-call
-    /// options` and `# Images`). Mark a secret value with
+    /// `typesafe-danger-zone-long-context`, `content-length`,
+    /// `transfer-encoding`, `host`, `connection`, `te` and `upgrade` are
+    /// [`Error::ReservedHeader`] (module docs, `# Per-call options`,
+    /// `# Images` and `# Long context`). Mark a secret value with
     /// [`HeaderValue::set_sensitive`] so `reqwest` redacts it.
     pub fn header(mut self, name: HeaderName, value: HeaderValue) -> Result<Self> {
         refuse_reserved_header(&name)?;
@@ -405,6 +443,7 @@ pub struct ClientBuilder {
     retry: RetryPolicy,
     observer: Option<Arc<dyn Observer>>,
     headers: HeaderMap,
+    long_context: bool,
 }
 
 impl fmt::Debug for ClientBuilder {
@@ -417,6 +456,7 @@ impl fmt::Debug for ClientBuilder {
             .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
             .field("observer", &self.observer.as_ref().map(|_| "set"))
             .field("default_headers", &header_names(&self.headers))
+            .field("long_context", &self.long_context)
             .finish()
     }
 }
@@ -431,6 +471,7 @@ impl Default for ClientBuilder {
             retry: RetryPolicy::default(),
             observer: None,
             headers: HeaderMap::new(),
+            long_context: false,
         }
     }
 }
@@ -476,6 +517,17 @@ impl ClientBuilder {
     #[must_use]
     pub fn retry(mut self, retry: RetryPolicy) -> Self {
         self.retry = retry;
+        self
+    }
+
+    /// Long context on every call this client makes (module docs, `# Long
+    /// context`): both context limits raised to 262k tokens, at the cost
+    /// TypeSafe names (slower, less accurate than a request within the
+    /// default limits). Off by default; [`CallOptions::long_context`]
+    /// changes it for one call.
+    #[must_use]
+    pub fn long_context(mut self, on: bool) -> Self {
+        self.long_context = on;
         self
     }
 
@@ -550,6 +602,7 @@ impl ClientBuilder {
             model: self.model,
             retry: self.retry,
             observer: self.observer,
+            long_context: self.long_context,
         })
     }
 }
@@ -562,6 +615,7 @@ pub struct Client {
     model: String,
     retry: RetryPolicy,
     observer: Option<Arc<dyn Observer>>,
+    long_context: bool,
 }
 
 impl fmt::Debug for Client {
@@ -570,6 +624,7 @@ impl fmt::Debug for Client {
             .field("base_url", &self.base_url.as_str())
             .field("model", &self.model)
             .field("retry", &self.retry)
+            .field("long_context", &self.long_context)
             .field("api_key", &"<redacted>")
             .finish_non_exhaustive()
     }
@@ -594,6 +649,12 @@ impl Client {
     /// The client's retry policy.
     pub fn retry(&self) -> &RetryPolicy {
         &self.retry
+    }
+
+    /// Whether this client asks for long context on every call
+    /// ([`ClientBuilder::long_context`]).
+    pub const fn long_context(&self) -> bool {
+        self.long_context
     }
 
     /// Evaluate `state` against `questions` with the default model.
@@ -626,6 +687,7 @@ impl Client {
         fields(
             model = request.model,
             images = request.assets.len(),
+            long_context = options.long_context.unwrap_or(self.long_context),
             input_tokens = tracing::field::Empty,
             request_id = tracing::field::Empty
         )
@@ -637,6 +699,7 @@ impl Client {
     ) -> Result<Response> {
         let url = self.url("v1/systemone")?;
         let dangerous = !request.assets.is_empty() || asks_a_box(request.questions);
+        let long_context = options.long_context.unwrap_or(self.long_context);
         if !request.assets.is_empty() {
             // Before the body is built: a reference that appears nowhere is
             // the hosted API's 400, found here without the upload.
@@ -669,6 +732,12 @@ impl Client {
                 let mut rb = self.http.post(url.clone()).body(body.clone());
                 if dangerous {
                     rb = rb.header(DANGER_ZONE_IMAGES_HEADER, HeaderValue::from_static("true"));
+                }
+                if long_context {
+                    rb = rb.header(
+                        DANGER_ZONE_LONG_CONTEXT_HEADER,
+                        HeaderValue::from_static("true"),
+                    );
                 }
                 options.apply(rb)
             })
