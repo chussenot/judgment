@@ -73,3 +73,15 @@
 
 sync:
     remote: "git+https://github.com/chussenot/judgment"
+
+# The export is how the beads travel between machines (docs/project/contributing.md,
+# "Tracking work"): bd rewrites .beads/issues.jsonl after every write and stages
+# it, the pre-commit hook flushes it, the post-merge and post-checkout hooks
+# import it (scripts/bd-sync.sh), and a cloud session bootstraps from it.
+export:
+  auto: true
+  path: issues.jsonl
+  interval: 1s
+  git-add: true
+import:
+  path: issues.jsonl

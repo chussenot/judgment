@@ -13,9 +13,9 @@
 #      use with pinned release URLs; the tools go on PATH as plain binaries.
 #   3. The toolchain rust-toolchain.toml names, through rustup, as CI does.
 #   4. `mise install`: mbx, prek, bd, cocogitto, lychee.
-#   5. The beads database: `bd init` on the tracked .beads/ files, then the
-#      committed export (refs/dolt/data cannot be pushed from here;
-#      scripts/bd-sync.sh says how the file travels).
+#   5. The beads database: `bd bootstrap` from the committed export, then the
+#      import the post-merge hook runs (scripts/bd-sync.sh; the export is how
+#      the beads travel between machines).
 #   6. `mise run setup`: the git hooks (prek block, then beads) and `cargo fetch`.
 #   7. A warm build of every test target through mbx, so the first
 #      `cargo test` in the session is incremental.
@@ -84,19 +84,13 @@ log "bd $(bd --version 2>/dev/null | head -1), $(prek --version 2>/dev/null), $(
 # 5. The beads database. A checkout carries .beads/metadata.json, config.yaml
 #    and the export, but no database. `bd bootstrap` creates one from the export
 #    (never `bd init`: it rewrites CLAUDE.md and .claude/settings.json and
-#    commits them) and reports when one exists. The import below is for a
-#    snapshotted container whose database is behind the export: an upsert.
+#    commits them) and reports when one exists; the import after it is what
+#    the post-merge hook runs, for a snapshotted container whose database is
+#    behind the export (newer rows win, nothing is deleted).
 chmod 700 .beads
 git config beads.role >/dev/null 2>&1 || git config beads.role maintainer
 bd bootstrap --non-interactive 2>&1 | grep -v '^$' | sed 's/^/[bd bootstrap] /' >&2
-in_db=$(bd export --all 2>/dev/null | wc -l | tr -d ' ')
-in_file=$(wc -l <.beads/issues.jsonl | tr -d ' ')
-if [ "$in_db" -lt "$in_file" ]; then
-  log "importing .beads/issues.jsonl ($in_file issues; the database holds $in_db)"
-  scripts/bd-sync.sh import
-else
-  log "beads: $in_db issues in the database, $in_file in the export"
-fi
+scripts/bd-sync.sh import 2>&1 | sed 's/^/[bd import] /' >&2
 
 # 6. The git hooks (prek block, then beads) and a fetched registry.
 mise run setup

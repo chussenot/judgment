@@ -13,6 +13,18 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   claim an issue before code. Git's hooks live in `.beads/hooks` (`bd init`
   set `core.hooksPath`); `scripts/setup-hooks.sh` puts the prek block before
   the beads section in each, so `prek install` is never run directly.
+- The beads stay in sync through git, never by hand. bd rewrites and stages
+  `.beads/issues.jsonl` after every write (`.beads/config.yaml`), the
+  pre-commit hook flushes it, so a commit carries the issues it touched; after
+  a merge or a checkout the hook imports it (newer rows win, nothing is
+  deleted), and a cloud session bootstraps its database from it. So: commit
+  the staged export with the work it tracks, or alone as `chore(beads): ...`;
+  end a session with it pushed, since the issues exist nowhere else; never
+  edit the file or resolve a conflict in it by hand (`merge=union` merges
+  both sides, then `mise run bd:import`); and leave the Dolt remote alone
+  (`bd sync`, `bd dolt push`): `refs/dolt/data` is not used, the export in
+  git is the one channel, and it is the one reviewers read in a pull
+  request. `mise run bd:sync -- status` says whether the file is current.
 - `docs/index.md` maps the documentation; `docs/project/decisions/` holds the records
   that govern the API; `CHANGELOG.md` is Keep a Changelog, and 0.x means a
   minor release may break.

@@ -8,7 +8,9 @@
 # order is: prek hooks, then beads hooks. prek is never allowed to install its
 # own shim over the beads files: `prek install` refuses to run while
 # core.hooksPath is set. commit-msg has no beads section; it carries only the
-# prek block, which runs the Conventional Commits check (cog verify).
+# prek block, which runs the Conventional Commits check (cog verify). post-merge
+# and post-checkout import the beads export (scripts/bd-sync.sh) before beads
+# runs its own hooks.
 set -eu
 
 cd "$(git rev-parse --show-toplevel)"
@@ -65,6 +67,8 @@ BLOCK
 install_block pre-commit
 install_block commit-msg
 install_block pre-push
+install_block post-merge
+install_block post-checkout
 
 prek prepare-hooks >/dev/null 2>&1 && echo "prek: hook environments prepared" || echo "prek: prepare-hooks skipped"
 echo "hooks ready in $hooks_dir"
