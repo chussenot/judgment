@@ -302,11 +302,7 @@ async fn evaluate_with_records_the_request_id_on_its_one_span() {
     let server = MockServer::start().await;
     let c = client(&server.uri());
     let q = one_noul();
-    let request = Request {
-        state: &"s",
-        model: "jev-latest",
-        questions: &q,
-    };
+    let request = Request::new(&"s", "jev-latest", &q);
     let mut token = HeaderValue::from_static("SECRET-HEADER");
     token.set_sensitive(true);
     let options = CallOptions::new()

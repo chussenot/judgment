@@ -69,6 +69,7 @@
 //! how they are run and re-recorded.
 
 pub mod answer;
+pub mod asset;
 pub mod backend;
 #[cfg(feature = "http")]
 pub mod client;
@@ -86,6 +87,7 @@ pub mod question;
 pub use answer::{
     Answer, Choice, Confidence, FromAnswer, Noul, Probability, Response, Score, Usage,
 };
+pub use asset::{Assets, Image, ImageFormat};
 pub use backend::{Fake, Recorder, Replay, SystemOne};
 #[cfg(feature = "http")]
 pub use client::{

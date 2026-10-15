@@ -5,7 +5,9 @@
 //! [`Error::PermissionDenied`]), billing ([`Error::PaymentRequired`]),
 //! request ([`Error::InvalidRequest`],
 //! [`Error::InvalidQuestion`], [`Error::DuplicateQuestionId`],
-//! [`Error::ReservedHeader`], [`Error::ReservedField`], [`Error::Url`]),
+//! [`Error::InvalidImage`], [`Error::InvalidAsset`],
+//! [`Error::RequestTooLarge`], [`Error::ReservedHeader`],
+//! [`Error::ReservedField`], [`Error::Url`]),
 //! transient ([`Error::RateLimited`], [`Error::Overloaded`]), transport and
 //! decode ([`Error::Transport`], [`Error::ResponseTooLarge`], [`Error::Http`],
 //! [`Error::Decode`]), an answer that does not fit its question
@@ -228,6 +230,44 @@ pub enum Error {
         /// What is wrong.
         reason: String,
     },
+    /// An image the API would reject: not a PNG or a JPEG, damaged,
+    /// animated, a side or a pixel count outside the documented range, or
+    /// over 16 MiB ([`crate::asset`], `# Limits`). Caught when the
+    /// [`crate::Image`] is built, before anything is sent; re-export the
+    /// file within the limits. The reason names the path when the image was
+    /// read from one.
+    #[error("invalid image: {reason}")]
+    InvalidImage {
+        /// What is wrong, and the limit it breaks.
+        reason: String,
+    },
+    /// An asset the API would reject for its reference rather than its
+    /// bytes: a reference that is empty or over the length limits, one
+    /// that already names another image, or one that appears nowhere in
+    /// the state or the questions (a 400 from the server). Caught before
+    /// sending; fix the reference or write it where the image belongs.
+    #[error("invalid asset {reference:?}: {reason}")]
+    InvalidAsset {
+        /// The reference, as given.
+        reference: String,
+        /// What is wrong.
+        reason: String,
+    },
+    /// A request over a size limit the API documents, found before it was
+    /// sent: the images together, or the body with its base64, over 32 MiB
+    /// ([`crate::asset::MAX_REQUEST_BYTES`]). The server answers 413 to the
+    /// same; [`Error::is_request_too_large`] names both. Send fewer or
+    /// smaller images, or put an image several questions use in the state
+    /// once.
+    #[error("request too large: {bytes} bytes of {what}, over the limit of {limit}")]
+    RequestTooLarge {
+        /// What was measured: `images` or `body`.
+        what: &'static str,
+        /// The size found.
+        bytes: u64,
+        /// The limit it is over.
+        limit: u64,
+    },
     /// The response has no answer under a question's id: the server (or a
     /// [`crate::Fake`]) left a question unanswered, so report the request
     /// id; from [`crate::Response::get`] it can also mean the handle belongs
@@ -368,6 +408,9 @@ impl Error {
             | Self::InvalidRecording { .. }
             | Self::DuplicateQuestionId(_)
             | Self::InvalidQuestion { .. }
+            | Self::InvalidImage { .. }
+            | Self::InvalidAsset { .. }
+            | Self::RequestTooLarge { .. }
             | Self::ReservedHeader(_)
             | Self::ReservedField(_)
             | Self::NotAProbability { .. }
@@ -405,14 +448,17 @@ impl Error {
         )
     }
 
-    /// True when the server refused the request for its size: an
-    /// [`Error::InvalidRequest`] with status 413 (a compatible server's own
-    /// limits) or whose `kind` is `max_tokens_exceeded` (the hosted API's
-    /// 400 for a state over its token budget). Named because it is the one
-    /// refused body fixed by sending less, state first.
+    /// True when the request was refused for its size: an
+    /// [`Error::InvalidRequest`] with status 413 (the hosted API's answer to
+    /// a body, an image, the images together or the expanded request over
+    /// its limits, or a compatible server's own limits), one whose `kind` is
+    /// `max_tokens_exceeded` (the hosted API's 400 for a state, images
+    /// included, over its context length), or an [`Error::RequestTooLarge`]
+    /// found before sending. Named because it is the one refused request
+    /// fixed by sending less: state first, then fewer or smaller images.
     pub fn is_request_too_large(&self) -> bool {
         match self {
-            Self::InvalidRequest { status: 413, .. } => true,
+            Self::InvalidRequest { status: 413, .. } | Self::RequestTooLarge { .. } => true,
             Self::InvalidRequest {
                 kind: Some(kind), ..
             } => kind == "max_tokens_exceeded",

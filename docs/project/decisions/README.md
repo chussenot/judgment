@@ -25,6 +25,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0021](0021-record-eval-and-tune-from-the-command-line.md) | Record, evaluate and tune from the command line | accepted |
 | [0022](0022-jud-reports-what-the-tuning-loop-counted-by-hand.md) | jud reports what the tuning loop counted by hand | accepted |
 | [0023](0023-jud-rubric-takes-options-on-the-command-line.md) | jud RUBRIC takes per-request options on the command line | accepted |
+| [0024](0024-images-are-part-of-the-request.md) | Images are part of the request, not a call option | accepted |
 
 ## Status notes
 

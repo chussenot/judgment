@@ -8,6 +8,46 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- Images in a request, as Jev 1.13 and later take them
+  (<https://docs.typesafe.ai/images>): `Image` holds a PNG or a JPEG and
+  reads its format and size from the bytes, refusing what the hosted API
+  refuses before anything is sent (not a PNG or a JPEG, animated, a side
+  outside 256 to 1568 pixels, under 78,400 or over 2,458,624 pixels, over
+  16 MiB) as the new `Error::InvalidImage`; `Assets` is the wire's
+  `assets` map, each image under its own reference (`img-` and 32 hex
+  digits of the bytes' SHA-256, `Image::reference`) or one the caller
+  chooses, with the reference rules and the 32 MiB total checked
+  (`Error::InvalidAsset`, `Error::RequestTooLarge`). `Request::assets`
+  carries them (`Request::new(..).with_assets(&assets)`), left off the
+  wire when empty, and `SystemOne::answer_with_assets` takes them through
+  every backend. The client sends `TypeSafe-Danger-Zone-Images: true` on
+  every request that has an image and on no other, refuses a reference
+  that appears nowhere in the state or the questions and a body over
+  32 MiB before sending, reports the images' count and bytes to the
+  `Observer` (`on_assets`) and records the count on the
+  `typesafe.evaluate` span as `images`. `Error::is_request_too_large` is
+  also true of `RequestTooLarge`. Decision 0024 says why the images are on
+  the request rather than a call option, why the reference is derived from
+  the bytes and why the client sets the header.
+- `canonical::request_fingerprint_with` and `eval::request_hash_with`: the
+  request fingerprint and hash with the images, each named by the SHA-256
+  of its bytes under an `assets` key that is left out without any, so a
+  request without images fingerprints as it always has and every committed
+  recording still replays; `Recorder` and `Replay` key by them, so two
+  requests that differ only by an image are two recordings.
+- `Fake` takes images, remembers each one's reference and digest in its
+  `Call`, and refuses a reference the state does not carry as the hosted
+  API does.
+
+### Changed
+
+- **Breaking:** `client::Request` has a fourth field, `assets: &Assets`;
+  a struct literal names it (`&Assets::new()` for none) or becomes
+  `Request::new(state, model, questions)`. `backend::Call` has an
+  `assets` field. `assets` is a reserved extra field and
+  `typesafe-danger-zone-images` a reserved header: a caller that sent
+  either through `CallOptions` passes the images through `Request` instead.
+
 - `examples/jud/agent-mail.jud`, a rubric asked about one message between
   coding agents sharing a repository (needs an action, warns that something
   broke, reports status only), with 33 labelled cases taken verbatim from

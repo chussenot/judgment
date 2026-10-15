@@ -65,6 +65,7 @@ nav:
           - 0021 Record, evaluate and tune from the command line: project/decisions/0021-record-eval-and-tune-from-the-command-line.md
           - 0022 jud reports what the tuning loop counted by hand: project/decisions/0022-jud-reports-what-the-tuning-loop-counted-by-hand.md
           - 0023 jud RUBRIC takes per-request options on the command line: project/decisions/0023-jud-rubric-takes-options-on-the-command-line.md
+          - 0024 Images are part of the request, not a call option: project/decisions/0024-images-are-part-of-the-request.md
 
 # Pages link to files outside docs/ (the examples, the README, the CHANGELOG)
 # by relative path, the repository's convention, which GitHub and crates.io

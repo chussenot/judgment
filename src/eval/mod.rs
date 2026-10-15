@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::answer::{Answer, Response, sanitize_server_str};
+use crate::asset::Assets;
 use crate::question::Questions;
 
 /// Bins for expected calibration error.
@@ -210,19 +211,20 @@ pub fn fingerprint(value: &Value) -> String {
 /// names recording files: FNV-1a over key-sorted JSON, because it must not
 /// change across runs, machines or toolchains and `DefaultHasher` promises
 /// none of that. Not collision-resistant against an adversary.
+/// [`request_hash_with`] for a request without images.
 pub fn request_hash(state: &Value, questions: &Questions) -> String {
-    let questions = serde_json::to_value(questions).unwrap_or(Value::Null);
+    request_hash_with(state, questions, &Assets::new())
+}
+
+/// [`request_hash`] of a request with its images, over the value
+/// [`canonical::request_fingerprint_with`] fingerprints: the images by the
+/// SHA-256 of their bytes under `assets`, the key left out without any, so
+/// a request without images hashes as before.
+pub fn request_hash_with(state: &Value, questions: &Questions, assets: &Assets) -> String {
     let mut canonical = String::new();
     write_canonical(
         &mut canonical,
-        &Value::Object(
-            [
-                ("questions".to_owned(), questions),
-                ("state".to_owned(), state.clone()),
-            ]
-            .into_iter()
-            .collect(),
-        ),
+        &canonical::request_value(state, questions, assets),
     );
     format!("{:016x}", fnv1a64(canonical.as_bytes()))
 }

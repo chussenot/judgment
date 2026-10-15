@@ -476,12 +476,7 @@ async fn a_structured_score_level_is_echoed() {
     let base_url = base_url();
     let state = json!({ "message": STATE_PAYOUTS });
     let model = env_or("JUDGMENT_LIVE_MODEL", "typed-decisions");
-    let body = serde_json::to_vec(&Request {
-        state: &state,
-        model: &model,
-        questions: &q,
-    })
-    .unwrap();
+    let body = serde_json::to_vec(&Request::new(&state, &model, &q)).unwrap();
     let sent = reqwest::Client::new()
         .post(format!("{}/v1/systemone", base_url.trim_end_matches('/')))
         .bearer_auth(env_or("JUDGMENT_LIVE_API_KEY", "unused"))
@@ -537,12 +532,7 @@ async fn every_body_the_server_sends_holds_to_the_published_document() {
     .unwrap();
     let state = json!({ "message": STATE_PAYOUTS });
     let model = requested_model();
-    let body = serde_json::to_value(Request {
-        state: &state,
-        model: &model,
-        questions: &q,
-    })
-    .unwrap();
+    let body = serde_json::to_value(Request::new(&state, &model, &q)).unwrap();
     let (status, text) = post_raw(&body).await;
     assert_eq!(status, 200, "{text}");
 
@@ -692,11 +682,7 @@ async fn an_unknown_extra_field_is_answered_or_refused_by_name() {
     let options = CallOptions::new()
         .extra("judgment_live_unknown_field", 4)
         .unwrap();
-    let request = Request {
-        state: &state,
-        model: client.model(),
-        questions: &q,
-    };
+    let request = Request::new(&state, client.model(), &q);
     match client.evaluate_with(&request, &options).await {
         Ok(response) => {
             response.get(&urgent).unwrap();

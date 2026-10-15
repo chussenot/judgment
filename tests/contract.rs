@@ -150,6 +150,12 @@ static STRICT_COMPONENTS: LazyLock<Value> = LazyLock::new(|| {
         })
         .collect();
     let mut closed = BTreeSet::from([request_schema()]);
+    // The component each entry of the request's `assets` map is.
+    if let Some(asset) = component(
+        &schemas[request_schema().as_str()]["properties"]["assets"]["additionalProperties"]["$ref"],
+    ) {
+        closed.insert(asset);
+    }
     for member in &members {
         closed.insert(member.clone());
         let properties = schemas[member.as_str()]["properties"]
@@ -172,6 +178,8 @@ static STRICT_COMPONENTS: LazyLock<Value> = LazyLock::new(|| {
     assert_eq!(
         closed.iter().map(String::as_str).collect::<Vec<_>>(),
         [
+            "Asset",
+            "BoxQuestion",
             "ChoiceQuestion",
             "NoulCriteria",
             "NoulQuestion",
@@ -667,25 +675,30 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
         client.system_one(&array, &q).await,
         client.system_one(&ticket, &q).await,
         client
-            .evaluate(&Request {
-                state: &object,
-                model: "jev-latest",
-                questions: &q,
-            })
+            .evaluate(&Request::new(&object, "jev-latest", &q))
             .await,
         SystemOne::answer(&client, &object, "jev-latest", &q).await,
     ];
     let options = CallOptions::new().extra("beam_width", 4).unwrap();
     results.push(
         client
-            .evaluate_with(
-                &Request {
-                    state: &object,
-                    model: "jev-1.13.0",
-                    questions: &q,
-                },
-                &options,
+            .evaluate_with(&Request::new(&object, "jev-1.13.0", &q), &options)
+            .await,
+    );
+    // With an image: the `assets` map and the header the Images page asks for.
+    let mut assets = judgment::Assets::new();
+    let door = assets
+        .add(
+            judgment::Image::read(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/images/square-300.png"),
             )
+            .unwrap(),
+        )
+        .unwrap();
+    let with_image = json!({ "door": door, "message": "Someone at the door." });
+    results.push(
+        client
+            .evaluate(&Request::new(&with_image, "jev-preview", &q).with_assets(&assets))
             .await,
     );
     for result in &results {
@@ -706,7 +719,12 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
         .unwrap()
         .keys()
         .collect();
-    assert_eq!(content_types, ["application/json"]);
+    // The document also takes `multipart/form-data` (a JSON `request` part
+    // and one file part per image); the crate sends JSON only, images as
+    // base64 in it, which the document allows. A multipart body path is
+    // not written yet and is pinned absent here.
+    assert_eq!(content_types, ["application/json", "multipart/form-data"]);
+    let sent_content_type = "application/json";
     assert_eq!(operation["security"], json!([{ "HTTPBearer": [] }]));
     assert_eq!(
         SPEC["components"]["securitySchemes"]["HTTPBearer"],
@@ -730,7 +748,7 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or_else(|| panic!("request {i} has no {name} header"))
         };
-        assert_eq!(header("content-type"), content_types[0], "request {i}");
+        assert_eq!(header("content-type"), sent_content_type, "request {i}");
         // HTTP bearer (RFC 6750): the scheme name is case-insensitive.
         let (auth_scheme, token) = header("authorization").split_once(' ').unwrap();
         assert!(
@@ -764,6 +782,39 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
     assert_eq!(bodies[6]["beam_width"], 4, "the extra field is sent");
     // The body `body(..)` builds for the no-http tests is the client's.
     assert_eq!(bodies[1], body(object, "jev-1.13.0", &q));
+    // The image: under `assets` by its reference, base64 with its format,
+    // and the header on that request alone.
+    assert_eq!(bodies[7]["assets"][&door]["type"], "image");
+    assert_eq!(bodies[7]["assets"][&door]["format"], "png");
+    assert!(bodies[7]["assets"][&door]["data_base64"].is_string());
+    let images_header = received[7]
+        .headers
+        .get("typesafe-danger-zone-images")
+        .and_then(|v| v.to_str().ok());
+    assert_eq!(images_header, Some("true"));
+    let documented: Vec<&Value> = operation["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|p| p["in"] == "header")
+        .collect();
+    assert!(
+        documented.iter().any(|p| p["name"]
+            .as_str()
+            .is_some_and(|n| n.eq_ignore_ascii_case("typesafe-danger-zone-images"))),
+        "the document names the images header: {documented:?}"
+    );
+    for request in &received[..7] {
+        assert!(
+            request.headers.get("typesafe-danger-zone-images").is_none(),
+            "no header without an image"
+        );
+        let body: Value = serde_json::from_slice(&request.body).unwrap();
+        assert!(
+            body.get("assets").is_none(),
+            "no assets key without an image"
+        );
+    }
 }
 
 #[cfg(feature = "http")]

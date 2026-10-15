@@ -151,4 +151,6 @@ minor release may break, so pin the minor. [Stability](docs/reference/stability.
 says what holds across versions, the `.jud` format first. Live behaviour has
 been verified against the hosted API, Laya's server and Ollama; the vendored
 OpenAPI document and the wiremock tests are the contract in this repository.
+A request with images is checked against the hosted API's documented limits
+before it is sent, and a recording is keyed by the images it answered.
 Licensed MIT.

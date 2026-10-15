@@ -1123,11 +1123,7 @@ async fn the_documented_body_is_all_that_is_sent_without_options() {
         .await;
     let c = client(&server, RetryPolicy::none());
     let q = one_noul();
-    let request = Request {
-        state: &"s",
-        model: "jev-latest",
-        questions: &q,
-    };
+    let request = Request::new(&"s", "jev-latest", &q);
     c.evaluate(&request).await.unwrap();
     c.evaluate_with(&request, &CallOptions::default())
         .await
@@ -1248,14 +1244,7 @@ async fn extra_fields_are_sent_beside_the_documented_ones() {
         .extra("tag", serde_json::Value::Null)
         .unwrap();
     client(&server, RetryPolicy::none())
-        .evaluate_with(
-            &Request {
-                state: &"s",
-                model: "jev-latest",
-                questions: &q,
-            },
-            &options,
-        )
+        .evaluate_with(&Request::new(&"s", "jev-latest", &q), &options)
         .await
         .unwrap();
 }
@@ -1278,11 +1267,7 @@ async fn call_headers_replace_builder_defaults_and_never_the_key() {
         .build()
         .unwrap();
     let q = one_noul();
-    let request = Request {
-        state: &"s",
-        model: "jev-latest",
-        questions: &q,
-    };
+    let request = Request::new(&"s", "jev-latest", &q);
     c.evaluate(&request).await.unwrap();
     let options = CallOptions::new()
         .header(name("x-team"), value("per-call"))
@@ -1340,14 +1325,7 @@ async fn per_call_headers_and_extras_reach_every_attempt() {
         .extra("beam_width", 4)
         .unwrap();
     client(&server, fast_retries(2))
-        .evaluate_with(
-            &Request {
-                state: &"s",
-                model: "jev-latest",
-                questions: &q,
-            },
-            &options,
-        )
+        .evaluate_with(&Request::new(&"s", "jev-latest", &q), &options)
         .await
         .unwrap();
     assert_eq!(calls.load(Ordering::SeqCst), 2);
@@ -1417,11 +1395,7 @@ async fn a_call_timeout_replaces_the_per_attempt_timeout() {
         .await;
     let c = client_at(&server.uri(), RetryPolicy::none(), Duration::from_secs(2));
     let q = one_noul();
-    let request = Request {
-        state: &"s",
-        model: "jev-latest",
-        questions: &q,
-    };
+    let request = Request::new(&"s", "jev-latest", &q);
     let short = CallOptions::new().timeout(Duration::from_millis(50));
     let err = c.evaluate_with(&request, &short).await.unwrap_err();
     assert!(
@@ -1451,16 +1425,9 @@ async fn a_longer_call_timeout_is_not_capped_by_the_builder() {
     );
     let q = one_noul();
     let long = CallOptions::new().timeout(Duration::from_secs(2));
-    c.evaluate_with(
-        &Request {
-            state: &"s",
-            model: "jev-latest",
-            questions: &q,
-        },
-        &long,
-    )
-    .await
-    .unwrap();
+    c.evaluate_with(&Request::new(&"s", "jev-latest", &q), &long)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -1472,11 +1439,7 @@ async fn a_call_retry_policy_replaces_the_client_policy() {
         .await;
     let c = client(&server, fast_retries(1));
     let q = one_noul();
-    let request = Request {
-        state: &"s",
-        model: "jev-latest",
-        questions: &q,
-    };
+    let request = Request::new(&"s", "jev-latest", &q);
     let once = CallOptions::new().retry(RetryPolicy::none());
     let err = c.evaluate_with(&request, &once).await.unwrap_err();
     assert!(
@@ -2075,4 +2038,212 @@ async fn a_body_id_unfit_to_log_is_not_the_request_id() {
             .unwrap();
         assert_eq!(response.request_id.as_deref(), expected, "{id:?}");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Images: the assets map, the danger-zone header and the pre-wire checks
+// ---------------------------------------------------------------------------
+
+fn fixture_image(name: &str) -> judgment::Image {
+    judgment::Image::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/images")
+            .join(name),
+    )
+    .unwrap()
+}
+
+/// A photo in the state and a Noul about it: the request the Images page
+/// documents, sent with the header and the base64 the page asks for.
+#[tokio::test]
+async fn a_request_with_an_image_carries_the_assets_map_and_the_header() {
+    let server = MockServer::start().await;
+    let png = fixture_image("square-300.png");
+    let mut assets = judgment::Assets::new();
+    let door = assets.add(png.clone()).unwrap();
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .and(header("typesafe-danger-zone-images", "true"))
+        .and(header("content-type", "application/json"))
+        .and(body_partial_json(json!({
+            "state": { "door": door },
+            "assets": { door.clone(): { "type": "image", "format": "png", "data_base64": png.to_base64() } },
+            "questions": { "person": { "type": "noul" } }
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "jev-1.14.0",
+            "answers": { "person": { "type": "noul", "noul": 0.93 } },
+            "usage": { "input_tokens": 290, "output_tokens": 20 }
+        })))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let mut q = Questions::new();
+    let person = q
+        .noul("person", "Is there a person in `door`?", None)
+        .unwrap();
+    let state = json!({ "door": door });
+    let c = client(&server, RetryPolicy::none());
+    let response = c
+        .evaluate(&Request::new(&state, "jev-preview", &q).with_assets(&assets))
+        .await
+        .unwrap();
+    assert!(response.get(&person).unwrap().is_yes(0.5));
+    // Through the trait, the same request.
+    let response = SystemOne::answer_with_assets(&c, &state, "jev-preview", &q, &assets)
+        .await
+        .unwrap();
+    assert!(response.get(&person).unwrap().is_yes(0.5));
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn a_request_without_images_sends_no_assets_and_no_header() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let c = client(&server, RetryPolicy::none());
+    c.system_one(&"text", &one_noul()).await.unwrap();
+    let received = server.received_requests().await.unwrap();
+    assert!(
+        received[0]
+            .headers
+            .get("typesafe-danger-zone-images")
+            .is_none()
+    );
+    let body: serde_json::Value = serde_json::from_slice(&received[0].body).unwrap();
+    assert!(body.get("assets").is_none(), "{body}");
+}
+
+#[tokio::test]
+async fn an_unreferenced_image_is_refused_before_the_wire() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let mut assets = judgment::Assets::new();
+    let door = assets.add(fixture_image("square-300.png")).unwrap();
+    let state = json!({ "door": "somewhere else" });
+    let err = client(&server, RetryPolicy::none())
+        .evaluate(&Request::new(&state, "jev-preview", &one_noul()).with_assets(&assets))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidAsset { reference, reason } if *reference == door && reason.contains("nowhere")),
+        "{err}"
+    );
+    assert_eq!(err.request_id(), None);
+}
+
+/// The server's own refusals of an image come back as the one error group
+/// the caller fixes by sending less or re-exporting: a 413 and the
+/// `max_tokens_exceeded` 400 both read as too large, the images-off 400 as an
+/// invalid request with the server's words.
+#[tokio::test]
+async fn the_servers_image_refusals_are_mapped_by_remedy_and_not_retried() {
+    let server = MockServer::start().await;
+    let mut assets = judgment::Assets::new();
+    let door = assets.add(fixture_image("square-300.jpg")).unwrap();
+    let state = json!({ "door": door });
+    let c = client(&server, fast_retries(3));
+    for (status, body, too_large, kind) in [
+        (
+            413,
+            json!({ "detail": "Request body too large." }),
+            true,
+            None,
+        ),
+        (
+            400,
+            json!({ "detail": { "error_type": "max_tokens_exceeded" } }),
+            true,
+            Some("max_tokens_exceeded"),
+        ),
+        (
+            400,
+            json!({ "detail": "Images are not enabled for this request." }),
+            false,
+            None,
+        ),
+    ] {
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(body))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = c
+            .evaluate(&Request::new(&state, "jev-preview", &one_noul()).with_assets(&assets))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::InvalidRequest { status: s, kind: k, .. } if *s == status && k.as_deref() == kind),
+            "{status}: {err:?}"
+        );
+        assert_eq!(err.is_request_too_large(), too_large, "{status}: {err}");
+        server.verify().await;
+    }
+}
+
+#[tokio::test]
+async fn the_images_header_and_the_assets_field_are_the_clients_own() {
+    let err = CallOptions::new()
+        .header(name("typesafe-danger-zone-images"), value("true"))
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::ReservedHeader(h) if h == "typesafe-danger-zone-images"),
+        "{err}"
+    );
+    let err = CallOptions::new().extra("assets", json!({})).unwrap_err();
+    assert!(
+        matches!(&err, Error::ReservedField(f) if f == "assets"),
+        "{err}"
+    );
+}
+
+/// What the observer sees of a request with images: the count and the
+/// bytes, before any base64, once per call, and nothing for a request
+/// without any.
+#[tokio::test]
+async fn the_observer_is_told_how_many_image_bytes_a_call_sends() {
+    #[derive(Default)]
+    struct Counting {
+        calls: std::sync::Mutex<Vec<(String, usize, u64)>>,
+    }
+    impl Observer for Counting {
+        fn on_assets(&self, model: &str, images: usize, bytes: u64) {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((model.to_owned(), images, bytes));
+        }
+    }
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .mount(&server)
+        .await;
+    let observer = Arc::new(Counting::default());
+    let c = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .observer(observer.clone())
+        .build()
+        .unwrap();
+    let mut assets = judgment::Assets::new();
+    let a = assets.add(fixture_image("square-300.png")).unwrap();
+    let b = assets.add(fixture_image("square-300.jpg")).unwrap();
+    let state = json!({ "before": a, "after": b });
+    c.evaluate(&Request::new(&state, "jev-preview", &one_noul()).with_assets(&assets))
+        .await
+        .unwrap();
+    c.system_one(&"text", &one_noul()).await.unwrap();
+    let calls = observer.calls.lock().unwrap().clone();
+    assert_eq!(calls, vec![("jev-preview".to_owned(), 2, 717 + 3357)]);
 }
