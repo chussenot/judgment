@@ -1,0 +1,27 @@
+# Recorded answer for case `took-extra-leases`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: took-extra-leases
+spec:
+  elapsed_ms: 157
+  fingerprint: sha256:a70b5e16d95de1234c33557c553efab68506248a6762dfff416b152af95313d6
+  recorded_at: "2026-10-14T04:20:09Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.82
+        type: noul
+      needs_action:
+        noul: 0.85
+        type: noul
+      status_only:
+        noul: 0.05
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3a0037a999b58ea9316caa130
+    usage:
+      input_tokens: 822
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

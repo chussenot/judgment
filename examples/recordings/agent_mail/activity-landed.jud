@@ -1,0 +1,27 @@
+# Recorded answer for case `activity-landed`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: activity-landed
+spec:
+  elapsed_ms: 137
+  fingerprint: sha256:02b88584513d9209c75c702892e18af7f34cd415b822e73d287726ee8b237f67
+  recorded_at: "2026-10-14T04:20:12Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.92
+        type: noul
+      needs_action:
+        noul: 0.96
+        type: noul
+      status_only:
+        noul: 0.03
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3a8ce7d9a8fd1efdcb88108b1
+    usage:
+      input_tokens: 1472
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai

@@ -1,0 +1,27 @@
+# Recorded answer for case `docs-gate-red`; found by fingerprint.
+apiVersion: jud/v1.3
+kind: Recording
+metadata:
+  name: docs-gate-red
+spec:
+  elapsed_ms: 146
+  fingerprint: sha256:f2d1c93315a4a1aa541058458927e006ad49d86547ef1093f6d927557040fd73
+  recorded_at: "2026-10-14T04:20:10Z"
+  response:
+    answers:
+      breaks_something:
+        noul: 0.96
+        type: noul
+      needs_action:
+        noul: 0.97
+        type: noul
+      status_only:
+        noul: 0.03
+        type: noul
+    model: jev-1.13.0
+    request_id: req_01a138a3a1e3718c9eda596c772b8949
+    usage:
+      input_tokens: 810
+      output_tokens: 60
+  rubric: agent-mail
+  server: https://api.typesafe.ai
