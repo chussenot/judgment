@@ -11,7 +11,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use judgment::jud::{Rubric, Supplied};
-use judgment::{Assets, Image};
+use judgment::{Assets, Image, Questions};
 use serde_json::Value;
 
 use crate::backend::{Backend, Failure};
@@ -104,6 +104,27 @@ pub(crate) fn run(
     }
 }
 
+/// Every image's reference appears in the state or the questions, as the
+/// API requires; the message names the flag, since the rubric's own images
+/// were held to its questions when it was read.
+fn check_referenced(assets: &Assets, state: &Value, questions: &Questions) -> Result<(), Failure> {
+    if assets.is_empty() {
+        return Ok(());
+    }
+    let state_json = serde_json::to_string(state)
+        .map_err(|e| Failure::Usage(format!("the state does not serialise: {e}")))?;
+    let questions_json = serde_json::to_string(questions)
+        .map_err(|e| Failure::Usage(format!("the questions do not serialise: {e}")))?;
+    assets
+        .check_referenced(&state_json, &questions_json)
+        .map_err(|e| match e {
+            judgment::Error::InvalidAsset { reference, reason } => Failure::Usage(format!(
+                "--asset {reference} {reason}, or pass the reference the state carries"
+            )),
+            other => Failure::Usage(other.to_string()),
+        })
+}
+
 fn read_rubric(path: &str) -> Result<Rubric, Failure> {
     tools::read_document(path, "Rubric", Rubric::parse).map_err(|message| {
         // `jud evaluate` is a mistyped subcommand that reads as a rubric path.
@@ -155,7 +176,6 @@ fn evaluate(
     assets_arg.read(&mut assets)?;
     let size = assets_arg.size(&assets)?;
     let state = read_state()?;
-    let backend = Backend::open(replay, long_context.then_some(true))?;
     let questions = rubric.lower(&state, &supplied).map_err(|e| {
         // The questions that take options and were given none: the likely
         // cause whatever the builder's own words, when some were supplied
@@ -179,6 +199,11 @@ fn evaluate(
             "the rubric does not lower for this state: {e}{hint}"
         ))
     })?;
+    // Before the backend, whichever it is: an image under a reference the
+    // state does not carry is the hosted API's 400 and, under a replay, a
+    // request nobody recorded; either way the flag is what to fix.
+    check_referenced(&assets, &state, &questions)?;
+    let backend = Backend::open(replay, long_context.then_some(true))?;
     let response = backend.answer(&state, &questions, &assets)?;
     let mut verdicts = rubric
         .apply(&questions, &response)

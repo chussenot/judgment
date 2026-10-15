@@ -188,6 +188,14 @@ All notable changes to the `judgment` crate. The format follows
   are the ones `jud tune` read off the 33 cases, marked as a starting point;
   `tests/jud.rs` replays every case under them.
 
+### Fixed
+
+- `jud RUBRIC --asset REF=PATH` with a reference the state does not carry is
+  refused before any backend is opened, with status 2 and a message naming
+  the flag, under `--replay` as against a server; it was the client's
+  refusal reported as a backend failure (status 1) against a server, and a
+  request nobody recorded under a replay.
+
 ## [0.13.0] - 2026-10-10
 
 ### Added
