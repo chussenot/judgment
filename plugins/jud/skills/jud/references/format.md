@@ -3,7 +3,7 @@
 
 # The `.jud` format
 
-This page is the specification of `apiVersion: jud/v1` at `metadata.minor` 3. The rules here are the format; every other page that mentions a field links here. The reasoning behind the format is in [Rubrics, cases and recordings](https://github.com/chussenot/judgment/blob/main/docs/concepts/rubrics-cases-recordings.md) and in decisions [0014](https://github.com/chussenot/judgment/blob/main/docs/project/decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md), [0018](https://github.com/chussenot/judgment/blob/main/docs/project/decisions/0018-jud-1-3-takes-the-manifest-envelope.md) and [0020](https://github.com/chussenot/judgment/blob/main/docs/project/decisions/0020-how-a-v1-minor-is-spelled.md). The crate's implementation is `judgment::jud` ([The crate](https://github.com/chussenot/judgment/blob/main/docs/reference/crate.md#the-jud-feature)); the terms are in the [glossary](https://github.com/chussenot/judgment/blob/main/docs/reference/glossary.md).
+This page is the specification of `apiVersion: jud/v1` at `metadata.minor` 4. The rules here are the format; every other page that mentions a field links here. The reasoning behind the format is in [Rubrics, cases and recordings](https://github.com/chussenot/judgment/blob/main/docs/concepts/rubrics-cases-recordings.md) and in decisions [0014](https://github.com/chussenot/judgment/blob/main/docs/project/decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md), [0018](https://github.com/chussenot/judgment/blob/main/docs/project/decisions/0018-jud-1-3-takes-the-manifest-envelope.md) and [0020](https://github.com/chussenot/judgment/blob/main/docs/project/decisions/0020-how-a-v1-minor-is-spelled.md); for the images and the Box, [0025](https://github.com/chussenot/judgment/blob/main/docs/project/decisions/0025-a-document-names-an-image-by-path.md) and [0026](https://github.com/chussenot/judgment/blob/main/docs/project/decisions/0026-a-box-is-graded-by-intersection-over-union.md), with [Visual judgments](https://github.com/chussenot/judgment/blob/main/docs/concepts/visual-judgments.md). The crate's implementation is `judgment::jud` ([The crate](https://github.com/chussenot/judgment/blob/main/docs/reference/crate.md#the-jud-feature)); the terms are in the [glossary](https://github.com/chussenot/judgment/blob/main/docs/reference/glossary.md).
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in BCP 14 [[RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)] [[RFC 8174](https://www.rfc-editor.org/rfc/rfc8174)] when, and only when, they appear in all capitals, as shown here.
 
@@ -15,11 +15,11 @@ Three kinds exist:
 
 | Kind | Holds |
 |---|---|
-| `Rubric` | The questions a request sends, in wire shape and wire order, and the policy an application reads the answers by |
-| `Cases` | Labelled states a rubric is graded on and its gates are tuned on |
+| `Rubric` | The questions a request sends, in wire shape and wire order, the images they refer to, and the policy an application reads the answers by |
+| `Cases` | Labelled states a rubric is graded on and its gates are tuned on, each with the image it is about when there is one |
 | `Recording` | One model response to one request |
 
-The questions in a rubric are the wire's own shape (`type`, `instructions`, `criteria`), as `POST /v1/systemone` sends them. The [HTTP API reference](https://docs.typesafe.ai/) is the reference for what each question field means.
+The questions in a rubric are the wire's own shape (`type`, `instructions`, `criteria`; a Box has `type` and `instructions` alone), as `POST /v1/systemone` sends them, and the images are the wire's `assets`, declared by file rather than carried. The [HTTP API reference](https://docs.typesafe.ai/) is the reference for what each question field means.
 
 ## The envelope
 
@@ -189,7 +189,7 @@ A path is *present* in a state when it leads to a value that is not `null`, not 
 
 ### Assets
 
-The images a request carries (minor 4). `assets` is a map of reference to image, on a Rubric for the images every request sends and on a case for the image that case is about ([Cases](#cases)); the two merge into one request, and a reference declared in both MUST name the same bytes. A reference is text, 1 to 1024 bytes, that the state or a question's instructions carries where the image belongs (`state: {image: shape-00}`, or `instructions: the mug in `photo``): the API resolves it wherever it appears as or inside a string, and refuses an asset nothing refers to, so a reader MUST refuse a reference that appears in neither the case's state nor the rubric's questions. An image is declared one of two ways ([decision 0025](https://github.com/chussenot/judgment/blob/main/docs/project/decisions/0025-a-document-names-an-image-by-path.md)):
+The images a request carries (minor 4). `assets` is a map of reference to image, on a Rubric for the images every request sends and on a case for the image that case is about ([Cases](#cases)); the two merge into one request, and a reference declared in both MUST name the same bytes. A reference is text, 1 to 1024 bytes, that the state or a question's instructions carries where the image belongs (`state: {image: shape-00}`, or `instructions: the mug in `photo``): the API resolves it wherever it appears as or inside a string, and refuses an asset nothing refers to, so a reader MUST refuse, as it reads the document and before any file is opened, a rubric's reference that appears in none of its questions and a case's reference that does not appear in its state (a case is read without its rubric, so the rubric's instructions do not count for it). An image is declared one of two ways ([decision 0025](https://github.com/chussenot/judgment/blob/main/docs/project/decisions/0025-a-document-names-an-image-by-path.md)):
 
 | Field | Required | Meaning |
 |---|---|---|
@@ -261,6 +261,7 @@ Where the gates came from. Every field is OPTIONAL.
 | `model` | The versioned model that answered them (`jev-1.13.0`): a gate is tuned per version. |
 | `server` | The server that answered, as a base URL. |
 | `tuned_at` | When, [RFC 3339](https://www.rfc-editor.org/rfc/rfc3339). |
+| `labelled` | Question id to the number of labelled cases its bar was read off, as `jud tune` writes it; another implementation keeps it as given. |
 | anything else | Kept as given. `tuning` is the one place in a rubric's `spec` that accepts fields the format does not name. |
 
 ### Fingerprint
@@ -343,7 +344,7 @@ A state that is an array is a conversation. `{from_turn: n}` labels a Noul with 
         wants_human: {from_turn: 2}
 ```
 
-`from_turn` MUST be refused on a question that is not a Noul, on a state that is not an array, and with a turn past the last one (`null` says never). `{}` and `{from_turn: 0, until: 1}` are not labels.
+`from_turn` MUST be refused on a question that is not a Noul, on a state that is not an array, and with a turn past the last one (`null` says never). `{}` and `{from_turn: 0, until: 1}` are not labels. A case's `assets` go with every turn's request, since each turn is the state cut, not the images.
 
 ### Fingerprint
 
@@ -355,9 +356,9 @@ A cases document's fingerprint is the [fingerprint](#fingerprints) of its `spec.
 
 | Field | Required | Meaning |
 |---|---|---|
-| `response` | yes | The response as received: `model`, `answers` and `usage` in the wire's shape, plus `request_id` and any top-level field the server added. |
+| `response` | yes | The response as received: `model`, `answers` and `usage` in the wire's shape (a Box's answer is `type: box` with `box: {top, bottom, left, right}` and a `confidence` that may be `null`), plus `request_id` and any top-level field the server added. |
 | `elapsed_ms` | yes | Wall-clock time of the call. |
-| `fingerprint` | no | The [request fingerprint](#fingerprints): the identity of the state and the questions, model excluded. The key a replay finds the recording by. |
+| `fingerprint` | no | The [request fingerprint](#fingerprints): the identity of the state, the questions and the images, model excluded. The key a replay finds the recording by. |
 | `request_hash` | no | This crate's own 16-hex-digit content hash, written by its `Recorder`; another implementation leaves it out. |
 | `rubric` | no | The rubric the questions came from, by name or by fingerprint. |
 | `server` | no | The server that answered, as a base URL. |
@@ -408,7 +409,43 @@ spec:
   recorded_at: "2026-10-04T11:58:00Z"
 ```
 
-Any field of `spec` the kind does not define MUST be refused; `response` keeps whatever the server sent. A recording MUST be verified against the questions of the request that finds it before it is replayed, as a live response would be, so a recording that no longer fits the rubric fails naming the question rather than replaying an answer the rubric would refuse.
+Any field of `spec` the kind does not define MUST be refused; `response` keeps whatever the server sent. A recording MUST be verified against the questions of the request that finds it before it is replayed, as a live response would be (an answer for every question, of its primitive, a Choice naming an offered option, a Score whose legend is the levels sent, a Box whose box is a region), so a recording that no longer fits the rubric fails naming the question rather than replaying an answer the rubric would refuse.
+
+A recording of a request with an image holds no image: the fingerprint folds each image in by the digest of its bytes, so a replay finds the recording only when the same bytes are sent again, under the same reference, and the `response` carries the box as the wire does. One of the shapes example's recordings (`examples/recordings/shapes/`, `jev-1.14.0`'s answers to `examples/jud/shapes-cases.jud`):
+
+<!-- file: examples/recordings/shapes/shape-01.jud -->
+```yaml
+# Recorded answer for case `shape-01`; found by fingerprint.
+apiVersion: jud/v1
+kind: Recording
+metadata:
+  name: shape-01
+  minor: 4
+spec:
+  elapsed_ms: 238
+  fingerprint: sha256:f658b1e1bb21af59348bc00a5839590b852c27c37627f3b1fca9c9d8db93fac6
+  recorded_at: "2026-10-15T11:16:51Z"
+  response:
+    answers:
+      circle:
+        box:
+          bottom: 0.86
+          left: 0.2
+          right: 0.67
+          top: 0.36
+        confidence: 0.92
+        type: box
+      circle_present:
+        noul: 0.99
+        type: noul
+    model: jev-1.14.0
+    request_id: req_01a13f477ac97642b59f062f6172375f
+    usage:
+      input_tokens: 625
+      output_tokens: 37
+  rubric: shapes
+  server: https://api.typesafe.ai
+```
 
 ## Fingerprints
 
@@ -443,14 +480,14 @@ An implementation MUST read a document under these rules.
 - A field the kind does not define is refused, with its path. The exceptions are `tuning` in a rubric and `response` in a recording, which keep what they are given, and `state`, which is any JSON.
 - Order is significant and preserved for `questions`, a Choice's `criteria`, a Score's `criteria`, `bands`, `cases`, `expect` and a case's supplied options. It is not for the parts of an instructions object, which is a JSON object like the state: an implementation MAY send its keys in any order (this crate sends them sorted).
 - A state path in `when` or `part_when` is well formed, and every `part_when` name is a key of its instructions object. `options_from` is `request`, on a Choice. None of the three is `null`.
-- An asset is `type: image` (or no `type`), has exactly one of `path` and `data_base64`, a `format` the API takes (`png`, `jpg`, `jpeg`) that is required with `data_base64`, and a path that is relative and stays under the document's directory. Every reference appears in the rubric's questions or the case's state; the references weigh at most 65,536 bytes together. A Box's `instructions` is not `null`.
+- An asset is `type: image` (or no `type`), has exactly one of `path` and `data_base64`, a `format` the API takes (`png`, `jpg`, `jpeg`) that is required with `data_base64`, and a path that is relative and stays under the document's directory. Every reference a rubric declares appears in its questions, and every reference a case declares appears in its state; a document's references weigh at most 65,536 bytes together. A Box's `instructions` is not `null`.
 - A rubric's questions pass the request builder's checks, and each gate fits its question's primitive and names an offered option or an existing level. A cases document's labels fit their questions when the cases are bound to a rubric; a document MAY be read without its rubric, and is then only checked for shape.
 - A `threshold`, a `confidence`, a band's `at_least`, a box's four edges and a label's `iou_at_least` are numbers from 0 to 1 inclusive. A level index is a non-negative integer below the number of levels. A labelled box is a region: `top` below `bottom`, `left` below `right`.
 - A reader that writes a document back MUST write `apiVersion: jud/v1`, `kind`, `metadata` (`name`, `minor`, then `version`, `description`, `labels` and `annotations` when present) and `spec`, in that order, with the same fields, so a document survives a read and a write with its fingerprints unchanged; a document read in the earlier spelling is written in this one.
 
 ## Schemas and conformance
 
-`schemas/jud/rubric.schema.json`, `cases.schema.json` and `recording.schema.json` ([JSON Schema 2020-12](https://json-schema.org/draft/2020-12), sharing `common.schema.json` for the envelope, `metadata` and the name grammar) state the shape of each kind. A schema cannot state the cross-checks (a gate against its question's primitive, a label against the options offered, `from_turn` against the state's shape); those are the reading rules above.
+`schemas/jud/rubric.schema.json`, `cases.schema.json` and `recording.schema.json` ([JSON Schema 2020-12](https://json-schema.org/draft/2020-12), sharing `common.schema.json` for the envelope, `metadata`, the name grammar, the four question shapes, an asset and a box's edges) state the shape of each kind. A schema cannot state the cross-checks (a gate against its question's primitive, a label against the options offered, `from_turn` against the state's shape, a reference against the state or the questions, a labelled box being a region); those are the reading rules above.
 
 An implementation conforms when it reads all three kinds under the reading rules, refuses what they refuse with the field named, computes the fingerprints of this page (checked against the known vector), and writes documents that validate against the schemas and read back unchanged.
 
