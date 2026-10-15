@@ -62,7 +62,13 @@ project, as the skill says, never beside the rubric.
      so, and stop.
    - `nothing was proposed`: say why, from the per-gate lines.
 6. **Decide each gate** as the skill says: accept, keep the written bar,
-   or re-run. Give a one-line reason for each.
+   or re-run. Give a one-line reason for each. A Box's `confidence` is
+   proposed over the labelled cases alone; before accepting it, read what
+   `eval`'s gate line on all the cases does with the images that hold
+   nothing (the Box is unlabelled there), and say which gate, the Box's bar
+   or the Noul beside it, keeps a box over nothing from acting. The overlap
+   bar a box is right at is the label's `iou_at_least`, which `tune` never
+   proposes.
    - Whenever a proposed bar covers less than half the labelled cases, or
      you would call it too aggressive, run `tune` again with a lower
      `--target-accuracy` (it is free). Show both in one line, for example

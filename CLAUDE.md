@@ -128,7 +128,12 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   committing `.env`, `cargo publish` and `bd edit` (it opens an editor and
   hangs). In a cloud session `session-start.sh` installs the tools
   (`mise.cloud.toml`, pinned release URLs), imports the beads from the
-  committed export and warms the build; then `bd prime` runs.
+  committed export, installs the two Claude Code plugins
+  (`scripts/claude-plugins.sh`: `jud` from the checkout, `typesafe` from
+  `typesafe-ai/skills`, since a cloud session never installs what
+  `.claude/settings.json` declares) and warms the build; then `bd prime`
+  runs. `mise run plugins:install` does the same on a laptop and `mise run
+  plugins:update` moves both plugins to their latest.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker

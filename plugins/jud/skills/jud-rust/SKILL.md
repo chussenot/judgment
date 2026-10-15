@@ -13,8 +13,8 @@ strings (`Rubric::apply`). This skill writes the thin module that turns that
 map into enums and a struct, so a renamed option is a compile error rather
 than a branch that silently never runs.
 
-Two modules are the templates. Copy their shape exactly; change only what the
-rubric changes:
+Three modules are the templates. Copy their shape exactly; change only what
+the rubric changes:
 
 - `references/triage.rs`, from `references/triage.jud`: a Noul, a Choice with
   static options and a Score.
@@ -22,6 +22,10 @@ rubric changes:
   options come with each request (`options_from: request`), questions asked
   only `when` the state has a path, bands, a strict threshold and
   `level_at_least`.
+- `references/shapes.rs`, from `references/shapes.jud`: a rubric asked about
+  an image, a Noul and a Box (Jev 1.14, `jev-preview` on the hosted API
+  until `jev-latest` moves), with `decide` taking the request's `Assets`
+  beside the state and a `Located` verdict for the Box.
 
 Both compile against the crate and run in its test suite
 (`examples/jud_typed.rs`), so they are known to build. They are copies of
@@ -96,20 +100,28 @@ the template:
    it has `options_from: request`, a Score's levels, its `when`, and its gate
    (threshold, `strict`, confidence, bands, fallback, `level_at_least`). The
    gate shapes nothing in the module: it is read from the rubric at run
-   time and quoted nowhere.
+   time and quoted nowhere. Note every Box, the references its instructions
+   and the state carry for the image, and whether the rubric declares
+   images of its own under `spec.assets`: a rubric with a Box or with
+   `assets` gives `decide` an `Assets` parameter.
 3. **Decide the names** with the rules below, before writing any code.
 4. **Write the module**, taking each part from the template that shows
    it. The templates are per feature, not per file: a static Choice (its
    `Copy` enum, `ALL`, fallible `from_key` and its `matches!` assertion)
    and `or_fallback` over `T: Copy` come from `triage.rs`; `Offered`,
    `Supplied(String)` variants, `or_fallback` over `T: Clone` and the
-   `Option` field of a `when` question come from `routing.rs`. Start from
-   `routing.rs` when some Choice has `options_from: request`, else from
-   `triage.rs`. Keep, verbatim, everything that does not depend on the
+   `Option` field of a `when` question come from `routing.rs`; `Located`,
+   `located`, `edges_from_text` and the `assets: &Assets` parameter of
+   `decide` (which calls `answer_with_assets`) come from `shapes.rs`. Start
+   from `routing.rs` when some Choice has `options_from: request`, from
+   `shapes.rs` when some question is a Box or the rubric has `assets`,
+   else from `triage.rs`; a rubric with both takes `Offered` from the one
+   and `Located` from the other, and `decide` takes `offered` then
+   `assets`. Keep, verbatim, everything that does not depend on the
    rubric:
    - `rubric()`;
-   - `YesNo`, `Gated` and `or_fallback`;
-   - `yes_no` and `gated`;
+   - `YesNo`, `Gated` and `or_fallback`, `Located` and `edges`;
+   - `yes_no`, `gated`, `located` and `edges_from_text`;
    - `Error` and its impls;
    - the shape of `questions`, `read` and `decide`.
 
@@ -117,7 +129,8 @@ the template:
    `Decision` (in rubric order), and an `Offered` struct only when some
    Choice has `options_from: request`. Leave out what the rubric does not
    use: `Gated`, `or_fallback` and `gated` when it has no Choice or Score,
-   `YesNo` and `yes_no` when it has no Noul.
+   `YesNo` and `yes_no` when it has no Noul, `Located`, `located` and
+   `edges_from_text` when it has no Box.
 
    Name the rubric by its path from the crate root (from the project root
    with no crate), as `rubrics/triage.jud`, in the header's first two
@@ -128,7 +141,13 @@ the template:
    state, calls `decide`, and matches on every variant of one enum (with
    no Choice or Score, branches on a Noul's `yes`). When a Score's gate
    has `level_at_least`, the example reads `reached: Some(true)` rather
-   than comparing with a level, so the bar stays in the rubric. Every name the example
+   than comparing with a level, so the bar stays in the rubric. With a
+   Box, the example reads the image with `Image::read`, keeps its size,
+   puts it in an `Assets` under the reference the state carries, asks
+   `jev-preview`, and matches `Located::Act` to crop with
+   `edges.padded(..).to_pixels(width, height)` and `Located::Defer` to
+   say the box was unsure, after the Noul beside it said there is
+   something to find (as `shapes.rs` does). Every name the example
    binds is used, so it compiles under `-D warnings` when pasted. With no
    crate, its `mod` line is the mounting line of step 5.
 
@@ -154,13 +173,15 @@ the template:
    `async` and returns a `Result`. The program needs, in `Cargo.toml`:
 
    ```toml
-   judgment = { version = "0.11", features = ["jud"] }
+   judgment = { version = "0.14", features = ["jud"] }
    serde = { version = "1", features = ["derive"] }
    serde_json = "1"
    tokio = { version = "1", features = ["macros", "rt"] }  # or the program's runtime
    ```
 
-   The default `http` feature gives `judgment::Client`. A program that only
+   0.14 is the first version with a Box question and images; a module
+   without either builds from 0.11 on, and takes the crate's line the
+   program already has. The default `http` feature gives `judgment::Client`. A program that only
    replays or uses `Fake` can turn it off; when the program's `judgment`
    line turns default features off, say that the example's `Client` needs
    `http`. Add `mod <module>;` to `main.rs` or `lib.rs` only when asked;
@@ -233,6 +254,20 @@ the template:
        them: a state without them is sent as is;
      - for a conversation, that `decide` takes the turns so far, once per
        turn;
+     - with a Box or `assets`: which references the state (or the
+       instructions) carry, that each must be in the `Assets` the caller
+       passes, as a PNG or a JPEG within the API's limits (each side 256
+       to 1568 pixels, 78,400 to 2,458,624 pixels, 16 MiB; `Image::read`
+       checks them before anything is sent) and under no other reference,
+       that an image the rubric declares under `spec.assets` is loaded with
+       `Rubric::load_assets` into the same `Assets`, that a Box always
+       answers with a box, found or not, so the Noul beside it is read
+       first, that the box is in fractions and the caller's image size
+       makes it pixels, that the images cost input tokens by their pixels
+       (send the smallest that keeps the target legible), and that the
+       model must be Jev 1.14 (`jev-preview` on the hosted API while
+       `jev-latest` is 1.13, which refuses a Box with a bare `Invalid
+       request.`);
      - that every `decide` is one request to the backend, as slow as the
        model (seconds on a CPU): a caller that feeds it a stream or a batch
        bounds how many are in flight and what waits, and samples rather
@@ -311,6 +346,8 @@ reason; plain case conversion needs no row.
 | a Choice, static options | `#[derive(Copy, Eq, Hash)] enum` with a variant per key in rubric order, `ALL`, `key()`, and a `from_key` that returns `Error::Unexpected` for a key it does not know; field `Gated<Enum>`. |
 | a Choice, `options_from: request` | an enum with a variant per static key and `Supplied(String)` (not `Copy`). `from_key` returns `Self`: any key the response names was offered (`Response::verify`). There is a `Vec<(String, String)>` field for it in `Offered`, an entry for it in the `(id, options)` array `Offered::supplied` loops over, and an `offered` parameter on `questions` and `decide`. |
 | a Score | an enum with a variant per level, lowest first, deriving `PartialOrd, Ord` so `>=` compares levels, plus `ALL`, `label()` and `from_level(&str)` (an index or a level's text, as a fallback may name it), tested by `levels_read_by_index_and_by_text`; field `Gated<Enum>`. |
+| a Box | no enum: field `Located`, `Act { edges: BoxEdges, confidence: Option<f64>, band }` when the gate let the box through (the confidence is `None` when the model gave none) and `Defer { nearest: BoxEdges, confidence, bar }` below the bar, the deferred edges read back from the verdict's `top,bottom,left,right` text by `edges_from_text`. `edges()` gives the box to act on. The caller turns fractions into pixels with the image's size. |
+| `assets` on the rubric, or a Box anywhere | nothing in the types: `decide` takes `assets: &Assets` after the state (after `offered`, when there is one) and calls `answer_with_assets`; the caller loads the rubric's own images with `Rubric::load_assets` and the request's under the references the state carries. The header says so. |
 | `when: <path>` | the field is `Option<...>`, read with `verdicts.get(id).map(...).transpose()?`. Its doc comment says it is `None` when the path is absent, null or empty. |
 | `part_when` | nothing in the types: the part is sent or not by `lower`. |
 | a gate's bars, bands, fallback, `level_at_least` | nothing, not even a doc comment. They are read from the rubric at run time, and `Gated::Act { band, reached, .. }` and `Gated::Defer { fallback, .. }` carry what they decided. |
@@ -322,9 +359,11 @@ The test checks, for the rubric's questions:
 - the fingerprint;
 - each static Choice's keys in order;
 - each Score's levels in order;
-- for a Choice with `options_from: request`, its static keys.
+- for a Choice with `options_from: request`, its static keys;
+- for a Box, that the question is a Box (`Question::Box { .. }`), and for
+  the Noul beside it, that it is a Noul.
 
-Write one assertion per enum, as the templates do.
+Write one assertion per enum, as the templates do, and one per Box.
 
 ## Never
 
@@ -340,3 +379,9 @@ Write one assertion per enum, as the templates do.
 - Match on `Verdict` strings in the program. That is what the module
   replaces.
 - Hand over a module you did not compile and whose test you did not run.
+- Resize, re-encode or crop an image inside the module. The bytes sent are
+  the recording's key and the model's input; what to send is the caller's
+  decision, made before `decide`.
+- Read a Box without the Noul beside it. A Box answers with a box whether
+  or not the thing is there; a module that crops on `Located::Act` alone
+  crops nothing in particular on an empty image.

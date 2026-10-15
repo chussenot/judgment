@@ -35,7 +35,11 @@ its `references/format.md` first, in particular the sections on cases. Then:
    for a Box (with `iou_at_least` when 0.5 is not the bar). For a Choice with
    `options_from: request`, supply each case's options under `options`; for
    a Box, declare the case's image under `assets` by a path relative to the
-   cases file, under the reference the state carries.
+   cases file, under the reference the state carries, and label the box as
+   the annotator or the generator placed it, in fractions of the image.
+   An image where the thing is not there labels the Noul beside the Box
+   `false` and leaves the Box unlabelled: a Box always answers with a box,
+   and there is none to grade it against.
 4. Name the rubric in `spec.rubric` (by name while the questions move, by
    fingerprint once a run must be reproducible) and give the document a
    `metadata.name`.

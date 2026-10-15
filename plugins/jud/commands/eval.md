@@ -75,6 +75,11 @@ no file.
 6. **Triage every miss.** Read the case's state and note and the question's
    criteria, then put the miss in one row of the skill's triage table. A
    Score miss is printed as level indices; map them to level names first.
+   A Box miss prints the overlap it reached (`iou` in the JSON) beside the
+   confidence: read the case's image with the Read tool, which shows it,
+   and say what the box landed on; a Box's `labelled` counts only the
+   images with the thing, its `mean_iou` stands where `brier` would, and
+   its `majority` says nothing.
 7. **Reply** as "What the reply contains" says, for `eval`:
    - the `--min-accuracy` verdict, when one was asked;
    - one line per question;

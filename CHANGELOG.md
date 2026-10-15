@@ -95,6 +95,22 @@ All notable changes to the `judgment` crate. The format follows
   default budget refuses as `max_tokens_exceeded` was answered under the
   header by `jev-1.13.0` in 1.4 s.
 
+- The Claude Code plugin (now 0.4.0) knows Jev 1.14: the `jud` skill's
+  rules and guidance for a Box question (what to locate, the Noul beside
+  it, the reference in the state, the images a document declares, the box
+  label in fractions and its bar), the `jud-tune` skill's reading of a
+  Box's `jud eval` and `jud tune` numbers (a mean IoU where a Brier score
+  would be, the labelled count, the empty images, the triage rows for a box
+  that is loose, on the wrong thing or over nothing) and what re-encoding
+  an image costs, and the `jud-rust` skill's third template,
+  `examples/jud/shapes.rs`, a module whose `decide` takes the request's
+  `Assets` and whose `Located` verdict carries a Box, exercised from the
+  shapes recordings by `examples/jud_typed.rs`; the commands follow, and a
+  seventh authoring eval asks for an image rubric. In a cloud session the
+  start hook installs the plugin from the checkout, with TypeSafe's
+  `typesafe` plugin, through `scripts/claude-plugins.sh` (`mise run
+  plugins:install`, `mise run plugins:update`).
+
 ### Changed
 
 - **Breaking:** the `.jud` format spells its minor as `metadata.minor`
