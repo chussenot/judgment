@@ -8,7 +8,7 @@ tags: [judgment, verification, box, images, calibration, iou, jev]
 
 # A Box calibration study on synthetic shapes
 
-[The .jud format](../../reference/jud-format.md) grades a Box by intersection over union against a labelled box ([decision 0026](../decisions/0026-a-box-is-graded-by-intersection-over-union.md)) and reports the confidence the model gives beside it. Whether the two numbers mean anything, and what a gate on the confidence buys, is a question for recordings, not for a page. This is the first such run: small, synthetic and committed, so that it replays with no key, and so that the next run (real photographs, a harder target) has a baseline to be set against.
+[The .jud format](../../reference/jud-format.md) grades a Box by intersection over union against a labelled box ([decision 0026](../decisions/0026-a-box-is-graded-by-intersection-over-union.md)) and reports the confidence the model gives beside it. Whether the two numbers mean anything, and what a gate on the confidence buys, is a question for recordings, not for a page. This is the first such run: small, synthetic and committed, so that it replays with no key, and so that the next run has a baseline to be set against. [The second run](box-calibration-study-pages.md), on generated document pages with a stamp a tenth of the page wide among a logo, a signature and a barcode, is set against it.
 
 ## What was run
 

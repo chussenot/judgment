@@ -1149,7 +1149,7 @@ fn recording_dirs() -> Vec<std::path::PathBuf> {
         .filter(|dir| dir.is_dir())
         .collect();
     dirs.sort();
-    assert_eq!(dirs.len(), 8, "{dirs:?}");
+    assert_eq!(dirs.len(), 9, "{dirs:?}");
     dirs
 }
 

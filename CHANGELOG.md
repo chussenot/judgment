@@ -102,6 +102,18 @@ All notable changes to the `judgment` crate. The format follows
   names the media type. Decision 0028 says why it is a feature and a switch
   and not the default; verified against the hosted API, which answers the
   form at the same tokens as the JSON body.
+- A second Box calibration study, on forty generated document pages with a
+  round ink stamp a tenth of the page wide among a round logo, a signature
+  and a barcode (`examples/jud/stamps.jud`, `stamps-cases.jud` and
+  `images/page-*.png`, drawn by `scripts/gen-document-pages.py` from one
+  seed), recorded on `jev-1.14.0` under `examples/recordings/stamps/` and
+  set against the shapes baseline at two sizes
+  (`docs/project/verification/box-calibration-study-pages.md`): the misses
+  are near misses at an overlap of 0.45 to 0.49, twice the pixels turn
+  every one into a hit at three times the tokens, and the Box's confidence
+  does not say "nothing here" when a round logo is on the page, which the
+  Noul beside it does. `tests/jud.rs` replays the recordings and pins the
+  counts.
 - Long context (<https://docs.typesafe.ai/models#long-context>): both
   context limits raised from 64k tokens per request and 32k per question
   to 262k through the `TypeSafe-Danger-Zone-Long-Context: true` header,

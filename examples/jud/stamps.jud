@@ -1,0 +1,38 @@
+# A rubric asked about one document page: whether it carries a round ink
+# stamp, and where. Generated pages (examples/jud/images/page-*.png, drawn by
+# scripts/gen-document-pages.py), so the repository stays generic and the
+# set regenerates from its seed. The target is small, a tenth of the page's
+# width at most, among a round logo, a signature and a barcode that are not
+# it. A Box always answers with a box, found or not, so the Noul beside it
+# says whether the box means anything (docs/concepts/visual-judgments.md).
+apiVersion: jud/v1
+kind: Rubric
+metadata:
+  name: stamps
+  minor: 4
+  description: >-
+    Whether a document page carries a round ink stamp, and where it is: the
+    Noul gate and the Box it guards, on generated invoices and delivery notes.
+spec:
+  questions:
+    stamp_present:
+      type: noul
+      instructions: Is there a round ink stamp on the page `page`?
+      criteria:
+        true: a round stamp impression, two rings with a word and a date inside, in coloured ink over the printed page
+        false: no stamp; a printed logo, a signature, a barcode or a table is not one
+    stamp:
+      type: box
+      instructions: the round ink stamp on the page `page`
+
+  # The same bars as the shapes rubric, so the two studies compare: the
+  # Noul's threshold is the default until `jud tune` reads one off the cases;
+  # the Box's bar is the confidence under which a caller pads the box or asks
+  # again on a crop.
+  policy:
+    stamp_present:
+      threshold: 0.5
+      note: a starting point; tune it on the recorded cases
+    stamp:
+      confidence: 0.5
+      note: below it, pad the box before cropping, or ask again on a larger crop

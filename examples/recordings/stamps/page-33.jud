@@ -1,0 +1,30 @@
+# Recorded answer for case `page-33`; found by fingerprint.
+apiVersion: jud/v1
+kind: Recording
+metadata:
+  name: page-33
+  minor: 4
+spec:
+  elapsed_ms: 132
+  fingerprint: sha256:c7dbb877f81a3eb1d0c606da2bf388d7a1de0396f9559290372d8fe784c3395e
+  recorded_at: "2026-10-15T15:40:15Z"
+  response:
+    answers:
+      stamp:
+        box:
+          bottom: 0.53
+          left: 0.1
+          right: 0.25
+          top: 0.47
+        confidence: 0.78
+        type: box
+      stamp_present:
+        noul: 0.96
+        type: noul
+    model: jev-1.14.0
+    request_id: req_01a14038a148798eaa8ca9e9df48edf0
+    usage:
+      input_tokens: 1596
+      output_tokens: 37
+  rubric: stamps
+  server: https://api.typesafe.ai

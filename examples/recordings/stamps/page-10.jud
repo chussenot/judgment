@@ -1,0 +1,30 @@
+# Recorded answer for case `page-10`; found by fingerprint.
+apiVersion: jud/v1
+kind: Recording
+metadata:
+  name: page-10
+  minor: 4
+spec:
+  elapsed_ms: 114
+  fingerprint: sha256:ddb9220dd4a39c8ee321427fee593a1180df9b4dac03d01fc7e325591d7cb9ab
+  recorded_at: "2026-10-15T15:40:12Z"
+  response:
+    answers:
+      stamp:
+        box:
+          bottom: 0.36
+          left: 0.8
+          right: 0.95
+          top: 0.26
+        confidence: 0.62
+        type: box
+      stamp_present:
+        noul: 0.99
+        type: noul
+    model: jev-1.14.0
+    request_id: req_01a14038949a7c769fbf7f2892c9bdd6
+    usage:
+      input_tokens: 1596
+      output_tokens: 37
+  rubric: stamps
+  server: https://api.typesafe.ai

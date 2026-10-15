@@ -1,0 +1,325 @@
+# Forty generated document pages for the stamps rubric: thirty with one
+# round ink stamp, labelled with its bounding box, and ten without, so the
+# Noul has both outcomes. Drawn by scripts/gen-document-pages.py from one
+# seed, which is why the labels are exact. Each case names its page once,
+# in `assets`, by a path relative to this file; the reference is what the
+# state carries.
+apiVersion: jud/v1
+kind: Cases
+metadata:
+  name: stamps-cases
+  minor: 4
+  description: Forty generated document pages, labelled by the generator that drew them.
+spec:
+  rubric: stamps
+  cases:
+    - id: page-00
+      state: {page: page-00}
+      assets:
+        page-00: {type: image, path: images/page-00.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.8154, bottom: 0.8769, left: 0.4117, right: 0.4917}}
+      tags: [stamp]
+    - id: page-01
+      state: {page: page-01}
+      assets:
+        page-01: {type: image, path: images/page-01.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.2103, bottom: 0.2846, left: 0.4383, right: 0.535}}
+      tags: [stamp]
+    - id: page-02
+      state: {page: page-02}
+      assets:
+        page-02: {type: image, path: images/page-02.png}
+      expect:
+        stamp_present: false
+      tags: [none]
+    - id: page-03
+      state: {page: page-03}
+      assets:
+        page-03: {type: image, path: images/page-03.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.5385, bottom: 0.6026, left: 0.6683, right: 0.7517}}
+      tags: [stamp]
+    - id: page-04
+      state: {page: page-04}
+      assets:
+        page-04: {type: image, path: images/page-04.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.1333, bottom: 0.1949, left: 0.165, right: 0.245}}
+      tags: [stamp]
+    - id: page-05
+      state: {page: page-05}
+      assets:
+        page-05: {type: image, path: images/page-05.png}
+      expect:
+        stamp_present: false
+      tags: [none]
+    - id: page-06
+      state: {page: page-06}
+      assets:
+        page-06: {type: image, path: images/page-06.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.4654, bottom: 0.5449, left: 0.31, right: 0.4133}}
+      tags: [stamp]
+    - id: page-07
+      state: {page: page-07}
+      assets:
+        page-07: {type: image, path: images/page-07.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.8051, bottom: 0.8923, left: 0.4717, right: 0.585}}
+      tags: [stamp]
+    - id: page-08
+      state: {page: page-08}
+      assets:
+        page-08: {type: image, path: images/page-08.png}
+      expect:
+        stamp_present: false
+      tags: [none]
+    - id: page-09
+      state: {page: page-09}
+      assets:
+        page-09: {type: image, path: images/page-09.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.8269, bottom: 0.8885, left: 0.555, right: 0.635}}
+      tags: [stamp]
+    - id: page-10
+      state: {page: page-10}
+      assets:
+        page-10: {type: image, path: images/page-10.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.2679, bottom: 0.3526, left: 0.825, right: 0.935}}
+      tags: [stamp]
+    - id: page-11
+      state: {page: page-11}
+      assets:
+        page-11: {type: image, path: images/page-11.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.5974, bottom: 0.6897, left: 0.8383, right: 0.9583}}
+      tags: [stamp]
+    - id: page-12
+      state: {page: page-12}
+      assets:
+        page-12: {type: image, path: images/page-12.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.3679, bottom: 0.4295, left: 0.8817, right: 0.9617}}
+      tags: [stamp]
+    - id: page-13
+      state: {page: page-13}
+      assets:
+        page-13: {type: image, path: images/page-13.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.5397, bottom: 0.6115, left: 0.69, right: 0.7833}}
+      tags: [stamp]
+    - id: page-14
+      state: {page: page-14}
+      assets:
+        page-14: {type: image, path: images/page-14.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.6462, bottom: 0.7385, left: 0.4717, right: 0.5917}}
+      tags: [stamp]
+    - id: page-15
+      state: {page: page-15}
+      assets:
+        page-15: {type: image, path: images/page-15.png}
+      expect:
+        stamp_present: false
+      tags: [none]
+    - id: page-16
+      state: {page: page-16}
+      assets:
+        page-16: {type: image, path: images/page-16.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.2654, bottom: 0.3397, left: 0.5683, right: 0.665}}
+      tags: [stamp]
+    - id: page-17
+      state: {page: page-17}
+      assets:
+        page-17: {type: image, path: images/page-17.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.659, bottom: 0.7256, left: 0.8633, right: 0.95}}
+      tags: [stamp]
+    - id: page-18
+      state: {page: page-18}
+      assets:
+        page-18: {type: image, path: images/page-18.png}
+      expect:
+        stamp_present: false
+      tags: [none]
+    - id: page-19
+      state: {page: page-19}
+      assets:
+        page-19: {type: image, path: images/page-19.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.3744, bottom: 0.4667, left: 0.6017, right: 0.7217}}
+      tags: [stamp]
+    - id: page-20
+      state: {page: page-20}
+      assets:
+        page-20: {type: image, path: images/page-20.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.3333, bottom: 0.3949, left: 0.0483, right: 0.1283}}
+      tags: [stamp]
+    - id: page-21
+      state: {page: page-21}
+      assets:
+        page-21: {type: image, path: images/page-21.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.4859, bottom: 0.5603, left: 0.2483, right: 0.345}}
+      tags: [stamp]
+    - id: page-22
+      state: {page: page-22}
+      assets:
+        page-22: {type: image, path: images/page-22.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.8308, bottom: 0.9205, left: 0.5567, right: 0.6733}}
+      tags: [stamp]
+    - id: page-23
+      state: {page: page-23}
+      assets:
+        page-23: {type: image, path: images/page-23.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.3885, bottom: 0.4808, left: 0.0883, right: 0.2083}}
+      tags: [stamp]
+    - id: page-24
+      state: {page: page-24}
+      assets:
+        page-24: {type: image, path: images/page-24.png}
+      expect:
+        stamp_present: false
+      tags: [none]
+    - id: page-25
+      state: {page: page-25}
+      assets:
+        page-25: {type: image, path: images/page-25.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.3641, bottom: 0.4308, left: 0.8567, right: 0.9433}}
+      tags: [stamp]
+    - id: page-26
+      state: {page: page-26}
+      assets:
+        page-26: {type: image, path: images/page-26.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.8462, bottom: 0.9256, left: 0.7667, right: 0.87}}
+      tags: [stamp]
+    - id: page-27
+      state: {page: page-27}
+      assets:
+        page-27: {type: image, path: images/page-27.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.8936, bottom: 0.9577, left: 0.8883, right: 0.9717}}
+      tags: [stamp]
+    - id: page-28
+      state: {page: page-28}
+      assets:
+        page-28: {type: image, path: images/page-28.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.8077, bottom: 0.8923, left: 0.3, right: 0.41}}
+      tags: [stamp]
+    - id: page-29
+      state: {page: page-29}
+      assets:
+        page-29: {type: image, path: images/page-29.png}
+      expect:
+        stamp_present: false
+      tags: [none]
+    - id: page-30
+      state: {page: page-30}
+      assets:
+        page-30: {type: image, path: images/page-30.png}
+      expect:
+        stamp_present: false
+      tags: [none]
+    - id: page-31
+      state: {page: page-31}
+      assets:
+        page-31: {type: image, path: images/page-31.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.8128, bottom: 0.8923, left: 0.0833, right: 0.1867}}
+      tags: [stamp]
+    - id: page-32
+      state: {page: page-32}
+      assets:
+        page-32: {type: image, path: images/page-32.png}
+      expect:
+        stamp_present: false
+      tags: [none]
+    - id: page-33
+      state: {page: page-33}
+      assets:
+        page-33: {type: image, path: images/page-33.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.4397, bottom: 0.5218, left: 0.1433, right: 0.25}}
+      tags: [stamp]
+    - id: page-34
+      state: {page: page-34}
+      assets:
+        page-34: {type: image, path: images/page-34.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.1577, bottom: 0.2474, left: 0.8067, right: 0.9233}}
+      tags: [stamp]
+    - id: page-35
+      state: {page: page-35}
+      assets:
+        page-35: {type: image, path: images/page-35.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.8154, bottom: 0.9051, left: 0.4333, right: 0.55}}
+      tags: [stamp]
+    - id: page-36
+      state: {page: page-36}
+      assets:
+        page-36: {type: image, path: images/page-36.png}
+      expect:
+        stamp_present: false
+      tags: [none]
+    - id: page-37
+      state: {page: page-37}
+      assets:
+        page-37: {type: image, path: images/page-37.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.1885, bottom: 0.2731, left: 0.695, right: 0.805}}
+      tags: [stamp]
+    - id: page-38
+      state: {page: page-38}
+      assets:
+        page-38: {type: image, path: images/page-38.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.141, bottom: 0.2103, left: 0.5017, right: 0.5917}}
+      tags: [stamp]
+    - id: page-39
+      state: {page: page-39}
+      assets:
+        page-39: {type: image, path: images/page-39.png}
+      expect:
+        stamp_present: true
+        stamp: {box: {top: 0.6833, bottom: 0.7577, left: 0.0683, right: 0.165}}
+      tags: [stamp]

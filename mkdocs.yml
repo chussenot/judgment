@@ -51,6 +51,7 @@ nav:
           - Against the hosted TypeSafe API: project/verification/hosted-typesafe.md
           - Jev 1.14 on the hosted API, images and the Box: project/verification/hosted-typesafe-jev-1-14.md
           - A Box calibration study on synthetic shapes: project/verification/box-calibration-study.md
+          - A Box calibration study on document pages: project/verification/box-calibration-study-pages.md
           - Against Laya typed-decisions: project/verification/laya-typed-decisions.md
           - Against autojev-serve: project/verification/autojev-serve.md
       - Research:
