@@ -11,7 +11,7 @@
 //! # The fixture
 //!
 //! `tests/fixtures/typesafe-openapi.json` is <https://api.typesafe.ai/openapi.json>
-//! (`openapi` 3.1.0, `info.version` 0.2.0), fetched on 2026-09-25 by
+//! (`openapi` 3.1.0, `info.version` 0.2.0), fetched on 2026-10-15 by
 //! `tests/openapi_drift.rs` with `JUDGMENT_OPENAPI_WRITE=1`. It is never
 //! edited by hand: the drift test is the only writer, it writes the document
 //! canonically (sorted keys, two-space indent, final newline), and
