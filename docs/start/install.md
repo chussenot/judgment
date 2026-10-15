@@ -1,6 +1,6 @@
 ---
 title: Install
-description: Every way to get the jud command and the judgment crate: mise, Homebrew, a release tarball with its checksum and attestation, cargo-binstall, cargo install, the container image, the crate as a dependency with its features, and shell completion.
+description: Every way to get the jud command and the judgment crate; mise, Homebrew, a release tarball with its checksum and attestation, cargo-binstall, cargo install, the container image, the crate as a dependency with its features, and shell completion.
 status: current
 last_reviewed: 2026-10-07
 tags: [judgment, jud, install, mise, homebrew, cargo, container, getting-started]
