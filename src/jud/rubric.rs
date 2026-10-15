@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
 use super::{
-    API_VERSION, Envelope, Error, Metadata, Result, check_name, check_path, from_text, present,
-    refuse_extra, some, to_yaml,
+    API_VERSION, Envelope, Error, MINOR, Metadata, Result, check_name, check_path, from_text,
+    present, refuse_extra, some, to_yaml,
 };
 use crate::answer::{
     BoundingBox, BoxEdges, Choice, Confidence, FromAnswer, Noul, Probability, Response, Score,
@@ -633,6 +633,7 @@ impl Rubric {
             kind: "Rubric",
             metadata: Metadata {
                 name: self.name.clone(),
+                minor: Some(MINOR),
                 version: self.version.clone().map(Value::String),
                 description: self.description.clone(),
                 labels: self.labels.clone(),
@@ -1450,7 +1451,7 @@ spec:
             rubric
                 .to_yaml()
                 .unwrap()
-                .starts_with("apiVersion: jud/v1.3\nkind: Rubric\n")
+                .starts_with("apiVersion: jud/v1\nkind: Rubric\n")
         );
     }
 
@@ -1551,7 +1552,9 @@ spec:
         assert_eq!(rubric.annotations["owner"], "me");
         let yaml = rubric.to_yaml().unwrap();
         assert!(
-            yaml.starts_with("apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\n"),
+            yaml.starts_with(
+                "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 3\n"
+            ),
             "{yaml}"
         );
         assert_eq!(Rubric::parse(&yaml).unwrap(), rubric);

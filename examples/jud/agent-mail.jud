@@ -10,10 +10,11 @@
 # The answers rank and escalate; they never hide. In the fleets these cases
 # come from, the message that mattered was a small minority that no rule
 # could predict, so a gate that drops a message drops that one too.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: agent-mail
+  minor: 3
   version: 1
   description: >-
     What a message between coding agents needs from its recipient: an action,

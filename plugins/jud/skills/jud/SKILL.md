@@ -1,9 +1,9 @@
 ---
 name: jud
-description: Write, review or fix .jud documents (a rubric with its policy, labelled cases, a recording) in version 1.3 of the format the judgment crate reads, and check them with the crate's own reader. Use this whenever a task touches a .jud file, a rubric, typed questions with thresholds, labelled cases for tuning a threshold, or turning questions written in code into a document another tool can read, even when the user does not say "jud" or "rubric".
+description: Write, review or fix .jud documents (a rubric with its policy, labelled cases, a recording) in the jud/v1 format the judgment crate reads, at its current minor, and check them with the crate's own reader. Use this whenever a task touches a .jud file, a rubric, typed questions with thresholds, labelled cases for tuning a threshold, or turning questions written in code into a document another tool can read, even when the user does not say "jud" or "rubric".
 ---
 
-# Writing .jud documents (version 1.3)
+# Writing .jud documents (jud/v1)
 
 A `.jud` file is a decision written down so a person can review it and a
 program can run it: the typed questions a System One model is asked about a
@@ -41,15 +41,17 @@ with `/jud:rust`.
    with the envelope, every field per kind, the gate fields per primitive,
    the label shapes, and the reading rules the reader refuses by. It is 400
    lines and saves a round of refusals.
-3. **Write the document** with the envelope first: `apiVersion: jud/v1.3`,
-   `kind`, `metadata` with its `name`, then everything the kind holds under
-   `spec`:
+3. **Write the document** with the envelope first: `apiVersion: jud/v1`,
+   `kind`, `metadata` with its `name` and the `minor` the document needs
+   (3, unless it uses a field a later minor added), then everything the kind
+   holds under `spec`:
 
    ```yaml
-   apiVersion: jud/v1.3
+   apiVersion: jud/v1
    kind: Rubric
    metadata:
      name: inbox-triage
+     minor: 3
      description: What the rubric decides, for the reader.
    spec:
      questions: ...
@@ -98,10 +100,12 @@ with `/jud:rust`.
 Each of these is a refusal `jud check` will name; knowing them first saves the
 round trip.
 
-- `apiVersion` is the string `jud/v1.3`, exactly: the reader reads that one
-  value and refuses any other, a number, a missing key, or a document that
-  still starts with a `jud:` key. `kind` is PascalCase: `Rubric`, `Cases`,
-  `Recording`; `rubric` is refused.
+- `apiVersion` is the string `jud/v1`, exactly, and `metadata.minor` the
+  integer minor the document needs (3 today): the reader refuses any other
+  apiVersion, a number, a missing key, a document that still starts with a
+  `jud:` key, a missing `minor`, and a `minor` above the one it reads. The
+  earlier spelling `jud/v1.3` (no `minor`) is still read. `kind` is
+  PascalCase: `Rubric`, `Cases`, `Recording`; `rubric` is refused.
 - `metadata.name` is required on every kind and is a **name**: letters,
   digits, `.`, `_`, `-`, starting with a letter or digit. `inbox-triage` yes;
   `inbox triage`, `./triage`, `.hidden` no. A case's `id` inside `spec.cases`
@@ -271,7 +275,7 @@ fingerprint still holds after the move.
 
 | Old envelope | New envelope |
 |---|---|
-| `jud: 1`, `1.1`, `1.2` | `apiVersion: jud/v1.3` |
+| `jud: 1`, `1.1`, `1.2` | `apiVersion: jud/v1` and `metadata.minor: 3` |
 | `kind: rubric`, `cases`, `recording` | `kind: Rubric`, `Cases`, `Recording` |
 | `id` (rubric, cases) | `metadata.name`, now required on cases too |
 | a recording's `case` | `metadata.name` |

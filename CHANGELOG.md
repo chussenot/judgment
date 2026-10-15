@@ -62,6 +62,17 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Changed
 
+- **Breaking:** the `.jud` format spells its minor as `metadata.minor`
+  under `apiVersion: jud/v1` (decision 0020, accepted): `jud::API_VERSION`
+  is `jud/v1`, `jud::MINOR` the minor the crate reads up to and writes (3),
+  and `jud::EARLIER_SPELLINGS` names `jud/v1.3`, the spelling minor 3 was
+  published under, which the reader keeps reading as minor 3, without a
+  `metadata.minor`, for at least twelve months from this release. A
+  `metadata.minor` above the crate's is `jud::Error::Minor`, refused by
+  number before anything else is read. Every document the crate writes now
+  carries `apiVersion: jud/v1` and `minor: 3`, and every committed example
+  and recording was rewritten the same way; `jud check` prints
+  `jud/v1 minor 3`. No fingerprint moves: the envelope is outside every one.
 - **Breaking:** `client::Request` has a fourth field, `assets: &Assets`;
   a struct literal names it (`&Assets::new()` for none) or becomes
   `Request::new(state, model, questions)`. `backend::Call` has an

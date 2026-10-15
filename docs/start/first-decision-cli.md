@@ -29,11 +29,11 @@ jud check examples/jud/triage.jud examples/jud/triage-cases.jud
 
 <!-- transcript: jud check examples/jud/triage.jud examples/jud/triage-cases.jud -->
 ```text
-rubric    examples/jud/triage.jud: name inbox-triage, jud/v1.3, 3 questions, 3 gates (tuned)
+rubric    examples/jud/triage.jud: name inbox-triage, jud/v1 minor 3, 3 questions, 3 gates (tuned)
           questions sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a
           policy    sha256:1585094f59711426a98044a00ded2ec747010b5369e941f33a2732a50262e99f
           tuned on  sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
-cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1.3, 7 cases, bound to examples/jud/triage.jud
+cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1 minor 3, 7 cases, bound to examples/jud/triage.jud
           cases     sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
 2 documents, 0 refused
 ```

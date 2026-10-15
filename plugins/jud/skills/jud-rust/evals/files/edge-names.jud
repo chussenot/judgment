@@ -2,10 +2,11 @@
 # Rust names: a keyword id, an id with `-` and `.`, an id that clashes with
 # a name the generated module defines, keys that collide once cased, a key
 # that is `self`, one that starts with a digit, and a level with no letters.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: edge-names
+  minor: 3
 spec:
   questions:
     type:

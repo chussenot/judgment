@@ -174,11 +174,11 @@ jud check examples/jud/triage.jud examples/jud/triage-cases.jud
 
 <!-- transcript: jud check examples/jud/triage.jud examples/jud/triage-cases.jud -->
 ```text
-rubric    examples/jud/triage.jud: name inbox-triage, jud/v1.3, 3 questions, 3 gates (tuned)
+rubric    examples/jud/triage.jud: name inbox-triage, jud/v1 minor 3, 3 questions, 3 gates (tuned)
           questions sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a
           policy    sha256:1585094f59711426a98044a00ded2ec747010b5369e941f33a2732a50262e99f
           tuned on  sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
-cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1.3, 7 cases, bound to examples/jud/triage.jud
+cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1 minor 3, 7 cases, bound to examples/jud/triage.jud
           cases     sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
 2 documents, 0 refused
 ```
@@ -344,10 +344,11 @@ use judgment::{Fake, SystemOne};
 // another tool can read (docs/reference/jud-format.md). The policy is never
 // sent to the model.
 const RUBRIC: &str = r"
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: inbox-triage
+  minor: 3
 spec:
   questions:
     department:
@@ -637,10 +638,11 @@ The example screens a support message for a refund request. The finished file is
 Every document has the same four top-level fields. Name the rubric; the name is what cases and recordings will refer to, so keep it stable.
 
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: refund-screening
+  minor: 3
   description: Screen a support message for a refund request before a person reads it.
 spec:
   questions: {}
@@ -719,7 +721,7 @@ jud check screening.jud
 
 <!-- transcript: jud check examples/jud/screening.jud -->
 ```text
-rubric    examples/jud/screening.jud: name refund-screening, jud/v1.3, 3 questions, 3 gates (untuned)
+rubric    examples/jud/screening.jud: name refund-screening, jud/v1 minor 3, 3 questions, 3 gates (untuned)
           questions sha256:92a19d0948fdaa410401d8c22b43d1783ac291b40af210d4aa4c81e8275e0e17
           policy    sha256:2c4cfcb3d2b6f200242a8589f22ca64d0627a611860f5498be20424a73261766
 1 documents, 0 refused
@@ -742,10 +744,11 @@ prints the request the rubric lowers to for that state: the questions whose `whe
 # The rubric built step by step in docs/guides/write-a-rubric.md: whether a
 # support message asks for money back, why, and how upset the writer is.
 # Hand-written, so it carries no tuning block: the bars are stated guesses.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: refund-screening
+  minor: 3
   description: Screen a support message for a refund request before a person reads it.
 spec:
   questions:
@@ -849,10 +852,10 @@ jud check examples/jud/screening.jud examples/jud/screening-cases.jud
 
 <!-- transcript: jud check examples/jud/screening.jud examples/jud/screening-cases.jud -->
 ```text
-rubric    examples/jud/screening.jud: name refund-screening, jud/v1.3, 3 questions, 3 gates (untuned)
+rubric    examples/jud/screening.jud: name refund-screening, jud/v1 minor 3, 3 questions, 3 gates (untuned)
           questions sha256:92a19d0948fdaa410401d8c22b43d1783ac291b40af210d4aa4c81e8275e0e17
           policy    sha256:2c4cfcb3d2b6f200242a8589f22ca64d0627a611860f5498be20424a73261766
-cases     examples/jud/screening-cases.jud: name refund-screening-cases, jud/v1.3, 4 cases, bound to examples/jud/screening.jud
+cases     examples/jud/screening-cases.jud: name refund-screening-cases, jud/v1 minor 3, 4 cases, bound to examples/jud/screening.jud
           cases     sha256:0e0d8b5cb14429de6ab723450402612fd326e7e6d98fe64f229e2235f62c6cc9
 2 documents, 0 refused
 ```
@@ -874,10 +877,11 @@ For a Choice with `options_from: request`, each case supplies its options under 
 # Labelled cases for the refund-screening rubric, written in
 # docs/guides/label-cases.md. Each case labels the questions it is sure
 # about; a question left out is asked and not graded.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: refund-screening-cases
+  minor: 3
   description: Four messages, labelled by hand while writing the guide.
 spec:
   rubric: refund-screening
@@ -1289,11 +1293,11 @@ jud check triage-tuned.jud examples/jud/triage-cases.jud
 
 <!-- transcript: jud tune --out triage-tuned.jud, then jud check triage-tuned.jud examples/jud/triage-cases.jud -->
 ```text
-rubric    triage-tuned.jud: name inbox-triage, jud/v1.3, 3 questions, 3 gates (tuned)
+rubric    triage-tuned.jud: name inbox-triage, jud/v1 minor 3, 3 questions, 3 gates (tuned)
           questions sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a
           policy    sha256:d9e705af6ee1d94e4219fd4a8c26710d18e01d160262f3e83d8ab8c0032eefc7
           tuned on  sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
-cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1.3, 7 cases, bound to triage-tuned.jud
+cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1 minor 3, 7 cases, bound to triage-tuned.jud
           cases     sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
 2 documents, 0 refused
 ```
@@ -1622,7 +1626,7 @@ The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric
 
 1. Decide the kind. A decision needs a rubric; a rubric's thresholds need cases, so the two are usually written together. A recording is written by hand only as a test fixture.
 2. Read the format reference before writing.
-3. Write the document in the `jud/v1.3` envelope, starting from the nearest example under `examples/jud/`.
+3. Write the document in the `jud/v1` envelope with its `metadata.minor`, starting from the nearest example under `examples/jud/`.
 4. Check it with `scripts/jud.sh check`, rubric and cases together, and fix every refusal in the document rather than around it.
 5. When the request depends on the state, look at what each case sends with `scripts/jud.sh lower`.
 6. When bars are to be measured, hand over to the `jud-tune` skill: `jud record` runs only when asked, and only `jud tune` writes a `tuning` block's values.
@@ -2663,7 +2667,7 @@ The constants are public: `judgment::client::{API_KEY_ENV, DEFAULT_BASE_URL, DEF
 
 # The `.jud` format
 
-This page is the specification of `apiVersion: jud/v1.3`. The rules here are the format; every other page that mentions a field links here. The reasoning behind the format is in [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md) and in decisions [0014](../project/decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) and [0018](../project/decisions/0018-jud-1-3-takes-the-manifest-envelope.md). The crate's implementation is `judgment::jud` ([The crate](crate.md#the-jud-feature)); the terms are in the [glossary](glossary.md).
+This page is the specification of `apiVersion: jud/v1` at `metadata.minor` 3. The rules here are the format; every other page that mentions a field links here. The reasoning behind the format is in [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md) and in decisions [0014](../project/decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md), [0018](../project/decisions/0018-jud-1-3-takes-the-manifest-envelope.md) and [0020](../project/decisions/0020-how-a-v1-minor-is-spelled.md). The crate's implementation is `judgment::jud` ([The crate](crate.md#the-jud-feature)); the terms are in the [glossary](glossary.md).
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in BCP 14 [[RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)] [[RFC 8174](https://www.rfc-editor.org/rfc/rfc8174)] when, and only when, they appear in all capitals, as shown here.
 
@@ -2687,7 +2691,7 @@ Every document has exactly four top-level fields, the envelope of a [Kubernetes 
 
 | Field | Value | Meaning |
 |---|---|---|
-| `apiVersion` | `jud/v1.3` | The format, a string, exactly this. |
+| `apiVersion` | `jud/v1` | The format's stable line, a string, exactly this; the minor is `metadata.minor`. [The apiVersion and the minor](#the-apiversion-and-the-minor). |
 | `kind` | `Rubric`, `Cases` or `Recording` | Which shape `spec` has. Any other value MUST be refused. |
 | `metadata` | an object | What identifies the document and what a tool keeps beside it. |
 | `spec` | an object | The kind's own fields. |
@@ -2696,6 +2700,7 @@ Every document has exactly four top-level fields, the envelope of a [Kubernetes 
 
 | Field | On | Required | Meaning |
 |---|---|---|---|
+| `minor` | every kind | yes | The minor of `jud/v1` the document needs, an integer: `3` today. [The apiVersion and the minor](#the-apiversion-and-the-minor). |
 | `name` | every kind | yes | A [name](#names). On a Rubric, what a cases document's or a recording's `rubric` may name, stable across edits. On a Cases document, the name of the set. On a Recording, the case it answers: a case's name, `<case>-turn-<n>` for one turn of a conversation, or a request hash when a recorder keyed it by content. |
 | `version` | Rubric | no | An edition of the rubric, free-form; a number is read as its text. The questions' fingerprint is the exact identity. |
 | `description` | Rubric, Cases | no | What the rubric decides, or where the cases came from, for the person reading the file. |
@@ -2703,10 +2708,11 @@ Every document has exactly four top-level fields, the envelope of a [Kubernetes 
 | `annotations` | every kind | no | String to string: what a tool keeps that the format does not name. [Labels and annotations](#labels-and-annotations). |
 
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: inbox-triage
+  minor: 3
   version: 2
   description: Sort an incoming support message.
 spec:
@@ -2714,9 +2720,15 @@ spec:
   policy: …
 ```
 
-### The apiVersion
+### The apiVersion and the minor
 
-A reader reads exactly `apiVersion: jud/v1.3`. Any other value, a missing `apiVersion`, or a number where the string should be MUST be refused by name, before anything else in the document is read. A change of the format, whether it adds a field or changes what one means, takes a new apiVersion (`jud/v1.4`); a reader reads one apiVersion, and a document is moved forward by rewriting its envelope, not by a reader that reads several.
+`apiVersion` names the stable line of the format, `jud/v1`, and `metadata.minor` the minor within it that the document needs: the lowest whose fields it uses, or simply the one the writer implements. A minor only adds a field, a value a field may take, or a kind; it never removes, renames or narrows one ([Stability](stability.md)). A reader reads `apiVersion: jud/v1` with every `minor` up to the one it implements, and MUST refuse, by number, a `minor` above it, before anything else in the document is read: the document uses something a later minor added, and the right message is that the reader is out of date, not that the document is wrong. A missing `apiVersion`, any other string, a number where the string should be, and a `minor` that is missing or not a non-negative integer MUST be refused by name, before anything else is read. A writer writes the minor it implements. A change of meaning takes a new line, `jud/v2`, with its own apiVersion.
+
+Minor 3 was first published as `apiVersion: jud/v1.3`, with the minor in the string and no `metadata.minor`. A reader MUST read that spelling as `jud/v1` at minor 3, for at least twelve months from the release that first reads `jud/v1` (crate 0.14.0), and MUST refuse a `metadata.minor` beside it; a writer never writes it. The minors published so far:
+
+| Minor | Adds | First read by |
+|---|---|---|
+| 3 | The manifest envelope and everything on this page; spelled `jud/v1.3` until `metadata.minor` existed | crate 0.8.0 (as `jud/v1.3`), 0.14.0 (as `jud/v1`) |
 
 ### Names
 
@@ -2727,10 +2739,11 @@ A name identifies a thing another document or a file name refers to: every `meta
 `metadata.labels` and `metadata.annotations` are maps of string to string under any keys. Labels are for selecting and grouping; annotations are for everything else, including a shared YAML anchor that would otherwise have to live inside the first question that uses it. A reader MUST check only their shape: every key and every value is a string, so an anchor placed there is a scalar, not a mapping. Their content has no meaning to the reader and is part of no fingerprint. A writer MUST keep them when it writes the document back.
 
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: support-routing
+  minor: 3
   labels:
     team: support
   annotations:
@@ -2919,10 +2932,11 @@ The "grades as" column is the vocabulary the API's own answers are graded in: a 
 
 <!-- file: examples/jud/spec-cases.jud -->
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: inbox-triage-cases
+  minor: 3
   description: Seven messages, labelled by the support lead.
 spec:
   rubric: inbox-triage
@@ -2979,10 +2993,11 @@ A cases document's fingerprint is the [fingerprint](#fingerprints) of its `spec.
 
 <!-- file: examples/jud/spec-recording.jud -->
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: receipt
+  minor: 3
 spec:
   response:
     model: jev-1.13.0
@@ -3049,14 +3064,14 @@ Known vector: the fingerprint of `{"b": "x", "a": 1}` is `sha256:ecf9e98ec0641e2
 An implementation MUST read a document under these rules.
 
 - YAML 1.2 core schema: `true` and `false` are the booleans; `yes`, `no`, `on`, `off` and `y` are strings; a leading-zero number is decimal. A duplicate key is an error. JSON is accepted as YAML. A merge key (`<<`) and an explicit tag the core schema does not define are refused with their position, and a `!!binary` scalar is its text, not what it encodes. A syntax error names a line and a column and quotes no part of the document.
-- `apiVersion` MUST be present and the string `jud/v1.3`; `kind` MUST be present and one of the three. Both are checked before anything else. A top-level key other than the four of the envelope is refused by name.
+- `apiVersion` MUST be present and the string `jud/v1` (or the earlier spelling `jud/v1.3`); `metadata.minor` MUST be present under `jud/v1`, a non-negative integer at most the minor the reader implements, and absent under the earlier spelling; `kind` MUST be present and one of the three. All three are checked before anything else. A top-level key other than the four of the envelope is refused by name.
 - Every `metadata.name` and every case `id` is a [name](#names). `metadata.name` is REQUIRED on every kind; `metadata.version` is refused on a Cases document and a Recording, `metadata.description` on a Recording. `metadata.labels` and `metadata.annotations` are maps of string to string under any keys.
 - A field the kind does not define is refused, with its path. The exceptions are `tuning` in a rubric and `response` in a recording, which keep what they are given, and `state`, which is any JSON.
 - Order is significant and preserved for `questions`, a Choice's `criteria`, a Score's `criteria`, `bands`, `cases`, `expect` and a case's supplied options. It is not for the parts of an instructions object, which is a JSON object like the state: an implementation MAY send its keys in any order (this crate sends them sorted).
 - A state path in `when` or `part_when` is well formed, and every `part_when` name is a key of its instructions object. `options_from` is `request`, on a Choice. None of the three is `null`.
 - A rubric's questions pass the request builder's checks, and each gate fits its question's primitive and names an offered option or an existing level. A cases document's labels fit their questions when the cases are bound to a rubric; a document MAY be read without its rubric, and is then only checked for shape.
 - A `threshold`, a `confidence` and a band's `at_least` are numbers from 0 to 1 inclusive. A level index is a non-negative integer below the number of levels.
-- A reader that writes a document back MUST write `apiVersion`, `kind`, `metadata` (`name`, then `version`, `description`, `labels` and `annotations` when present) and `spec`, in that order, with the same fields, so a document survives a read and a write with its fingerprints unchanged.
+- A reader that writes a document back MUST write `apiVersion: jud/v1`, `kind`, `metadata` (`name`, `minor`, then `version`, `description`, `labels` and `annotations` when present) and `spec`, in that order, with the same fields, so a document survives a read and a write with its fingerprints unchanged; a document read in the earlier spelling is written in this one.
 
 ## Schemas and conformance
 
@@ -3066,7 +3081,7 @@ An implementation conforms when it reads all three kinds under the reading rules
 
 ## Extending the format
 
-`jud/v1.3` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later apiVersion is refused whole rather than half-read. Any change, an added field or a changed meaning, takes a new apiVersion, which a reader of this one refuses by name. Two additions are foreseen and not in this apiVersion: a soft label (a distribution over options or levels) and a verdict kind (what an application decided).
+Minor 3 of `jud/v1` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later minor is refused whole rather than half-read, and by its `metadata.minor` first, so the refusal names the minor the reader lacks. An addition (a field, a value a field may take, a kind) is the next minor, with this page, the schemas and `metadata.minor`'s range moving together; a change of meaning is `jud/v2`. Two additions are foreseen and not in this minor: a soft label (a distribution over options or levels) and a verdict kind (what an application decided).
 
 
 <!-- source: docs/reference/crate.md -->
@@ -3115,7 +3130,7 @@ The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCri
 
 ### The `jud` feature
 
-`judgment::jud` implements [The .jud format](jud-format.md) at `API_VERSION` (`jud/v1.3`), the one apiVersion it reads and writes. `Rubric` has `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `gate`, `lower` and `apply`; `Cases` has `parse`, `to_yaml`, `fingerprint` and `bind`, with `Case::request` and `Case::per_turn`; `grade` grades one case against one response; `present` is the state-path test; `parse_recording` and `recording_to_yaml` read and write the third kind into `eval::Recording`. `Questions::handle` gives a typed handle to a question read from a file. `Replay` reads `.jud` recordings beside its `.json` ones.
+`judgment::jud` implements [The .jud format](jud-format.md) at `API_VERSION` (`jud/v1`) up to `MINOR` (3), the line it reads and writes; the earlier spelling of minor 3, `jud/v1.3`, is read as it stands (`EARLIER_SPELLINGS`). `Rubric` has `parse`, `to_yaml`, `fingerprint`, `policy_fingerprint`, `gate`, `lower` and `apply`; `Cases` has `parse`, `to_yaml`, `fingerprint` and `bind`, with `Case::request` and `Case::per_turn`; `grade` grades one case against one response; `present` is the state-path test; `parse_recording` and `recording_to_yaml` read and write the third kind into `eval::Recording`. `Questions::handle` gives a typed handle to a question read from a file. `Replay` reads `.jud` recordings beside its `.json` ones.
 
 ## Errors
 
@@ -3213,14 +3228,14 @@ What is promised, what is not, and for how long, for the format, its fingerprint
 
 ## The format: `jud/v1` is stable
 
-The `.jud` format is at `apiVersion: jud/v1.3` ([The .jud format](jud-format.md)), and the `v1` line is stable:
+The `.jud` format is at `apiVersion: jud/v1`, minor 3 ([The .jud format](jud-format.md)), and the `v1` line is stable:
 
 - **A valid document stays valid.** A document that a `jud/v1` reader accepts today is accepted by every later `jud/v1` reader. Nothing is removed, renamed or given a new meaning inside the `v1` line: not a field of the envelope, not a field of `spec`, not a kind, not a rule of reading.
 - **A minor version only adds.** A later minor (`1.4`, `1.5`) may add an optional field, a value a field may take, or a kind. It may not make an optional field required, narrow what a field accepts, or change what an existing field means. A document that uses nothing a later minor added is, byte for byte, a document of the earlier minor.
 - **Readers accept every `v1` document for at least twelve months.** When a later minor is published, every reader of the format that this repository ships (the crate's `judgment::jud`, the `jud` command, the plugin's checks) accepts documents of each earlier `v1` minor for at least twelve months from that publication. The date is the release date of the crate version that first reads the new minor, recorded in the `CHANGELOG`.
 - **A change of meaning is `jud/v2`.** Anything a minor may not do takes a new major version, with its own `apiVersion`, its own schemas and a page that maps `v1` onto it. A `v2` reader is not required to read `v1`; a `v1` document is moved by rewriting it.
 
-Today the one `v1` minor published is `1.3`, and the crate's reader reads exactly `apiVersion: jud/v1.3`. How the next minor is spelled, and how a reader of it also reads `1.3`, is [decision 0020](../project/decisions/0020-how-a-v1-minor-is-spelled.md), proposed and not applied; whichever spelling is accepted, the promises on this page hold.
+A document declares the minor it needs in `metadata.minor` ([decision 0020](../project/decisions/0020-how-a-v1-minor-is-spelled.md)), and a reader reads every minor up to its own and refuses a higher one by number, so the twelve-month clock has a number to run against. Minor 3 was first published as `apiVersion: jud/v1.3`, with the minor in the string; the crate's reader reads that spelling as minor 3 for at least twelve months from 0.14.0, the release that first reads `jud/v1`, and writes `jud/v1` with `metadata.minor`.
 
 ## Fingerprints exclude the envelope and never change
 
@@ -3251,10 +3266,10 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 
 | What | Promise | Since |
 |---|---|---|
-| A `jud/v1` document | Valid today, valid under every later `v1` minor | `jud/v1.3`, crate 0.8.0 |
+| A `jud/v1` document | Valid today, valid under every later `v1` minor | minor 3 (`jud/v1.3`), crate 0.8.0 |
 | A `v1` minor | Adds only; never removes, renames, narrows or changes meaning | this page |
 | Readers of an earlier `v1` minor | Accepted for at least twelve months after a later minor is published | this page |
-| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good | `jud/v1.3`, decision 0018 |
+| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good | minor 3, decision 0018 |
 | The wire | The vendored OpenAPI document; a change moves the contract test, the CHANGELOG and the README together | crate 0.3.0 |
 | The crate | 0.x: a minor may break and says so; a patch does not | crate 0.3.0 |
 | The `jud` command | Exit status (0 to 3), the verdict JSON, `jud eval`'s `--json` keys, the places that write files (`jud record --out`, `jud tune --out`, `jud split`) and the configuration: a change to what one means, or removing one, only in a minor, listed as breaking; an addition is listed under Added | crate 0.9.0; status 3, `eval --json` and the file writes from the release that ships `record`, `eval` and `tune` |
@@ -3821,7 +3836,7 @@ flowchart LR
 
 **Reading.** YAML is read with `serde_saphyr` under five options: `strict_booleans`, which keeps `yes`, `no`, `on` and `off` as strings; `merge_keys = Error` and `reject_unsupported_tags`, which refuse what folds in or decodes text the reviewer did not see; `ignore_binary_tag_for_string`, which keeps a `!!binary` scalar as its text; and `with_snippet = false`, so an error names a line and a column and quotes no part of a document whose state may be someone's data. The envelope is checked first: a missing `apiVersion` or `kind` is `Missing`; an `apiVersion` that is not the string `jud/v1.3` is `Version`, naming what was found; a `kind` outside the three is `Kind`. Every kind is read through a raw struct whose keys beyond the four of the envelope are collected, and the first is refused by name, pointing at `metadata.annotations`. `metadata` is one struct for every kind; a kind then refuses by path the optional fields it does not take. Every `metadata.name` and every case `id` is checked against the name grammar before anything else about it is read. A Recording's `spec` is read as the `eval::Recording` struct with `metadata.name` inserted as its `case`. A Noul's criteria keys read through an untagged `Bool | Text` so a bare `true:` and a quoted `"true":` both land on the yes criterion. A parsed question runs through the same validation as the builder's, with a minimum of zero options when `options_from: request` and two otherwise.
 
-**One apiVersion.** The reader reads `jud::API_VERSION` and nothing else, and the writer writes it, in the order the specification states. Nothing is computed from a document's content to choose a version, and no other envelope is read or converted. "A declaration counts by its presence" is one deserializer: a present key is `Some` whatever its value, an absent one `None`, and `null` is refused with a message saying to leave the field out, read through a JSON value first because a YAML reader may otherwise take `null` for an empty map. `bands: []` is refused before any other gate check.
+**One line, every minor up to its own.** The reader reads `jud::API_VERSION` (`jud/v1`) with any `metadata.minor` up to `jud::MINOR`, refusing a higher one by number before anything else is read, and reads the earlier spelling of minor 3 (`jud/v1.3`, no `minor`) as that minor; the writer writes `jud/v1` and the minor it implements, in the order the specification states. Nothing is computed from a document's content to choose a minor, and no other envelope is read or converted. "A declaration counts by its presence" is one deserializer: a present key is `Some` whatever its value, an absent one `None`, and `null` is refused with a message that says to leave the field out.
 
 **Why a rubric's fingerprint is its lowered request's.** A rubric question serialises as the bare wire `Question` first and adds `when`, `part_when` and `options_from` only when set, so a question without declarations is byte for byte a `Question`, and the fingerprint of a rubric's questions equals the fingerprint of the `Questions` it lowers to. A case's fingerprint covers `options`, `tags` and `note` as well as `state` and `expect`, with empty fields skipped, so adding an empty `tags` changes nothing.
 
@@ -4791,7 +4806,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0017](0017-jud-1-2-refuses-what-a-reviewer-cannot-see.md) | The .jud format 1.2 refuses what a reviewer cannot see, and names the policy | superseded by 0018 |
 | [0018](0018-jud-1-3-takes-the-manifest-envelope.md) | The .jud format 1.3 takes the manifest envelope and reads one apiVersion | accepted |
 | [0019](0019-a-command-line-for-the-format.md) | A command line for the format, released as a binary | accepted |
-| [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | proposed |
+| [0020](0020-how-a-v1-minor-is-spelled.md) | How a v1 minor of the .jud format is spelled | accepted |
 | [0021](0021-record-eval-and-tune-from-the-command-line.md) | Record, evaluate and tune from the command line | accepted |
 | [0022](0022-jud-reports-what-the-tuning-loop-counted-by-hand.md) | jud reports what the tuning loop counted by hand | accepted |
 | [0023](0023-jud-rubric-takes-options-on-the-command-line.md) | jud RUBRIC takes per-request options on the command line | accepted |
@@ -4810,7 +4825,7 @@ Records are not edited after acceptance; a fact that has moved since is noted he
 
 - 0016 and 0017 are superseded by [0018](0018-jud-1-3-takes-the-manifest-envelope.md) on 2026-10-06: the envelope is a manifest's, a reader reads exactly one `apiVersion` and any change of the format takes a new one, so the compatibility rule of 0016 and the exception 0017 made to it are both withdrawn. What the two records added to the format (declarations, bands and level gates, names, the refusal of what a reviewer cannot see, the policy fingerprint) stands as rules of the format, and 0018 is the one page that maps the earlier keys onto the new envelope.
 
-- 0018 says any change of the format, additive or not, takes a new `apiVersion` that a reader of the earlier one refuses. [Stability](../../reference/stability.md), on 2026-10-06, promises that a `v1` minor only adds and that readers accept every `v1` document for at least twelve months after a later minor is published; a reader of a later minor therefore reads earlier `v1` documents, and only a change of meaning takes a new major. How the minor is spelled is [0020](0020-how-a-v1-minor-is-spelled.md), proposed. Nothing moves in the code until it is accepted: one minor exists and the reader reads it exactly.
+- 0018 says any change of the format, additive or not, takes a new `apiVersion` that a reader of the earlier one refuses. [Stability](../../reference/stability.md), on 2026-10-06, promises that a `v1` minor only adds and that readers accept every `v1` document for at least twelve months after a later minor is published; a reader of a later minor therefore reads earlier `v1` documents, and only a change of meaning takes a new major. [0020](0020-how-a-v1-minor-is-spelled.md), accepted on 2026-10-15, spells the minor as `metadata.minor` under `apiVersion: jud/v1`; 0018's one-`apiVersion` rule stands for the string, and its rule that any change takes a new string is narrowed to a change of meaning. The spelling `jud/v1.3` that 0018 introduced is read as minor 3.
 
 - 0021 extends the command [0019](0019-a-command-line-for-the-format.md) defined: three subcommands (`record`, `eval`, `tune`), exit status 3 for `jud eval` alone, and two places that write files (`jud record --out` and `jud tune --out`). 0019 stands: its statuses 0, 1 and 2 keep their meaning, and `jud RUBRIC` still evaluates one state from stdin. 0021 was accepted on 2026-10-08, when the subcommands were implemented; its "As implemented" section records what the implementation settled, and where it differs from the proposal the implementation is the contract.
 - 0022 adds to 0021's commands without changing them: per-outcome counts, a majority and three signals in `jud eval`, `jud record --dry-run`, and a fourth subcommand, `jud split`, a third place that writes files.
@@ -5385,7 +5400,7 @@ Options 1, 5, 7 and the hand-written matrix of 8.
 
 # 0020 How a v1 minor of the `.jud` format is spelled
 
-**Status: proposed.** Nothing in the code, the schemas or the documents moves until this record is accepted; the reader reads `apiVersion: jud/v1.3` exactly, as [decision 0018](0018-jud-1-3-takes-the-manifest-envelope.md) decided.
+**Status: accepted on 2026-10-15**, when the first additive change (a Box question and image assets, [decision 0025](0025-a-document-names-an-image-by-path.md)) was ready, and applied as option 2 below; the "As applied" section at the end records what the implementation settled.
 
 ## Context and problem statement
 
@@ -5476,6 +5491,15 @@ When applied: `tests/jud.rs` reads a document of every published minor and refus
 - [Decision 0016](0016-jud-takes-minor-versions.md), superseded: the earlier minor-version rule and what it cost, the table option 1 would bring back.
 - [The .jud format](../../reference/jud-format.md), "Extending the format": what a minor may add.
 - `src/jud/mod.rs` (`API_VERSION`, `Envelope::check`), `schemas/jud/`, `tests/jud.rs`: where the accepted option lands.
+
+## As applied
+
+Applied in crate 0.14.0, as option 2, with two points the proposal left open settled:
+
+- **The earlier spelling is read.** [Stability](../../reference/stability.md) promises that a reader accepts every `v1` document for at least twelve months after a later minor is published, and minor 3 was published as `apiVersion: jud/v1.3`. The reader therefore reads that string as `jud/v1` at minor 3, with no `metadata.minor` allowed beside it (`jud::EARLIER_SPELLINGS`), for at least twelve months from 0.14.0; the writer never writes it. The proposal's "refuses an apiVersion other than jud/v1 by name" stands for every other string.
+- **The writer writes the minor it implements** (`jud::MINOR`), not the lowest that reads the document: computing the lowest from content is the table [0018](0018-jud-1-3-takes-the-manifest-envelope.md) removed. A document read at a lower minor is written back at the writer's; nothing in `spec` moves, so no fingerprint does.
+- **Every committed document was rewritten** to `apiVersion: jud/v1` with `minor: 3` by a script (`examples/jud/`, `examples/recordings/`, the plugin's references and fixtures); the inline documents in the crate's tests keep the earlier spelling, which pins that it still reads.
+- `jud check` prints `jud/v1 minor 3` for a document in the new spelling and the string as written for the earlier one; `schemas/jud/common.schema.json` takes both spellings and requires `metadata.minor` under `jud/v1` only, with the minor's range growing by one per minor.
 
 
 <!-- source: docs/project/decisions/0021-record-eval-and-tune-from-the-command-line.md -->

@@ -1,8 +1,9 @@
 # Recorded answer for case `swept-staged-deletion`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: swept-staged-deletion
+  minor: 3
 spec:
   elapsed_ms: 146
   fingerprint: sha256:fff0f1d2700226d5f6737e0c97b9b54d6bc4106a4fa9ec08e121919ab3140f37

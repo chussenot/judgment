@@ -59,11 +59,13 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   replay (`cargo test` runs them).
 - The `.jud` format (`docs/reference/jud-format.md`, `src/jud/`, feature `jud`) is a
   specification other tools implement. Its envelope is a manifest's
-  (`apiVersion`, `kind`, `metadata`, `spec`), and the reader reads exactly
-  one apiVersion, `jud/v1.3` (`jud::API_VERSION`), refusing any other by
-  name. A change to what a document may hold or how it is read takes a new
-  apiVersion (decision 0018) and moves `docs/reference/jud-format.md`, `schemas/jud/`,
-  `tests/jud.rs` and the documents under `examples/jud/` together. The
+  (`apiVersion`, `kind`, `metadata`, `spec`), and the reader reads one
+  line, `jud/v1` (`jud::API_VERSION`), at every `metadata.minor` up to
+  `jud::MINOR`, refusing any other apiVersion by name and a higher minor by
+  number; the earlier spelling `jud/v1.3` is read as minor 3. An addition
+  to what a document may hold is the next minor (decisions 0018 and 0020)
+  and moves `docs/reference/jud-format.md`, `schemas/jud/`, `tests/jud.rs`
+  and the documents under `examples/jud/` together. The
   questions in a rubric are the wire's shape, never a translation of it, and
   fingerprints are RFC 8785 canonical JSON (`src/eval/canonical.rs`) over
   values inside `spec`, so the envelope moves none of them; they are checked

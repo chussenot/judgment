@@ -1,8 +1,9 @@
 # Recorded answer for case `reverted-uncommitted`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: reverted-uncommitted
+  minor: 3
 spec:
   elapsed_ms: 139
   fingerprint: sha256:b6f30761a5c39b588e60dacae050895b0aa19b79b8b5ab3354dbcee33f82b04d

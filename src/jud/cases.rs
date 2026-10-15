@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::rubric::level_index;
 use super::{
-    API_VERSION, Envelope, Error, Metadata, Result, Rubric, Supplied, check_name, from_text,
+    API_VERSION, Envelope, Error, MINOR, Metadata, Result, Rubric, Supplied, check_name, from_text,
     refuse_extra, some, to_yaml,
 };
 use crate::answer::{Answer, BoxEdges, Confidence, Response};
@@ -309,6 +309,7 @@ impl Cases {
             kind: "Cases",
             metadata: Metadata {
                 name: self.name.clone(),
+                minor: Some(MINOR),
                 version: None,
                 description: self.description.clone(),
                 labels: self.labels.clone(),
@@ -883,7 +884,7 @@ spec:
         assert_eq!(ids, ["desk", "refund_request"]);
         let yaml = cases.to_yaml().unwrap();
         assert!(
-            yaml.starts_with("apiVersion: jud/v1.3\nkind: Cases\n"),
+            yaml.starts_with("apiVersion: jud/v1\nkind: Cases\n"),
             "{yaml}"
         );
         assert_eq!(Cases::parse(&yaml).unwrap(), cases);

@@ -21,12 +21,21 @@ struct Loaded {
     document: Document,
 }
 
+/// The version a document declares, as a person reads it: `jud/v1 minor 3`,
+/// or an earlier spelling (`jud/v1.3`) as it stands.
 fn declared_version(text: &str) -> String {
-    serde_saphyr::from_str::<Value>(text)
-        .ok()
-        .and_then(|v| v.get("apiVersion").cloned())
-        .and_then(|v| v.as_str().map(str::to_owned))
-        .unwrap_or_else(|| "?".to_owned())
+    let Some(value) = serde_saphyr::from_str::<Value>(text).ok() else {
+        return "?".to_owned();
+    };
+    let api_version = value
+        .get("apiVersion")
+        .and_then(Value::as_str)
+        .unwrap_or("?")
+        .to_owned();
+    match value.pointer("/metadata/minor").and_then(Value::as_u64) {
+        Some(minor) if api_version == jud::API_VERSION => format!("{api_version} minor {minor}"),
+        _ => api_version,
+    }
 }
 
 /// What to add to a reader's refusal for someone who handed `jud` a file
@@ -38,7 +47,7 @@ pub(crate) fn hint(e: &jud::Error) -> &'static str {
             field: "apiVersion" | "kind",
         }
         | jud::Error::Version { .. } => {
-            " (not a jud/v1.3 document; docs/reference/jud-format.md has the envelope)"
+            " (not a jud/v1 document; docs/reference/jud-format.md has the envelope)"
         }
         _ => "",
     }

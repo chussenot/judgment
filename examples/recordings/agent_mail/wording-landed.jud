@@ -1,8 +1,9 @@
 # Recorded answer for case `wording-landed`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: wording-landed
+  minor: 3
 spec:
   elapsed_ms: 170
   fingerprint: sha256:59314b512a6bcde46ee53a4ffa18fbe4bdd22e1a892db632a52d160ab9f3bd2e

@@ -55,7 +55,7 @@ The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric
 
 1. Decide the kind. A decision needs a rubric; a rubric's thresholds need cases, so the two are usually written together. A recording is written by hand only as a test fixture.
 2. Read the format reference before writing.
-3. Write the document in the `jud/v1.3` envelope, starting from the nearest example under `examples/jud/`.
+3. Write the document in the `jud/v1` envelope with its `metadata.minor`, starting from the nearest example under `examples/jud/`.
 4. Check it with `scripts/jud.sh check`, rubric and cases together, and fix every refusal in the document rather than around it.
 5. When the request depends on the state, look at what each case sends with `scripts/jud.sh lower`.
 6. When bars are to be measured, hand over to the `jud-tune` skill: `jud record` runs only when asked, and only `jud tune` writes a `tuning` block's values.

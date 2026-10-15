@@ -1,8 +1,9 @@
 # Recorded answer for case `receipt`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: receipt
+  minor: 3
 spec:
   response:
     model: jev-1.13.0

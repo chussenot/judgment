@@ -92,12 +92,13 @@ class Jud < Formula
   test do
     assert_match "jud #{version}", shell_output("#{bin}/jud --version")
     # A document the binary reads the way the crate does: a minimal Rubric
-    # in the envelope the format takes (jud/v1.3), accepted with status 0.
+    # in the envelope the format takes (jud/v1, minor 3), accepted with status 0.
     (testpath/"ok.jud").write <<~YAML
-      apiVersion: jud/v1.3
+      apiVersion: jud/v1
       kind: Rubric
       metadata:
         name: ok
+        minor: 3
       spec:
         questions:
           fine:

@@ -1,8 +1,9 @@
 # Recorded answer for case `needs-one-line`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: needs-one-line
+  minor: 3
 spec:
   elapsed_ms: 135
   fingerprint: sha256:9c92a212abff45fa6530d979b3733686e8dee93b778210b5e422f2e88bf33b4c

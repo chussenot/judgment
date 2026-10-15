@@ -1,8 +1,9 @@
 # Recorded answer for case `messages-done`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: messages-done
+  minor: 3
 spec:
   elapsed_ms: 150
   fingerprint: sha256:fb7f81ce53ea05dbee3eda6a1e7537fe6ff5b007116ccd60cc505249dbbf0528

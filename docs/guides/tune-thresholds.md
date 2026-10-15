@@ -200,11 +200,11 @@ jud check triage-tuned.jud examples/jud/triage-cases.jud
 
 <!-- transcript: jud tune --out triage-tuned.jud, then jud check triage-tuned.jud examples/jud/triage-cases.jud -->
 ```text
-rubric    triage-tuned.jud: name inbox-triage, jud/v1.3, 3 questions, 3 gates (tuned)
+rubric    triage-tuned.jud: name inbox-triage, jud/v1 minor 3, 3 questions, 3 gates (tuned)
           questions sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a
           policy    sha256:d9e705af6ee1d94e4219fd4a8c26710d18e01d160262f3e83d8ab8c0032eefc7
           tuned on  sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
-cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1.3, 7 cases, bound to triage-tuned.jud
+cases     examples/jud/triage-cases.jud: name inbox-triage-cases, jud/v1 minor 3, 7 cases, bound to triage-tuned.jud
           cases     sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6
 2 documents, 0 refused
 ```

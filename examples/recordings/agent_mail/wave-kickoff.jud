@@ -1,8 +1,9 @@
 # Recorded answer for case `wave-kickoff`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: wave-kickoff
+  minor: 3
 spec:
   elapsed_ms: 143
   fingerprint: sha256:ae3ab999eeae646665a29f4176ff54d73bd4af94a308c52a35122fe6e9660096

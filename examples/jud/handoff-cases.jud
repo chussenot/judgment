@@ -1,10 +1,11 @@
 # Conversation cases: `from_turn` says at which turn (zero-based) the Noul
 # becomes true, and null that it never does. `Case::per_turn` cuts the
 # conversation after each turn and resolves the label for that turn.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: handoff-cases
+  minor: 3
 spec:
   rubric: handoff
 

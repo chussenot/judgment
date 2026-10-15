@@ -1,6 +1,6 @@
 ---
 title: The .jud format
-description: The normative specification of apiVersion jud/v1.3, the YAML document format for a rubric with its policy, the labelled cases it is graded on and the recordings of what a model answered, in a manifest envelope with content fingerprints any implementation computes the same way.
+description: The normative specification of apiVersion jud/v1 at minor 3, the YAML document format for a rubric with its policy, the labelled cases it is graded on and the recordings of what a model answered, in a manifest envelope with content fingerprints any implementation computes the same way.
 status: current
 last_reviewed: 2026-10-07
 tags: [judgment, jud, format, specification, reference, rubric, cases, recordings, yaml, fingerprint]
@@ -8,7 +8,7 @@ tags: [judgment, jud, format, specification, reference, rubric, cases, recording
 
 # The `.jud` format
 
-This page is the specification of `apiVersion: jud/v1.3`. The rules here are the format; every other page that mentions a field links here. The reasoning behind the format is in [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md) and in decisions [0014](../project/decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md) and [0018](../project/decisions/0018-jud-1-3-takes-the-manifest-envelope.md). The crate's implementation is `judgment::jud` ([The crate](crate.md#the-jud-feature)); the terms are in the [glossary](glossary.md).
+This page is the specification of `apiVersion: jud/v1` at `metadata.minor` 3. The rules here are the format; every other page that mentions a field links here. The reasoning behind the format is in [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md) and in decisions [0014](../project/decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md), [0018](../project/decisions/0018-jud-1-3-takes-the-manifest-envelope.md) and [0020](../project/decisions/0020-how-a-v1-minor-is-spelled.md). The crate's implementation is `judgment::jud` ([The crate](crate.md#the-jud-feature)); the terms are in the [glossary](glossary.md).
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in BCP 14 [[RFC 2119](https://www.rfc-editor.org/rfc/rfc2119)] [[RFC 8174](https://www.rfc-editor.org/rfc/rfc8174)] when, and only when, they appear in all capitals, as shown here.
 
@@ -32,7 +32,7 @@ Every document has exactly four top-level fields, the envelope of a [Kubernetes 
 
 | Field | Value | Meaning |
 |---|---|---|
-| `apiVersion` | `jud/v1.3` | The format, a string, exactly this. |
+| `apiVersion` | `jud/v1` | The format's stable line, a string, exactly this; the minor is `metadata.minor`. [The apiVersion and the minor](#the-apiversion-and-the-minor). |
 | `kind` | `Rubric`, `Cases` or `Recording` | Which shape `spec` has. Any other value MUST be refused. |
 | `metadata` | an object | What identifies the document and what a tool keeps beside it. |
 | `spec` | an object | The kind's own fields. |
@@ -41,6 +41,7 @@ Every document has exactly four top-level fields, the envelope of a [Kubernetes 
 
 | Field | On | Required | Meaning |
 |---|---|---|---|
+| `minor` | every kind | yes | The minor of `jud/v1` the document needs, an integer: `3` today. [The apiVersion and the minor](#the-apiversion-and-the-minor). |
 | `name` | every kind | yes | A [name](#names). On a Rubric, what a cases document's or a recording's `rubric` may name, stable across edits. On a Cases document, the name of the set. On a Recording, the case it answers: a case's name, `<case>-turn-<n>` for one turn of a conversation, or a request hash when a recorder keyed it by content. |
 | `version` | Rubric | no | An edition of the rubric, free-form; a number is read as its text. The questions' fingerprint is the exact identity. |
 | `description` | Rubric, Cases | no | What the rubric decides, or where the cases came from, for the person reading the file. |
@@ -48,10 +49,11 @@ Every document has exactly four top-level fields, the envelope of a [Kubernetes 
 | `annotations` | every kind | no | String to string: what a tool keeps that the format does not name. [Labels and annotations](#labels-and-annotations). |
 
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: inbox-triage
+  minor: 3
   version: 2
   description: Sort an incoming support message.
 spec:
@@ -59,9 +61,15 @@ spec:
   policy: …
 ```
 
-### The apiVersion
+### The apiVersion and the minor
 
-A reader reads exactly `apiVersion: jud/v1.3`. Any other value, a missing `apiVersion`, or a number where the string should be MUST be refused by name, before anything else in the document is read. A change of the format, whether it adds a field or changes what one means, takes a new apiVersion (`jud/v1.4`); a reader reads one apiVersion, and a document is moved forward by rewriting its envelope, not by a reader that reads several.
+`apiVersion` names the stable line of the format, `jud/v1`, and `metadata.minor` the minor within it that the document needs: the lowest whose fields it uses, or simply the one the writer implements. A minor only adds a field, a value a field may take, or a kind; it never removes, renames or narrows one ([Stability](stability.md)). A reader reads `apiVersion: jud/v1` with every `minor` up to the one it implements, and MUST refuse, by number, a `minor` above it, before anything else in the document is read: the document uses something a later minor added, and the right message is that the reader is out of date, not that the document is wrong. A missing `apiVersion`, any other string, a number where the string should be, and a `minor` that is missing or not a non-negative integer MUST be refused by name, before anything else is read. A writer writes the minor it implements. A change of meaning takes a new line, `jud/v2`, with its own apiVersion.
+
+Minor 3 was first published as `apiVersion: jud/v1.3`, with the minor in the string and no `metadata.minor`. A reader MUST read that spelling as `jud/v1` at minor 3, for at least twelve months from the release that first reads `jud/v1` (crate 0.14.0), and MUST refuse a `metadata.minor` beside it; a writer never writes it. The minors published so far:
+
+| Minor | Adds | First read by |
+|---|---|---|
+| 3 | The manifest envelope and everything on this page; spelled `jud/v1.3` until `metadata.minor` existed | crate 0.8.0 (as `jud/v1.3`), 0.14.0 (as `jud/v1`) |
 
 ### Names
 
@@ -72,10 +80,11 @@ A name identifies a thing another document or a file name refers to: every `meta
 `metadata.labels` and `metadata.annotations` are maps of string to string under any keys. Labels are for selecting and grouping; annotations are for everything else, including a shared YAML anchor that would otherwise have to live inside the first question that uses it. A reader MUST check only their shape: every key and every value is a string, so an anchor placed there is a scalar, not a mapping. Their content has no meaning to the reader and is part of no fingerprint. A writer MUST keep them when it writes the document back.
 
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: support-routing
+  minor: 3
   labels:
     team: support
   annotations:
@@ -264,10 +273,11 @@ The "grades as" column is the vocabulary the API's own answers are graded in: a 
 
 <!-- file: examples/jud/spec-cases.jud -->
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: inbox-triage-cases
+  minor: 3
   description: Seven messages, labelled by the support lead.
 spec:
   rubric: inbox-triage
@@ -324,10 +334,11 @@ A cases document's fingerprint is the [fingerprint](#fingerprints) of its `spec.
 
 <!-- file: examples/jud/spec-recording.jud -->
 ```yaml
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: receipt
+  minor: 3
 spec:
   response:
     model: jev-1.13.0
@@ -394,14 +405,14 @@ Known vector: the fingerprint of `{"b": "x", "a": 1}` is `sha256:ecf9e98ec0641e2
 An implementation MUST read a document under these rules.
 
 - YAML 1.2 core schema: `true` and `false` are the booleans; `yes`, `no`, `on`, `off` and `y` are strings; a leading-zero number is decimal. A duplicate key is an error. JSON is accepted as YAML. A merge key (`<<`) and an explicit tag the core schema does not define are refused with their position, and a `!!binary` scalar is its text, not what it encodes. A syntax error names a line and a column and quotes no part of the document.
-- `apiVersion` MUST be present and the string `jud/v1.3`; `kind` MUST be present and one of the three. Both are checked before anything else. A top-level key other than the four of the envelope is refused by name.
+- `apiVersion` MUST be present and the string `jud/v1` (or the earlier spelling `jud/v1.3`); `metadata.minor` MUST be present under `jud/v1`, a non-negative integer at most the minor the reader implements, and absent under the earlier spelling; `kind` MUST be present and one of the three. All three are checked before anything else. A top-level key other than the four of the envelope is refused by name.
 - Every `metadata.name` and every case `id` is a [name](#names). `metadata.name` is REQUIRED on every kind; `metadata.version` is refused on a Cases document and a Recording, `metadata.description` on a Recording. `metadata.labels` and `metadata.annotations` are maps of string to string under any keys.
 - A field the kind does not define is refused, with its path. The exceptions are `tuning` in a rubric and `response` in a recording, which keep what they are given, and `state`, which is any JSON.
 - Order is significant and preserved for `questions`, a Choice's `criteria`, a Score's `criteria`, `bands`, `cases`, `expect` and a case's supplied options. It is not for the parts of an instructions object, which is a JSON object like the state: an implementation MAY send its keys in any order (this crate sends them sorted).
 - A state path in `when` or `part_when` is well formed, and every `part_when` name is a key of its instructions object. `options_from` is `request`, on a Choice. None of the three is `null`.
 - A rubric's questions pass the request builder's checks, and each gate fits its question's primitive and names an offered option or an existing level. A cases document's labels fit their questions when the cases are bound to a rubric; a document MAY be read without its rubric, and is then only checked for shape.
 - A `threshold`, a `confidence` and a band's `at_least` are numbers from 0 to 1 inclusive. A level index is a non-negative integer below the number of levels.
-- A reader that writes a document back MUST write `apiVersion`, `kind`, `metadata` (`name`, then `version`, `description`, `labels` and `annotations` when present) and `spec`, in that order, with the same fields, so a document survives a read and a write with its fingerprints unchanged.
+- A reader that writes a document back MUST write `apiVersion: jud/v1`, `kind`, `metadata` (`name`, `minor`, then `version`, `description`, `labels` and `annotations` when present) and `spec`, in that order, with the same fields, so a document survives a read and a write with its fingerprints unchanged; a document read in the earlier spelling is written in this one.
 
 ## Schemas and conformance
 
@@ -411,4 +422,4 @@ An implementation conforms when it reads all three kinds under the reading rules
 
 ## Extending the format
 
-`jud/v1.3` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later apiVersion is refused whole rather than half-read. Any change, an added field or a changed meaning, takes a new apiVersion, which a reader of this one refuses by name. Two additions are foreseen and not in this apiVersion: a soft label (a distribution over options or levels) and a verdict kind (what an application decided).
+Minor 3 of `jud/v1` names exactly the fields on this page. A reader refuses a field it does not know, so a document written for a later minor is refused whole rather than half-read, and by its `metadata.minor` first, so the refusal names the minor the reader lacks. An addition (a field, a value a field may take, a kind) is the next minor, with this page, the schemas and `metadata.minor`'s range moving together; a change of meaning is `jud/v2`. Two additions are foreseen and not in this minor: a soft label (a distribution over options or levels) and a verdict kind (what an application decided).

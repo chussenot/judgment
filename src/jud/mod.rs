@@ -1,8 +1,8 @@
 //! The `.jud` document format: a rubric with its policy, the cases it is
 //! graded on and the recordings of what a model answered, as YAML or JSON
 //! any tool can read, write and name by content. The specification is
-//! `docs/reference/jud-format.md`; this module reads and writes one version of it,
-//! [`API_VERSION`]: [`parse`] for any kind, [`Rubric`], [`Cases`], and [`parse_recording`]
+//! `docs/reference/jud-format.md`; this module reads and writes one line of it,
+//! [`API_VERSION`] up to [`MINOR`]: [`parse`] for any kind, [`Rubric`], [`Cases`], and [`parse_recording`]
 //! and [`recording_to_yaml`] for a [`crate::eval::Recording`]. Fingerprints
 //! are [`crate::eval::canonical`].
 //!
@@ -25,10 +25,23 @@ pub use rubric::{
     Verdict,
 };
 
-/// The one `apiVersion` this crate reads and writes. A document of any
-/// other version is refused by name: the format has no compatibility
-/// between versions, and a change takes a new apiVersion.
-pub const API_VERSION: &str = "jud/v1.3";
+/// The `apiVersion` this crate reads and writes: the stable `v1` line of
+/// the format, whose minor is `metadata.minor` ([`MINOR`]; decision 0020).
+/// Any other string is refused by name, but for [`EARLIER_SPELLINGS`].
+pub const API_VERSION: &str = "jud/v1";
+
+/// The highest `metadata.minor` this crate reads, and the one it writes. A
+/// minor only adds (`docs/reference/stability.md`), so every lower minor
+/// is read too; a document declaring a higher one needs a later release
+/// and is refused by number ([`Error::Minor`]).
+pub const MINOR: u32 = 3;
+
+/// How a minor was spelled before `metadata.minor` existed, with the
+/// minor it is: `jud/v1.3` wrote its minor into the `apiVersion` string.
+/// Read as that minor, with no `metadata.minor` allowed beside it, for at
+/// least twelve months from the release that first reads `jud/v1`
+/// (`docs/reference/stability.md`); never written.
+pub const EARLIER_SPELLINGS: [(&str, u32); 1] = [("jud/v1.3", 3)];
 
 /// The three kinds, as the `kind` field spells them.
 pub const KINDS: [&str; 3] = ["Rubric", "Cases", "Recording"];
@@ -61,11 +74,22 @@ pub enum Error {
     Syntax(String),
     /// An `apiVersion` this crate does not read.
     #[error(
-        "`apiVersion: {found}` is not a version this crate reads; it reads `apiVersion: jud/v1.3`"
+        "`apiVersion: {found}` is not a version this crate reads; it reads `apiVersion: jud/v1` with `metadata.minor`, and the earlier spelling `jud/v1.3`"
     )]
     Version {
         /// What the document said.
         found: String,
+    },
+    /// A `metadata.minor` above the one this crate reads: the document
+    /// uses something a later minor added, and a later release reads it.
+    #[error(
+        "`metadata.minor: {found}` is past the minor this crate reads, {reads}; a later release of the crate reads it"
+    )]
+    Minor {
+        /// What the document declared.
+        found: u64,
+        /// The highest minor this crate reads.
+        reads: u32,
     },
     /// A `kind:` this crate does not know.
     #[error("`kind: {found}` is not a document kind; the kinds are Rubric, Cases and Recording")]
@@ -145,25 +169,47 @@ pub fn parse(text: &str) -> Result<Document> {
     }
 }
 
-/// The two keys read before anything else, so a document of another
-/// version or kind is refused by name and never half-read.
+/// The keys read before anything else, so a document of another version,
+/// minor or kind is refused by name and never half-read: `apiVersion`,
+/// `kind` and `metadata.minor`.
 #[derive(Deserialize)]
 pub(crate) struct Envelope {
     #[serde(default, rename = "apiVersion")]
     pub(crate) api_version: Option<Value>,
     #[serde(default)]
     pub(crate) kind: Option<String>,
+    #[serde(default)]
+    pub(crate) metadata: Option<EnvelopeMetadata>,
+}
+
+/// The one metadata field the envelope check reads; the rest is each
+/// kind's reader's.
+#[derive(Deserialize, Default)]
+pub(crate) struct EnvelopeMetadata {
+    #[serde(default)]
+    pub(crate) minor: Option<Value>,
 }
 
 impl Envelope {
     pub(crate) fn check(&self) -> Result<()> {
+        let minor = self.metadata.as_ref().and_then(|m| m.minor.as_ref());
         match &self.api_version {
             None => {
                 return Err(Error::Missing {
                     field: "apiVersion",
                 });
             }
-            Some(Value::String(s)) if s == API_VERSION => {}
+            Some(Value::String(s)) if s == API_VERSION => check_minor(minor)?,
+            Some(Value::String(s)) if EARLIER_SPELLINGS.iter().any(|(e, _)| e == s) => {
+                if minor.is_some() {
+                    return Err(Error::Invalid {
+                        field: "metadata.minor".to_owned(),
+                        reason: format!(
+                            "not a field of a `{s}` document, whose minor is in its apiVersion; write `apiVersion: {API_VERSION}` to declare one"
+                        ),
+                    });
+                }
+            }
             Some(other) => {
                 return Err(Error::Version {
                     found: other.to_string(),
@@ -195,12 +241,41 @@ impl Envelope {
     }
 }
 
-/// The `metadata` of any kind: a name, and what a tool keeps beside the
-/// format. Which optional fields a kind takes is checked by its reader.
+/// `metadata.minor` under `apiVersion: jud/v1`: required, an integer, at
+/// most [`MINOR`]. Checked before anything else in the document.
+fn check_minor(minor: Option<&Value>) -> Result<()> {
+    let Some(minor) = minor else {
+        return Err(Error::Missing {
+            field: "metadata.minor",
+        });
+    };
+    let Some(found) = minor.as_u64() else {
+        return Err(Error::Invalid {
+            field: "metadata.minor".to_owned(),
+            reason: format!(
+                "{minor} is not a minor version: a non-negative integer, {MINOR} today"
+            ),
+        });
+    };
+    if found > u64::from(MINOR) {
+        return Err(Error::Minor {
+            found,
+            reads: MINOR,
+        });
+    }
+    Ok(())
+}
+
+/// The `metadata` of any kind: a name, the minor the document needs, and
+/// what a tool keeps beside the format. Which optional fields a kind takes
+/// is checked by its reader; `minor` was checked by the envelope and is
+/// written as [`MINOR`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Metadata {
     pub(crate) name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) minor: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) version: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -295,6 +370,7 @@ pub fn recording_to_yaml(recording: &Recording) -> Result<String> {
         kind: "Recording",
         metadata: Metadata {
             name: recording.case.clone(),
+            minor: Some(MINOR),
             ..Metadata::default()
         },
         spec: &spec,
@@ -435,10 +511,56 @@ mod tests {
             ),
             "{err}"
         );
-        for other in ["jud/v1.2", "jud/v1.4", "jud/v2", "v1.3", "1.3"] {
+        for other in ["jud/v1.2", "jud/v1.4", "jud/v2", "v1.3", "1.3", "jud/v1.0"] {
             let err = parse(&format!("apiVersion: {other}\nkind: Rubric\n")).unwrap_err();
             assert!(matches!(err, Error::Version { .. }), "{other}: {err}");
         }
+        // `jud/v1` needs a minor, an integer at most the one this crate reads.
+        let err = parse("apiVersion: jud/v1\nkind: Rubric\nmetadata: {name: r}\n").unwrap_err();
+        assert!(
+            matches!(
+                err,
+                Error::Missing {
+                    field: "metadata.minor"
+                }
+            ),
+            "{err}"
+        );
+        let err = parse(&format!(
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata: {{name: r, minor: {}}}\n",
+            MINOR + 1
+        ))
+        .unwrap_err();
+        assert!(
+            matches!(err, Error::Minor { found, reads } if found == u64::from(MINOR + 1) && reads == MINOR),
+            "{err}"
+        );
+        for bad in ["\"3\"", "3.5", "-1", "null"] {
+            let err = parse(&format!(
+                "apiVersion: jud/v1\nkind: Rubric\nmetadata: {{name: r, minor: {bad}}}\n"
+            ))
+            .unwrap_err();
+            assert!(
+                matches!(&err, Error::Invalid { field, .. } if field == "metadata.minor")
+                    || matches!(
+                        err,
+                        Error::Missing {
+                            field: "metadata.minor"
+                        }
+                    ),
+                "{bad}: {err}"
+            );
+        }
+        // The earlier spelling reads as its minor, and takes no `minor`.
+        parse("apiVersion: jud/v1.3\nkind: Rubric\nmetadata: {name: r}\nspec:\n  questions:\n    q: {type: noul, instructions: ok?}\n").unwrap();
+        let err = parse("apiVersion: jud/v1.3\nkind: Rubric\nmetadata: {name: r, minor: 3}\n")
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::Invalid { field, .. } if field == "metadata.minor"),
+            "{err}"
+        );
+        // A lower minor is read: a minor only adds.
+        parse("apiVersion: jud/v1\nkind: Rubric\nmetadata: {name: r, minor: 0}\nspec:\n  questions:\n    q: {type: noul, instructions: ok?}\n").unwrap();
         let err = parse("apiVersion: 1.3\nkind: Rubric\n").unwrap_err();
         assert!(
             matches!(err, Error::Version { .. }),
@@ -483,7 +605,8 @@ mod tests {
             "{err}"
         );
         // An unknown kind is still the other error, through the same path.
-        let err = Rubric::parse("apiVersion: jud/v1.3\nkind: verdicts\n").unwrap_err();
+        let err = Rubric::parse("apiVersion: jud/v1\nkind: verdicts\nmetadata: {minor: 3}\n")
+            .unwrap_err();
         assert!(
             matches!(&err, Error::Kind { found } if found == "verdicts"),
             "{err}"

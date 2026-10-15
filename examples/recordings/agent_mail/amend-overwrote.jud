@@ -1,8 +1,9 @@
 # Recorded answer for case `amend-overwrote`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: amend-overwrote
+  minor: 3
 spec:
   elapsed_ms: 213
   fingerprint: sha256:8a643c73d0e9ca25189681b6f25a1fbe0e57bd4bd169cdbcb5500f0f408d9c27

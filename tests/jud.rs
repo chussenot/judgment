@@ -231,6 +231,24 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
             &*RUBRIC,
             "apiVersion: jud/v1.2\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
         ),
+        // `jud/v1` without its minor, with one past this reader's, and the
+        // earlier spelling with a minor it did not have.
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: \"3\"\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\n  minor: 3\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
         (
             &*RUBRIC,
             "jud: 1.2\nkind: rubric\nid: r\nquestions:\n  n: {type: noul, instructions: ok?}\n",
@@ -406,20 +424,34 @@ fn a_syntax_error_quotes_no_part_of_the_document() {
     assert!(!shown.contains("TOPSECRET"), "{shown}");
 }
 
-/// Every document is written back under the one apiVersion, with the
-/// envelope's keys in manifest order, and validates against its schema.
+/// Every document is written back under `jud/v1` and the minor this crate
+/// implements, with the envelope's keys in manifest order, and validates
+/// against its schema; a document in the earlier spelling reads and is
+/// moved forward by the write.
 #[test]
 fn a_document_is_written_back_under_the_one_api_version() {
-    let plain = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n";
+    let plain = "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 3\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n";
     let rubric = Rubric::parse(plain).unwrap();
     let yaml = rubric.to_yaml().unwrap();
     assert!(
-        yaml.starts_with("apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n"),
+        yaml.starts_with(
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 3\nspec:\n"
+        ),
         "{yaml}"
     );
     assert!(RUBRIC.is_valid(&value_of(plain)));
     assert!(RUBRIC.is_valid(&value_of(&yaml)));
-    assert_eq!(jud::API_VERSION, "jud/v1.3");
+    assert_eq!(jud::API_VERSION, "jud/v1");
+    assert_eq!(jud::MINOR, 3);
+    // The spelling minor 3 was published under: read, valid, and written
+    // back as `jud/v1` with the minor; a lower minor is read too.
+    let earlier = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n";
+    assert!(RUBRIC.is_valid(&value_of(earlier)));
+    assert_eq!(Rubric::parse(earlier).unwrap(), rubric);
+    assert_eq!(Rubric::parse(earlier).unwrap().to_yaml().unwrap(), yaml);
+    let lower = plain.replace("minor: 3", "minor: 2");
+    assert!(RUBRIC.is_valid(&value_of(&lower)));
+    assert_eq!(Rubric::parse(&lower).unwrap(), rubric);
 }
 
 /// The policy fingerprint is the gates alone, so a moved bar is as

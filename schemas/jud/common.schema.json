@@ -8,8 +8,11 @@
       "type": "object",
       "properties": {
         "apiVersion": {
-          "const": "jud/v1.3",
-          "description": "The one version a reader reads; any other value is refused by name."
+          "enum": [
+            "jud/v1",
+            "jud/v1.3"
+          ],
+          "description": "The stable v1 line, whose minor is metadata.minor; `jud/v1.3` is the earlier spelling of minor 3, read as it stands and never written. Any other value is refused by name."
         },
         "kind": {
           "type": "string",
@@ -32,7 +35,38 @@
         "metadata",
         "spec"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "apiVersion": {
+                "const": "jud/v1"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata": {
+                "required": [
+                  "minor"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "metadata": {
+                "not": {
+                  "required": [
+                    "minor"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "name": {
       "type": "string",
@@ -226,6 +260,12 @@
       "properties": {
         "name": {
           "$ref": "#/$defs/name"
+        },
+        "minor": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3,
+          "description": "The minor of jud/v1 the document needs: required under apiVersion jud/v1, refused under the earlier spelling. A reader reads every minor up to its own and refuses a higher one by number."
         },
         "version": {
           "type": [

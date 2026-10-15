@@ -1,8 +1,9 @@
 # Recorded answer for case `module-contract`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: module-contract
+  minor: 3
 spec:
   elapsed_ms: 150
   fingerprint: sha256:1bb981498e407eb651aa15fc01a6240ec3930bb1f0df351ff48378cc2c23c2e5

@@ -1,9 +1,10 @@
 # Labelled tickets for support.jud. Two labels in here are wrong on purpose
 # (the battle test checks that /jud:eval finds them); see the notes.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Cases
 metadata:
   name: support-triage-cases
+  minor: 3
   description: 'Labelled tickets for support.jud: 48 cases, every queue and urgency level.'
 spec:
   rubric: support-triage

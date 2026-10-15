@@ -16,10 +16,11 @@ use judgment::{Fake, SystemOne};
 // another tool can read (docs/reference/jud-format.md). The policy is never
 // sent to the model.
 const RUBRIC: &str = r"
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Rubric
 metadata:
   name: inbox-triage
+  minor: 3
 spec:
   questions:
     department:

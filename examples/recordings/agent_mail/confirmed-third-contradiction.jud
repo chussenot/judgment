@@ -1,8 +1,9 @@
 # Recorded answer for case `confirmed-third-contradiction`; found by fingerprint.
-apiVersion: jud/v1.3
+apiVersion: jud/v1
 kind: Recording
 metadata:
   name: confirmed-third-contradiction
+  minor: 3
 spec:
   elapsed_ms: 144
   fingerprint: sha256:9edc089a253dbf6263f64a9514990eda65666c4e5ec3937699eed70c74374124
