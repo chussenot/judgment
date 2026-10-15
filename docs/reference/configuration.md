@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: Every setting the jud command and the crate's client read, where each comes from, in what order of precedence, and what the defaults are; the configuration file's fields, the output of jud config, and which commands read JUD_REPLAY.
+description: Every setting the jud command and the crate's client read, where each comes from, in what order of precedence, and what the defaults are; the configuration file's fields, long context as a field and a flag, the output of jud config, and which commands read JUD_REPLAY.
 status: current
 last_reviewed: 2026-10-15
 tags: [judgment, jud, cli, configuration, reference]
@@ -14,22 +14,24 @@ The settings of the `jud` command and of the crate's `Client`, as `src/bin/jud/c
 
 ### Precedence
 
-Each level overrides the one below it. The environment wins over the file, the file over the defaults.
+Each level overrides the one below it. The environment wins over the file, the file over the defaults; a flag on the command line, where a setting has one, wins over all three.
 
 ```mermaid
 flowchart TD
+    C["Command line<br/>--replay DIR, --long-context"] --> E
     E["Environment<br/>TYPESAFE_API_KEY, TYPESAFE_BASE_URL, JUD_REPLAY"] --> F
-    F["Configuration file<br/>$XDG_CONFIG_HOME/jud/config.yaml, else ~/.config/jud/config.yaml<br/>base_url, api_key, model, timeout_secs"] --> D
-    D["Defaults<br/>https://api.typesafe.ai, jev-latest, 30 s, no key"]
+    F["Configuration file<br/>$XDG_CONFIG_HOME/jud/config.yaml, else ~/.config/jud/config.yaml<br/>base_url, api_key, model, timeout_secs, long_context"] --> D
+    D["Defaults<br/>https://api.typesafe.ai, jev-latest, 30 s, no key, long context off"]
 ```
 
-| Setting | Environment | File field | Default |
-|---|---|---|---|
-| Base URL | `TYPESAFE_BASE_URL` | `base_url` | `https://api.typesafe.ai` |
-| API key | `TYPESAFE_API_KEY` | `api_key` | none; a command that asks a backend with no key is refused with status 2 |
-| Model | | `model` | `jev-latest` |
-| Timeout per attempt | | `timeout_secs` | `30` |
-| Replay directory | `JUD_REPLAY` | | none; the flag `--replay DIR` overrides the variable; [which commands read it](#replay) |
+| Setting | Command line | Environment | File field | Default |
+|---|---|---|---|---|
+| Base URL | | `TYPESAFE_BASE_URL` | `base_url` | `https://api.typesafe.ai` |
+| API key | | `TYPESAFE_API_KEY` | `api_key` | none; a command that asks a backend with no key is refused with status 2 |
+| Model | | | `model` | `jev-latest` |
+| Timeout per attempt | | | `timeout_secs` | `30` |
+| Long context | `--long-context` on `jud RUBRIC`, `jud record` and `jud eval` | | `long_context` | `false`: the model's own limits, 64k tokens per request and 32k per question; `true` raises both to 262k on every call of the run through the crate's `ClientBuilder::long_context`, slower and less accurate by TypeSafe's own account ([Use long context](../guides/use-long-context.md#from-the-shell)). Nothing under a replay, which asks no server. |
+| Replay directory | `--replay DIR` | `JUD_REPLAY` | | none; [which commands read it](#replay) |
 
 `TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL` set to an empty or blank value count as unset. `JUD_REPLAY` set to an empty or blank value does not: [Replay](#replay) says what happens. No environment variable names the model for the command; the examples under `examples/` read `TYPESAFE_MODEL` for their `--live` runs, the command does not ([beads issue `judgment-rxl`](../project/contributing.md#tracking-work)).
 
@@ -53,6 +55,7 @@ jud: JUD_BASE_URL is set but jud does not read it (it reads TYPESAFE_BASE_URL, T
 base_url: https://api.typesafe.ai
 model: jev-latest
 timeout_secs: 30
+long_context: false   # true: both context limits raised to 262k tokens on every call
 # api_key: ...   # prefer TYPESAFE_API_KEY, which no file on disk holds
 ```
 
@@ -70,11 +73,13 @@ Prints the resolved backend and where each value came from, as JSON on stdout. T
   "model": "jev-latest",
   "model_from": "default",
   "timeout_secs": 30,
+  "long_context": false,
+  "long_context_from": "default",
   "api_key": "missing"
 }
 ```
 
-`*_from` is `environment`, `config_file` or `default`. `ignored_environment`, the [variables jud does not read](#variables-jud-does-not-read) that are set, is there only when there are some.
+`*_from` is `environment`, `config_file` or `default`; `long_context_from` is `config_file` or `default`, since `jud config` takes no `--long-context` (a run that does says `from command line` in its dry run and before its first call). `ignored_environment`, the [variables jud does not read](#variables-jud-does-not-read) that are set, is there only when there are some.
 
 ### Replay
 

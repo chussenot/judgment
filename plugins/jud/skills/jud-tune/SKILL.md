@@ -75,9 +75,13 @@ This decides the order of everything else, so know it first.
 
 A state over the model's context (`max_tokens_exceeded`, 400, from the
 hosted API at 32k tokens for the state and one question, 64k for the
-whole request) fails that case's call; `jud` has no setting for long
-context yet (the crate's `CallOptions::long_context` raises both to 262k),
-so the state is the thing to shorten, or the case to leave out and say so.
+whole request) fails that case's call. `--long-context` on `record` or
+`eval`, or `long_context: true` in `jud`'s configuration file, raises both
+limits to 262k for every call of the run, at a cost TypeSafe names (slower,
+less accurate); the recordings are keyed as without it. Say which it is
+when you propose it: turn it on when the long states are the rubric's own
+subject, shorten the state when they are not, or leave the case out and
+say so. Never turn it on for a whole run because one case is long.
 
 A recording is keyed by the request's fingerprint (the state and the
 questions sent, and each image by its digest). When the questions change, `eval --replay` exits with

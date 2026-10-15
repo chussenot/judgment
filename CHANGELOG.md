@@ -82,6 +82,13 @@ All notable changes to the `judgment` crate. The format follows
   confidence, the band and `pixels`; `jud eval` reports a Box question's
   `mean_iou` beside its accuracy, no Brier score, and a miss's `iou`; `jud
   check` counts a document's images.
+- `jud`: `long_context: true` in its configuration file, or `--long-context`
+  on `jud RUBRIC`, `jud record` and `jud eval`, asks for long context on
+  every call of the run (the switch of decision 0027, passed to
+  `ClientBuilder::long_context`); the flag wins over the file, and a replay
+  ignores both since it asks nothing. `jud config` reports `long_context`
+  and `long_context_from`, `jud record --dry-run` prints a `long context:`
+  line, and the line before a run's first call names it when it is on.
 - Long context (<https://docs.typesafe.ai/models#long-context>): both
   context limits raised from 64k tokens per request and 32k per question
   to 262k through the `TypeSafe-Danger-Zone-Long-Context: true` header,

@@ -40,20 +40,24 @@ struct File {
     api_key: Option<String>,
     model: Option<String>,
     timeout_secs: Option<u64>,
+    long_context: Option<bool>,
 }
 
 /// Where a value came from, for `jud config`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum Source {
+    /// A flag of the run (`--long-context`); never in `jud config`, which
+    /// takes none.
+    CommandLine,
     Environment,
     ConfigFile,
     Default,
 }
 
 impl Source {
-    /// The name `jud config` prints: `environment`, `config_file` or
-    /// `default`.
+    /// The name `jud config` prints: `command_line`, `environment`,
+    /// `config_file` or `default`.
     fn name(self) -> String {
         serde_json::to_value(self)
             .ok()
@@ -72,6 +76,12 @@ pub(crate) struct Resolved {
     model: String,
     model_from: Source,
     timeout_secs: u64,
+    /// Whether every call of the run asks for long context (both context
+    /// limits raised to 262k tokens through the header the crate's
+    /// `ClientBuilder::long_context` sends); off unless the file or the
+    /// run's `--long-context` says so.
+    long_context: bool,
+    long_context_from: Source,
     /// `environment`, `config_file` or `missing`; never the key.
     api_key: &'static str,
     #[serde(skip)]
@@ -125,6 +135,13 @@ fn env_var(name: &str) -> Option<String> {
 
 /// Resolve the backend: environment, then the file, then the defaults.
 pub(crate) fn resolve() -> Fallible<Resolved> {
+    resolve_with(None)
+}
+
+/// [`resolve`], with the run's own `--long-context`: `Some(true)` when the
+/// flag was given, which wins over the file; `None` leaves it to the file
+/// and the default.
+pub(crate) fn resolve_with(long_context: Option<bool>) -> Fallible<Resolved> {
     let config_file = path();
     let file = read_file(&config_file)?;
     let present = file.is_some();
@@ -143,6 +160,11 @@ pub(crate) fn resolve() -> Fallible<Resolved> {
         (None, Some(key)) => ("config_file", Some(key)),
         (None, None) => ("missing", None),
     };
+    let (long_context, long_context_from) = match (long_context, file.long_context) {
+        (Some(on), _) => (on, Source::CommandLine),
+        (None, Some(on)) => (on, Source::ConfigFile),
+        (None, None) => (false, Source::Default),
+    };
     Ok(Resolved {
         config_file: config_file.display().to_string(),
         config_file_present: present,
@@ -151,6 +173,8 @@ pub(crate) fn resolve() -> Fallible<Resolved> {
         model,
         model_from,
         timeout_secs: file.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS),
+        long_context,
+        long_context_from,
         api_key,
         api_key_value,
         ignored_environment: ignored_environment(),
@@ -175,6 +199,27 @@ impl Resolved {
     /// `default`.
     pub(crate) fn base_url_from(&self) -> String {
         self.base_url_from.name()
+    }
+
+    /// Whether the run asks for long context on every call.
+    pub(crate) fn long_context(&self) -> bool {
+        self.long_context
+    }
+
+    /// Where the long-context setting came from: `command_line`,
+    /// `config_file` or `default`.
+    pub(crate) fn long_context_from(&self) -> String {
+        self.long_context_from.name()
+    }
+
+    /// The long-context setting as a run's messages say it: `on (from
+    /// SOURCE)` or `off`, where a source's underscore is a space.
+    pub(crate) fn describe_long_context(&self) -> String {
+        if self.long_context {
+            format!("on (from {})", self.long_context_from().replace('_', " "))
+        } else {
+            "off".to_owned()
+        }
     }
 
     /// One line on stderr per variable `ignored_environment` found, saying
@@ -206,7 +251,8 @@ impl Resolved {
         let mut builder = Client::builder()
             .base_url(self.base_url.clone())
             .model(self.model.clone())
-            .timeout(Duration::from_secs(self.timeout_secs));
+            .timeout(Duration::from_secs(self.timeout_secs))
+            .long_context(self.long_context);
         if let Some(key) = &self.api_key_value {
             builder = builder.api_key(key.clone());
         }

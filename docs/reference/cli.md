@@ -62,6 +62,11 @@ Options:
 
           Without it, the size of the request's one image is used; with several images, or none, a box is printed as fractions only.
 
+      --long-context
+          Ask for long context: both context limits raised to 262k tokens, whatever the configuration file says.
+
+          Without it a request is held to 64k tokens, and the state with any one question to 32k, and one over either is refused as `max_tokens_exceeded`. Under long context it is answered, slower and less accurately by TypeSafe's own account, which is why it is a switch and never the default; `long_context: true` in the configuration file turns it on for every run. Nothing under --replay, which asks no server.
+
   -h, --help
           Print help (see a summary with '-h')
 
@@ -261,6 +266,11 @@ Options:
       --dry-run
           Ask nothing and write nothing: print what a run would do. The requests, how many DIR already answers, which are to be asked or replaced, the backend and model it would ask, whether a key is set, and how long the run would take at the median time of the recordings in DIR
 
+      --long-context
+          Ask for long context on every call: both context limits raised to 262k tokens, whatever the configuration file says.
+
+          Without it a request is held to 64k tokens, and the state with any one question to 32k, and a case over either fails its call as `max_tokens_exceeded`. Under long context it is answered, slower and less accurately by TypeSafe's own account, which is why it is a switch and never the default; `long_context: true` in the configuration file turns it on for every run. The recordings are keyed as without it: the header changes the limits, not the request.
+
   -h, --help
           Print help (see a summary with '-h')
 ```
@@ -312,7 +322,7 @@ kept invoice-vat
 recorded 2, kept 5 in recordings
 ```
 
-First `asking MODEL at URL for up to N requests (base URL from SOURCE)`, before anything is asked, where `SOURCE` is `environment`, `config file` or `default`. An unset base URL is the hosted API, so a run pointed at the wrong server, by a misspelt variable say, can be stopped before it has paid for every request; it is a line and not a prompt, so a script never waits on it. `N` counts every request planned, those the directory already answers included, which is why it says "up to". Then a line for each of `recorded NAME (N/TOTAL, MS ms)`, `kept NAME` and `replaced NAME (stale)`, then `recorded R, kept K in DIR`, where a replaced recording counts as recorded. When two files in `DIR` record one request, a `jud: warning:` line names them, since a replay answers from one of them.
+First `asking MODEL at URL for up to N requests (base URL from SOURCE)`, before anything is asked, where `SOURCE` is `environment`, `config file` or `default`; with long context on, the parenthesis goes on `, long context on (from config file)` or `(from command line)`, and says nothing when it is off. An unset base URL is the hosted API, so a run pointed at the wrong server, by a misspelt variable say, can be stopped before it has paid for every request; it is a line and not a prompt, so a script never waits on it. `N` counts every request planned, those the directory already answers included, which is why it says "up to". Then a line for each of `recorded NAME (N/TOTAL, MS ms)`, `kept NAME` and `replaced NAME (stale)`, then `recorded R, kept K in DIR`, where a replaced recording counts as recorded. When two files in `DIR` record one request, a `jud: warning:` line names them, since a replay answers from one of them.
 
 A call that fails stops the run at that case with status 1. The message names the case, its position, how many were recorded and kept before it, and `DIR`. The recordings already written stay, and the next run resumes from them. Exit status: 0 when every request has a recording, written or kept; 1 when a call failed or a recording could not be written; 2 for a refusal.
 
@@ -325,11 +335,12 @@ A call that fails stops the run at that case with status 1. The message names th
 to ask: NAME, NAME, ...
 stale, to replace: NAME, ...
 backend http://127.0.0.1:11434, model tev1:0.8b (from config_file)
+long context: off
 API key: set (config_file)
 time: about 10.7 s a request (median of 88 recordings in recordings/tev1), about 53.6 s for 5
 ```
 
-The `to ask` and `stale` lines appear only when there is a name to give. The model's source is `environment`, `config_file` or `default`; the key's is `environment` or `config_file`, or the line says it is missing and that the run would stop before the first call. The time is the median `elapsed_ms` of the recordings already in `DIR`, so it is the backend's own pace; with none it is unknown until the first request answers. With `--refresh` nothing is counted as kept. Two cases that lower to one request are counted once to ask and once kept, as a run asks once. The refusals a run makes before any call are status 2 here as in a run: a document that does not read or bind, a case without an id, an `--out` that is a file rather than a directory, and a stale recording that sits in a file the run would not write.
+The `to ask` and `stale` lines appear only when there is a name to give. The model's source is `environment`, `config_file` or `default`; the long context line is `off`, `on (from config file)` or `on (from command line)` ([Configuration](configuration.md#the-jud-command)); the key's source is `environment` or `config_file`, or the line says it is missing and that the run would stop before the first call. The time is the median `elapsed_ms` of the recordings already in `DIR`, so it is the backend's own pace; with none it is unknown until the first request answers. With `--refresh` nothing is counted as kept. Two cases that lower to one request are counted once to ask and once kept, as a run asks once. The refusals a run makes before any call are status 2 here as in a run: a document that does not read or bind, a case without an id, an `--out` that is a file rather than a directory, and a stale recording that sits in a file the run would not write.
 
 ## `jud eval`
 
@@ -359,6 +370,11 @@ Options:
 
       --min-accuracy <[QUESTION=]ACCURACY>
           Fail with status 3 when accuracy is below this, 0 to 1: `0.9` for every labelled question, `desk=0.95` for one. Repeatable. It is the model's accuracy per question, not the policy's. A question with no labelled case does not meet its bar
+
+      --long-context
+          Ask for long context on every call: both context limits raised to 262k tokens, whatever the configuration file says.
+
+          Without it a request is held to 64k tokens, and the state with any one question to 32k, and a case over either fails its call as `max_tokens_exceeded`. Under long context it is answered, slower and less accurately by TypeSafe's own account, which is why it is a switch and never the default; `long_context: true` in the configuration file turns it on for every run. Nothing under --replay, which asks no server.
 
   -h, --help
           Print help (see a summary with '-h')

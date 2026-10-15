@@ -55,6 +55,18 @@ pub(crate) struct Eval {
     /// labelled case does not meet its bar.
     #[arg(long, value_name = "[QUESTION=]ACCURACY", value_parser = parse_min_accuracy)]
     pub min_accuracy: Vec<MinAccuracy>,
+    /// Ask for long context on every call: both context limits raised to
+    /// 262k tokens, whatever the configuration file says.
+    ///
+    /// Without it a request is held to 64k tokens, and the state with any
+    /// one question to 32k, and a case over either fails its call as
+    /// `max_tokens_exceeded`. Under long context it is answered, slower and
+    /// less accurately by TypeSafe's own account, which is why it is a
+    /// switch and never the default; `long_context: true` in the
+    /// configuration file turns it on for every run. Nothing under
+    /// --replay, which asks no server.
+    #[arg(long)]
+    pub long_context: bool,
 }
 
 /// One `--min-accuracy` gate: the bar, and the question it applies to
@@ -1021,7 +1033,7 @@ fn check_bars(rubric: &Rubric, bars: &[MinAccuracy], rubric_path: &str) -> Resul
 fn evaluate(args: &Eval) -> Result<Report, Failure> {
     let loaded = batch::load(&args.rubric, &args.cases)?;
     check_bars(&loaded.rubric, &args.min_accuracy, &args.rubric)?;
-    let backend = Backend::open(args.replay.as_deref())?;
+    let backend = Backend::open(args.replay.as_deref(), args.long_context.then_some(true))?;
     let planned = batch::plan(&loaded)?;
     let answered = batch::answer_all(&backend, &loaded, planned)?;
     Ok(Report::build(&loaded, &answered, &args.min_accuracy))

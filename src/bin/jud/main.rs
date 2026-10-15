@@ -120,6 +120,18 @@ struct Cli {
     /// several images, or none, a box is printed as fractions only.
     #[arg(long, value_name = "WxH")]
     pixels: Option<String>,
+    /// Ask for long context: both context limits raised to 262k tokens,
+    /// whatever the configuration file says.
+    ///
+    /// Without it a request is held to 64k tokens, and the state with any
+    /// one question to 32k, and one over either is refused as
+    /// `max_tokens_exceeded`. Under long context it is answered, slower and
+    /// less accurately by TypeSafe's own account, which is why it is a
+    /// switch and never the default; `long_context: true` in the
+    /// configuration file turns it on for every run. Nothing under
+    /// --replay, which asks no server.
+    #[arg(long)]
+    long_context: bool,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -186,6 +198,7 @@ fn main() -> ExitCode {
         (None, Some(path)) => run::run(
             &path,
             replay.as_deref(),
+            cli.long_context,
             run::OptionsArg {
                 inline: cli.options.as_deref(),
                 file: cli.options_file.as_deref(),

@@ -542,6 +542,193 @@ async fn a_configured_system_one_server_is_used_without_any_environment() {
     assert_eq!(config["base_url_from"], "environment");
 }
 
+/// Long context is off unless `long_context: true` is in the file or
+/// `--long-context` is on the run, the flag winning over the file; when it
+/// is on, every call carries the crate's header and nothing else changes.
+/// `jud config` says what it is and where it came from, and a dry run and
+/// the line before a run's first call name it when it is on.
+#[tokio::test]
+async fn long_context_is_a_setting_of_the_file_and_a_flag_of_the_run() {
+    let server = backend(200, answers(), 4).await;
+    let home = config_home();
+    let uri = server.uri();
+    let env = [
+        ("TYPESAFE_API_KEY", "test-key"),
+        ("TYPESAFE_BASE_URL", uri.as_str()),
+    ];
+    let out = jud(&["config"], "", &env, &home);
+    let config: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(config["long_context"], false, "off by default");
+    assert_eq!(config["long_context_from"], "default");
+    // Off by default; on from the flag; on from the file.
+    let out = jud(&[RUBRIC], STATE, &env, &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let out = jud(&[RUBRIC, "--long-context"], STATE, &env, &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+    std::fs::write(home.join("jud/config.yaml"), "long_context: true\n").unwrap();
+    let out = jud(&["config"], "", &env, &home);
+    let config: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(config["long_context"], true);
+    assert_eq!(config["long_context_from"], "config_file");
+    let out = jud(&[RUBRIC], STATE, &env, &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(stderr(&out).is_empty(), "{}", stderr(&out));
+
+    // The line before a run's first call names it: one case that the mock
+    // answers, recorded into a fresh directory.
+    let out_dir = std::env::temp_dir().join(format!(
+        "jud-cli-long-{}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::SeqCst)
+    ));
+    let cases = home.join("one-case.jud");
+    std::fs::write(
+        &cases,
+        "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: one-case\n  minor: 3\nspec:\n  rubric: inbox-triage\n  cases:\n    - id: charged-twice\n      state: {message: \"Charged twice. Fix it today.\"}\n      expect: {desk: billing}\n",
+    )
+    .unwrap();
+    let out = jud(
+        &[
+            "record",
+            RUBRIC,
+            cases.to_str().unwrap(),
+            "--out",
+            out_dir.to_str().unwrap(),
+        ],
+        "",
+        &env,
+        &home,
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(
+        stderr(&out).starts_with(&format!(
+            "asking jev-latest at {uri} for up to 1 request (base URL from environment, long context on (from config file))\n"
+        )),
+        "{}",
+        stderr(&out)
+    );
+
+    let received = server.received_requests().await.unwrap();
+    assert_eq!(received.len(), 4);
+    let header = |i: usize| {
+        received[i]
+            .headers
+            .get("typesafe-danger-zone-long-context")
+            .map(|v| v.to_str().unwrap().to_owned())
+    };
+    assert_eq!(header(0), None, "off by default");
+    assert_eq!(header(1), Some("true".to_owned()), "the flag");
+    assert_eq!(header(2), Some("true".to_owned()), "the file");
+    assert_eq!(
+        header(3),
+        Some("true".to_owned()),
+        "the file, on a record run"
+    );
+    for (i, sent) in received.iter().enumerate() {
+        assert!(
+            sent.headers.get("typesafe-danger-zone-images").is_none(),
+            "request {i}: long context is not images"
+        );
+        let body: Value = serde_json::from_slice(&sent.body).unwrap();
+        assert_eq!(
+            body,
+            serde_json::from_slice::<Value>(&received[0].body).unwrap(),
+            "request {i}: the body is the same with or without it"
+        );
+    }
+}
+
+/// `jud record --dry-run` names the long-context setting and where it came
+/// from, the flag over the file, and asks nothing; a replay ignores the
+/// flag; a file that misspells the field is refused as any unknown field.
+#[test]
+fn a_dry_run_names_long_context_and_a_replay_ignores_it() {
+    let home = config_home();
+    std::fs::write(home.join("jud/config.yaml"), "long_context: true\n").unwrap();
+    let dry = home.join("dry");
+    let out = jud(
+        &[
+            "record",
+            RUBRIC,
+            CASES,
+            "--out",
+            dry.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+        &home,
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(
+        stdout(&out).contains("\nlong context: on (from config file)\n"),
+        "{}",
+        stdout(&out)
+    );
+    std::fs::write(home.join("jud/config.yaml"), "long_context: false\n").unwrap();
+    let out = jud(
+        &[
+            "record",
+            RUBRIC,
+            CASES,
+            "--out",
+            dry.to_str().unwrap(),
+            "--dry-run",
+            "--long-context",
+        ],
+        "",
+        &[],
+        &home,
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(
+        stdout(&out).contains("\nlong context: on (from command line)\n"),
+        "{}",
+        stdout(&out)
+    );
+    let out = jud(
+        &[
+            "record",
+            RUBRIC,
+            CASES,
+            "--out",
+            dry.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+        &home,
+    );
+    assert!(
+        stdout(&out).contains("\nlong context: off\n"),
+        "{}",
+        stdout(&out)
+    );
+    assert!(!dry.exists(), "a dry run writes nothing");
+
+    // Under a replay nothing is asked, so the flag changes nothing and
+    // needs no key.
+    let root = env!("CARGO_MANIFEST_DIR");
+    let recordings = format!("{root}/examples/recordings/jud_calibration");
+    let recorded = r#"{"message": "This is the third time I'm writing. I was charged twice last month and nobody has refunded me. Fix it today or I cancel."}"#;
+    let out = jud(
+        &["--replay", &recordings, "--long-context", RUBRIC],
+        recorded,
+        &[],
+        &home,
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    // A file that spells it wrong is refused as any unknown field is.
+    std::fs::write(home.join("jud/config.yaml"), "long-context: true\n").unwrap();
+    let out = jud(&["config"], "", &[], &home);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        stderr(&out).contains("is not a jud configuration"),
+        "{}",
+        stderr(&out)
+    );
+}
+
 #[test]
 fn a_malformed_configuration_file_is_refused_by_name() {
     let home = config_home();

@@ -64,6 +64,18 @@ pub(crate) struct Record {
     /// run would take at the median time of the recordings in DIR.
     #[arg(long)]
     pub dry_run: bool,
+    /// Ask for long context on every call: both context limits raised to
+    /// 262k tokens, whatever the configuration file says.
+    ///
+    /// Without it a request is held to 64k tokens, and the state with any
+    /// one question to 32k, and a case over either fails its call as
+    /// `max_tokens_exceeded`. Under long context it is answered, slower and
+    /// less accurately by TypeSafe's own account, which is why it is a
+    /// switch and never the default; `long_context: true` in the
+    /// configuration file turns it on for every run. The recordings are
+    /// keyed as without it: the header changes the limits, not the request.
+    #[arg(long)]
+    pub long_context: bool,
 }
 
 pub(crate) fn run(args: &Record) -> ExitCode {
@@ -144,7 +156,8 @@ fn plan_only(args: &Record) -> Result<String, Failure> {
         })
         .collect();
     refuse_inputs(args, &planned)?;
-    let resolved = crate::config::resolve().map_err(|e| Failure::Usage(e.to_string()))?;
+    let resolved = crate::config::resolve_with(args.long_context.then_some(true))
+        .map_err(|e| Failure::Usage(e.to_string()))?;
     // A dry run is where the target is checked, so it names what the run
     // would ignore as the run does.
     resolved.warn_ignored_environment();
@@ -225,6 +238,7 @@ fn plan_only(args: &Record) -> Result<String, Failure> {
         base_url: resolved.base_url(),
         model: resolved.model(),
         model_from: &resolved.model_from(),
+        long_context: &resolved.describe_long_context(),
         key: resolved.api_key_source(),
         times: &times,
     }))
@@ -241,6 +255,8 @@ struct PlanSummary<'a> {
     base_url: &'a str,
     model: &'a str,
     model_from: &'a str,
+    /// `on (from SOURCE)` or `off`.
+    long_context: &'a str,
     key: &'a str,
     times: &'a [u64],
 }
@@ -272,6 +288,7 @@ fn describe_plan(p: &PlanSummary<'_>) -> String {
         crate::out::plain(p.model),
         p.model_from
     ));
+    lines.push(format!("long context: {}", p.long_context));
     lines.push(match p.key {
         "missing" => "API key: missing; the run would stop before the first call (a local server that ignores it takes any word)".to_owned(),
         source => format!("API key: set ({source})"),
@@ -366,7 +383,7 @@ fn record(args: &Record) -> Result<(), Failure> {
     // Before `Backend::open`, so that no key is needed to find that a case
     // would be recorded over one of the documents it was given.
     refuse_inputs(args, &planned)?;
-    let backend = Backend::open(None)?;
+    let backend = Backend::open(None, args.long_context.then_some(true))?;
     backend.announce(planned.len());
     let known = prepare_directory(&args.out, args.refresh)?;
     let mut session = Session {
