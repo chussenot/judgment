@@ -147,3 +147,6 @@ pub struct DocsExportToOpenTelemetry;
 #[cfg(all(doctest, feature = "http"))]
 #[doc = include_str!("../docs/guides/bound-a-stream.md")]
 pub struct DocsBoundAStream;
+#[cfg(all(doctest, feature = "schema"))]
+#[doc = include_str!("../docs/guides/check-schemas-against-the-types.md")]
+pub struct DocsCheckSchemas;

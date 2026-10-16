@@ -35,6 +35,7 @@ pub struct Cases {
 }
 
 /// One labelled state.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Case {
@@ -63,6 +64,7 @@ pub struct Case {
 
 /// What a case expects of one question; which form fits which primitive is
 /// `docs/reference/jud-format.md`, cases, checked by [`Cases::bind`] and [`grade`].
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Expect {
@@ -82,6 +84,7 @@ pub enum Expect {
 /// is, as fractions of the image, and how much of the answer must overlap
 /// it to count as right ([`crate::eval::Judgment::located`];
 /// [`DEFAULT_IOU_AT_LEAST`] when left out).
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BoxLabel {
@@ -95,11 +98,13 @@ pub struct BoxLabel {
 
 /// `{from_turn: n}`: a Noul over a conversation is true from turn `n`
 /// (zero-based) on; `{from_turn: null}` says never.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FromTurn {
     /// The zero-based turn the answer becomes true at; `None` for never.
     #[serde(deserialize_with = "nullable")]
+    #[cfg_attr(feature = "schema", schemars(required))]
     pub from_turn: Option<u64>,
 }
 

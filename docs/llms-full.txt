@@ -30,7 +30,7 @@ Not affiliated with TypeSafe AI.
 ## The documentation
 
 - **Start**: [Install](start/install.md), [first decision from the command line](start/first-decision-cli.md), [first decision in Rust](start/first-decision-rust.md).
-- **Guides**: [Configure a backend](guides/configure-a-backend.md), [Write a rubric](guides/write-a-rubric.md), [Label cases](guides/label-cases.md), [Record, replay and test](guides/record-replay-and-test.md), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [Run in a container](guides/run-in-a-container.md), [Use the Claude Code plugin](guides/use-the-claude-code-plugin.md), [Patterns](guides/patterns.md), [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [Get verdicts on images from the command line](guides/images-from-the-command-line.md), [Use long context](guides/use-long-context.md), [Export to OpenTelemetry](guides/export-to-opentelemetry.md), [Export the jud command's telemetry](guides/export-jud-telemetry.md), [Bound a stream of calls](guides/bound-a-stream.md).
+- **Guides**: [Configure a backend](guides/configure-a-backend.md), [Write a rubric](guides/write-a-rubric.md), [Label cases](guides/label-cases.md), [Record, replay and test](guides/record-replay-and-test.md), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [Run in a container](guides/run-in-a-container.md), [Use the Claude Code plugin](guides/use-the-claude-code-plugin.md), [Patterns](guides/patterns.md), [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [Get verdicts on images from the command line](guides/images-from-the-command-line.md), [Use long context](guides/use-long-context.md), [Export to OpenTelemetry](guides/export-to-opentelemetry.md), [Export the jud command's telemetry](guides/export-jud-telemetry.md), [Check the .jud schemas against the types](guides/check-schemas-against-the-types.md), [Bound a stream of calls](guides/bound-a-stream.md).
 - **Reference**: [The jud command line](reference/cli.md), [Configuration](reference/configuration.md), [The .jud format](reference/jud-format.md), [The crate](reference/crate.md), [The container image](reference/container-image.md), [Stability](reference/stability.md), [Glossary](reference/glossary.md); the [rustdoc](https://docs.rs/judgment) for every type.
 - **Concepts**: [System One](concepts/system-one.md), [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [How judgment works](concepts/how-judgment-works.md), [Visual judgments](concepts/visual-judgments.md).
 - **Project**: [Contributing](project/contributing.md), [Internals](project/internals.md), [Releasing](project/releasing.md), [verification](project/verification/method.md) against real servers, [research](project/research/compatible-servers-and-models.md), [decisions](project/decisions/README.md), the [CHANGELOG](../CHANGELOG.md); [llms.txt](llms.txt) and [llms-full.txt](llms-full.txt) for an agent.
@@ -2754,6 +2754,38 @@ The export is flushed when the command finishes, on every exit status, so a run 
 Point the endpoint at a local collector with a `debug` exporter and run one call; the span `system_one {model}` and `gen_ai.client.token.usage` show up in its log. `cargo tree -d --features cli-otel` shows one copy of each OpenTelemetry crate, which is why they are pinned together.
 
 
+<!-- source: docs/guides/check-schemas-against-the-types.md -->
+
+
+# Check the .jud schemas against the types
+
+**You will** generate the JSON Schema of the `.jud` types that are the file's own shape, and use it to keep a tool's schema in step with them. **Prerequisites:** the [`.jud` format](../reference/jud-format.md), and `judgment` with the `schema` feature (`schema` implies `jud`).
+
+The published schemas, `schemas/jud/*.schema.json`, are written by hand and are the specification: they say what serde cannot derive, such as an `apiVersion` that decides whether `metadata.minor` is required, name patterns and the shape of a question. The `schema` feature adds the other direction, the schema the Rust types themselves have:
+
+```rust
+use judgment::jud::schema::definitions;
+
+let defs = definitions();
+let gate = &defs["Gate"];
+// A gate's fields, as the type has them.
+assert!(gate["properties"].get("threshold").is_some());
+assert!(gate["properties"].get("bands").is_some());
+// A gate refuses what it does not know.
+assert_eq!(gate["additionalProperties"], false);
+```
+
+`definitions()` returns one schema per type, by name: `Metadata`, `AssetSource`, `BoxEdges`, `Gate`, `Band`, `Tuning`, `Case`, `BoxLabel`, `FromTurn`, and the types those name (`Expect`, `LevelRef`). Rubric, Cases and Recording themselves are read through wire structs with rules in code, so they are not here.
+
+## What holds them together
+
+`tests/jud_schema.rs` compares each generated shape with the committed schema it belongs to: the same fields, the same required fields, and closed wherever the type refuses unknown fields. Add a field to `Gate` and not to `schemas/jud/rubric.schema.json`, and the test fails naming `Gate` and both field lists. A type that tolerates an unknown field (`BoxEdges` reads any four numbers and checks their range elsewhere) makes no claim, so the file's stricter schema is not a disagreement.
+
+## What the generated schemas do not say
+
+They carry no patterns, ranges or conditions that code checks (a name's characters, a probability's `0..=1`, which gate fields fit which primitive). Validate a document against the committed schemas for that, and with `jud check` for the rest. Replacing the committed schemas with generated ones was considered and left out: the rules above would have to be written again as schemars attributes, a second source of truth for a format other tools implement.
+
+
 <!-- source: docs/guides/bound-a-stream.md -->
 
 
@@ -4267,6 +4299,7 @@ Minor 4 of `jud/v1` names exactly the fields on this page. A reader refuses a fi
 | `pacer` | no (implied by `http`) | `Pacer` and `Paced`, a bound on calls in flight and one pause every call honours; with `http`, `ClientBuilder::pacer` and the pause a 429's named wait sets ([Bound a stream of calls](../guides/bound-a-stream.md)) | `tokio` (sync and time) |
 | `jud` | no | The `jud` module: the `.jud` reader and writer, `Rubric`, `Cases`, `Verdict`, `Replay` reading `.jud` recordings | `serde-saphyr` |
 | `openapi` | no | `contract::OPENAPI_DOCUMENT`, the vendored TypeSafe OpenAPI document as text, about 25 KB | nothing |
+| `schema` | no | `jud::schema::definitions`, the JSON Schema of the `.jud` types that are the file's own shape, generated by schemars and held against the committed `schemas/jud/` by a test ([Check the .jud schemas against the types](../guides/check-schemas-against-the-types.md)); implies `jud` | `schemars` |
 | `cli-otel` | no | the `jud` binary with OTLP/HTTP export of its traces and metrics, started only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set ([Export the jud command's telemetry](../guides/export-jud-telemetry.md)); binary only, the library names none of it | `cli`, `otel`, `opentelemetry_sdk`, `opentelemetry-otlp`, `tracing-opentelemetry`, `tracing-subscriber` |
 | `otel` | no | `observer::otel::OtelObserver`, an `Observer` that records OpenTelemetry metrics through the API crate ([Export to OpenTelemetry](../guides/export-to-opentelemetry.md)); the SDK and exporters stay the application's | `opentelemetry` (API, metrics only) |
 | `cli` | no | The `jud` binary (`src/bin/jud/`); implies `jud` and `http` | `clap`, `clap_complete` |
