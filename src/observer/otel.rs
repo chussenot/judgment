@@ -19,9 +19,11 @@
 //! ([`OtelObserver::answer_confidence`]). A request id and the state's
 //! content are never an attribute.
 //!
-//! Failed attempts reach only the process-wide observer
-//! ([`crate::observer::set_global`]), so `judgment.retry.attempts` counts
-//! nothing for an observer set on one client.
+//! A client reports its failed attempts to its own observer when it has one
+//! and to the process-wide one ([`crate::observer::set_global`]) otherwise,
+//! so `judgment.retry.attempts` counts a client's attempts either way. A
+//! loop run directly through [`crate::http::send_with_retries`] has no
+//! client and reports to the global observer.
 
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram, Meter};

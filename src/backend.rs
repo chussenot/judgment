@@ -26,6 +26,12 @@ use crate::error::{Error, Result};
 use crate::eval::{Recording, request_hash_with};
 use crate::question::{Question, Questions};
 
+#[cfg(feature = "pacer")]
+mod pacer;
+#[cfg(feature = "pacer")]
+#[cfg_attr(docsrs, doc(cfg(feature = "pacer")))]
+pub use pacer::{Paced, Pacer};
+
 /// What [`SystemOne::answer`] hands [`SystemOne::answer_with_assets`]: no
 /// images, for the life of the program, so the future it returns can
 /// borrow it.

@@ -97,8 +97,8 @@ description = "The crate builds on its declared minimum Rust version, 1.91, with
 run = ["rustup toolchain install 1.91 --profile minimal", "cargo +1.91 check --all-features --locked"]
 
 [tasks.hack]
-description = "Every feature on its own builds (cargo-hack --each-feature), so no flag depends on another being on"
-run = "cargo hack check --each-feature --no-dev-deps"
+description = "Every feature on its own builds (cargo-hack --each-feature), and every combination of them, http and pacer as one group, so no flag depends on another being on"
+run = ["cargo hack check --each-feature --no-dev-deps", "cargo hack check --feature-powerset --group-features http,pacer --no-dev-deps"]
 
 [tasks."docs:check"]
 description = "The documentation gate: frontmatter on every page, the generated pages (llms.txt, the CLI reference, the plugin's format reference and Rust templates) match their sources, every .jud document the pages show is read, and every internal link resolves"

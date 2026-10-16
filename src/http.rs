@@ -1,5 +1,6 @@
-//! The retry loop every client over `reqwest` shares: [`RetryPolicy`] and
-//! [`send_with_retries`].
+//! The retry loop every client over `reqwest` shares: [`RetryPolicy`],
+//! [`send_with_retries`] and [`send_with_retries_paced`], which also shares a
+//! [`Pacer`] and reports to an observer of its own.
 //!
 //! Public so that another client in the same application retries the same
 //! way and reports to the same [`crate::Observer`]. The loop names no
@@ -12,6 +13,9 @@ use std::time::{Duration, SystemTime};
 
 use reqwest::StatusCode;
 use reqwest::header::{DATE, HeaderMap, HeaderName, RETRY_AFTER};
+
+use crate::backend::Pacer;
+use crate::observer::Observer;
 
 /// Not registered: a convention of several vendors' SDKs, read before
 /// `Retry-After`.
@@ -310,27 +314,57 @@ pub enum Exhausted {
 /// the global [`crate::Observer`] under `service` as the status, `transport`
 /// or `too_large`: a retry that succeeds hides the failure from the caller,
 /// but the attempt was still load on the upstream.
+///
+/// This is [`send_with_retries_paced`] with no pacer and no observer of its
+/// own.
 pub async fn send_with_retries(
     policy: &RetryPolicy,
     service: &'static str,
     make: impl Fn() -> reqwest::RequestBuilder,
 ) -> Result<Completed, Exhausted> {
+    send_with_retries_paced(policy, service, None, None, make).await
+}
+
+/// [`send_with_retries`] sharing a [`Pacer`] and reporting to an observer.
+///
+/// With a `pacer`, every attempt first waits out its pause, and a retryable
+/// 429 or 529 that names a wait ([`RetryPolicy::retry_after_max`] has
+/// already capped it) pauses the pacer for that wait before this call
+/// sleeps, so every other call on the pacer holds its next attempt too.
+/// Without a named wait nothing is paused: the call backs off alone.
+///
+/// Failed attempts go to `observer` when there is one and to the global
+/// [`crate::Observer`] otherwise.
+pub async fn send_with_retries_paced(
+    policy: &RetryPolicy,
+    service: &'static str,
+    pacer: Option<&Pacer>,
+    observer: Option<&dyn Observer>,
+    make: impl Fn() -> reqwest::RequestBuilder,
+) -> Result<Completed, Exhausted> {
+    let report = |status: &str| match observer {
+        Some(own) => own.on_failed_attempt(service, status),
+        None => crate::observer::global().on_failed_attempt(service, status),
+    };
     let started = tokio::time::Instant::now();
     let mut attempt: u32 = 0;
     loop {
         attempt += 1;
+        if let Some(pacer) = pacer {
+            pacer.wait().await;
+        }
         match make().send().await {
             Ok(mut resp) => {
                 let status = resp.status();
                 let retry_after = parse_retry_after(resp.headers());
                 if !status.is_success() {
-                    crate::observer::global().on_failed_attempt(service, status.as_str());
+                    report(status.as_str());
                 }
                 let headers = std::mem::take(resp.headers_mut());
                 let body = match read_body(resp, policy.max_body_bytes).await {
                     Ok(b) => b,
                     Err(BodyRead::TooLarge) => {
-                        crate::observer::global().on_failed_attempt(service, "too_large");
+                        report("too_large");
                         tracing::warn!(
                             attempt,
                             status = status.as_u16(),
@@ -343,7 +377,7 @@ pub async fn send_with_retries(
                         });
                     }
                     Err(BodyRead::Transport(source)) => {
-                        crate::observer::global().on_failed_attempt(service, "transport");
+                        report("transport");
                         if policy.retries_transport(&source)
                             && let Some(delay) = policy.next_wait(attempt, None, started.elapsed())
                         {
@@ -360,6 +394,12 @@ pub async fn send_with_retries(
                 if policy.is_retryable(status)
                     && let Some(delay) = policy.next_wait(attempt, retry_after, started.elapsed())
                 {
+                    if let Some(pacer) = pacer
+                        && retry_after.is_some()
+                        && matches!(status.as_u16(), 429 | 529)
+                    {
+                        pacer.pause_for(delay);
+                    }
                     tracing::warn!(
                         attempt,
                         status = status.as_u16(),
@@ -378,7 +418,7 @@ pub async fn send_with_retries(
                 });
             }
             Err(source) => {
-                crate::observer::global().on_failed_attempt(service, "transport");
+                report("transport");
                 if policy.retries_transport(&source)
                     && let Some(delay) = policy.next_wait(attempt, None, started.elapsed())
                 {

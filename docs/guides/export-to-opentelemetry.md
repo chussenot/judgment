@@ -60,8 +60,7 @@ A call's duration is its wall time with every retry and wait, and a call that fa
 
 Every attribute has a bounded set of values, so none multiplies series without limit, except the question id on the confidence histogram: it is your own string. `OtelObserver::new(meter).answer_confidence(true)` records the confidence of every Choice and Score answer of a successful call by question id; switch it on when your ids are few and fixed. A request id and the state's content are never an attribute.
 
-!!! note "Failed attempts need the global observer"
-    A failed attempt is reported to the process-wide observer, not to a client's own, because the retry loop is shared with clients that have none. For `judgment.retry.attempts` to count, also install the same observer with `judgment::observer::set_global`; the other instruments come from the client's own.
+A failed attempt goes to the client's own observer when it has one, so `judgment.retry.attempts` counts a client's attempts without `observer::set_global`. A retry loop run directly through `http::send_with_retries` has no client, and reports to the global observer.
 
 ## A collector to receive them
 

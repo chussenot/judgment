@@ -28,7 +28,7 @@ Four more gates guard what a user of the crate depends on. Each is a CI job and 
 | `semver` | The public API against the latest crates.io release, every feature (`cargo semver-checks`) | A change needs a major release, which 0.x spells as a minor one. The version in `Cargo.toml` says what is allowed: under a patch bump only additions pass. An addition never fails it |
 | `deny` | Advisories, licences, duplicate versions and sources over the whole graph (`deny.toml`, `cargo deny`) | A dependency has a known vulnerability or is yanked, a direct dependency is unmaintained, a dependency brings a licence the list does not name, appears twice (two `opentelemetry` versions fail, the rest warn), or comes from outside crates.io |
 | `msrv` | `cargo +1.91 check --all-features --locked` | The code or a locked dependency needs a newer Rust than `rust-version` promises |
-| `hack` | Each feature on its own (`cargo hack check --each-feature`) | A feature only builds when another is on |
+| `hack` | Each feature on its own, and every combination of them with `http` and `pacer` as one group (`cargo hack check --each-feature`, `--feature-powerset --group-features http,pacer`) | A feature only builds when another is on, or in some combination |
 
 The tools come from crates.io at the versions `mise.toml` pins (`mise install`), and `ci.yml` installs the same versions, cached by version, so the workflow still uses no third-party action. A licence goes on the allow list in `deny.toml` with a comment saying which crate needs it.
 

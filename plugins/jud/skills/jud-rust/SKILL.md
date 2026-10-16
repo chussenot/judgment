@@ -270,8 +270,11 @@ the template:
        request.`);
      - that every `decide` is one request to the backend, as slow as the
        model (seconds on a CPU): a caller that feeds it a stream or a batch
-       bounds how many are in flight and what waits, and samples rather
-       than queue without end when states arrive faster than answers;
+       bounds how many are in flight and what waits (`judgment::Pacer`
+       and `Paced`, shared with the client through
+       `ClientBuilder::pacer`, so one 429's named wait pauses them all),
+       and samples rather than queue without end when states arrive
+       faster than answers;
    - the checks that passed, the throwaway crate's absolute path, and that
      once the `mod` line is in, `cargo test` in their crate runs the
      module's drift test (with no crate: once a crate mounts it as step 5
