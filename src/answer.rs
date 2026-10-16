@@ -198,6 +198,7 @@ impl fmt::Display for Confidence {
 /// box a region (each edge in `0..=1`, `left < right`, `top < bottom`) is
 /// checked by [`Response::verify`] and by [`BoxEdges::check`], never
 /// assumed by the geometry here, which is plain arithmetic on the fields.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BoxEdges {
     /// Top edge, as a fraction of the height from the top.

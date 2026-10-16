@@ -120,6 +120,7 @@ pub struct Policy {
 
 /// Where one question's answer becomes an action; which field fits which
 /// primitive is `docs/reference/jud-format.md`, Policy, checked by [`Rubric::parse`] and [`Rubric::gate`].
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Gate {
@@ -148,6 +149,7 @@ pub struct Gate {
 }
 
 /// One confidence band of a [`Gate`].
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Band {
@@ -158,6 +160,7 @@ pub struct Band {
 }
 
 /// A Score level, by its index or by its text.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum LevelRef {
@@ -196,6 +199,7 @@ fn meets(value: f64, bar: f64, strict: bool) -> bool {
 }
 
 /// Where the gates came from (`docs/reference/jud-format.md`, Tuning); every field optional.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Tuning {
     /// The cases document, by id or by fingerprint (`sha256:…`).

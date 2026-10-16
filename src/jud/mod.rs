@@ -18,6 +18,8 @@ use crate::eval::Recording;
 
 mod cases;
 mod rubric;
+#[cfg(feature = "schema")]
+pub mod schema;
 
 pub use cases::{BoxLabel, Case, Cases, Expect, FromTurn, Turn, grade, turns};
 
@@ -165,6 +167,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// decision 0025): a file beside the document, or the bytes inline. The
 /// map an entry sits in is keyed by the reference written where the image
 /// belongs, as the wire's `assets` is.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssetSource {
@@ -480,6 +483,7 @@ fn check_minor(minor: Option<&Value>) -> Result<()> {
 /// what a tool keeps beside the format. Which optional fields a kind takes
 /// is checked by its reader; `minor` was checked by the envelope and is
 /// written as [`MINOR`].
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Metadata {

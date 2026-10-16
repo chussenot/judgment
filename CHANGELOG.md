@@ -8,6 +8,15 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `schema`, a feature (implies `jud`): `jud::schema::definitions()` returns
+  the JSON Schema of the `.jud` types that are the file's own shape
+  (`Metadata`, `AssetSource`, `BoxEdges`, `Gate`, `Band`, `Tuning`, `Case`,
+  `BoxLabel`, `FromTurn`), derived by schemars (`JsonSchema` on those types,
+  behind the feature). The published `schemas/jud/` stay hand-written and
+  are the specification; `tests/jud_schema.rs` holds each generated shape
+  to the committed one (fields, required fields, closedness), so a field
+  added to a type and not to the schema fails. A guide, "Check the .jud
+  schemas against the types".
 - `cli-otel`, a feature of the `jud` binary only: with
   `OTEL_EXPORTER_OTLP_ENDPOINT` set, `jud` exports its `tracing` spans and
   the `OtelObserver` metrics over OTLP/HTTP (protobuf, rustls, no gRPC; the
