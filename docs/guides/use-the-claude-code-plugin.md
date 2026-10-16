@@ -23,7 +23,7 @@ Or interactively: `/plugin marketplace add chussenot/judgment`, then `/plugin in
 
 Two things happen on install that are easy to mistake for a fault. The skills and commands load when a Claude Code session starts, so a session that installs the plugin does not see them: start a new one, or run `/reload-plugins`. And `--scope project` writes `enabledPlugins` into the project's `.claude/settings.json`, which Claude Code rewrites in its own key order, so a checked-in settings file shows a diff that moves keys and changes no setting; review it before committing.
 
-In this repository the plugin is installed for you: `mise run plugins:install` adds the checkout as a marketplace and installs `jud` from it in place, with TypeSafe's `typesafe` plugin beside it, and a cloud session's start hook does the same ([Contributing](../project/contributing.md#cloud-sessions)); `mise run plugins:update` moves both to their latest.
+In this repository the plugin is installed for you: `mise run plugins:install` adds the checkout as a marketplace and installs `jud` from it in place, with TypeSafe's `typesafe` plugin and the pinned `ponytail` plugin beside it, and a cloud session's start hook does the same ([Contributing](../project/contributing.md#cloud-sessions)); `mise run plugins:update` moves them along.
 
 ## The commands
 

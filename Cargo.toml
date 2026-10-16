@@ -140,6 +140,11 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
 # A capturing layer in the span tests.
 tracing-subscriber = "0.3"
 wiremock = "0.6"
+# Properties over generated inputs (tests/properties.rs). No default features:
+# the fork and timeout machinery is for isolating a crashing test, which a
+# pure property does not need. A shrunk failure is saved under
+# proptest-regressions/ and replayed first on every later run; commit it.
+proptest = { version = "1", default-features = false, features = ["std"] }
 # The SDK's in-memory metric exporter, for what `OtelObserver` records
 # (tests/otel.rs). Same version as the API crate, so one copy in the graph.
 opentelemetry_sdk = { version = "0.33", default-features = false, features = ["metrics", "testing"] }
@@ -167,6 +172,12 @@ required-features = ["http"]
 # The vendored OpenAPI document against the live one; its one test is
 # #[ignore] and needs the network but no key (see tests/openapi_drift.rs).
 # tests/contract.rs has no entry: it builds and runs without `http` too.
+# Generated inputs against the crate's invariants: probabilities, the canonical
+# fingerprint, `Response::verify` and the limits on questions. Needs no
+# feature, so it runs without the client too.
+[[test]]
+name = "properties"
+
 # `Paced` over a `Fake`: the bound on calls in flight, the shared pause and the
 # permit a dropped call gives back, on tokio's paused clock.
 [[test]]
