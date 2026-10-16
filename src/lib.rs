@@ -64,26 +64,37 @@
 //! * `openapi`: `contract`, the vendored TypeSafe OpenAPI document as text.
 //! * `jud`: `jud`, the `.jud` format for rubrics, cases and recordings
 //!   (`docs/reference/jud-format.md`).
+//! * `otel`: [`observer::otel::OtelObserver`], an [`Observer`] that records
+//!   OpenTelemetry metrics through the OpenTelemetry API
+//!   (`docs/guides/export-to-opentelemetry.md`). The names it and the
+//!   client's spans use are in [`semconv`].
 //!
 //! The runnable examples under `examples/` cover the four patterns TypeSafe
 //! documents (<https://docs.typesafe.ai/patterns>); `docs/guides/patterns.md` says
 //! how they are run and re-recorded.
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 pub mod answer;
 pub mod asset;
 pub mod backend;
 #[cfg(feature = "http")]
+#[cfg_attr(docsrs, doc(cfg(feature = "http")))]
 pub mod client;
 #[cfg(feature = "openapi")]
+#[cfg_attr(docsrs, doc(cfg(feature = "openapi")))]
 pub mod contract;
 pub mod error;
 pub mod eval;
 #[cfg(feature = "http")]
+#[cfg_attr(docsrs, doc(cfg(feature = "http")))]
 pub mod http;
 #[cfg(feature = "jud")]
+#[cfg_attr(docsrs, doc(cfg(feature = "jud")))]
 pub mod jud;
 pub mod observer;
 pub mod question;
+pub mod semconv;
 
 pub use answer::{
     Answer, BoundingBox, BoxEdges, Choice, Confidence, FromAnswer, Noul, PixelBox, Probability,
@@ -92,6 +103,7 @@ pub use answer::{
 pub use asset::{Assets, Image, ImageFormat};
 pub use backend::{Fake, Recorder, Replay, SystemOne};
 #[cfg(feature = "http")]
+#[cfg_attr(docsrs, doc(cfg(feature = "http")))]
 pub use client::{
     CallOptions, Client, ClientBuilder, ModelInfo, Request, RetryPolicy, TransportRetry,
 };
@@ -118,3 +130,6 @@ pub struct DocsLocateWithABox;
 #[cfg(all(doctest, feature = "http"))]
 #[doc = include_str!("../docs/guides/use-long-context.md")]
 pub struct DocsUseLongContext;
+#[cfg(all(doctest, feature = "http", feature = "otel"))]
+#[doc = include_str!("../docs/guides/export-to-opentelemetry.md")]
+pub struct DocsExportToOpenTelemetry;

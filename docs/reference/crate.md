@@ -2,7 +2,7 @@
 title: The crate
 description: The judgment crate as a dependency; its features and what each compiles, its modules with a link to the rustdoc of each, the error groups, the limits and the defaults.
 status: current
-last_reviewed: 2026-10-15
+last_reviewed: 2026-10-16
 tags: [judgment, crate, features, modules, errors, reference]
 ---
 
@@ -17,6 +17,7 @@ tags: [judgment, crate, features, modules, errors, reference]
 | `http` | yes | `Client`, `ClientBuilder`, `CallOptions`, `RetryPolicy`, the `http` module (the retry loop), `Client::list_models` | `reqwest` (rustls), `tokio`, `fastrand`, `httpdate` |
 | `jud` | no | The `jud` module: the `.jud` reader and writer, `Rubric`, `Cases`, `Verdict`, `Replay` reading `.jud` recordings | `serde-saphyr` |
 | `openapi` | no | `contract::OPENAPI_DOCUMENT`, the vendored TypeSafe OpenAPI document as text, about 25 KB | nothing |
+| `otel` | no | `observer::otel::OtelObserver`, an `Observer` that records OpenTelemetry metrics through the API crate ([Export to OpenTelemetry](../guides/export-to-opentelemetry.md)); the SDK and exporters stay the application's | `opentelemetry` (API, metrics only) |
 | `cli` | no | The `jud` binary (`src/bin/jud/`); implies `jud` and `http` | `clap`, `clap_complete` |
 | `multipart` | no | `CallOptions::multipart` and `ClientBuilder::multipart`: a request's images sent as `multipart/form-data` parts beside a JSON `request` part instead of base64 in the JSON body, the transport TypeSafe recommends for images; implies `http` ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) | `reqwest`'s multipart encoding, `mime_guess`, `bytes` |
 
@@ -44,7 +45,8 @@ In the order of one call: a question is built, sent through a backend, answered,
 | `error` | `Error`, `Result`, `ValidationIssue`. | [docs.rs](https://docs.rs/judgment/latest/judgment/error/index.html) |
 | `eval` | `Recording`, `Judgment`, the metrics (`metrics`), the fingerprints (`canonical`) and the sweeps (`tuning`). | [docs.rs](https://docs.rs/judgment/latest/judgment/eval/index.html) |
 | `jud` (`jud`) | `parse`, `Rubric`, `Cases`, `Case`, `Verdict`, `AssetSource`, `load_assets`, `BoxLabel`, `parse_recording`, `recording_to_yaml`, `present`, `API_VERSION`, `MINOR`. | [docs.rs](https://docs.rs/judgment/latest/judgment/jud/index.html) |
-| `observer` | `Observer`, the seam through which token usage and failed attempts reach the application's metrics. The crate emits `tracing` spans (`typesafe.evaluate`, `typesafe.list_models`) and no metrics of its own. | [docs.rs](https://docs.rs/judgment/latest/judgment/observer/index.html) |
+| `observer` | `Observer`, the seam through which token usage, failed attempts and each finished call (`CallReport`) reach the application's metrics; with `otel`, `otel::OtelObserver`. The crate emits `tracing` spans (`typesafe.evaluate`, `typesafe.list_models`) and no metrics of its own. | [docs.rs](https://docs.rs/judgment/latest/judgment/observer/index.html) |
+| `semconv` | The OpenTelemetry attribute and metric names the crate writes, as constants: the `gen_ai.*`, `server.address` and `error.type` ones. |  [docs.rs](https://docs.rs/judgment/latest/judgment/semconv/index.html) |
 | `contract` (`openapi`) | `OPENAPI_DOCUMENT`. | [docs.rs](https://docs.rs/judgment/latest/judgment/contract/index.html) |
 
 The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCriteria`, the answer types, `Assets`, `Image`, `ImageFormat`, `SystemOne`, `Fake`, `Recorder`, `Replay`, `Error`, `Result`, `ValidationIssue`, `Observer` and, with `http`, the client types.

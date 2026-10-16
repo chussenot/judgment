@@ -179,7 +179,10 @@ async fn the_span_records_the_request_id_on_success_and_on_failure() {
         ["req_ok"],
         "{seen:#?}"
     );
-    assert_eq!(values(&seen, "typesafe.evaluate", "input_tokens"), ["3"]);
+    assert_eq!(
+        values(&seen, "typesafe.evaluate", "gen_ai.usage.input_tokens"),
+        ["3"]
+    );
 
     // An HTTP error: the error response's header.
     serve_once(
@@ -238,7 +241,7 @@ async fn the_span_records_the_request_id_on_success_and_on_failure() {
     c.system_one(&"s", &q).await.unwrap();
     let seen = cap.take();
     assert!(
-        !values(&seen, "typesafe.evaluate", "model").is_empty(),
+        !values(&seen, "typesafe.evaluate", "gen_ai.request.model").is_empty(),
         "the span was captured: {seen:#?}"
     );
     assert!(
@@ -286,7 +289,7 @@ async fn the_span_records_the_request_id_on_success_and_on_failure() {
     refused.system_one(&"s", &q).await.unwrap_err();
     let seen = cap.take();
     assert!(
-        !values(&seen, "typesafe.evaluate", "model").is_empty(),
+        !values(&seen, "typesafe.evaluate", "gen_ai.request.model").is_empty(),
         "the span was captured: {seen:#?}"
     );
     assert!(
@@ -320,8 +323,14 @@ async fn evaluate_with_records_the_request_id_on_its_one_span() {
         ["req_with"],
         "{seen:#?}"
     );
-    assert_eq!(values(&seen, "typesafe.evaluate", "model"), ["jev-latest"]);
-    assert_eq!(values(&seen, "typesafe.evaluate", "input_tokens"), ["3"]);
+    assert_eq!(
+        values(&seen, "typesafe.evaluate", "gen_ai.request.model"),
+        ["jev-latest"]
+    );
+    assert_eq!(
+        values(&seen, "typesafe.evaluate", "gen_ai.usage.input_tokens"),
+        ["3"]
+    );
     let shown = format!("{seen:?}");
     for secret in [
         "SECRET-HEADER",
@@ -352,7 +361,7 @@ async fn evaluate_with_records_the_request_id_on_its_one_span() {
     c.evaluate(&request).await.unwrap();
     let seen = cap.take();
     assert_eq!(
-        values(&seen, "typesafe.evaluate", "model"),
+        values(&seen, "typesafe.evaluate", "gen_ai.request.model"),
         ["jev-latest"],
         "exactly one typesafe.evaluate span: {seen:#?}"
     );
@@ -497,4 +506,77 @@ async fn an_unknown_answer_is_warned_once_with_question_and_kind() {
     assert_eq!(response.extra.len(), 3);
     let seen = cap.take();
     assert!(warnings(&seen).is_empty(), "{seen:#?}");
+}
+
+/// Every field name `span` was given, once each.
+fn names(captured: &[Captured], span: &str) -> std::collections::BTreeSet<String> {
+    captured
+        .iter()
+        .filter_map(|c| match c {
+            Captured::Field { span: s, field, .. } if s == span => Some(field.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn the_span_carries_the_genai_attributes() {
+    use judgment::semconv::{
+        ERROR_TYPE, GEN_AI_OPERATION_NAME, GEN_AI_PROVIDER_NAME, GEN_AI_REQUEST_MODEL,
+        GEN_AI_RESPONSE_MODEL, GEN_AI_USAGE_INPUT_TOKENS, GEN_AI_USAGE_OUTPUT_TOKENS,
+        OPERATION_SYSTEM_ONE, SERVER_ADDRESS,
+    };
+    let cap = Capture::default();
+    let _g = tracing::subscriber::set_default(Registry::default().with(cap.clone()));
+    let server = MockServer::start().await;
+    let c = client(&server.uri());
+    let q = one_noul();
+    let span = "typesafe.evaluate";
+
+    // A success: the request side at creation, the response side recorded.
+    serve_once(&server, "POST", ok(Some("req_ok"))).await;
+    c.system_one(&"s", &q).await.unwrap();
+    let seen = cap.take();
+    // Each constant is the field's name: the macros take a literal, so this
+    // is what keeps `semconv` and the span from drifting apart.
+    let known = names(&seen, span);
+    for name in [
+        GEN_AI_OPERATION_NAME,
+        GEN_AI_PROVIDER_NAME,
+        GEN_AI_REQUEST_MODEL,
+        GEN_AI_RESPONSE_MODEL,
+        GEN_AI_USAGE_INPUT_TOKENS,
+        GEN_AI_USAGE_OUTPUT_TOKENS,
+        SERVER_ADDRESS,
+    ] {
+        assert!(known.contains(name), "{name} missing from {known:?}");
+    }
+    assert!(!known.contains(ERROR_TYPE), "no error, no error.type");
+    assert_eq!(
+        values(&seen, span, GEN_AI_OPERATION_NAME),
+        [OPERATION_SYSTEM_ONE]
+    );
+    assert_eq!(values(&seen, span, GEN_AI_PROVIDER_NAME), ["other"]);
+    assert_eq!(values(&seen, span, GEN_AI_REQUEST_MODEL), ["jev-latest"]);
+    assert_eq!(values(&seen, span, GEN_AI_RESPONSE_MODEL), ["jev-1.13.0"]);
+    assert_eq!(values(&seen, span, GEN_AI_USAGE_INPUT_TOKENS), ["3"]);
+    assert_eq!(values(&seen, span, GEN_AI_USAGE_OUTPUT_TOKENS), ["1"]);
+    assert_eq!(values(&seen, span, SERVER_ADDRESS), ["127.0.0.1"]);
+    assert_eq!(values(&seen, span, "otel.kind"), ["client"]);
+    assert_eq!(values(&seen, span, "otel.name"), ["system_one jev-latest"]);
+
+    // A failure: the status or short name as error.type, no response side.
+    serve_once(&server, "POST", ResponseTemplate::new(429)).await;
+    c.system_one(&"s", &q).await.unwrap_err();
+    let seen = cap.take();
+    assert_eq!(
+        values(&seen, span, ERROR_TYPE),
+        ["rate_limited"],
+        "{seen:#?}"
+    );
+    assert!(values(&seen, span, GEN_AI_RESPONSE_MODEL).is_empty());
+
+    serve_once(&server, "POST", ResponseTemplate::new(500)).await;
+    c.system_one(&"s", &q).await.unwrap_err();
+    assert_eq!(values(&cap.take(), span, ERROR_TYPE), ["500"]);
 }
