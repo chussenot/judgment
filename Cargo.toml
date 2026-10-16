@@ -104,6 +104,11 @@ otel = ["dep:opentelemetry"]
 # of schemas/jud/ is a failing test (tests/jud_schema.rs). The published
 # schemas stay hand-written. Off by default.
 schema = ["jud", "dep:schemars"]
+# `jud mcp DIR`: a Model Context Protocol server over stdio that serves every
+# rubric under DIR as a tool (src/bin/jud/mcp.rs). Binary only, off by
+# default. `preserve_order` because the options a caller supplies are asked
+# in the order given, and a JSON object read into a sorted map loses it.
+mcp = ["cli", "dep:rmcp", "serde_json/preserve_order"]
 # The `jud` binary with OTLP export (src/bin/jud/telemetry.rs): traces and
 # metrics sent over OTLP/HTTP when OTEL_EXPORTER_OTLP_ENDPOINT is set, and
 # nothing started otherwise. Binary-only: the library names none of these
@@ -144,6 +149,9 @@ httpdate = { version = "1", optional = true }
 # beyond the clap already here.
 clap = { version = "4", features = ["derive", "env"], optional = true }
 clap_complete = { version = "4", optional = true }
+# The MCP SDK (feature `mcp`, binary only): the server side and the stdio
+# transport, without its macros, since the tools are the rubrics found at start.
+rmcp = { version = "3.5", default-features = false, features = ["server", "transport-io"], optional = true }
 # JSON Schema from the wire types (feature `schema`).
 schemars = { version = "1", default-features = false, features = ["derive", "std", "indexmap2"], optional = true }
 # The OpenTelemetry API (feature `otel`), metrics only: no SDK, no exporter.
@@ -243,6 +251,11 @@ required-features = ["http"]
 [[test]]
 name = "jud_cli"
 required-features = ["cli"]
+
+# `jud mcp` driven over stdio (feature `mcp`).
+[[test]]
+name = "jud_mcp"
+required-features = ["mcp"]
 
 # The generated schemas against the committed ones (feature `schema`).
 [[test]]

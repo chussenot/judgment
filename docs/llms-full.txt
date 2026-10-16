@@ -30,7 +30,7 @@ Not affiliated with TypeSafe AI.
 ## The documentation
 
 - **Start**: [Install](start/install.md), [first decision from the command line](start/first-decision-cli.md), [first decision in Rust](start/first-decision-rust.md).
-- **Guides**: [Configure a backend](guides/configure-a-backend.md), [Write a rubric](guides/write-a-rubric.md), [Label cases](guides/label-cases.md), [Record, replay and test](guides/record-replay-and-test.md), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [Run in a container](guides/run-in-a-container.md), [Use the Claude Code plugin](guides/use-the-claude-code-plugin.md), [Patterns](guides/patterns.md), [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [Get verdicts on images from the command line](guides/images-from-the-command-line.md), [Use long context](guides/use-long-context.md), [Export to OpenTelemetry](guides/export-to-opentelemetry.md), [Export the jud command's telemetry](guides/export-jud-telemetry.md), [Check the .jud schemas against the types](guides/check-schemas-against-the-types.md), [Bound a stream of calls](guides/bound-a-stream.md).
+- **Guides**: [Configure a backend](guides/configure-a-backend.md), [Write a rubric](guides/write-a-rubric.md), [Label cases](guides/label-cases.md), [Record, replay and test](guides/record-replay-and-test.md), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [Run in a container](guides/run-in-a-container.md), [Use the Claude Code plugin](guides/use-the-claude-code-plugin.md), [Patterns](guides/patterns.md), [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [Get verdicts on images from the command line](guides/images-from-the-command-line.md), [Use long context](guides/use-long-context.md), [Export to OpenTelemetry](guides/export-to-opentelemetry.md), [Export the jud command's telemetry](guides/export-jud-telemetry.md), [Check the .jud schemas against the types](guides/check-schemas-against-the-types.md), [Serve rubrics over MCP](guides/serve-rubrics-over-mcp.md), [Bound a stream of calls](guides/bound-a-stream.md).
 - **Reference**: [The jud command line](reference/cli.md), [Configuration](reference/configuration.md), [The .jud format](reference/jud-format.md), [The crate](reference/crate.md), [The container image](reference/container-image.md), [Stability](reference/stability.md), [Glossary](reference/glossary.md); the [rustdoc](https://docs.rs/judgment) for every type.
 - **Concepts**: [System One](concepts/system-one.md), [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [How judgment works](concepts/how-judgment-works.md), [Visual judgments](concepts/visual-judgments.md).
 - **Project**: [Contributing](project/contributing.md), [Internals](project/internals.md), [Releasing](project/releasing.md), [verification](project/verification/method.md) against real servers, [research](project/research/compatible-servers-and-models.md), [decisions](project/decisions/README.md), the [CHANGELOG](../CHANGELOG.md); [llms.txt](llms.txt) and [llms-full.txt](llms-full.txt) for an agent.
@@ -2786,6 +2786,52 @@ assert_eq!(gate["additionalProperties"], false);
 They carry no patterns, ranges or conditions that code checks (a name's characters, a probability's `0..=1`, which gate fields fit which primitive). Validate a document against the committed schemas for that, and with `jud check` for the rest. Replacing the committed schemas with generated ones was considered and left out: the rules above would have to be written again as schemars attributes, a second source of truth for a format other tools implement.
 
 
+<!-- source: docs/guides/serve-rubrics-over-mcp.md -->
+
+
+# Serve rubrics over MCP
+
+**You will** let an agent call your rubrics as tools: it passes a JSON state and gets back the verdicts, the same text `jud RUBRIC` prints. **Prerequisites:** a directory of rubrics ([Write a rubric](write-a-rubric.md)), and the `jud` binary built with the `mcp` feature, which the release binaries do not carry:
+
+```sh
+cargo install judgment --features mcp
+```
+
+The feature is the binary's alone: the library links no MCP code, and a `jud` built with `cli` has no `mcp` command.
+
+## Start the server
+
+```sh
+jud mcp rubrics/
+```
+
+`jud mcp` speaks the Model Context Protocol over stdio, so a host starts it rather than a person; run by hand it waits for JSON-RPC on stdin. Every `.jud` Rubric under the directory, searched recursively, becomes one tool named by the rubric's `metadata.name`. Cases and recordings under it are not tools; a file that is not a document is named on stderr and skipped, and two rubrics with one name refuse to start, because a tool is named by its rubric.
+
+The backend is chosen exactly as for `jud RUBRIC` ([Configure a backend](configure-a-backend.md)): TypeSafe by default, and without a key `jud mcp` refuses to start with status 2 rather than serve tools that cannot answer. `--replay DIR` answers from recordings with no key and no network, which is the way to try it:
+
+```sh
+jud mcp rubrics/ --replay recordings/
+```
+
+## Register it with Claude Code
+
+```sh
+claude mcp add jud -- jud mcp rubrics/
+```
+
+The plugin does not register it for you: an entry in the plugin would start a server for everyone who installs it, including those whose `jud` has no `mcp` command.
+
+## What a tool takes and returns
+
+A tool's input is `{state, options?}`: `state` is any JSON value, as on stdin for `jud RUBRIC`; `options` maps a question id to its options (option key to description) for the Choices the rubric marks `options_from: request`, asked in the order the object is written. The description lists the questions and their kinds.
+
+The result is one text block holding the verdict map, byte for byte what `jud RUBRIC` prints, less its closing newline. A call that cannot be answered (a state nobody recorded, a backend that failed, a state the rubric does not lower for) is a tool error (`isError`) whose text is the message `jud` would print, so the agent can read it and try again. A call naming no rubric, or without a `state`, is a protocol error.
+
+## What is not here
+
+A rubric's images come from its own `assets`, read from its directory on each call; there is no `--asset` or `--pixels` on a call. stdout is the protocol channel and nothing else is written to it; diagnostics go to stderr.
+
+
 <!-- source: docs/guides/bound-a-stream.md -->
 
 
@@ -4299,6 +4345,7 @@ Minor 4 of `jud/v1` names exactly the fields on this page. A reader refuses a fi
 | `pacer` | no (implied by `http`) | `Pacer` and `Paced`, a bound on calls in flight and one pause every call honours; with `http`, `ClientBuilder::pacer` and the pause a 429's named wait sets ([Bound a stream of calls](../guides/bound-a-stream.md)) | `tokio` (sync and time) |
 | `jud` | no | The `jud` module: the `.jud` reader and writer, `Rubric`, `Cases`, `Verdict`, `Replay` reading `.jud` recordings | `serde-saphyr` |
 | `openapi` | no | `contract::OPENAPI_DOCUMENT`, the vendored TypeSafe OpenAPI document as text, about 25 KB | nothing |
+| `mcp` | no | `jud mcp DIR`, a Model Context Protocol server over stdio that serves every Rubric under DIR as a tool ([Serve rubrics over MCP](../guides/serve-rubrics-over-mcp.md)); binary only, the library links none of it, and the release binaries are built without it | `cli`, `rmcp` |
 | `schema` | no | `jud::schema::definitions`, the JSON Schema of the `.jud` types that are the file's own shape, generated by schemars and held against the committed `schemas/jud/` by a test ([Check the .jud schemas against the types](../guides/check-schemas-against-the-types.md)); implies `jud` | `schemars` |
 | `cli-otel` | no | the `jud` binary with OTLP/HTTP export of its traces and metrics, started only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set ([Export the jud command's telemetry](../guides/export-jud-telemetry.md)); binary only, the library names none of it | `cli`, `otel`, `opentelemetry_sdk`, `opentelemetry-otlp`, `tracing-opentelemetry`, `tracing-subscriber` |
 | `otel` | no | `observer::otel::OtelObserver`, an `Observer` that records OpenTelemetry metrics through the API crate ([Export to OpenTelemetry](../guides/export-to-opentelemetry.md)); the SDK and exporters stay the application's | `opentelemetry` (API, metrics only) |
