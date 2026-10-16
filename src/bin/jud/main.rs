@@ -35,6 +35,8 @@ mod record;
 mod recordings;
 mod run;
 mod split;
+#[cfg(feature = "cli-otel")]
+mod telemetry;
 mod tools;
 mod tune;
 
@@ -172,6 +174,14 @@ enum Command {
 }
 
 fn main() -> ExitCode {
+    // Held to the end of `main`, so the export is flushed on every exit
+    // status the command returns (telemetry.rs).
+    #[cfg(feature = "cli-otel")]
+    let _telemetry = telemetry::init();
+    run()
+}
+
+fn run() -> ExitCode {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(e) => return usage_error(&e),

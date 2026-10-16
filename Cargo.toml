@@ -99,6 +99,19 @@ multipart = ["http", "reqwest/multipart", "dep:bytes"]
 # Off by default.
 otel = ["dep:opentelemetry"]
 
+# The `jud` binary with OTLP export (src/bin/jud/telemetry.rs): traces and
+# metrics sent over OTLP/HTTP when OTEL_EXPORTER_OTLP_ENDPOINT is set, and
+# nothing started otherwise. Binary-only: the library names none of these
+# crates, and `cargo install judgment --features cli-otel` is the opt-in.
+cli-otel = [
+    "cli",
+    "otel",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+    "dep:tracing-subscriber",
+]
+
 [dependencies]
 # 1.0.181 is the first with `#[serde(untagged)]` on one variant, which
 # `Answer::Unknown` uses.
@@ -128,6 +141,14 @@ clap = { version = "4", features = ["derive", "env"], optional = true }
 clap_complete = { version = "4", optional = true }
 # The OpenTelemetry API (feature `otel`), metrics only: no SDK, no exporter.
 opentelemetry = { version = "0.33", default-features = false, features = ["metrics"], optional = true }
+# The SDK, the OTLP exporter and the tracing bridge (feature `cli-otel`,
+# binary only). Pinned to one release line: the OpenTelemetry crates keep
+# global state per version, and deny.toml refuses a second copy. OTLP over
+# HTTP with protobuf bodies and rustls, no tonic or gRPC stack.
+opentelemetry_sdk = { version = "0.33", default-features = false, features = ["metrics", "trace"], optional = true }
+opentelemetry-otlp = { version = "0.33", default-features = false, features = ["http-proto", "reqwest-blocking-client", "reqwest-rustls", "trace", "metrics"], optional = true }
+tracing-opentelemetry = { version = "0.34", default-features = false, optional = true }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"], optional = true }
 
 [dev-dependencies]
 # JSON Schema validation in the contract test against the vendored TypeSafe
@@ -215,6 +236,11 @@ required-features = ["http"]
 [[test]]
 name = "jud_cli"
 required-features = ["cli"]
+
+# `jud` exporting over OTLP to a stand-in collector (feature `cli-otel`).
+[[test]]
+name = "jud_otel"
+required-features = ["cli-otel"]
 
 # The documentation's code held to the code (docs/project/contributing.md).
 [[test]]
