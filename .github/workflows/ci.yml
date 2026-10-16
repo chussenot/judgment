@@ -7,6 +7,14 @@ name: CI
 # from crates.io, so the workflow runs under a repository policy that forbids
 # third-party actions. The release workflow calls this one on a tag
 # (workflow_call), so a publish never runs on a commit the gate did not pass.
+#
+# Four jobs guard what a user of the crate depends on, each a `mise run` task
+# of the same name: `semver` (the public API against the latest crates.io
+# release), `deny` (licences, advisories, duplicate versions, sources:
+# deny.toml), `msrv` (the declared minimum Rust version builds) and `hack`
+# (every feature builds on its own). The tools they need are installed from
+# crates.io at the versions mise.toml pins, cached by version like cocogitto,
+# instead of through the tools' own third-party actions.
 
 on:
   push:
@@ -72,6 +80,115 @@ jobs:
           fail: true
       # What a publish would ship, so tooling creeping into the package is seen.
       - run: cargo package --list --allow-dirty
+
+  semver:
+    name: public API against the last release (cargo-semver-checks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+
+      - uses: actions/cache@v4
+        id: tool-cache
+        with:
+          path: ~/.cargo/bin/cargo-semver-checks
+          key: cargo-semver-checks-${{ runner.os }}-0.51.0
+
+      - name: Install cargo-semver-checks
+        if: steps.tool-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-semver-checks --locked --version 0.51.0
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: cargo-semver-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-semver-${{ runner.os }}-
+
+      # The baseline is the latest release on crates.io; the version in
+      # Cargo.toml says which kind of change is allowed (0.x: a minor bump may
+      # break, a patch may not), so the same command guards a release bump
+      # (cog.toml) and an ordinary change.
+      - run: cargo semver-checks check-release --all-features
+
+  deny:
+    name: licences, advisories, bans, sources (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+
+      - uses: actions/cache@v4
+        id: tool-cache
+        with:
+          path: ~/.cargo/bin/cargo-deny
+          key: cargo-deny-${{ runner.os }}-0.20.2
+
+      - name: Install cargo-deny
+        if: steps.tool-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-deny --locked --version 0.20.2
+
+      - run: cargo deny --all-features check advisories licenses bans sources
+
+  msrv:
+    name: minimum supported Rust version (1.91)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the minimum supported toolchain
+        run: rustup toolchain install 1.91 --profile minimal
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            target
+          key: cargo-msrv-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-msrv-${{ runner.os }}-
+
+      # `rust-version` in Cargo.toml is a promise to users; this is where it is
+      # kept. The locked dependencies are the ones the gate above tested.
+      - run: cargo +1.91 check --all-features --locked
+
+  hack:
+    name: every feature on its own (cargo-hack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+
+      - uses: actions/cache@v4
+        id: tool-cache
+        with:
+          path: ~/.cargo/bin/cargo-hack
+          key: cargo-hack-${{ runner.os }}-0.6.45
+
+      - name: Install cargo-hack
+        if: steps.tool-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-hack --locked --version 0.6.45
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            target
+          key: cargo-hack-build-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-hack-build-${{ runner.os }}-
+
+      - run: cargo hack check --each-feature --no-dev-deps
 
   hooks:
     name: pre-commit hooks (prek)

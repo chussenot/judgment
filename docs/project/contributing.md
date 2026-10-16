@@ -2,7 +2,7 @@
 title: Contributing
 description: How the repository is worked on; the quality gates and the hooks, tracking work in beads, Conventional Commits, how the documentation is organised (Diátaxis) and checked, what is generated, how the container image is built locally, how a cloud session is set up, and how a decision is recorded.
 status: current
-last_reviewed: 2026-10-15
+last_reviewed: 2026-10-16
 tags: [judgment, contributing, tooling, documentation, diataxis]
 ---
 
@@ -20,6 +20,17 @@ mise tasks            # the rest
 ## The gates
 
 `mise run check` runs, in CI's order: `cargo fmt --check`, `cargo clippy --all-targets --all-features` with warnings denied, a build and check of every target without the `http` feature (`check:minimal`), `cargo test --all-features` (unit, wiremock, example, doc and documentation tests, no network), `cargo doc` with broken links as errors, and the documentation checks below. The pre-commit hooks (`prek`, configured in `.pre-commit-config.yaml`) run the fast file-level checks and verify the commit message; the pre-push hook runs the tests.
+
+Four more gates guard what a user of the crate depends on. Each is a CI job and a `mise run` task of the same name, and none is in `mise run check`, because the first two read the network (the baseline release, the advisory database):
+
+| Task | Checks | A failure means |
+|---|---|---|
+| `semver` | The public API against the latest crates.io release, every feature (`cargo semver-checks`) | A change needs a major release, which 0.x spells as a minor one. The version in `Cargo.toml` says what is allowed: under a patch bump only additions pass. An addition never fails it |
+| `deny` | Advisories, licences, duplicate versions and sources over the whole graph (`deny.toml`, `cargo deny`) | A dependency has a known vulnerability or is yanked, a direct dependency is unmaintained, a dependency brings a licence the list does not name, appears twice (two `opentelemetry` versions fail, the rest warn), or comes from outside crates.io |
+| `msrv` | `cargo +1.91 check --all-features --locked` | The code or a locked dependency needs a newer Rust than `rust-version` promises |
+| `hack` | Each feature on its own (`cargo hack check --each-feature`) | A feature only builds when another is on |
+
+The tools come from crates.io at the versions `mise.toml` pins (`mise install`), and `ci.yml` installs the same versions, cached by version, so the workflow still uses no third-party action. A licence goes on the allow list in `deny.toml` with a comment saying which crate needs it.
 
 Tests never call a real API: wiremock for the client, `Fake` and recordings for everything above it. The exceptions are the ignored live tests in `tests/live.rs` (`mise run live:typesafe`, `live:ollama`, `live:laya`, `live:clef`, `live:pplx`), whose results are recorded under [verification](verification/method.md), and `tests/openapi_drift.rs`, which refreshes the vendored OpenAPI document.
 
