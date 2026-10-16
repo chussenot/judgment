@@ -32,6 +32,8 @@ Four more gates guard what a user of the crate depends on. Each is a CI job and 
 
 The tools come from crates.io at the versions `mise.toml` pins (`mise install`), and `ci.yml` installs the same versions, cached by version, so the workflow still uses no third-party action. A licence goes on the allow list in `deny.toml` with a comment saying which crate needs it.
 
+`tests/properties.rs` holds the crate's invariants as properties over generated inputs ([proptest](https://docs.rs/proptest)): a `Probability` and a `Confidence` hold exactly `[0, 1]`, the canonical fingerprint ignores key order and moves with any leaf, `Response::verify` accepts what fits and names each way a response does not, and `Questions` holds its limits at their edges. It runs 256 cases per property with the rest of `cargo test` and needs no feature; `PROPTEST_CASES=10000 cargo test --test properties --release` runs more, as worth doing after touching what a property covers. A failure is shrunk to a minimal input and saved to `proptest-regressions/properties.txt`, which is replayed first on every later run: commit that file with the fix. A property that filters its inputs with `prop_assume!` aborts once a large run rejects too many, so generate the input the property needs instead.
+
 Tests never call a real API: wiremock for the client, `Fake` and recordings for everything above it. The exceptions are the ignored live tests in `tests/live.rs` (`mise run live:typesafe`, `live:ollama`, `live:laya`, `live:clef`, `live:pplx`), whose results are recorded under [verification](verification/method.md), and `tests/openapi_drift.rs`, which refreshes the vendored OpenAPI document.
 
 ## Tracking work
