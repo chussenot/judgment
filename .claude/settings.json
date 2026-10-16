@@ -1,9 +1,17 @@
 {
   "enabledPlugins": {
     "typesafe@typesafe-ai": true,
-    "jud@judgment": true
+    "jud@judgment": true,
+    "ponytail@ponytail": true
   },
   "extraKnownMarketplaces": {
+    "ponytail": {
+      "source": {
+        "ref": "v5.2.0",
+        "repo": "DietrichGebert/ponytail",
+        "source": "github"
+      }
+    },
     "typesafe-ai": {
       "source": {
         "repo": "typesafe-ai/skills",

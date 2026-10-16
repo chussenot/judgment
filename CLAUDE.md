@@ -141,12 +141,22 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   committing `.env`, `cargo publish` and `bd edit` (it opens an editor and
   hangs). In a cloud session `session-start.sh` installs the tools
   (`mise.cloud.toml`, pinned release URLs), imports the beads from the
-  committed export, installs the two Claude Code plugins
+  committed export, installs the three Claude Code plugins
   (`scripts/claude-plugins.sh`: `jud` from the checkout, `typesafe` from
-  `typesafe-ai/skills`, since a cloud session never installs what
-  `.claude/settings.json` declares) and warms the build; then `bd prime`
-  runs. `mise run plugins:install` does the same on a laptop and `mise run
-  plugins:update` moves both plugins to their latest.
+  `typesafe-ai/skills`, `ponytail` from `DietrichGebert/ponytail`, since a
+  cloud session never installs what `.claude/settings.json` declares) and
+  warms the build; then `bd prime` runs. `mise run plugins:install` does
+  the same on a laptop and `mise run plugins:update` moves `jud` and
+  `typesafe` to their latest and `ponytail` to its pin.
+- Ponytail is required: the plugin is pinned to a tag (`v5.2.0`, in
+  `.claude/settings.json` and `scripts/claude-plugins.sh`, moved together)
+  and its discipline applies to every change here: no code the task does
+  not need, the standard library and what the crate already has before a
+  new dependency or abstraction, and the checks (verification, errors,
+  the contract tests) kept whole. A deliberate shortcut is marked with a
+  `ponytail:` comment, this repository's word for Ponytail's default
+  `shortcut:`, saying what was skipped and when to come back; `/ponytail-debt
+  ponytail:` collects them.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker

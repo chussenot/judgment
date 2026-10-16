@@ -17,8 +17,9 @@
 #      import the post-merge hook runs (scripts/bd-sync.sh; the export is how
 #      the beads travel between machines).
 #   6. `mise run setup`: the git hooks (prek block, then beads) and `cargo fetch`.
-#   7. The two Claude Code plugins (scripts/claude-plugins.sh): `jud` from
-#      this checkout and `typesafe` from typesafe-ai/skills. A cloud session
+#   7. The three Claude Code plugins (scripts/claude-plugins.sh): `jud` from
+#      this checkout, `typesafe` from typesafe-ai/skills and `ponytail` from
+#      DietrichGebert/ponytail at its pinned tag. A cloud session
 #      never installs the plugins .claude/settings.json declares (that needs
 #      the trust dialog a laptop shows), so the hook does, at user scope;
 #      they load at the next session start, which the snapshot makes every
