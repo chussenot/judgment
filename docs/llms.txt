@@ -16,7 +16,7 @@ This index is generated from the crate's documentation nav (`mkdocs.yml`) and ea
 
 ## Start
 
-- [Install](https://raw.githubusercontent.com/chussenot/judgment/main/docs/start/install.md): Every way to get the jud command and the judgment crate: mise, Homebrew, a release tarball with its checksum and attestation, cargo-binstall, cargo install, the container image, the crate as a dependency with its features, and shell completion.
+- [Install](https://raw.githubusercontent.com/chussenot/judgment/main/docs/start/install.md): Every way to get the jud command and the judgment crate; mise, Homebrew, a release tarball with its checksum and attestation, cargo-binstall, cargo install, the container image, the crate as a dependency with its features, and shell completion.
 - [Your first decision from the command line](https://raw.githubusercontent.com/chussenot/judgment/main/docs/start/first-decision-cli.md): From nothing to a verdict with the jud command and no account, by replaying a recorded answer; then the same command against the hosted API or a local model.
 - [Your first decision in Rust](https://raw.githubusercontent.com/chussenot/judgment/main/docs/start/first-decision-rust.md): From an empty crate to a decision made on a model's answers, in Rust, with no account; first against the Fake backend, then the same decision from a .jud rubric, then against the hosted API with a key.
 
