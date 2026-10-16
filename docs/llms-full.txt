@@ -23,14 +23,14 @@ Not affiliated with TypeSafe AI.
 | Evaluating whether this fits | [System One](concepts/system-one.md), [How judgment works](concepts/how-judgment-works.md) | [Stability](reference/stability.md), [Compared with the other Rust clients](project/research/client-comparison.md) |
 | Using `jud` from a shell, no Rust | [Install](start/install.md), [Your first decision from the command line](start/first-decision-cli.md) | [Configure a backend](guides/configure-a-backend.md), [Record, replay and test](guides/record-replay-and-test.md#record-a-rubrics-cases-from-the-shell), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [The jud command line](reference/cli.md) |
 | Writing `.jud` documents | [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [Write a rubric](guides/write-a-rubric.md) | [Label cases](guides/label-cases.md), [Tune thresholds](guides/tune-thresholds.md), [The .jud format](reference/jud-format.md) |
-| Using the crate from Rust | [Your first decision in Rust](start/first-decision-rust.md) | [Record, replay and test](guides/record-replay-and-test.md), [Patterns](guides/patterns.md), [The crate](reference/crate.md) and the [rustdoc](https://docs.rs/judgment) |
+| Using the crate from Rust | [Your first decision in Rust](start/first-decision-rust.md) | [Record, replay and test](guides/record-replay-and-test.md), [Patterns](guides/patterns.md), [Export to OpenTelemetry](guides/export-to-opentelemetry.md), [The crate](reference/crate.md) and the [rustdoc](https://docs.rs/judgment) |
 | Asking about images | [Visual judgments](concepts/visual-judgments.md) | [Get verdicts on images from the command line](guides/images-from-the-command-line.md), [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [A Box calibration study](project/verification/box-calibration-study.md) and [its second run on document pages](project/verification/box-calibration-study-pages.md) |
 | Contributing | [Contributing](project/contributing.md) | [Internals](project/internals.md), [How the crate is checked](project/verification/method.md), [Decisions](project/decisions/README.md) |
 
 ## The documentation
 
 - **Start**: [Install](start/install.md), [first decision from the command line](start/first-decision-cli.md), [first decision in Rust](start/first-decision-rust.md).
-- **Guides**: [Configure a backend](guides/configure-a-backend.md), [Write a rubric](guides/write-a-rubric.md), [Label cases](guides/label-cases.md), [Record, replay and test](guides/record-replay-and-test.md), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [Run in a container](guides/run-in-a-container.md), [Use the Claude Code plugin](guides/use-the-claude-code-plugin.md), [Patterns](guides/patterns.md), [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [Get verdicts on images from the command line](guides/images-from-the-command-line.md), [Use long context](guides/use-long-context.md).
+- **Guides**: [Configure a backend](guides/configure-a-backend.md), [Write a rubric](guides/write-a-rubric.md), [Label cases](guides/label-cases.md), [Record, replay and test](guides/record-replay-and-test.md), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [Run in a container](guides/run-in-a-container.md), [Use the Claude Code plugin](guides/use-the-claude-code-plugin.md), [Patterns](guides/patterns.md), [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [Get verdicts on images from the command line](guides/images-from-the-command-line.md), [Use long context](guides/use-long-context.md), [Export to OpenTelemetry](guides/export-to-opentelemetry.md).
 - **Reference**: [The jud command line](reference/cli.md), [Configuration](reference/configuration.md), [The .jud format](reference/jud-format.md), [The crate](reference/crate.md), [The container image](reference/container-image.md), [Stability](reference/stability.md), [Glossary](reference/glossary.md); the [rustdoc](https://docs.rs/judgment) for every type.
 - **Concepts**: [System One](concepts/system-one.md), [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [How judgment works](concepts/how-judgment-works.md), [Visual judgments](concepts/visual-judgments.md).
 - **Project**: [Contributing](project/contributing.md), [Internals](project/internals.md), [Releasing](project/releasing.md), [verification](project/verification/method.md) against real servers, [research](project/research/compatible-servers-and-models.md), [decisions](project/decisions/README.md), the [CHANGELOG](../CHANGELOG.md); [llms.txt](llms.txt) and [llms-full.txt](llms-full.txt) for an agent.
@@ -2627,6 +2627,92 @@ async fn ask(client: &Client, state: &serde_json::Value, questions: &Questions) 
 - [Jev 1.14 on the hosted API](../project/verification/hosted-typesafe-jev-1-14.md): the 74,550-token state the header let through.
 
 
+<!-- source: docs/guides/export-to-opentelemetry.md -->
+
+
+# Export to OpenTelemetry
+
+**You will** see a client's calls in an OpenTelemetry backend: one span per call, and metrics for tokens, duration, failed attempts and cost. **Prerequisites:** [Your first decision in Rust](../start/first-decision-rust.md), and an application that already has an OpenTelemetry SDK or collector.
+
+The crate emits `tracing` spans and reports to an [`Observer`](../reference/crate.md); it picks no metrics backend and links no OpenTelemetry SDK. The `otel` feature adds the one piece that needs the OpenTelemetry **API** (`opentelemetry`, metrics only): an `Observer` that records to a `Meter` you give it. The SDK, the exporter and where the data goes stay yours.
+
+!!! warning "Development status"
+    The OpenTelemetry [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) are at Development status, so an attribute or metric name can still change upstream. Every name this crate writes is a constant in `judgment::semconv`, the one place to edit when one does.
+
+## The spans
+
+The client's `typesafe.evaluate` span is a `client` span named `system_one {model}` for any `tracing` subscriber that reads `otel.kind` and `otel.name`, such as `tracing-opentelemetry`. It carries:
+
+| Attribute | Value |
+|---|---|
+| `gen_ai.operation.name` | `system_one`: a System One call evaluates typed questions and generates no text, so it has an operation of its own, outside the conventions' `chat` and `embeddings` |
+| `gen_ai.provider.name` | `typesafe`, `openrouter`, `ollama` or `other`, from the base URL's host; a Laya or autojev server on a local address reads as `other` |
+| `gen_ai.request.model` | the model the request named, alias included |
+| `gen_ai.response.model` | the versioned model that answered |
+| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | the response's usage, also when the response did not fit the questions: the tokens were spent |
+| `server.address` | the base URL's host |
+| `error.type` | on failure: an HTTP status as a number (`500`), or a short name (`rate_limited`, `transport`, `decode`, `unfit`, `too_large`, ...) |
+
+The span's `images`, `long_context`, `multipart` and `request_id` fields are as before. The retries of one call are `warn` events inside this span, not spans of their own.
+
+## The metrics
+
+With the `otel` feature, give an `OtelObserver` a meter from your provider and set it on the client:
+
+```rust no_run
+use std::sync::Arc;
+
+use judgment::Client;
+use judgment::observer::otel::OtelObserver;
+use opentelemetry::metrics::MeterProvider;
+
+fn client(provider: &opentelemetry_sdk::metrics::SdkMeterProvider) -> judgment::Result<Client> {
+    let observer = OtelObserver::new(provider.meter("judgment"));
+    Client::builder().observer(Arc::new(observer)).build()
+}
+```
+
+| Instrument | Kind, unit | Attributes |
+|---|---|---|
+| `gen_ai.client.token.usage` | histogram, `{token}` | operation, provider, request model, response model, `gen_ai.token.type` (`input` or `output`) |
+| `gen_ai.client.operation.duration` | histogram, `s` | operation, provider, request model, `server.address`, and `error.type` on a failed call |
+| `judgment.retry.attempts` | counter, `{attempt}` | `error.type`: the status, or `transport`, `decode`, `unfit`, `too_large` |
+| `judgment.usage.cost` | histogram, `USD` | operation, provider, request model; recorded only when the server reports a cost (OpenRouter does, TypeSafe's own API does not) |
+| `judgment.answer.confidence` | histogram, `1` | request model, question id; only when asked for |
+
+A call's duration is its wall time with every retry and wait, and a call that fails is recorded too, with its `error.type`. A response that did not fit the questions still records its tokens and cost, since they were billed.
+
+Every attribute has a bounded set of values, so none multiplies series without limit, except the question id on the confidence histogram: it is your own string. `OtelObserver::new(meter).answer_confidence(true)` records the confidence of every Choice and Score answer of a successful call by question id; switch it on when your ids are few and fixed. A request id and the state's content are never an attribute.
+
+!!! note "Failed attempts need the global observer"
+    A failed attempt is reported to the process-wide observer, not to a client's own, because the retry loop is shared with clients that have none. For `judgment.retry.attempts` to count, also install the same observer with `judgment::observer::set_global`; the other instruments come from the client's own.
+
+## A collector to receive them
+
+Any OTLP endpoint works. This `OpenTelemetry Collector` configuration receives OTLP over HTTP and prints what arrives, which is enough to see the instruments before pointing an exporter at a real backend:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  debug:
+    verbosity: detailed
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+```
+
+Point your SDK's OTLP exporter at `http://localhost:4318`. The `jud` command line does not export telemetry yet.
+
+
 <!-- source: docs/reference/cli.md -->
 
 
@@ -4049,6 +4135,7 @@ Minor 4 of `jud/v1` names exactly the fields on this page. A reader refuses a fi
 | `http` | yes | `Client`, `ClientBuilder`, `CallOptions`, `RetryPolicy`, the `http` module (the retry loop), `Client::list_models` | `reqwest` (rustls), `tokio`, `fastrand`, `httpdate` |
 | `jud` | no | The `jud` module: the `.jud` reader and writer, `Rubric`, `Cases`, `Verdict`, `Replay` reading `.jud` recordings | `serde-saphyr` |
 | `openapi` | no | `contract::OPENAPI_DOCUMENT`, the vendored TypeSafe OpenAPI document as text, about 25 KB | nothing |
+| `otel` | no | `observer::otel::OtelObserver`, an `Observer` that records OpenTelemetry metrics through the API crate ([Export to OpenTelemetry](../guides/export-to-opentelemetry.md)); the SDK and exporters stay the application's | `opentelemetry` (API, metrics only) |
 | `cli` | no | The `jud` binary (`src/bin/jud/`); implies `jud` and `http` | `clap`, `clap_complete` |
 | `multipart` | no | `CallOptions::multipart` and `ClientBuilder::multipart`: a request's images sent as `multipart/form-data` parts beside a JSON `request` part instead of base64 in the JSON body, the transport TypeSafe recommends for images; implies `http` ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) | `reqwest`'s multipart encoding, `mime_guess`, `bytes` |
 
@@ -4076,7 +4163,8 @@ In the order of one call: a question is built, sent through a backend, answered,
 | `error` | `Error`, `Result`, `ValidationIssue`. | [docs.rs](https://docs.rs/judgment/latest/judgment/error/index.html) |
 | `eval` | `Recording`, `Judgment`, the metrics (`metrics`), the fingerprints (`canonical`) and the sweeps (`tuning`). | [docs.rs](https://docs.rs/judgment/latest/judgment/eval/index.html) |
 | `jud` (`jud`) | `parse`, `Rubric`, `Cases`, `Case`, `Verdict`, `AssetSource`, `load_assets`, `BoxLabel`, `parse_recording`, `recording_to_yaml`, `present`, `API_VERSION`, `MINOR`. | [docs.rs](https://docs.rs/judgment/latest/judgment/jud/index.html) |
-| `observer` | `Observer`, the seam through which token usage and failed attempts reach the application's metrics. The crate emits `tracing` spans (`typesafe.evaluate`, `typesafe.list_models`) and no metrics of its own. | [docs.rs](https://docs.rs/judgment/latest/judgment/observer/index.html) |
+| `observer` | `Observer`, the seam through which token usage, failed attempts and each finished call (`CallReport`) reach the application's metrics; with `otel`, `otel::OtelObserver`. The crate emits `tracing` spans (`typesafe.evaluate`, `typesafe.list_models`) and no metrics of its own. | [docs.rs](https://docs.rs/judgment/latest/judgment/observer/index.html) |
+| `semconv` | The OpenTelemetry attribute and metric names the crate writes, as constants: the `gen_ai.*`, `server.address` and `error.type` ones. |  [docs.rs](https://docs.rs/judgment/latest/judgment/semconv/index.html) |
 | `contract` (`openapi`) | `OPENAPI_DOCUMENT`. | [docs.rs](https://docs.rs/judgment/latest/judgment/contract/index.html) |
 
 The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCriteria`, the answer types, `Assets`, `Image`, `ImageFormat`, `SystemOne`, `Fake`, `Recorder`, `Replay`, `Error`, `Result`, `ValidationIssue`, `Observer` and, with `http`, the client types.

@@ -55,6 +55,12 @@ pkg-url = "{ repo }/releases/download/v{ version }/jud-v{ version }-{ target }.t
 bin-dir = "jud-v{ version }-{ target }/{ bin }"
 pkg-fmt = "tgz"
 
+# docs.rs builds every feature and marks each gated item with the feature that
+# turns it on (`#[doc(cfg)]`, enabled by the `docsrs` cfg).
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [features]
 default = ["http"]
 # The HTTP client and the retry loop. Without it the crate is the question
@@ -80,6 +86,11 @@ cli = ["jud", "http", "dep:clap", "dep:clap_complete"]
 # by default: base64 carries every image the limits allow, and the feature
 # pulls in reqwest's multipart encoding and `mime_guess`.
 multipart = ["http", "reqwest/multipart", "dep:bytes"]
+# `judgment::observer::otel::OtelObserver`: an `Observer` that reports to
+# OpenTelemetry metrics, through the OpenTelemetry API crate only. The SDK and
+# any exporter stay the application's choice (the `jud` binary's, later).
+# Off by default.
+otel = ["dep:opentelemetry"]
 
 [dependencies]
 # 1.0.181 is the first with `#[serde(untagged)]` on one variant, which
@@ -108,6 +119,8 @@ httpdate = { version = "1", optional = true }
 # beyond the clap already here.
 clap = { version = "4", features = ["derive", "env"], optional = true }
 clap_complete = { version = "4", optional = true }
+# The OpenTelemetry API (feature `otel`), metrics only: no SDK, no exporter.
+opentelemetry = { version = "0.33", default-features = false, features = ["metrics"], optional = true }
 
 [dev-dependencies]
 # JSON Schema validation in the contract test against the vendored TypeSafe
@@ -120,6 +133,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 # A capturing layer in the span tests.
 tracing-subscriber = "0.3"
 wiremock = "0.6"
+# The SDK's in-memory metric exporter, for what `OtelObserver` records
+# (tests/otel.rs). Same version as the API crate, so one copy in the graph.
+opentelemetry_sdk = { version = "0.33", default-features = false, features = ["metrics", "testing"] }
 
 # The client tests need the HTTP feature; the rest of the crate is tested
 # with `--no-default-features` too.
@@ -144,6 +160,18 @@ required-features = ["http"]
 # The vendored OpenAPI document against the live one; its one test is
 # #[ignore] and needs the network but no key (see tests/openapi_drift.rs).
 # tests/contract.rs has no entry: it builds and runs without `http` too.
+# What `OtelObserver` records through a client, read from the SDK's in-memory
+# exporter.
+[[test]]
+name = "otel"
+required-features = ["http", "otel"]
+
+# `judgment.retry.attempts`, from the process-wide observer: a target of its
+# own, with one test, as tests/observer.rs is.
+[[test]]
+name = "otel_global"
+required-features = ["http", "otel"]
+
 [[test]]
 name = "openapi_drift"
 required-features = ["http"]

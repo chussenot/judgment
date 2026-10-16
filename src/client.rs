@@ -64,6 +64,19 @@
 //! response headers. A value that is empty, not printable ASCII or longer
 //! than 256 bytes is ignored, so what reaches a span stays bounded.
 //!
+//! # Telemetry
+//!
+//! The `typesafe.evaluate` span is a client span named `system_one {model}`
+//! for a subscriber that reads `otel.kind` and `otel.name`, and carries the
+//! OpenTelemetry `GenAI` attributes (`gen_ai.operation.name`,
+//! `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, and when
+//! the call ends `gen_ai.response.model`, `gen_ai.usage.input_tokens`,
+//! `gen_ai.usage.output_tokens` and, on failure, `error.type`). The names are
+//! constants in [`crate::semconv`]. The provider is worked out from the base
+//! URL: `typesafe`, `openrouter`, `ollama` (port 11434) or `other`. A finished
+//! call is also reported once to the [`Observer`] ([`Observer::on_call`]).
+//! `docs/guides/export-to-opentelemetry.md` shows both exported.
+//!
 //! # Per-call options
 //!
 //! [`Client::evaluate_with`] takes a [`CallOptions`] for one call (a
@@ -71,7 +84,7 @@
 //! fields), so one client serves a batch job and an interactive request
 //! alike; [`ClientBuilder::default_header`] sets a header on every call.
 //! The model is not an option: it is on the [`Request`], and a second place
-//! to set it would let the span's `model` field name a model that was not
+//! to set it would let the span's `gen_ai.request.model` field name a model that was not
 //! sent. No option's value is a span field either, since a header can be a
 //! credential and an extra field a piece of the state.
 //!
@@ -160,7 +173,7 @@
 use std::env::VarError;
 use std::fmt;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::header::{
     AUTHORIZATION, CONNECTION, CONTENT_LENGTH, CONTENT_TYPE, HOST, HeaderMap, TE,
@@ -171,11 +184,11 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::answer::{Answer, Response, sanitize_server_str};
+use crate::answer::{Answer, Response, Usage, sanitize_server_str};
 use crate::asset::{Assets, MAX_REQUEST_BYTES};
 use crate::error::{Error, Result, ValidationIssue};
 use crate::http::{self, Completed, Exhausted};
-use crate::observer::Observer;
+use crate::observer::{CallReport, Observer};
 use crate::question::Questions;
 
 /// Environment variable holding the API key, the one secret the client reads
@@ -402,6 +415,7 @@ impl CallOptions {
     /// Nothing without an image in the request; `false` turns it off for
     /// one call of a client built with it on.
     #[cfg(feature = "multipart")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "multipart")))]
     #[must_use]
     pub fn multipart(mut self, on: bool) -> Self {
         self.multipart = Some(on);
@@ -582,6 +596,7 @@ impl ClientBuilder {
     /// [`CallOptions::multipart`] changes it for one call. A request
     /// without images is the JSON body it always was.
     #[cfg(feature = "multipart")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "multipart")))]
     #[must_use]
     pub fn multipart(mut self, on: bool) -> Self {
         self.multipart = on;
@@ -655,6 +670,8 @@ impl ClientBuilder {
             })?;
         Ok(Client {
             http,
+            provider: provider_of(&base_url),
+            server_address: base_url.host_str().unwrap_or_default().to_owned(),
             base_url,
             model: self.model,
             retry: self.retry,
@@ -666,11 +683,39 @@ impl ClientBuilder {
     }
 }
 
+/// What a response told, kept for the call's report even when the response
+/// does not fit the questions.
+struct Billed {
+    model: String,
+    usage: Usage,
+}
+
+/// `gen_ai.provider.name` from the base URL: the hosts and the port this
+/// crate has been run against, and `other` for anything else. The set is
+/// fixed, so it is safe as a metric label.
+fn provider_of(url: &Url) -> &'static str {
+    let host = url.host_str().unwrap_or_default();
+    let on = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
+    if on("typesafe.ai") {
+        "typesafe"
+    } else if on("openrouter.ai") {
+        "openrouter"
+    } else if url.port() == Some(11434) {
+        "ollama"
+    } else {
+        "other"
+    }
+}
+
 /// A configured TypeSafe API client. Cheap to clone.
 #[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
     base_url: Url,
+    /// `gen_ai.provider.name` and `server.address`, worked out once from the
+    /// base URL ([`provider_of`]).
+    provider: &'static str,
+    server_address: String,
     model: String,
     retry: RetryPolicy,
     observer: Option<Arc<dyn Observer>>,
@@ -725,6 +770,7 @@ impl Client {
     /// Whether this client sends the images of every call as multipart
     /// parts ([`ClientBuilder::multipart`]).
     #[cfg(feature = "multipart")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "multipart")))]
     pub const fn multipart(&self) -> bool {
         self.multipart
     }
@@ -772,11 +818,19 @@ impl Client {
         name = "typesafe.evaluate",
         skip_all,
         fields(
-            model = request.model,
+            otel.kind = "client",
+            otel.name = format!("system_one {}", request.model),
+            gen_ai.operation.name = "system_one",
+            gen_ai.provider.name = self.provider,
+            gen_ai.request.model = request.model,
+            server.address = self.server_address.as_str(),
             images = request.assets.len(),
             long_context = options.long_context.unwrap_or(self.long_context),
             multipart = self.multipart_for(request, options),
-            input_tokens = tracing::field::Empty,
+            gen_ai.response.model = tracing::field::Empty,
+            gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.usage.output_tokens = tracing::field::Empty,
+            error.type = tracing::field::Empty,
             request_id = tracing::field::Empty
         )
     )]
@@ -784,6 +838,36 @@ impl Client {
         &self,
         request: &Request<'_, S>,
         options: &CallOptions,
+    ) -> Result<Response> {
+        let started = Instant::now();
+        let mut billed = None;
+        let result = self.evaluate_once(request, options, &mut billed).await;
+        let error_type = result.as_ref().err().map(Error::error_type);
+        if let Some(kind) = &error_type {
+            tracing::Span::current().record("error.type", kind.as_ref());
+        }
+        let billed: Option<Billed> = billed;
+        self.observer().on_call(&CallReport {
+            provider: self.provider,
+            server_address: &self.server_address,
+            request_model: request.model,
+            response_model: billed.as_ref().map(|b| b.model.as_str()),
+            usage: billed.as_ref().map(|b| &b.usage),
+            answers: result.as_ref().ok().map(|r| &r.answers),
+            duration: started.elapsed(),
+            error_type: error_type.as_deref(),
+        });
+        result
+    }
+
+    /// The call itself, inside [`Client::evaluate_with`]'s span. `billed`
+    /// is set as soon as a response decodes, so the report of a response
+    /// that did not fit still has its model and tokens.
+    async fn evaluate_once<S: Serialize + Sync>(
+        &self,
+        request: &Request<'_, S>,
+        options: &CallOptions,
+        billed: &mut Option<Billed>,
     ) -> Result<Response> {
         let url = self.url("v1/systemone")?;
         let dangerous = !request.assets.is_empty() || asks_a_box(request.questions);
@@ -859,7 +943,14 @@ impl Client {
                 );
             }
         }
-        tracing::Span::current().record("input_tokens", response.usage.input_tokens);
+        let span = tracing::Span::current();
+        span.record("gen_ai.response.model", response.model.as_str());
+        span.record("gen_ai.usage.input_tokens", response.usage.input_tokens);
+        span.record("gen_ai.usage.output_tokens", response.usage.output_tokens);
+        *billed = Some(Billed {
+            model: response.model.clone(),
+            usage: response.usage,
+        });
         // Billed whether or not it fits, so reported before the check.
         self.observer().on_usage(&response.model, &response.usage);
         if let Err(e) = response.verify(request.questions) {
@@ -1384,6 +1475,22 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn the_provider_comes_from_the_host_and_one_port() {
+        for (url, provider) in [
+            ("https://api.typesafe.ai", "typesafe"),
+            ("https://typesafe.ai", "typesafe"),
+            ("https://openrouter.ai/api", "openrouter"),
+            ("http://127.0.0.1:11434", "ollama"),
+            ("http://localhost:8000", "other"),
+            // A look-alike is not the real host.
+            ("https://evil-typesafe.ai", "other"),
+            ("https://typesafe.ai.example.com", "other"),
+        ] {
+            assert_eq!(provider_of(&Url::parse(url).unwrap()), provider, "{url}");
+        }
+    }
 
     #[test]
     fn request_id_is_read_only_when_usable() {

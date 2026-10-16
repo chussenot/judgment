@@ -6,6 +6,46 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- OpenTelemetry, behind the new `otel` feature (the OpenTelemetry API crate,
+  metrics only; the SDK and exporters stay the application's):
+  `observer::otel::OtelObserver` is an `Observer` that records
+  `gen_ai.client.token.usage` (tokens by `gen_ai.token.type`),
+  `gen_ai.client.operation.duration` (seconds, `error.type` on a failed
+  call), `judgment.retry.attempts` (failed attempts by `error.type`),
+  `judgment.usage.cost` (USD, only when the server reports a cost) and, when
+  switched on with `OtelObserver::answer_confidence`, the confidence of each
+  Choice and Score answer by question id. Every attribute has a bounded set
+  of values except that question id. The GenAI conventions are at
+  Development status in OpenTelemetry, so a name can still change upstream.
+  A guide, "Export to OpenTelemetry", has a collector configuration.
+- `semconv`: the attribute and metric names the crate writes, as constants
+  (`gen_ai.*`, `server.address`, `error.type`), the one place to edit when a
+  convention moves.
+- `Observer::on_call` and `CallReport`: one report per finished client call,
+  after its retries, with the provider (`typesafe`, `openrouter`, `ollama` or
+  `other`, from the base URL), the server address, the request and response
+  models, the usage and cost of a response that came back (billed even when
+  it did not fit), the answers of a call that succeeded, the call's duration
+  and its `error.type`. A default method, so an existing `Observer` compiles
+  unchanged. A failed attempt still reaches only the process-wide observer.
+- The `typesafe.evaluate` span is a `client` span (`otel.kind`) named
+  `system_one {model}` (`otel.name`) with `gen_ai.operation.name`,
+  `gen_ai.provider.name`, `gen_ai.request.model`, `server.address`, and, once
+  the call ends, `gen_ai.response.model`, `gen_ai.usage.output_tokens` and
+  `error.type`.
+- docs.rs builds with every feature and marks each feature-gated item with
+  the feature that turns it on.
+
+### Changed
+
+- Two fields of the `typesafe.evaluate` span are renamed to their
+  OpenTelemetry names: `model` is `gen_ai.request.model` and `input_tokens`
+  is `gen_ai.usage.input_tokens`. A `tracing` subscriber or an
+  `tracing-opentelemetry` view that reads the old names must read the new
+  ones. `images`, `long_context`, `multipart` and `request_id` are unchanged.
+
 ## [0.14.0] - 2026-10-15
 
 ### Added

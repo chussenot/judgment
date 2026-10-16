@@ -160,6 +160,7 @@ pub enum Error {
     /// and the per-attempt timeout. No request id: no response came back,
     /// or its headers were dropped with its unreadable body, as the SDKs do.
     #[cfg(feature = "http")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "http")))]
     #[error("transport error after {attempts} attempts: {source}")]
     Transport {
         /// Total attempts made, including the first.
@@ -431,6 +432,47 @@ impl Error {
             *request_id = id.map(str::to_owned);
         }
         self
+    }
+
+    /// The bounded `error.type` this error reports to telemetry
+    /// ([`crate::semconv::ERROR_TYPE`]): an HTTP status as a number, or a
+    /// short snake-case name, with the four answer-fit errors as `unfit`
+    /// (the word [`crate::Observer::on_failed_attempt`] uses for them).
+    #[cfg(feature = "http")]
+    pub(crate) fn error_type(&self) -> std::borrow::Cow<'static, str> {
+        use std::borrow::Cow::{Borrowed, Owned};
+        match self {
+            Self::InvalidRequest { status, .. } | Self::Http { status, .. } => {
+                Owned(status.to_string())
+            }
+            Self::MissingApiKey => Borrowed("missing_api_key"),
+            Self::InvalidApiKey { .. } => Borrowed("invalid_api_key"),
+            Self::Unauthorized { .. } => Borrowed("unauthorized"),
+            Self::PermissionDenied { .. } => Borrowed("permission_denied"),
+            Self::PaymentRequired { .. } => Borrowed("payment_required"),
+            Self::RateLimited { .. } => Borrowed("rate_limited"),
+            Self::Overloaded { .. } => Borrowed("overloaded"),
+            #[cfg(feature = "http")]
+            Self::Transport { .. } => Borrowed("transport"),
+            Self::ResponseTooLarge { .. } => Borrowed("too_large"),
+            Self::Decode { .. } => Borrowed("decode"),
+            Self::Io { .. } => Borrowed("io"),
+            Self::NoRecording(_) => Borrowed("no_recording"),
+            Self::InvalidRecording { .. } => Borrowed("invalid_recording"),
+            Self::DuplicateQuestionId(_) => Borrowed("duplicate_question_id"),
+            Self::InvalidQuestion { .. } => Borrowed("invalid_question"),
+            Self::InvalidImage { .. } => Borrowed("invalid_image"),
+            Self::InvalidAsset { .. } => Borrowed("invalid_asset"),
+            Self::RequestTooLarge { .. } => Borrowed("request_too_large"),
+            Self::MissingAnswer { .. }
+            | Self::AnswerTypeMismatch { .. }
+            | Self::UnknownOption { .. }
+            | Self::InvalidAnswer { .. } => Borrowed("unfit"),
+            Self::NotAProbability { .. } => Borrowed("not_a_probability"),
+            Self::ReservedHeader(_) => Borrowed("reserved_header"),
+            Self::ReservedField(_) => Borrowed("reserved_field"),
+            Self::Url(_) => Borrowed("url"),
+        }
     }
 
     /// True for the four errors of a response that did not fit its
