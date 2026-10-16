@@ -24,7 +24,11 @@
 #      they load at the next session start, which the snapshot makes every
 #      later session of the container, and the hook asks for a skills
 #      reload so the first session may see them too.
-#   8. A warm build of every test target through mbx, so the first
+#   8. beads-mcp, the MCP server for beads (a separate Python package, not part
+#      of the bd binary), through `uv tool install` at the version bd is
+#      pinned to. Installed, not registered: `claude mcp add` is a choice of
+#      scope, left to whoever wants the tools.
+#   9. A warm build of every test target through mbx, so the first
 #      `cargo test` in the session is incremental.
 set -euo pipefail
 
@@ -106,7 +110,23 @@ mise run setup
 #    idempotent, and a missing `claude` is logged, not fatal.
 scripts/claude-plugins.sh install
 
-# 8. A warm build through mbx (mise.toml wraps cargo), so the first test run is
+# 8. beads-mcp, at bd's own version (`bd --version`, so the pin in mise.toml
+#    and mise.cloud.toml is the only one). Idempotent: uv leaves a tool that
+#    is already at that version alone. A missing uv or a failed install is
+#    logged, not fatal: the MCP server is a convenience, `bd` is the tool.
+if command -v uv >/dev/null 2>&1; then
+  bd_version=$(bd --version 2>/dev/null | sed -n 's/^bd version \([0-9][0-9.]*\).*/\1/p' | head -1 || true)
+  spec="beads-mcp${bd_version:+==$bd_version}"
+  if uv tool install "$spec" >/dev/null 2>&1; then
+    log "$(uv tool list 2>/dev/null | grep '^beads-mcp' | head -1)"
+  else
+    log "could not install $spec with uv; the beads MCP server is not available this session"
+  fi
+else
+  log "uv is not on PATH; skipping beads-mcp"
+fi
+
+# 9. A warm build through mbx (mise.toml wraps cargo), so the first test run is
 #    incremental. Every feature, every target, nothing executed.
 if [ "${JUDGMENT_SESSION_SKIP_BUILD:-}" != "1" ]; then
   log "warming the build (cargo test --all-features --no-run)"
