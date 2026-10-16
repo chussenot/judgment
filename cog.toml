@@ -29,6 +29,10 @@ pre_bump_hooks = [
     # install snippet, the Unreleased section into the release's section;
     # refuses an empty Unreleased section.
     "scripts/release-bump.sh {{version}} {{latest}}",
+    # The version just written decides what the public API may have done since
+    # the latest crates.io release: a breaking change under a patch bump (0.x)
+    # fails here, before the gate and the commit; under a minor bump it passes.
+    "cargo semver-checks check-release --all-features",
     # The demo cast shows `jud --version`; recorded again so it shows this one.
     "scripts/record_demo.sh",
     # The gate, on exactly what the bump commit will contain.

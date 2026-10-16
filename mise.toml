@@ -14,6 +14,12 @@ prek = "latest"
 # lychee, the link checker behind `mise run docs:links` and the docs gate;
 # from crates.io like cocogitto, pinned so a rule change does not land unseen.
 "cargo:lychee" = "0.24.2"
+# The Phase 0 gates (docs/project/contributing.md, "The gates"): the public API
+# against the last release, licences and advisories, every feature on its own.
+# From crates.io and pinned like cocogitto; ci.yml installs the same versions.
+"cargo:cargo-semver-checks" = "0.51.0"
+"cargo:cargo-deny" = "0.20.2"
+"cargo:cargo-hack" = "0.6.45"
 # bd (beads), the issue tracker (AGENTS.md, `bd prime`), from the GitHub release
 # binary and pinned: the npm package downloads a binary in a postinstall step,
 # which fails behind some proxies, and a tool that runs in every git hook
@@ -77,6 +83,22 @@ cargo kani -Z stubbing --harness delay_never_panics_and_stays_within_the_policy
 description = "Build API docs; broken links are errors"
 env = { RUSTDOCFLAGS = "-D warnings" }
 run = "cargo doc --no-deps --document-private-items --all-features"
+
+[tasks.semver]
+description = "The public API against the latest crates.io release (cargo-semver-checks, every feature): fails on a change that needs a major release, which 0.x spells as a minor one; needs the network for the baseline"
+run = "cargo semver-checks check-release --all-features"
+
+[tasks.deny]
+description = "Licences, advisories, duplicate versions and sources over the dependency graph with every feature (deny.toml, cargo-deny); needs the network for the RustSec database"
+run = "cargo deny --all-features check advisories licenses bans sources"
+
+[tasks.msrv]
+description = "The crate builds on its declared minimum Rust version, 1.91, with every feature and the locked dependencies (rustup installs the toolchain on first use)"
+run = ["rustup toolchain install 1.91 --profile minimal", "cargo +1.91 check --all-features --locked"]
+
+[tasks.hack]
+description = "Every feature on its own builds (cargo-hack --each-feature), so no flag depends on another being on"
+run = "cargo hack check --each-feature --no-dev-deps"
 
 [tasks."docs:check"]
 description = "The documentation gate: frontmatter on every page, the generated pages (llms.txt, the CLI reference, the plugin's format reference and Rust templates) match their sources, every .jud document the pages show is read, and every internal link resolves"

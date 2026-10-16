@@ -2,7 +2,7 @@
 title: Releasing
 description: How a version of the judgment crate is cut from its Conventional Commits with cocogitto, how the pushed tag publishes it to crates.io, the jud binaries to a GitHub release, the Homebrew formula to the tap and the container image to ghcr.io from CI, what to set up once, and what to do when a release goes wrong.
 status: current
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-16
 tags: [judgment, release, versioning, cocogitto, crates-io, ci]
 ---
 
@@ -17,8 +17,9 @@ A release has to be the same every time: the version follows from what changed, 
 | Conventional Commits | every commit; `cog verify` in the prek `commit-msg` hook, `cog check` in the `commits` job of CI | Gives cocogitto the facts it derives a version from, and refuses a commit message it cannot read |
 | `cog bump --auto` | `cog.toml`, run as `mise run release` | Computes the next version from the commits since the last tag, runs the pre-bump hooks, commits `chore(version): vX.Y.Z` and tags it |
 | `scripts/release-bump.sh` | the first pre-bump hook | Writes the version into `Cargo.toml` and `Cargo.lock` and its major.minor into the README's install snippet, turns the CHANGELOG's Unreleased section into the release's dated section, and refuses an empty one |
+| `cargo semver-checks check-release` | the pre-bump hook after `release-bump.sh` | Compares the public API with the latest crates.io release at the version just written: a breaking change under a patch bump fails before the gate and the commit; under a minor bump it passes (0.x). Needs the network and `cargo-semver-checks` (`mise install`) |
 | `scripts/record_demo.sh` | the second pre-bump hook | Records the command-line demo again as `docs/demo.cast`, from the example recordings with no network, so the version the cast shows is the one being released |
-| The gate | the remaining pre-bump hooks, then CI on the pull request and on the tag | Formatting, clippy, the no-`http` build, the tests, rustdoc, the documentation checks and what the package would ship |
+| The gate | the remaining pre-bump hooks, then CI on the pull request and on the tag | Formatting, clippy, the no-`http` build, the tests, rustdoc, the documentation checks and what the package would ship; in CI also the `semver`, `deny`, `msrv` and `hack` jobs ([Contributing](contributing.md#the-gates)) |
 | `.github/workflows/release.yml` | on a pushed `v*` tag | Runs the CI gate on the tagged commit, builds, checks and packages the `jud` binary for each platform ([The jud command line](../reference/cli.md)), checks the tag against `Cargo.toml`, runs `cargo publish --dry-run`, publishes, and creates a GitHub release with the CHANGELOG section as notes and the tarballs with `SHA256SUMS` as assets. A `workflow_dispatch` is a dry run that builds every leg and publishes nothing |
 | `scripts/image-context.sh` and the `Dockerfile` | the `image` job of the release workflow, after the publish | Fills the image's build context from the two Linux tarballs the release carries, builds `ghcr.io/chussenot/jud` for `linux/amd64` and `linux/arm64`, runs the runner's platform (version, a document read, a keyless run, a replay) and pushes the image tagged `X.Y.Z`, `X.Y` and `latest` with a build-provenance attestation. On a dry run it builds and runs, and pushes nothing |
 | `scripts/homebrew-formula.sh` | the `homebrew` job of the release workflow, after the publish | Renders the Homebrew formula for `jud` from the release's checksums and commits it to [chussenot/homebrew-tap](https://github.com/chussenot/homebrew-tap) as `jud X.Y.Z`, so `brew install chussenot/tap/jud` serves the release. The tap's own CI audits, installs and tests what was committed. On a dry run the formula is rendered and printed, not committed |

@@ -1,0 +1,73 @@
+# cargo-deny (https://embarkstudios.github.io/cargo-deny): what the dependency
+# graph may contain. `mise run deny` and the `deny` job of .github/workflows/ci.yml
+# run `cargo deny --all-features check advisories licenses bans sources`.
+# docs/project/contributing.md ("The gates") says what a failure means.
+
+# Every feature is on, so an optional dependency (reqwest, tokio, serde-saphyr,
+# clap, and later the OpenTelemetry API) is held to the same rules as the
+# default ones.
+[graph]
+all-features = true
+
+[output]
+feature-depth = 1
+
+# RustSec: a known vulnerability is an error, and cargo-deny has no level to
+# lower that. A yanked version is an error: its author withdrew it.
+# `unmaintained = "workspace"` fails the gate when a direct dependency of this
+# crate is unmaintained, which this crate can act on, and says nothing about a
+# transitive one, which is its dependency's to fix (cargo-deny 0.20 has no
+# warning level for unmaintained crates, only this scope).
+[advisories]
+yanked = "deny"
+unmaintained = "workspace"
+ignore = []
+
+# Only licences that let a MIT crate be used and redistributed without extra
+# conditions beyond attribution. A new licence goes on this list in a pull
+# request that names the crate which needs it, in a comment beside it.
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.8
+# One crate, one licence, not allowed for the whole graph: webpki-root-certs
+# (reqwest's rustls platform verifier) is Mozilla's CA root list, shipped as
+# data under the Community Data License Agreement, Permissive 2.0.
+exceptions = [
+    { allow = ["CDLA-Permissive-2.0"], crate = "webpki-root-certs" },
+]
+
+[bans]
+# Two versions of one crate are noted, not refused: a transitive duplicate is
+# the dependency's choice, not this crate's.
+multiple-versions = "warn"
+# `foo = "*"` makes a build depend on whatever is newest.
+wildcards = "deny"
+allow-wildcard-paths = true
+# The OpenTelemetry crates (the API this crate may use behind the `otel`
+# feature, the SDK and exporters the `jud` binary may use) share global state
+# per version: two versions in one graph is a metric or span that goes nowhere.
+deny = [
+    { crate = "opentelemetry", deny-multiple-versions = true },
+    { crate = "opentelemetry_sdk", deny-multiple-versions = true },
+    { crate = "opentelemetry-otlp", deny-multiple-versions = true },
+    { crate = "opentelemetry-proto", deny-multiple-versions = true },
+    { crate = "opentelemetry-http", deny-multiple-versions = true },
+    { crate = "opentelemetry-semantic-conventions", deny-multiple-versions = true },
+    { crate = "tracing-opentelemetry", deny-multiple-versions = true },
+]
+
+# crates.io only: no other registry, no git dependency.
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
