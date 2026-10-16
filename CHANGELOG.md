@@ -8,6 +8,15 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `cli-otel`, a feature of the `jud` binary only: with
+  `OTEL_EXPORTER_OTLP_ENDPOINT` set, `jud` exports its `tracing` spans and
+  the `OtelObserver` metrics over OTLP/HTTP (protobuf, rustls, no gRPC; the
+  SDK and exporter pinned to the 0.33 line, `tracing-opentelemetry` 0.34),
+  and flushes on every exit status. A failure of telemetry is one line on
+  stderr; stdout and the exit status are unchanged, and the export timeout
+  is three seconds unless `OTEL_EXPORTER_OTLP_TIMEOUT` says otherwise. The
+  library links none of it and a build without the feature has no
+  OpenTelemetry SDK. A guide, "Export the jud command's telemetry".
 - `Pacer`, `Paced` and `ClientBuilder::pacer`, behind the new `pacer`
   feature, which `http` implies (without `http` it is the only feature that
   needs tokio): `Paced` wraps any `SystemOne`

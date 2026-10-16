@@ -31,6 +31,7 @@ nav:
       - Get verdicts on images from the command line: guides/images-from-the-command-line.md
       - Use long context: guides/use-long-context.md
       - Export to OpenTelemetry: guides/export-to-opentelemetry.md
+      - Export the jud command's telemetry: guides/export-jud-telemetry.md
       - Bound a stream of calls: guides/bound-a-stream.md
   - Reference:
       - The jud command line: reference/cli.md
