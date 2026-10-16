@@ -56,7 +56,7 @@ The row that matters most is the verification one. Only two crates hold a respon
 
 | Crate | Retry defaults as the SDKs' | Jitter | Server's wait | Budget | Conservative preset | Body cap | Redirects | Key hygiene | Concurrency |
 |---|---|---|---|---|---|---|---|---|---|
-| **judgment** | ✓ 2 retries, 0.5 s to 5 s, 408, 429, 5xx, transport | ✓ one-sided | ✓ ms, seconds, date; capped at 30 s | ◐ available, off by default | ✓ `conservative()` | ✓ 8 MiB | ✓ none followed | ✓ validated, `set_sensitive`, redacted | ✗ |
+| **judgment** | ✓ 2 retries, 0.5 s to 5 s, 408, 429, 5xx, transport | ✓ one-sided | ✓ ms, seconds, date; capped at 30 s | ◐ available, off by default | ✓ `conservative()` | ✓ 8 MiB | ✓ none followed | ✓ validated, `set_sensitive`, redacted | ✓ `Pacer`: a bound on calls in flight (`Paced`) and one pause a 429's named wait sets for every call (added after this page was read) |
 | kunobi-decision | ✓ | ✓ | ✓ capped at 60 s | ✓ 10 s by default | ✗ `none()` only | ✗ | ✓ | ✓ `SecretString` | ✓ semaphore |
 | typesafe-sdk | ✓ | ✓ | ✓ uncapped | ✓ 30 s | ✗ | ✗ | ✗ followed, body and key re-sent | ✗ `Debug` prints the key | ✗ |
 | typesafeai-sdk | ◐ 5xx subset, 10 s cap | ✗ symmetric | ◐ no HTTP date | ✓ 30 s | ✗ | ✓ 1 MiB | ✓ | ✓ | ✗ |
@@ -107,7 +107,7 @@ Downloads are crates.io totals on 2026-10-04, and judgment's twelve are two days
 
 An honest comparison names the columns judgment loses, because they are the next release's list.
 
-- **No concurrency limiter or pacer.** Three crates bound in-flight calls or pause every task on one 429. judgment retries with the server's wait and leaves the fan-out to the caller; a consumer replaying history in bulk hits the account limit first.
+- **No concurrency limiter or pacer.** *Taken since this page was read:* `Pacer`, `Paced` and `ClientBuilder::pacer` (feature `pacer`, implied by `http`) bound calls in flight and pause every call on one 429's named wait ([Bound a stream of calls](../../guides/bound-a-stream.md)). Three crates bound in-flight calls or pause every task on one 429; until then judgment retried with the server's wait and left the fan-out to the caller, so a consumer replaying history in bulk hit the account limit first.
 - **No provider presets.** `kunobi-decision` knows five hosts by name, with their default model and key variable; judgment knows a `base_url`. The presets are a convenience the compatible-servers page shows is now worth having.
 - **Fewer distribution helpers.** `ranked()`, `top(n)` and `margin()` exist in four crates; judgment offers the probability of an option, the documented confidence formulas and the expected value, and leaves sorting to the caller.
 - **Verification is strict on shape, not on arithmetic.** No crate checks that a distribution sums to one or that the choice is its argmax; judgment is the one that could, since it already walks every answer.

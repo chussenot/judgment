@@ -20,7 +20,7 @@
 //!
 //! # Retries and errors
 //!
-//! Every HTTP call goes through [`crate::http::send_with_retries`] under the
+//! Every HTTP call goes through [`crate::http::send_with_retries_paced`] under the
 //! client's [`RetryPolicy`] or the call's. The final response is classified
 //! by status into [`Error`], grouped by what fixes it: 400, 413 and 422 are
 //! [`Error::InvalidRequest`], with the server's message, the fields a
@@ -37,7 +37,7 @@
 //! answer the questions sent is what [`Response::verify`] names
 //! ([`Error::is_unfit`]). Neither is retried: the call was billed, and a
 //! second attempt is billed again for an answer no likelier to fit. Both
-//! are reported to the process-wide [`Observer`] as a failed attempt
+//! are reported to the client's [`Observer`] as a failed attempt
 //! (`decode`, `unfit`), because the retry loop counted the 2xx as a
 //! success; an unfit response's usage is reported too, since the tokens
 //! were spent.
@@ -186,6 +186,7 @@ use serde_json::{Map, Value};
 
 use crate::answer::{Answer, Response, Usage, sanitize_server_str};
 use crate::asset::{Assets, MAX_REQUEST_BYTES};
+use crate::backend::Pacer;
 use crate::error::{Error, Result, ValidationIssue};
 use crate::http::{self, Completed, Exhausted};
 use crate::observer::{CallReport, Observer};
@@ -494,6 +495,7 @@ pub struct ClientBuilder {
     timeout: Duration,
     retry: RetryPolicy,
     observer: Option<Arc<dyn Observer>>,
+    pacer: Option<Pacer>,
     headers: HeaderMap,
     long_context: bool,
     #[cfg(feature = "multipart")]
@@ -510,6 +512,7 @@ impl fmt::Debug for ClientBuilder {
             .field("retry", &self.retry)
             .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
             .field("observer", &self.observer.as_ref().map(|_| "set"))
+            .field("pacer", &self.pacer.as_ref().map(|_| "set"))
             .field("default_headers", &header_names(&self.headers))
             .field("long_context", &self.long_context);
         #[cfg(feature = "multipart")]
@@ -527,6 +530,7 @@ impl Default for ClientBuilder {
             timeout: DEFAULT_TIMEOUT,
             retry: RetryPolicy::default(),
             observer: None,
+            pacer: None,
             headers: HeaderMap::new(),
             long_context: false,
             #[cfg(feature = "multipart")]
@@ -603,12 +607,24 @@ impl ClientBuilder {
         self
     }
 
-    /// Where this client reports token usage; without one it reports to
-    /// [`crate::observer::global`]. Failed attempts always go to the global
-    /// observer.
+    /// Where this client reports token usage, failed attempts and finished
+    /// calls; without one it reports to [`crate::observer::global`].
     #[must_use]
     pub fn observer(mut self, observer: Arc<dyn Observer>) -> Self {
         self.observer = Some(observer);
+        self
+    }
+
+    /// Share a [`Pacer`] with this client: a retryable 429 or 529 that names
+    /// a wait pauses the pacer for it, so every call on the pacer holds its
+    /// next attempt, and each attempt first waits out any pause. The bound
+    /// on calls in flight is [`Paced`](crate::backend::Paced) around the
+    /// client, which takes the same pacer. Without one a call that is told
+    /// to wait waits alone, as the SDKs do.
+    #[cfg(feature = "pacer")]
+    #[must_use]
+    pub fn pacer(mut self, pacer: Pacer) -> Self {
+        self.pacer = Some(pacer);
         self
     }
 
@@ -676,6 +692,7 @@ impl ClientBuilder {
             model: self.model,
             retry: self.retry,
             observer: self.observer,
+            pacer: self.pacer,
             long_context: self.long_context,
             #[cfg(feature = "multipart")]
             multipart: self.multipart,
@@ -719,6 +736,7 @@ pub struct Client {
     model: String,
     retry: RetryPolicy,
     observer: Option<Arc<dyn Observer>>,
+    pacer: Option<Pacer>,
     long_context: bool,
     #[cfg(feature = "multipart")]
     multipart: bool,
@@ -917,7 +935,7 @@ impl Client {
             .await
             .inspect_err(|e| record_request_id(e.request_id()))?;
         record_request_id(reply.request_id.as_deref());
-        let mut response: Response = reply.decode()?;
+        let mut response: Response = reply.decode(&*self.observer())?;
         // The field means the header: a body key of the same name is
         // overwritten. Without the header, a server's own id for the call in
         // the body (`OpenRouter`'s generation id) is the handle there is.
@@ -954,7 +972,7 @@ impl Client {
         // Billed whether or not it fits, so reported before the check.
         self.observer().on_usage(&response.model, &response.usage);
         if let Err(e) = response.verify(request.questions) {
-            crate::observer::global().on_failed_attempt("typesafe", "unfit");
+            self.observer().on_failed_attempt("typesafe", "unfit");
             return Err(e);
         }
         Ok(response)
@@ -976,7 +994,7 @@ impl Client {
             .await
             .inspect_err(|e| record_request_id(e.request_id()))?;
         record_request_id(reply.request_id.as_deref());
-        let parsed: ModelsResponse = reply.decode()?;
+        let parsed: ModelsResponse = reply.decode(&*self.observer())?;
         Ok(parsed.models)
     }
 
@@ -1000,7 +1018,16 @@ impl Client {
         policy: &RetryPolicy,
         make: impl Fn() -> reqwest::RequestBuilder,
     ) -> Result<Reply> {
-        match http::send_with_retries(policy, "typesafe", make).await {
+        let observer = self.observer();
+        match http::send_with_retries_paced(
+            policy,
+            "typesafe",
+            self.pacer.as_ref(),
+            Some(&*observer),
+            make,
+        )
+        .await
+        {
             Ok(Completed {
                 status,
                 body,
@@ -1225,9 +1252,9 @@ impl Reply {
     /// A failure keeps the request id, since a 2xx that does not decode is
     /// still a call TypeSafe can look up, and counts as a failed attempt
     /// because the retry loop counted the 2xx as a success.
-    fn decode<T: DeserializeOwned>(&self) -> Result<T> {
+    fn decode<T: DeserializeOwned>(&self, observer: &dyn Observer) -> Result<T> {
         serde_json::from_str(&self.body).map_err(|source| {
-            crate::observer::global().on_failed_attempt("typesafe", "decode");
+            observer.on_failed_attempt("typesafe", "decode");
             Error::Decode {
                 source,
                 request_id: self.request_id.clone(),

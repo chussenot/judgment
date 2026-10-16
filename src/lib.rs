@@ -24,6 +24,9 @@
 //! is an [`Error`], grouped by what fixes it, never a misread number.
 //!
 //! ```no_run
+//! # // The client needs the `http` feature; without it this block compiles to nothing.
+//! # #[cfg(feature = "http")]
+//! # mod example {
 //! use judgment::{Client, Questions, options};
 //!
 //! options! {
@@ -49,6 +52,7 @@
 //!     // page billing on-call
 //! }
 //! # Ok(()) }
+//! # }
 //! ```
 //!
 //! ## Features and modules
@@ -64,6 +68,10 @@
 //! * `openapi`: `contract`, the vendored TypeSafe OpenAPI document as text.
 //! * `jud`: `jud`, the `.jud` format for rubrics, cases and recordings
 //!   (`docs/reference/jud-format.md`).
+//! * `pacer` (implied by `http`): [`Pacer`] and [`Paced`], a bound on calls
+//!   in flight and one pause every call on it honours, which a client given
+//!   the pacer ([`client::ClientBuilder::pacer`]) sets from a 429's named wait
+//!   (`docs/guides/bound-a-stream.md`).
 //! * `otel`: [`observer::otel::OtelObserver`], an [`Observer`] that records
 //!   OpenTelemetry metrics through the OpenTelemetry API
 //!   (`docs/guides/export-to-opentelemetry.md`). The names it and the
@@ -102,6 +110,9 @@ pub use answer::{
 };
 pub use asset::{Assets, Image, ImageFormat};
 pub use backend::{Fake, Recorder, Replay, SystemOne};
+#[cfg(feature = "pacer")]
+#[cfg_attr(docsrs, doc(cfg(feature = "pacer")))]
+pub use backend::{Paced, Pacer};
 #[cfg(feature = "http")]
 #[cfg_attr(docsrs, doc(cfg(feature = "http")))]
 pub use client::{
@@ -133,3 +144,6 @@ pub struct DocsUseLongContext;
 #[cfg(all(doctest, feature = "http", feature = "otel"))]
 #[doc = include_str!("../docs/guides/export-to-opentelemetry.md")]
 pub struct DocsExportToOpenTelemetry;
+#[cfg(all(doctest, feature = "http"))]
+#[doc = include_str!("../docs/guides/bound-a-stream.md")]
+pub struct DocsBoundAStream;

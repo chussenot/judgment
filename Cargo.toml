@@ -66,7 +66,14 @@ default = ["http"]
 # The HTTP client and the retry loop. Without it the crate is the question
 # builder, the typed answers and the recordings, for a project that brings its
 # own transport.
-http = ["dep:reqwest", "dep:tokio", "dep:fastrand", "dep:httpdate"]
+http = ["dep:reqwest", "dep:tokio", "dep:fastrand", "dep:httpdate", "pacer"]
+# `backend::Pacer` and `backend::Paced`: a bound on calls in flight and one
+# pause that every call sharing it honours (`docs/guides/bound-a-stream.md`).
+# `http` implies it, since the retry loop feeds the pause; without `http`
+# it is the one feature that needs tokio, for a semaphore and a timer, so a
+# project with its own transport can bound its own calls. Off by default
+# with the rest of the crate: `--no-default-features` stays tokio-free.
+pacer = ["dep:tokio", "tokio/sync", "tokio/time"]
 # `judgment::contract::OPENAPI_DOCUMENT`: the vendored TypeSafe OpenAPI
 # document as text, for an application that validates its own traffic against
 # the contract the crate is tested against. Off by default: about 25 KB of
@@ -129,7 +136,7 @@ jsonschema = { version = "0.57", default-features = false }
 # The contract test reads the committed `.jud` recordings whatever the
 # features; the crate's own reader is behind the `jud` feature.
 serde-saphyr = "1.3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
 # A capturing layer in the span tests.
 tracing-subscriber = "0.3"
 wiremock = "0.6"
@@ -160,6 +167,18 @@ required-features = ["http"]
 # The vendored OpenAPI document against the live one; its one test is
 # #[ignore] and needs the network but no key (see tests/openapi_drift.rs).
 # tests/contract.rs has no entry: it builds and runs without `http` too.
+# `Paced` over a `Fake`: the bound on calls in flight, the shared pause and the
+# permit a dropped call gives back, on tokio's paused clock.
+[[test]]
+name = "pacer"
+required-features = ["pacer"]
+
+# The pause a 429's wait puts on every call of a client that shares a pacer,
+# and the observer a client's failed attempts go to.
+[[test]]
+name = "pacer_client"
+required-features = ["http"]
+
 # What `OtelObserver` records through a client, read from the SDK's in-memory
 # exporter.
 [[test]]

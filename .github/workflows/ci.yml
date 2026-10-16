@@ -189,6 +189,9 @@ jobs:
             cargo-hack-build-${{ runner.os }}-
 
       - run: cargo hack check --each-feature --no-dev-deps
+      # `http` implies `pacer`, so the two are one group: every combination of
+      # the other features, with and without the client.
+      - run: cargo hack check --feature-powerset --group-features http,pacer --no-dev-deps
 
   hooks:
     name: pre-commit hooks (prek)

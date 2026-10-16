@@ -8,6 +8,20 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `Pacer`, `Paced` and `ClientBuilder::pacer`, behind the new `pacer`
+  feature, which `http` implies (without `http` it is the only feature that
+  needs tokio): `Paced` wraps any `SystemOne`
+  and holds at most the pacer's number of calls in flight, a place taken
+  before the call and given back when its future is dropped; a pacer is a
+  clone-and-share value, and a client given one pauses it for the wait of
+  every retryable 429 or 529 that names one (`Retry-After` or
+  `retry-after-ms`, already capped by `retry_after_max`), so every call on
+  the pacer holds its next attempt, the first included. A pause only ever
+  extends and is never over a day; nothing else pauses (a 429 without a named
+  wait, a 503, any other status), billed responses are still never retried,
+  and a pacer built for zero places has one. `http::send_with_retries_paced`
+  is the loop with a pacer and an observer; `send_with_retries` is unchanged.
+  A guide, "Bound a stream of calls".
 - OpenTelemetry, behind the new `otel` feature (the OpenTelemetry API crate,
   metrics only; the SDK and exporters stay the application's):
   `observer::otel::OtelObserver` is an `Observer` that records
@@ -40,6 +54,13 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Changed
 
+- A client's failed attempts (`Observer::on_failed_attempt`, the retried
+  ones, `decode` and `unfit` included) go to the client's own observer when
+  it has one and to the process-wide one otherwise, as its token usage
+  already did. Until now they always went to the process-wide one, so a
+  client with its own observer stopped reporting them there: an
+  application that counted a client's failed attempts through `set_global`
+  while giving that client an observer must pass the same observer to both.
 - Two fields of the `typesafe.evaluate` span are renamed to their
   OpenTelemetry names: `model` is `gen_ai.request.model` and `input_tokens`
   is `gen_ai.usage.input_tokens`. A `tracing` subscriber or an

@@ -23,14 +23,14 @@ Not affiliated with TypeSafe AI.
 | Evaluating whether this fits | [System One](concepts/system-one.md), [How judgment works](concepts/how-judgment-works.md) | [Stability](reference/stability.md), [Compared with the other Rust clients](project/research/client-comparison.md) |
 | Using `jud` from a shell, no Rust | [Install](start/install.md), [Your first decision from the command line](start/first-decision-cli.md) | [Configure a backend](guides/configure-a-backend.md), [Record, replay and test](guides/record-replay-and-test.md#record-a-rubrics-cases-from-the-shell), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [The jud command line](reference/cli.md) |
 | Writing `.jud` documents | [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [Write a rubric](guides/write-a-rubric.md) | [Label cases](guides/label-cases.md), [Tune thresholds](guides/tune-thresholds.md), [The .jud format](reference/jud-format.md) |
-| Using the crate from Rust | [Your first decision in Rust](start/first-decision-rust.md) | [Record, replay and test](guides/record-replay-and-test.md), [Patterns](guides/patterns.md), [Export to OpenTelemetry](guides/export-to-opentelemetry.md), [The crate](reference/crate.md) and the [rustdoc](https://docs.rs/judgment) |
+| Using the crate from Rust | [Your first decision in Rust](start/first-decision-rust.md) | [Record, replay and test](guides/record-replay-and-test.md), [Patterns](guides/patterns.md), [Export to OpenTelemetry](guides/export-to-opentelemetry.md), [Bound a stream of calls](guides/bound-a-stream.md), [The crate](reference/crate.md) and the [rustdoc](https://docs.rs/judgment) |
 | Asking about images | [Visual judgments](concepts/visual-judgments.md) | [Get verdicts on images from the command line](guides/images-from-the-command-line.md), [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [A Box calibration study](project/verification/box-calibration-study.md) and [its second run on document pages](project/verification/box-calibration-study-pages.md) |
 | Contributing | [Contributing](project/contributing.md) | [Internals](project/internals.md), [How the crate is checked](project/verification/method.md), [Decisions](project/decisions/README.md) |
 
 ## The documentation
 
 - **Start**: [Install](start/install.md), [first decision from the command line](start/first-decision-cli.md), [first decision in Rust](start/first-decision-rust.md).
-- **Guides**: [Configure a backend](guides/configure-a-backend.md), [Write a rubric](guides/write-a-rubric.md), [Label cases](guides/label-cases.md), [Record, replay and test](guides/record-replay-and-test.md), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [Run in a container](guides/run-in-a-container.md), [Use the Claude Code plugin](guides/use-the-claude-code-plugin.md), [Patterns](guides/patterns.md), [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [Get verdicts on images from the command line](guides/images-from-the-command-line.md), [Use long context](guides/use-long-context.md), [Export to OpenTelemetry](guides/export-to-opentelemetry.md).
+- **Guides**: [Configure a backend](guides/configure-a-backend.md), [Write a rubric](guides/write-a-rubric.md), [Label cases](guides/label-cases.md), [Record, replay and test](guides/record-replay-and-test.md), [Tune thresholds](guides/tune-thresholds.md), [Run in CI](guides/run-in-ci.md), [Run in a container](guides/run-in-a-container.md), [Use the Claude Code plugin](guides/use-the-claude-code-plugin.md), [Patterns](guides/patterns.md), [Ask a question about an image](guides/ask-about-an-image.md), [Locate something with a Box question](guides/locate-with-a-box.md), [Get verdicts on images from the command line](guides/images-from-the-command-line.md), [Use long context](guides/use-long-context.md), [Export to OpenTelemetry](guides/export-to-opentelemetry.md), [Bound a stream of calls](guides/bound-a-stream.md).
 - **Reference**: [The jud command line](reference/cli.md), [Configuration](reference/configuration.md), [The .jud format](reference/jud-format.md), [The crate](reference/crate.md), [The container image](reference/container-image.md), [Stability](reference/stability.md), [Glossary](reference/glossary.md); the [rustdoc](https://docs.rs/judgment) for every type.
 - **Concepts**: [System One](concepts/system-one.md), [Rubrics, cases and recordings](concepts/rubrics-cases-recordings.md), [How judgment works](concepts/how-judgment-works.md), [Visual judgments](concepts/visual-judgments.md).
 - **Project**: [Contributing](project/contributing.md), [Internals](project/internals.md), [Releasing](project/releasing.md), [verification](project/verification/method.md) against real servers, [research](project/research/compatible-servers-and-models.md), [decisions](project/decisions/README.md), the [CHANGELOG](../CHANGELOG.md); [llms.txt](llms.txt) and [llms-full.txt](llms-full.txt) for an agent.
@@ -2684,8 +2684,7 @@ A call's duration is its wall time with every retry and wait, and a call that fa
 
 Every attribute has a bounded set of values, so none multiplies series without limit, except the question id on the confidence histogram: it is your own string. `OtelObserver::new(meter).answer_confidence(true)` records the confidence of every Choice and Score answer of a successful call by question id; switch it on when your ids are few and fixed. A request id and the state's content are never an attribute.
 
-!!! note "Failed attempts need the global observer"
-    A failed attempt is reported to the process-wide observer, not to a client's own, because the retry loop is shared with clients that have none. For `judgment.retry.attempts` to count, also install the same observer with `judgment::observer::set_global`; the other instruments come from the client's own.
+A failed attempt goes to the client's own observer when it has one, so `judgment.retry.attempts` counts a client's attempts without `observer::set_global`. A retry loop run directly through `http::send_with_retries` has no client, and reports to the global observer.
 
 ## A collector to receive them
 
@@ -2711,6 +2710,96 @@ service:
 ```
 
 Point your SDK's OTLP exporter at `http://localhost:4318`. The `jud` command line does not export telemetry yet.
+
+
+<!-- source: docs/guides/bound-a-stream.md -->
+
+
+# Bound a stream of calls
+
+**You will** run a batch of calls at once, keep at most N of them in flight, and make every one of them wait when the server says to. **Prerequisites:** [Your first decision in Rust](../start/first-decision-rust.md).
+
+## The two things a retry cannot do
+
+The retry loop retries one call. It cannot say "at most eight at a time", and when the server answers 429 with a wait, only the call that got the answer waits: the others, in flight or queued, go on sending and are refused in their turn, each spending an attempt. A replay of history in bulk reaches the account's limit this way first.
+
+A `Pacer` is the two missing parts in one value that you clone and share: a number of places for calls in flight, and a deadline before which no call sends. The `pacer` feature has it, and `http` implies the feature.
+
+## Bound the calls and share the pause
+
+```rust no_run
+use std::sync::Arc;
+
+use judgment::{Client, Paced, Pacer, Questions, SystemOne};
+use serde_json::Value;
+
+async fn run(states: Vec<Value>) -> judgment::Result<()> {
+    let mut questions = Questions::new();
+    let urgent = questions.noul("urgent", "Does `message` convey urgency?", None)?;
+    let questions = Arc::new(questions);
+
+    // Eight calls at a time; every 429 that names a wait pauses all of them.
+    let pacer = Pacer::new(8);
+    let client = Client::builder().pacer(pacer.clone()).build()?;
+    let backend = Arc::new(Paced::new(client, pacer));
+
+    let mut calls = tokio::task::JoinSet::new();
+    for state in states {
+        let (backend, questions) = (Arc::clone(&backend), Arc::clone(&questions));
+        calls.spawn(async move { backend.answer(&state, "jev-latest", &questions).await });
+    }
+    while let Some(done) = calls.join_next().await {
+        let response = done.expect("a call panicked")?;
+        println!("urgent: {}", response.get(&urgent)?.is_yes(0.6));
+    }
+    Ok(())
+}
+```
+
+`Paced` makes each call take a place first, wait out any pause, and only then reach the client. Give the same pacer to the client (`ClientBuilder::pacer`) so its retries feed the pause. The two are separate on purpose: the bound is for any backend, a `Fake` in a test included, and the pause is the client's to set.
+
+## What pauses, and what does not
+
+A retryable 429 or 529 that names a wait (`Retry-After` or `retry-after-ms`) pauses the pacer for that wait, the one the retry policy already capped (30 s by default, [`RetryPolicy::retry_after_max`](../reference/crate.md)). Every call on the pacer then holds its next attempt, the first included, until the pause ends. A pause only ever extends: a shorter wait reported later does not shorten the one running, and a pause is never longer than a day.
+
+Nothing else pauses anyone. A 429 with no named wait backs off that call alone, and so does any other status, a 503 `server busy` included, because only a rate limit says the whole stream should slow down. A response that did not fit the questions was billed and is never retried, here or without a pacer.
+
+## What a place is
+
+A call holds its place from the moment it is admitted until its future ends, retries and waits included. Dropping the future, by a timeout or by aborting the task, gives the place back at once, so a cancelled call cannot leak one. A pacer built for zero places has one: a pacer that admitted nothing would hang every call.
+
+A `Pacer` bounds how many calls are in flight. It is not a rate limiter: eight places and fast answers still send as many requests per second as eight places can. If the server's limit is a rate, size the pacer to what the rate allows, or put a rate limiter in front.
+
+## Test it without a server
+
+`Paced` wraps any `SystemOne`, so a `Fake` shows the bound with no network, and tokio's paused clock makes the waits instant and exact:
+
+```rust no_run
+use std::time::Duration;
+
+use judgment::{Fake, Paced, Pacer, Questions, SystemOne};
+use serde_json::json;
+
+#[tokio::test(start_paused = true)]
+async fn a_call_waits_out_a_pause() -> judgment::Result<()> {
+    let mut questions = Questions::new();
+    questions.noul("x", "?", None)?;
+    let pacer = Pacer::new(4);
+    let backend = Paced::new(Fake::new().noul("x", 0.5)?, pacer.clone());
+
+    pacer.pause_for(Duration::from_secs(1));
+    let started = tokio::time::Instant::now();
+    backend.answer(&json!({}), "jev-latest", &questions).await?;
+    assert_eq!(started.elapsed(), Duration::from_secs(1));
+    Ok(())
+}
+```
+
+`tokio::time::pause` needs tokio's `test-util` feature in your dev-dependencies.
+
+## Reporting
+
+A client's failed attempts, the 429s that a pacer pauses on included, go to the client's own [`Observer`](../reference/crate.md) when it has one and to the process-wide one otherwise, as its token usage does. [Export to OpenTelemetry](export-to-opentelemetry.md) shows them counted.
 
 
 <!-- source: docs/reference/cli.md -->
@@ -4132,7 +4221,8 @@ Minor 4 of `jud/v1` names exactly the fields on this page. A reader refuses a fi
 
 | Feature | Default | Compiles | Pulls in |
 |---|---|---|---|
-| `http` | yes | `Client`, `ClientBuilder`, `CallOptions`, `RetryPolicy`, the `http` module (the retry loop), `Client::list_models` | `reqwest` (rustls), `tokio`, `fastrand`, `httpdate` |
+| `http` | yes | `Client`, `ClientBuilder`, `CallOptions`, `RetryPolicy`, the `http` module (the retry loop), `Client::list_models`; implies `pacer` | `reqwest` (rustls), `tokio`, `fastrand`, `httpdate` |
+| `pacer` | no (implied by `http`) | `Pacer` and `Paced`, a bound on calls in flight and one pause every call honours; with `http`, `ClientBuilder::pacer` and the pause a 429's named wait sets ([Bound a stream of calls](../guides/bound-a-stream.md)) | `tokio` (sync and time) |
 | `jud` | no | The `jud` module: the `.jud` reader and writer, `Rubric`, `Cases`, `Verdict`, `Replay` reading `.jud` recordings | `serde-saphyr` |
 | `openapi` | no | `contract::OPENAPI_DOCUMENT`, the vendored TypeSafe OpenAPI document as text, about 25 KB | nothing |
 | `otel` | no | `observer::otel::OtelObserver`, an `Observer` that records OpenTelemetry metrics through the API crate ([Export to OpenTelemetry](../guides/export-to-opentelemetry.md)); the SDK and exporters stay the application's | `opentelemetry` (API, metrics only) |
@@ -4157,9 +4247,9 @@ In the order of one call: a question is built, sent through a backend, answered,
 | `question` | `Questions` collects the typed questions of one request; adding one returns a `Handle<A>` that fixes the answer type (`noul`, `choice::<T>`, `score`, `dynamic_choice`, `r#box`). The `options!` macro writes an enum and its wire keys together. The builder checks the limits below before anything is sent. | [docs.rs](https://docs.rs/judgment/latest/judgment/question/index.html) |
 | `answer` | `Response` and the wire `Answer`; `Probability` and `Confidence`, which refuse a value outside `[0, 1]`; `Response::verify` holds a response against the questions; `Response::get(&handle)` reads `Noul`, `Choice<T>`, `Score` or `BoundingBox` (`BoxEdges` as fractions of the image, `PixelBox` at a size). | [docs.rs](https://docs.rs/judgment/latest/judgment/answer/index.html) |
 | `asset` | `Image` (a PNG or a JPEG, its format and size read from the bytes, the hosted API's limits checked), `ImageFormat`, and `Assets`, the request's images by reference. |  [docs.rs](https://docs.rs/judgment/latest/judgment/asset/index.html) |
-| `backend` | The `SystemOne` trait (`answer`, and `answer_with_assets` for a request with images) and three implementations beside the client: `Fake`, `Recorder`, `Replay`. | [docs.rs](https://docs.rs/judgment/latest/judgment/backend/index.html) |
+| `backend` | The `SystemOne` trait (`answer`, and `answer_with_assets` for a request with images) and three implementations beside the client: `Fake`, `Recorder`, `Replay`; with `pacer`, `Pacer` and `Paced`. | [docs.rs](https://docs.rs/judgment/latest/judgment/backend/index.html) |
 | `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields, long context and, with `multipart`, the images as parts, for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
-| `http` (`http`) | `RetryPolicy` and `send_with_retries`, the retry loop behind the client, public so another `reqwest` client can retry the same way. | [docs.rs](https://docs.rs/judgment/latest/judgment/http/index.html) |
+| `http` (`http`) | `RetryPolicy`, `send_with_retries` and `send_with_retries_paced` (which also shares a `Pacer` and reports to an observer of its own), the retry loop behind the client, public so another `reqwest` client can retry the same way. | [docs.rs](https://docs.rs/judgment/latest/judgment/http/index.html) |
 | `error` | `Error`, `Result`, `ValidationIssue`. | [docs.rs](https://docs.rs/judgment/latest/judgment/error/index.html) |
 | `eval` | `Recording`, `Judgment`, the metrics (`metrics`), the fingerprints (`canonical`) and the sweeps (`tuning`). | [docs.rs](https://docs.rs/judgment/latest/judgment/eval/index.html) |
 | `jud` (`jud`) | `parse`, `Rubric`, `Cases`, `Case`, `Verdict`, `AssetSource`, `load_assets`, `BoxLabel`, `parse_recording`, `recording_to_yaml`, `present`, `API_VERSION`, `MINOR`. | [docs.rs](https://docs.rs/judgment/latest/judgment/jud/index.html) |
@@ -4167,7 +4257,7 @@ In the order of one call: a question is built, sent through a backend, answered,
 | `semconv` | The OpenTelemetry attribute and metric names the crate writes, as constants: the `gen_ai.*`, `server.address` and `error.type` ones. |  [docs.rs](https://docs.rs/judgment/latest/judgment/semconv/index.html) |
 | `contract` (`openapi`) | `OPENAPI_DOCUMENT`. | [docs.rs](https://docs.rs/judgment/latest/judgment/contract/index.html) |
 
-The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCriteria`, the answer types, `Assets`, `Image`, `ImageFormat`, `SystemOne`, `Fake`, `Recorder`, `Replay`, `Error`, `Result`, `ValidationIssue`, `Observer` and, with `http`, the client types.
+The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCriteria`, the answer types, `Assets`, `Image`, `ImageFormat`, `SystemOne`, `Fake`, `Recorder`, `Replay`, `Error`, `Result`, `ValidationIssue`, `Observer`, with `pacer` `Pacer` and `Paced`, and with `http` the client types.
 
 ### The `jud` feature
 
@@ -4739,7 +4829,7 @@ Four more gates guard what a user of the crate depends on. Each is a CI job and 
 | `semver` | The public API against the latest crates.io release, every feature (`cargo semver-checks`) | A change needs a major release, which 0.x spells as a minor one. The version in `Cargo.toml` says what is allowed: under a patch bump only additions pass. An addition never fails it |
 | `deny` | Advisories, licences, duplicate versions and sources over the whole graph (`deny.toml`, `cargo deny`) | A dependency has a known vulnerability or is yanked, a direct dependency is unmaintained, a dependency brings a licence the list does not name, appears twice (two `opentelemetry` versions fail, the rest warn), or comes from outside crates.io |
 | `msrv` | `cargo +1.91 check --all-features --locked` | The code or a locked dependency needs a newer Rust than `rust-version` promises |
-| `hack` | Each feature on its own (`cargo hack check --each-feature`) | A feature only builds when another is on |
+| `hack` | Each feature on its own, and every combination of them with `http` and `pacer` as one group (`cargo hack check --each-feature`, `--feature-powerset --group-features http,pacer`) | A feature only builds when another is on, or in some combination |
 
 The tools come from crates.io at the versions `mise.toml` pins (`mise install`), and `ci.yml` installs the same versions, cached by version, so the workflow still uses no third-party action. A licence goes on the allow list in `deny.toml` with a comment saying which crate needs it.
 
@@ -4862,7 +4952,8 @@ The builder refuses before sending what the HTTP API reference page says the ser
 - **The server's wait** is read as `retry-after-ms` first (a convention of the OpenAI and Anthropic SDKs that both TypeSafe SDKs follow), then `Retry-After` in seconds, then as an HTTP date in the three [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#field.retry-after) forms, measured against the response's own `Date` header when it has one so a skewed local clock neither stretches nor cuts the wait. It replaces the backoff with no jitter, on any retried status, up to `retry_after_max` (30 s; the JS SDK caps at 60 s, the Python SDK not at all), above which the client's own backoff applies so a hostile header cannot stall a caller. A value that is empty, negative, not finite or too large for a `Duration` is ignored. `retry_after_max` of zero is the crate's spelling of the SDKs' `respect_retry_after: false`.
 - **The budget** counts from the first send and stops a retry whose wait would end at or past it, returning the last failure: tenacity's `stop_before_delay`, which the Python SDK uses. It is off by default because the attempt count and the per-attempt timeout already bound a call, and the JS SDK has none.
 - **The body cap** (8 MiB, no SDK equivalent) fails on a `Content-Length` above it before a byte is read, and reads a body without one chunk by chunk until it would pass; a body over the cap is never retried.
-- **Every failed attempt is reported** to the global observer from the loop, retried or not, under the status, `transport` or `too_large`; the loop is the one place every client passes through.
+- **Every failed attempt is reported** from the loop, retried or not, under the status, `transport` or `too_large`, to the observer the caller passes (`send_with_retries_paced`; a client passes its own, or the global one) and to the global one when it passes none (`send_with_retries`); the loop is the one place every client passes through.
+- **A pacer is shared state, not loop state.** With one, the loop waits out its pause before every attempt, and a retryable 429 or 529 that names a wait pauses it for the delay the policy computed (the server's wait, already capped by `retry_after_max`) before the call sleeps, so every call on the pacer holds its next attempt. Nothing else pauses: without a named wait, or on another status, a call backs off alone. The bound on calls in flight is not in the loop at all: `Paced` takes a place before the call and gives it back when the call's future is dropped.
 - **The loop names no vendor's header.** It returns the last response's headers for each client to read its own. `make` is called once per attempt so each attempt is a fresh request; dropping the future cancels the call, a wait included.
 - **Not taken from the SDKs**: exception and predicate hooks, because a closure field would cost the policy its `PartialEq` and `Debug`.
 
@@ -4930,7 +5021,7 @@ The level nearest to a Score value is the value rounded half away from zero and 
 
 ## The observer
 
-Token usage goes to the client's own observer when one was set on the builder and to the global one otherwise, the way `tracing` falls back to its global subscriber. Failed attempts always go to the global observer, because the retry loop is shared with clients that carry no observer. `set_global` is first-call-wins, so an application installs it once at start-up and a library never overrides it. Retried attempts are reported too. Statuses reported: an HTTP status, `transport`, `too_large`, and from the client `decode` and `unfit`; an unfit response's usage is also reported, since it was billed.
+Token usage goes to the client's own observer when one was set on the builder and to the global one otherwise, the way `tracing` falls back to its global subscriber. Failed attempts go the same way: the retry loop takes the observer to report to, and a client passes its own or the global one. `set_global` is first-call-wins, so an application installs it once at start-up and a library never overrides it. Retried attempts are reported too. Statuses reported: an HTTP status, `transport`, `too_large`, and from the client `decode` and `unfit`; an unfit response's usage is also reported, since it was billed.
 
 ## The contract document
 
@@ -5962,7 +6053,7 @@ The row that matters most is the verification one. Only two crates hold a respon
 
 | Crate | Retry defaults as the SDKs' | Jitter | Server's wait | Budget | Conservative preset | Body cap | Redirects | Key hygiene | Concurrency |
 |---|---|---|---|---|---|---|---|---|---|
-| **judgment** | ✓ 2 retries, 0.5 s to 5 s, 408, 429, 5xx, transport | ✓ one-sided | ✓ ms, seconds, date; capped at 30 s | ◐ available, off by default | ✓ `conservative()` | ✓ 8 MiB | ✓ none followed | ✓ validated, `set_sensitive`, redacted | ✗ |
+| **judgment** | ✓ 2 retries, 0.5 s to 5 s, 408, 429, 5xx, transport | ✓ one-sided | ✓ ms, seconds, date; capped at 30 s | ◐ available, off by default | ✓ `conservative()` | ✓ 8 MiB | ✓ none followed | ✓ validated, `set_sensitive`, redacted | ✓ `Pacer`: a bound on calls in flight (`Paced`) and one pause a 429's named wait sets for every call (added after this page was read) |
 | kunobi-decision | ✓ | ✓ | ✓ capped at 60 s | ✓ 10 s by default | ✗ `none()` only | ✗ | ✓ | ✓ `SecretString` | ✓ semaphore |
 | typesafe-sdk | ✓ | ✓ | ✓ uncapped | ✓ 30 s | ✗ | ✗ | ✗ followed, body and key re-sent | ✗ `Debug` prints the key | ✗ |
 | typesafeai-sdk | ◐ 5xx subset, 10 s cap | ✗ symmetric | ◐ no HTTP date | ✓ 30 s | ✗ | ✓ 1 MiB | ✓ | ✓ | ✗ |
@@ -6013,7 +6104,7 @@ Downloads are crates.io totals on 2026-10-04, and judgment's twelve are two days
 
 An honest comparison names the columns judgment loses, because they are the next release's list.
 
-- **No concurrency limiter or pacer.** Three crates bound in-flight calls or pause every task on one 429. judgment retries with the server's wait and leaves the fan-out to the caller; a consumer replaying history in bulk hits the account limit first.
+- **No concurrency limiter or pacer.** *Taken since this page was read:* `Pacer`, `Paced` and `ClientBuilder::pacer` (feature `pacer`, implied by `http`) bound calls in flight and pause every call on one 429's named wait ([Bound a stream of calls](../../guides/bound-a-stream.md)). Three crates bound in-flight calls or pause every task on one 429; until then judgment retried with the server's wait and left the fan-out to the caller, so a consumer replaying history in bulk hit the account limit first.
 - **No provider presets.** `kunobi-decision` knows five hosts by name, with their default model and key variable; judgment knows a `base_url`. The presets are a convenience the compatible-servers page shows is now worth having.
 - **Fewer distribution helpers.** `ranked()`, `top(n)` and `margin()` exist in four crates; judgment offers the probability of an option, the documented confidence formulas and the expected value, and leaves sorting to the caller.
 - **Verification is strict on shape, not on arithmetic.** No crate checks that a distribution sums to one or that the choice is its argmax; judgment is the one that could, since it already walks every answer.

@@ -8,10 +8,11 @@
 //! Set one per client with [`crate::client::ClientBuilder::observer`], or
 //! once per process with [`set_global`]. Token usage and a finished call go
 //! to the client's own observer when it has one and to the global one
-//! otherwise, the way `tracing` falls back to its global subscriber. Failed
-//! attempts always go to the global one: the retry loop in [`crate::http`]
-//! is shared with clients that carry no observer, so it has no client to
-//! ask.
+//! otherwise, the way `tracing` falls back to its global subscriber, and so
+//! do the failed attempts the client's retry loop sees
+//! ([`crate::http::send_with_retries_paced`] takes the observer to report
+//! to; [`crate::http::send_with_retries`], with none, reports to the global
+//! one).
 //!
 //! With the `otel` feature, [`otel::OtelObserver`] is an observer that
 //! records OpenTelemetry metrics (`docs/guides/export-to-opentelemetry.md`).
