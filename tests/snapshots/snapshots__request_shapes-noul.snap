@@ -1,0 +1,20 @@
+---
+source: tests/snapshots.rs
+expression: body
+---
+{
+  "model": "jev-latest",
+  "questions": {
+    "circle_present": {
+      "criteria": {
+        "false": "only squares, rectangles or an empty background",
+        "true": "one round, filled shape, whatever its colour or size"
+      },
+      "instructions": "Is there a filled circle in `image`?",
+      "type": "noul"
+    }
+  },
+  "state": {
+    "image": "shape-00"
+  }
+}

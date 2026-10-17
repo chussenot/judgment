@@ -1,0 +1,21 @@
+# Recorded answer for case `shape-38`; found by fingerprint.
+apiVersion: jud/v1
+kind: Recording
+metadata:
+  name: shape-38
+  minor: 4
+spec:
+  elapsed_ms: 18440
+  fingerprint: sha256:0de7d439f40d63ce3e4b71d8fba4ee95e1945dc0b359bda69b6d37db594c3833
+  recorded_at: "2026-10-17T08:00:59Z"
+  response:
+    answers:
+      circle_present:
+        noul: 0.982106636510254
+        type: noul
+    model: clef-flash
+    usage:
+      input_tokens: 259
+      output_tokens: 0
+  rubric: shapes-noul
+  server: http://127.0.0.1:11434
