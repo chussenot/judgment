@@ -29,7 +29,9 @@
 #      of the bd binary), through `uv tool install` at the version bd is
 #      pinned to. Installed, not registered: `claude mcp add` is a choice of
 #      scope, left to whoever wants the tools.
-#   9. A warm build of every test target through mbx, so the first
+#   9. A ceiling on the mbx cache (gc.max_total_size) and a collection, so
+#      the session disk, a fixed allowance, is never filled by the cache.
+#  10. A warm build of every test target through mbx, so the first
 #      `cargo test` in the session is incremental.
 set -euo pipefail
 
@@ -127,7 +129,24 @@ else
   log "uv is not on PATH; skipping beads-mcp"
 fi
 
-# 9. A warm build through mbx (mise.toml wraps cargo), so the first test run is
+# 9. The mbx cache budget. The session disk is a fixed allowance (about 40 GB
+#    here), and an unbounded cache filled it once, a push failing mid-test.
+#    mbx keeps a free-space floor by default; this adds a ceiling on what it
+#    may hold in total, and collects down to it now, so a snapshotted
+#    container never starts full. A budget the user set is kept.
+mbx_conf="${XDG_CONFIG_HOME:-$HOME/.config}/mbx/config.toml"
+mkdir -p "$(dirname "$mbx_conf")"
+if ! grep -q 'max_total_size' "$mbx_conf" 2>/dev/null; then
+  if grep -q '^\[gc\]' "$mbx_conf" 2>/dev/null; then
+    sed -i 's/^\[gc\]/[gc]\nmax_total_size = "16GiB"/' "$mbx_conf"
+  else
+    printf '[gc]\nmin_free_size = "2GiB"\nmax_total_size = "16GiB"\n' >>"$mbx_conf"
+  fi
+fi
+mise exec -- mbx gc >/dev/null 2>&1 || true
+log "mbx: $(mise exec -- mbx stats 2>/dev/null | grep -E '^(shared cache|managed targets)' | tr -s ' ' | paste -sd ';' -)"
+
+# 10. A warm build through mbx (mise.toml wraps cargo), so the first test run is
 #    incremental. Every feature, every target, nothing executed.
 if [ "${JUDGMENT_SESSION_SKIP_BUILD:-}" != "1" ]; then
   log "warming the build (cargo test --all-features --no-run)"
@@ -135,9 +154,30 @@ if [ "${JUDGMENT_SESSION_SKIP_BUILD:-}" != "1" ]; then
   mise exec -- cargo check --no-default-features --all-targets --quiet
 fi
 
+# 11. The network. The environment's egress policy decides which hosts answer,
+#     and a session used to learn that a host is blocked mid-task, from a
+#     failed fetch. Each host below is one the work depends on; the result
+#     goes to the session as context, not only to the log.
+probe() {
+  blocked=""
+  for h in "$@"; do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 6 "https://$h/" 2>/dev/null || true)
+    case "$code" in 000|"") blocked="$blocked $h" ;; esac
+  done
+  printf '%s' "$blocked"
+}
+blocked=$(probe api.typesafe.ai docs.typesafe.ai index.crates.io static.crates.io static.rust-lang.org docs.rs github.com release-assets.githubusercontent.com pypi.org)
+if [ -n "$blocked" ]; then
+  network="blocked by the egress policy:$blocked. The contract work (tests/openapi_drift.rs, the live TypeSafe docs CLAUDE.md names) needs api.typesafe.ai and docs.typesafe.ai; the environment's allowed domains are the fix (docs/project/contributing.md, Cloud sessions)."
+else
+  network="every host the work depends on answers (TypeSafe API and docs, crates.io, rust-lang, docs.rs, GitHub releases, PyPI)."
+fi
+log "network: $network"
 log "done"
 
 # The plugins installed above load at the next session start; this asks the
 # session that is starting to re-scan skills and commands as well
-# (https://code.claude.com/docs/en/hooks, SessionStart `reloadSkills`).
-printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","reloadSkills":true}}\n'
+# (https://code.claude.com/docs/en/hooks, SessionStart `reloadSkills`), and
+# hands it the network probe as context.
+context="[session-start] network: $network Background commands write their output to the scratchpad through tail: the task output filesystem is small and a full one loses the output."
+printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","reloadSkills":true,"additionalContext":%s}}\n' "$(printf '%s' "$context" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
