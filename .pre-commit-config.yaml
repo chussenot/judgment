@@ -82,6 +82,15 @@ repos:
         always_run: true
         stages: [pre-commit, post-merge, post-checkout]
 
+      - id: tools-missing
+        name: mise tools this checkout pins and this machine lacks
+        entry: scripts/tools-missing.sh
+        language: script
+        pass_filenames: false
+        always_run: true
+        verbose: true
+        stages: [post-merge, post-checkout]
+
       - id: cargo-test
         name: cargo test (pre-push)
         entry: cargo test --all-features

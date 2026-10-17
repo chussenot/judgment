@@ -151,7 +151,10 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   allowance), warms the build and probes the hosts the work depends on,
   handing the session the list of blocked ones; then `bd prime` runs. A
   background command writes its output to the scratchpad through `tail`:
-  the task output filesystem is small. `mise run plugins:install` does
+  the task output filesystem is small. After a merge or a checkout, a
+  hook names the tools `mise.toml` pins and the machine lacks: run `mise
+  install` then, before a `mise exec` stops to compile them. `mise run
+  plugins:install` does
   the same on a laptop and `mise run plugins:update` moves `jud` and
   `typesafe` to their latest and `ponytail` to its pin.
 - Ponytail is required: the plugin is pinned to a tag (`v5.2.0`, in
