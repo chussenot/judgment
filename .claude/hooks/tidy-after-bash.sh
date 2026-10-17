@@ -16,14 +16,18 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 status=$(git status --porcelain --untracked-files=all -- '*.rs' docs README.md mkdocs.yml 2>/dev/null || true)
 [ -n "$status" ] || exit 0
 
-rs=$(printf '%s\n' "$status" | grep -v '^UU\|^AA\|^DD\|^.D\|^D' | grep '\.rs$' | sed 's/^...//' || true)
+# Paths of the modified, added or untracked files, without the two-letter
+# status and without the unmerged (UU, AA) and deleted ones.
+paths=$(printf '%s\n' "$status" | grep -v '^UU\|^AA\|^DD\|^.D\|^D' | sed 's/^...//; s/^.* -> //')
+
+rs=$(printf '%s\n' "$paths" | grep '\.rs$' || true)
 if [ -n "$rs" ] && command -v rustfmt >/dev/null 2>&1; then
   printf '%s\n' "$rs" | while IFS= read -r f; do
     [ -f "$f" ] && rustfmt --edition 2024 "$f" >/dev/null 2>&1 || true
   done
 fi
 
-if printf '%s\n' "$status" | grep -v '^UU\|^AA' | grep -Eq '(^|/)(docs/.*\.md|README\.md|docs/llms-intro\.txt|mkdocs\.yml)$'; then
+if printf '%s\n' "$paths" | grep -Eq '^(docs/.*\.md|README\.md|docs/llms-intro\.txt|mkdocs\.yml)$'; then
   sh scripts/gen-llms-txt.sh >/dev/null 2>&1 || true
 fi
 exit 0
