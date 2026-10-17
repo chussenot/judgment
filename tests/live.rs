@@ -1173,6 +1173,54 @@ async fn an_image_and_a_box_question_round_trip() {
     }
 }
 
+/// An image over the shared `images` array, the shape Ollama takes
+/// (`JUDGMENT_LIVE_SHARED_IMAGES=1`, which `mise run live:ollama` sets): a
+/// model with vision answers the Noul about the drawn circle; one without
+/// refuses the request by name, a 400, which is printed. Without the
+/// variable the test says so and does nothing: the hosted API has no such
+/// field.
+#[tokio::test]
+#[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
+async fn an_image_goes_as_a_shared_array_when_the_server_takes_it() {
+    if std::env::var("JUDGMENT_LIVE_SHARED_IMAGES").is_ok_and(|v| v.trim().is_empty() || v == "0")
+        || std::env::var("JUDGMENT_LIVE_SHARED_IMAGES").is_err()
+    {
+        eprintln!("skipped: JUDGMENT_LIVE_SHARED_IMAGES is not set");
+        return;
+    }
+    let (image, _) = shape_01();
+    let mut assets = Assets::new();
+    assets.insert("image", image).unwrap();
+    let state = json!({ "image": "image" });
+    let mut q = Questions::new();
+    let present = q
+        .noul(
+            "circle_present",
+            "Is there a filled circle in `image`?",
+            None,
+        )
+        .unwrap();
+    let model = requested_model();
+    let request = Request::new(&state, &model, &q).with_assets(&assets);
+    match client()
+        .evaluate_with(&request, &CallOptions::new().shared_images(true))
+        .await
+    {
+        Ok(response) => {
+            let answer = response.get(&present).unwrap();
+            eprintln!(
+                "shared images: {} said circle_present {:.2}",
+                response.model, answer.yes
+            );
+            assert!(answer.is_yes(0.5), "{answer:?}");
+        }
+        Err(err) => {
+            eprintln!("shared images: {err}");
+            assert!(matches!(err, Error::InvalidRequest { .. }), "{err:?}");
+        }
+    }
+}
+
 /// The state [`a_state_over_the_budget_is_refused_as_too_large`] sends,
 /// about 40,000 tokens against the 32,000-token per-question budget, with
 /// long context asked for: the hosted API answers it, on Jev 1.13 and 1.14

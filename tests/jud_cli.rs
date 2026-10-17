@@ -1272,6 +1272,63 @@ async fn options_that_cannot_be_asked_are_refused_before_any_call() {
     );
 }
 
+/// `shared_images: true` in the configuration file sends a run's images as
+/// Ollama's top-level `images` array and no `assets` map, and `jud config`
+/// shows the setting; without it the map goes, as it always has.
+#[tokio::test]
+async fn shared_images_is_a_setting_of_the_file() {
+    let home = config_home();
+    std::fs::write(home.join("jud/config.yaml"), "shared_images: true\n").unwrap();
+    let rubric_path = home.join("red.jud");
+    std::fs::write(
+        &rubric_path,
+        "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: red\n  minor: 4\nspec:\n  questions:\n    red: {type: noul, instructions: Is `photo` mostly red?}\n",
+    )
+    .unwrap();
+    let rubric = rubric_path.to_str().unwrap();
+    let image = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/images/square-300.png"
+    );
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .and(header("content-type", "application/json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "clef-flash",
+            "answers": { "red": { "type": "noul", "noul": 0.9 } },
+            "usage": { "input_tokens": 500, "output_tokens": 1 }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let uri = server.uri();
+    let env = [
+        ("TYPESAFE_API_KEY", "test-key"),
+        ("TYPESAFE_BASE_URL", &uri),
+    ];
+    let config = jud(&["config"], "", &env, &home);
+    assert!(config.status.success(), "{}", stderr(&config));
+    let shown: Value = serde_json::from_str(&stdout(&config)).unwrap();
+    assert_eq!(shown["shared_images"], true);
+
+    let asset = format!("photo={image}");
+    let out = jud(
+        &[rubric, "--asset", &asset],
+        r#"{"photo": "photo"}"#,
+        &env,
+        &home,
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let verdicts: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(verdicts["red"]["verdict"], "yes");
+    let sent = server.received_requests().await.unwrap();
+    let body: Value = serde_json::from_slice(&sent[0].body).unwrap();
+    assert!(body.get("assets").is_none(), "{body}");
+    assert_eq!(body["images"].as_array().map(Vec::len), Some(1), "{body}");
+    assert_eq!(body["state"], json!({ "photo": "photo" }));
+}
+
 /// `--asset REF=PATH` sends the image under the reference the state carries,
 /// with the images header the API requires, and a located box is printed in
 /// the pixels of the one image, or of the size `--pixels` names. A file that

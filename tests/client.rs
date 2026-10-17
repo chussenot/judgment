@@ -2763,3 +2763,106 @@ async fn a_multipart_body_is_sent_whole_on_every_attempt() {
     assert_eq!(parts[0], parts[1], "the boundary differs, the parts do not");
     assert_eq!(parts[1][1].1, png.bytes());
 }
+
+/// With shared images: the JSON body carries a top-level `images` array,
+/// the base64 of each image in reference order, and no `assets` key, under
+/// the images header; asked for on the client or on the call, and never
+/// as parts, whatever `multipart` says.
+#[tokio::test]
+async fn images_go_as_a_shared_array_when_asked() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .and(header("typesafe-danger-zone-images", "true"))
+        .and(header("content-type", "application/json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let mut assets = judgment::Assets::new();
+    assets
+        .insert("yard", fixture_image("square-300.jpg"))
+        .unwrap();
+    assets
+        .insert("door", fixture_image("square-300.png"))
+        .unwrap();
+    let state = json!({ "door": "door", "yard": "yard" });
+    let q = one_noul();
+    let request = Request::new(&state, "clef-flash", &q).with_assets(&assets);
+    let on_the_client = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .shared_images(true)
+        .build()
+        .unwrap();
+    assert!(on_the_client.shared_images());
+    on_the_client
+        .evaluate_with(&request, &CallOptions::new())
+        .await
+        .unwrap();
+    let on_the_call = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .build()
+        .unwrap();
+    assert!(!on_the_call.shared_images());
+    on_the_call
+        .evaluate_with(&request, &CallOptions::new().shared_images(true))
+        .await
+        .unwrap();
+
+    // The base64 the map would have carried, image by image.
+    let as_map = serde_json::to_value(&request).unwrap();
+    for sent in server.received_requests().await.unwrap() {
+        let body: serde_json::Value = serde_json::from_slice(&sent.body).unwrap();
+        assert!(body.get("assets").is_none(), "{body}");
+        assert_eq!(body["state"], state);
+        assert_eq!(body["model"], "clef-flash");
+        assert_eq!(
+            body["images"],
+            json!([
+                as_map["assets"]["door"]["data_base64"],
+                as_map["assets"]["yard"]["data_base64"]
+            ])
+        );
+    }
+}
+
+/// Shared images win over multipart: the body is JSON with the array.
+#[cfg(feature = "multipart")]
+#[tokio::test]
+async fn shared_images_are_never_parts() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .and(header("content-type", "application/json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut assets = judgment::Assets::new();
+    assets
+        .insert("door", fixture_image("square-300.png"))
+        .unwrap();
+    let state = json!({ "door": "door" });
+    let q = one_noul();
+    let c = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .multipart(true)
+        .shared_images(true)
+        .build()
+        .unwrap();
+    c.evaluate_with(
+        &Request::new(&state, "clef-flash", &q).with_assets(&assets),
+        &CallOptions::new(),
+    )
+    .await
+    .unwrap();
+    let body: serde_json::Value =
+        serde_json::from_slice(&server.received_requests().await.unwrap()[0].body).unwrap();
+    assert_eq!(body["images"].as_array().map(Vec::len), Some(1), "{body}");
+}

@@ -2,7 +2,7 @@
 title: Compatible servers and models
 description: The servers and models that speak the System One wire as of 2026-10-06, hosted and local, what the Jev Decision Index 0.2.1 says about how close the open ones are to Jev, what each one's limits and confidence semantics mean for a consumer of this crate, and which the crate has been run against or should be next.
 status: current
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-17
 tags: [research, judgment, typesafe, jev, compatibility, calibration, ollama, laya, cloudflare, clef]
 ---
 
@@ -79,8 +79,17 @@ Two small models without a server yet are worth knowing: openJev-verdict 2.0 (15
 - **Expect `GET /v1/models` to differ.** The hosted API serves TypeSafe's shape, Laya nothing, Ollama the OpenAI shape. `list_models` is the one call on the wire that is not standard; a consumer that lists models should treat a decode failure there as "this server does not say", not as a broken server.
 - **Do not add batching, images or streaming on speculation.** Perplexity accepts images in the state and `laya-serve` has a batch endpoint; neither is on the wire every server speaks, and no consumer of this crate has asked.
 
+## Seen on 2026-10-17: Ollama 0.40.5, images and Clef-flash
+
+A run of `mise run live:ollama` against Ollama 0.40.5 with `tev1:0.8b` on a 4-vCPU, 16 GB machine without a GPU, and probes by hand, answered some of the questions below and opened others:
+
+- **A request in the hosted API's shape, with an `assets` map, is answered with the images ignored and no error.** Ollama's endpoint takes images as a top-level `images` array shared by every question, and drops a field it does not know. A client that sends TypeSafe's shape to Ollama gets a confident answer from a model that never saw the picture. The crate now sends Ollama's shape when asked (`ClientBuilder::shared_images`, `shared_images: true` in `jud`'s file); a model without vision refuses that array by name, a 400.
+- **Box is not served**: `questions.circle: "type" must be one of: choice, score, noul`, a 400 that the crate maps to `Error::InvalidRequest`.
+- **Clef-flash did not load on a CPU-only machine.** `ollama pull clef-flash` (the `9b-q8_0` build; the library has no Q4 tag) and the first request, text alone included, aborted `llama-server` in two seconds with `GGML_ASSERT(*cur_backend_id != -1)` in `ggml_backend_sched_split_graph`, while the vision projector was being placed on the CPU backend (`libggml-cpu-sapphirerapids.so`, AVX-512 and AMX present). Memory was not the limit; the engine Ollama ships is. So the Vision board's Noul and Choice over images could not be reproduced locally here; the hosted Jev 1.14 remains the one vision backend the crate has been run against ([Jev 1.14 on the hosted API](../verification/hosted-typesafe-jev-1-14.md)).
+- **Five live tests fail under the generic profile on 0.40.5 that passed on 0.40.0** (judgment-2qk): three bodies get a 500, `the model could not evaluate the decision` (the three primitives in one request, the repeated-calls body and the published-document body); `GET /v1/models` is the OpenAI-shaped list, an `Error::Decode`; an unknown model is a 404. Whether the 500s are `tev1`'s or the engine's is open.
+
 ## Open questions
 
-- **Ollama's departures are unobserved.** Option caps, `confidence` semantics and the error bodies of its endpoint are known only from its release notes until the live tests run. Confidence that the three primitives round-trip: high; on everything else: none.
+- **Ollama's departures were unobserved** until 2026-10-17 (above); the option caps and the error bodies are still known from its release notes and one model. Option caps, `confidence` semantics and the error bodies of its endpoint are known only from its release notes until the live tests run. Confidence that the three primitives round-trip: high; on everything else: none.
 - **Cloudflare's API speaks the wire's body but not its path.** Confirmed on 2026-10-06 from its model pages; the adapter is `tools/systemone/serve.py`, the first time the crate meets a model it cannot reach with a `base_url`. Whether the client should take an exact endpoint instead, as the other clients are being asked to (litellm's issue 44149), is open; the envelope would still need unwrapping, and that is Cloudflare's shape, not the wire's. Whether Fastino's API speaks the wire was not confirmed.
 - **The index's rows above are vendor-reported** and the index publishes no intervals. Re-read the board itself before acting on a difference of under three points.

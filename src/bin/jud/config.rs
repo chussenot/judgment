@@ -41,6 +41,7 @@ struct File {
     model: Option<String>,
     timeout_secs: Option<u64>,
     long_context: Option<bool>,
+    shared_images: Option<bool>,
 }
 
 /// Where a value came from, for `jud config`.
@@ -82,6 +83,10 @@ pub(crate) struct Resolved {
     /// run's `--long-context` says so.
     long_context: bool,
     long_context_from: Source,
+    /// Whether the images of a request go as Ollama's shared `images`
+    /// array instead of the `assets` map (the crate's
+    /// `ClientBuilder::shared_images`); off unless the file says so.
+    shared_images: bool,
     /// `environment`, `config_file` or `missing`; never the key.
     api_key: &'static str,
     #[serde(skip)]
@@ -175,6 +180,7 @@ pub(crate) fn resolve_with(long_context: Option<bool>) -> Fallible<Resolved> {
         timeout_secs: file.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS),
         long_context,
         long_context_from,
+        shared_images: file.shared_images.unwrap_or(false),
         api_key,
         api_key_value,
         ignored_environment: ignored_environment(),
@@ -252,7 +258,8 @@ impl Resolved {
             .base_url(self.base_url.clone())
             .model(self.model.clone())
             .timeout(Duration::from_secs(self.timeout_secs))
-            .long_context(self.long_context);
+            .long_context(self.long_context)
+            .shared_images(self.shared_images);
         if let Some(key) = &self.api_key_value {
             builder = builder.api_key(key.clone());
         }
