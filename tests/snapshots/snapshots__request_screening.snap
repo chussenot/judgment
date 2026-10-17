@@ -1,0 +1,39 @@
+---
+source: tests/snapshots.rs
+expression: body
+---
+{
+  "model": "jev-latest",
+  "questions": {
+    "reason": {
+      "criteria": {
+        "cancelled": "The writer cancelled and wants the remaining time refunded",
+        "duplicate_charge": "Charged twice, or charged after cancelling",
+        "none_of_these": "No refund asked for, or a reason not listed",
+        "unhappy": "The product or the service did not do what was expected"
+      },
+      "instructions": "Why does the writer of `message` want money back?",
+      "type": "choice"
+    },
+    "refund_request": {
+      "criteria": {
+        "false": "a question about a charge, a complaint with no money asked for, anything else",
+        "true": "a refund, a chargeback, a credit, a cancelled charge"
+      },
+      "instructions": "Does `message` ask for money back?",
+      "type": "noul"
+    },
+    "tone": {
+      "criteria": [
+        "calm",
+        "annoyed",
+        "angry"
+      ],
+      "instructions": "How upset is the writer of `message`?",
+      "type": "score"
+    }
+  },
+  "state": {
+    "message": "I was charged twice for March. Please refund the second one."
+  }
+}

@@ -1,0 +1,24 @@
+---
+source: tests/snapshots.rs
+expression: body
+---
+{
+  "model": "jev-latest",
+  "questions": {
+    "stamp": {
+      "instructions": "the round ink stamp on the page `page`",
+      "type": "box"
+    },
+    "stamp_present": {
+      "criteria": {
+        "false": "no stamp; a printed logo, a signature, a barcode or a table is not one",
+        "true": "a round stamp impression, two rings with a word and a date inside, in coloured ink over the printed page"
+      },
+      "instructions": "Is there a round ink stamp on the page `page`?",
+      "type": "noul"
+    }
+  },
+  "state": {
+    "page": "page-00"
+  }
+}

@@ -1,0 +1,37 @@
+---
+source: tests/snapshots.rs
+expression: body
+---
+{
+  "model": "jev-latest",
+  "questions": {
+    "breaks_something": {
+      "criteria": {
+        "false": "news that leaves everything the recipient relies on as it was",
+        "true": "a revert, an overwrite, a changed contract, a red build or gate, a defect, a wrong assumption"
+      },
+      "instructions": "Does `body` (under `subject`) warn its recipient that something they own or rely on is broken, lost, changed or wrong: a reverted or overwritten change, an interface that changed under them, a failing build or check, a defect in their file, a premise that does not hold?",
+      "type": "noul"
+    },
+    "needs_action": {
+      "criteria": {
+        "false": "a report or an answer that leaves the recipient nothing to do, including \"no action needed\"",
+        "true": "a question, a request for approval or a decision, \"gate please\", an edit to make, \"check your work\""
+      },
+      "instructions": "Does `body` (under `subject`) ask its recipient to do something: decide, approve, answer, run a check, make an edit, or check their own work?",
+      "type": "noul"
+    },
+    "status_only": {
+      "criteria": {
+        "false": "carries a request, a warning, a decision or a finding the recipient needs",
+        "true": "started, done, landed, acknowledged, with no request, no warning and no finding"
+      },
+      "instructions": "Is `body` (under `subject`) only a report that work is done or under way, with nothing the recipient must do and nothing they must know beyond that?",
+      "type": "noul"
+    }
+  },
+  "state": {
+    "body": "native store live; bump is yours",
+    "subject": "0.9.0 handoff"
+  }
+}
