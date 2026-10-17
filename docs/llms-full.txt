@@ -622,13 +622,15 @@ Observed on 2026-10-07 against Ollama 0.40.0 with `tev1:0.8b`; the limits are Ol
 | The bearer | checked; a wrong key is a 401 | ignored | Send any non-blank key. |
 | Request id | on every response | none | `Response::request_id` is `None`. |
 | Latency | hundreds of milliseconds | one to two seconds for `tev1:0.8b` on an 8-core CPU, after the load | Raise the timeout: 60 s in the file above; the crate's default is 10 s, the command's 30 s. |
+| An image | the `assets` map, each reference replaced by its image | a top-level `images` array of base64 shared by every question; a body with the `assets` map is answered with the map ignored and no error (observed on 2026-10-17, Ollama 0.40.5) | `shared_images: true` in the file, or `ClientBuilder::shared_images(true)`: the images go as that array and no map; the references stay in the state as text. A model without vision refuses the array by name, a 400. |
+| A Box question | answered on Jev 1.14 | refused by name, a 400 (`choice, score, noul`) | A Noul or a Choice about the image. |
 | `confidence` | TypeSafe's spread | the model's own formula | A threshold tuned on one model is meaningless on another. [Tune thresholds](tune-thresholds.md) again. |
 
 A rubric's policy tuned on the hosted model sends the message above to the technical desk on `tev1`; Jev sends it to billing. That is the difference between models made visible, and the reason the last row exists.
 
 ### A larger model: Clef-flash
 
-[Clef-flash](https://ollama.com/library/clef-flash) is Cloudflare's 9B decision model, Apache 2.0; `ollama pull clef-flash` (10 GB) and `model: clef-flash`. It loads 9 GB of weights plus its context, on the GPU when there is one and otherwise in RAM. A machine with 16 GB holds it; one with 13 GB does not, and the failure is the kernel killing the loader: the crate sees the connection drop, `transport error after 3 attempts`. A transport error from a local server that answered `GET /api/version` a moment earlier means the model did not fit.
+[Clef-flash](https://ollama.com/library/clef-flash) is Cloudflare's 9B decision model, Apache 2.0; `ollama pull clef-flash` (10 GB) and `model: clef-flash`. It loads 9 GB of weights plus its context, on the GPU when there is one and otherwise in RAM. A machine with 16 GB holds it; one with 13 GB does not, and the failure is the kernel killing the loader: the crate sees the connection drop, `transport error after 3 attempts`. A transport error from a local server that answered `GET /api/version` a moment earlier means the model did not fit. On a machine with no GPU the failure can be another: with Ollama 0.40.5 on an AVX-512 CPU, loading `clef-flash` aborted in two seconds with `GGML_ASSERT(*cur_backend_id != -1)` while the vision projector was being placed on the CPU backend, text-only requests included, and 16 GB of memory did not help; the crate sees a 500 whose body names the aborted `llama-server`. That is a bug in the engine Ollama ships, not a limit of the model or the machine; `tev1` on the same server answered.
 
 ## laya-serve
 
@@ -1973,13 +1975,13 @@ async fn run(state: &serde_json::Value, questions: &judgment::Questions, assets:
 }
 ```
 
-A request without images is the JSON body it always was, whatever was asked. Nothing else moves: the reference check, the 32 MiB bound, the images header, the `Observer`'s report, the fingerprint and the recordings are the same under either transport, so a recording made under one answers a replay under the other, and the `typesafe.evaluate` span says which was sent as `multipart`. The parts are named `part-0`, `part-1`, … in reference order and the asset's `part` maps each reference to its part; the reference itself is not a part name, since it may hold text a header cannot carry ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)). The `jud` command sends base64.
+A request without images is the JSON body it always was, whatever was asked. Ollama takes images in a third shape, a shared `images` array, and ignores the map without a word: `ClientBuilder::shared_images(true)` sends that shape ([Configure a backend](configure-a-backend.md#what-ollama-does-differently)). Nothing else moves: the reference check, the 32 MiB bound, the images header, the `Observer`'s report, the fingerprint and the recordings are the same under either transport, so a recording made under one answers a replay under the other, and the `typesafe.evaluate` span says which was sent as `multipart`. The parts are named `part-0`, `part-1`, … in reference order and the asset's `part` maps each reference to its part; the reference itself is not a part name, since it may hold text a header cannot carry ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)). The `jud` command sends base64.
 
 ## What the crate checks, and what it reports
 
 | Check | Where | Error |
 |---|---|---|
-| PNG or JPEG, not animated; each side 256 to 1568 pixels; 78,400 to 2,458,624 pixels; at most 16 MiB | `Image::read`, `Image::from_bytes`, `Image::from_base64` | `Error::InvalidImage` |
+| PNG or JPEG, not animated; each side 256 to 1568 pixels; 78,400 to 2,458,624 pixels; at most 16 MiB; upright (an EXIF orientation tag is not read) | `Image::read`, `Image::from_bytes`, `Image::from_base64` | `Error::InvalidImage` |
 | A reference 1 to 1024 bytes, all of them at most 65,536; the same reference not two different images | `Assets::add`, `Assets::insert` | `Error::InvalidAsset` |
 | Every reference appears in the state or the questions; the body at most 32 MiB | `Client::evaluate_with`, before the upload | `Error::InvalidAsset`, `Error::RequestTooLarge` |
 
@@ -3745,6 +3747,7 @@ flowchart TD
 | Model | | | `model` | `jev-latest` |
 | Timeout per attempt | | | `timeout_secs` | `30` |
 | Long context | `--long-context` on `jud RUBRIC`, `jud record` and `jud eval` | | `long_context` | `false`: the model's own limits, 64k tokens per request and 32k per question; `true` raises both to 262k on every call of the run through the crate's `ClientBuilder::long_context`, slower and less accurate by TypeSafe's own account ([Use long context](../guides/use-long-context.md#from-the-shell)). Nothing under a replay, which asks no server. |
+| Shared images | | | `shared_images` | `false`: a request's images go as the `assets` map the hosted API takes; `true`: as the top-level `images` array Ollama takes, with no map, through the crate's `ClientBuilder::shared_images` ([Configure a backend](../guides/configure-a-backend.md#what-ollama-does-differently)) |
 | Replay directory | `--replay DIR` | `JUD_REPLAY` | | none; [which commands read it](#replay) |
 
 `TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL` set to an empty or blank value count as unset. `JUD_REPLAY` set to an empty or blank value does not: [Replay](#replay) says what happens. No environment variable names the model for the command; the examples under `examples/` read `TYPESAFE_MODEL` for their `--live` runs, the command does not ([beads issue `judgment-rxl`](../project/contributing.md#tracking-work)).
@@ -3770,6 +3773,7 @@ base_url: https://api.typesafe.ai
 model: jev-latest
 timeout_secs: 30
 long_context: false   # true: both context limits raised to 262k tokens on every call
+shared_images: false  # true: images as Ollama's shared `images` array, not the `assets` map
 # api_key: ...   # prefer TYPESAFE_API_KEY, which no file on disk holds
 ```
 
@@ -3789,6 +3793,7 @@ Prints the resolved backend and where each value came from, as JSON on stdout. T
   "timeout_secs": 30,
   "long_context": false,
   "long_context_from": "default",
+  "shared_images": false,
   "api_key": "missing"
 }
 ```
@@ -3826,6 +3831,7 @@ A request nobody recorded is a backend failure (status 1); a directory that does
 | Retries | `ClientBuilder::retry_policy`, or `CallOptions` for one call | `RetryPolicy::default()`: [The crate](crate.md#defaults) |
 | Long context | `ClientBuilder::long_context`, or `CallOptions::long_context` for one call | off: the model's own limits, 64k tokens per request and 32k per question; on, 262k for both through the `TypeSafe-Danger-Zone-Long-Context` header, slower and less accurate by TypeSafe's own account ([decision 0027](../project/decisions/0027-long-context-is-a-switch-on-the-call.md)) |
 | Images as parts (feature `multipart`) | `ClientBuilder::multipart`, or `CallOptions::multipart` for one call | off: the images as base64 in the JSON body; on, a `multipart/form-data` body with a JSON `request` part and one part per image, the request keyed and checked as before ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) |
+| Shared images | `ClientBuilder::shared_images`, or `CallOptions::shared_images` for one call | off: the images as the `assets` map; on, a top-level `images` array of base64 and no map, the shape Ollama's `/v1/systemone` takes, which otherwise answers with the map ignored; never parts, whatever `multipart` says; the request keyed and checked as before |
 
 The crate's client reads no base URL from the environment; the `jud` command and the examples do, and pass it to the builder. The two timeouts differ on purpose: a library call is usually one of many on a request path and fails fast at 10 s; a command-line run has a person waiting and a local model that may be loading, so it waits 30 s.
 
@@ -4967,7 +4973,7 @@ Two boxes are compared by intersection over union, the overlap divided by the ar
 
 ## What is checked before anything is sent
 
-An image is a PNG or a JPEG, not animated, each side from 256 to 1568 pixels, 78,400 to 2,458,624 pixels in all, at most 16 MiB; a request's images weigh at most 32 MiB together; a reference is 1 to 1024 bytes and all of a request's at most 65,536. The crate checks every one when the image is built or added, as `Error::InvalidImage`, `Error::InvalidAsset` or `Error::RequestTooLarge`, so the refusal names the limit and costs no upload; the hosted API refuses the same with a 400 ([Jev 1.14 on the hosted API](../project/verification/hosted-typesafe-jev-1-14.md)). The header the API keeps the feature behind is the client's to send, and it sends it on every request that carries an image or asks a Box.
+An image is a PNG or a JPEG, not animated, each side from 256 to 1568 pixels, 78,400 to 2,458,624 pixels in all, at most 16 MiB, and sent as it is, so upright: an EXIF orientation tag is not read, and a photo a camera stored sideways is rotated before it is given to the crate; a request's images weigh at most 32 MiB together; a reference is 1 to 1024 bytes and all of a request's at most 65,536. The crate checks every one when the image is built or added, as `Error::InvalidImage`, `Error::InvalidAsset` or `Error::RequestTooLarge`, so the refusal names the limit and costs no upload; the hosted API refuses the same with a 400 ([Jev 1.14 on the hosted API](../project/verification/hosted-typesafe-jev-1-14.md)). The header the API keeps the feature behind is the client's to send, and it sends it on every request that carries an image or asks a Box.
 
 ## Next
 
@@ -5015,6 +5021,10 @@ The tools come from crates.io at the versions `mise.toml` pins (`mise install`),
 Mutation testing ([cargo-mutants](https://mutants.rs), `.cargo/mutants.toml`) asks whether the tests notice a changed line. `.github/workflows/mutants.yml` mutates the diff of a pull request that touches `src/answer.rs`, `src/http.rs` or `src/eval/` (`mise run mutants` does the same locally against `origin/main`) and reports the mutants the tests let through without blocking the merge, and a weekly run over the whole crate files one issue listing the survivors. A survivor is a test to strengthen or a line that does nothing; `#[cfg(kani)]` proofs are excluded because no `cargo test` can see them. A run copies the tree and builds it per mutant, so it needs disk (several GB) and minutes per hundred mutants.
 
 Tests never call a real API: wiremock for the client, `Fake` and recordings for everything above it. The exceptions are the ignored live tests in `tests/live.rs` (`mise run live:typesafe`, `live:ollama`, `live:laya`, `live:clef`, `live:pplx`), whose results are recorded under [verification](verification/method.md), and `tests/openapi_drift.rs`, which refreshes the vendored OpenAPI document.
+
+## Dependency updates
+
+`.github/dependabot.yml` opens weekly pull requests for the crate's dependencies (`cargo`, `Cargo.lock` included) and for the actions the workflows use. The OpenTelemetry crates are one group, because they keep global state per version and `deny.toml` refuses a second copy; development dependencies are another; compatible updates of the rest are a third, and a breaking release (a new `0.x` minor or a major) is a pull request of its own, where its changelog is read. Dependabot does not know `rust-version`, so a proposed version that needs a newer Rust than 1.91 fails the `msrv` job: hold that dependency back with an `ignore` entry and say why, rather than raising the promise to fit it. It does not read the tools `mise.toml` and `ci.yml` pin (cargo-hack, cargo-deny, cargo-semver-checks, cargo-insta, cargo-mutants, cocogitto, lychee) either; those move by hand, in both files together. The container image is `FROM scratch`, so it has nothing to update.
 
 ## Tracking work
 
@@ -6174,9 +6184,18 @@ Two small models without a server yet are worth knowing: openJev-verdict 2.0 (15
 - **Expect `GET /v1/models` to differ.** The hosted API serves TypeSafe's shape, Laya nothing, Ollama the OpenAI shape. `list_models` is the one call on the wire that is not standard; a consumer that lists models should treat a decode failure there as "this server does not say", not as a broken server.
 - **Do not add batching, images or streaming on speculation.** Perplexity accepts images in the state and `laya-serve` has a batch endpoint; neither is on the wire every server speaks, and no consumer of this crate has asked.
 
+## Seen on 2026-10-17: Ollama 0.40.5, images and Clef-flash
+
+A run of `mise run live:ollama` against Ollama 0.40.5 with `tev1:0.8b` on a 4-vCPU, 16 GB machine without a GPU, and probes by hand, answered some of the questions below and opened others:
+
+- **A request in the hosted API's shape, with an `assets` map, is answered with the images ignored and no error.** Ollama's endpoint takes images as a top-level `images` array shared by every question, and drops a field it does not know. A client that sends TypeSafe's shape to Ollama gets a confident answer from a model that never saw the picture. The crate now sends Ollama's shape when asked (`ClientBuilder::shared_images`, `shared_images: true` in `jud`'s file); a model without vision refuses that array by name, a 400.
+- **Box is not served**: `questions.circle: "type" must be one of: choice, score, noul`, a 400 that the crate maps to `Error::InvalidRequest`.
+- **Clef-flash did not load on a CPU-only machine.** `ollama pull clef-flash` (the `9b-q8_0` build; the library has no Q4 tag) and the first request, text alone included, aborted `llama-server` in two seconds with `GGML_ASSERT(*cur_backend_id != -1)` in `ggml_backend_sched_split_graph`, while the vision projector was being placed on the CPU backend (`libggml-cpu-sapphirerapids.so`, AVX-512 and AMX present). Memory was not the limit; the engine Ollama ships is. So the Vision board's Noul and Choice over images could not be reproduced locally here; the hosted Jev 1.14 remains the one vision backend the crate has been run against ([Jev 1.14 on the hosted API](../verification/hosted-typesafe-jev-1-14.md)).
+- **Five live tests fail under the generic profile on 0.40.5 that passed on 0.40.0** (judgment-2qk): three bodies get a 500, `the model could not evaluate the decision` (the three primitives in one request, the repeated-calls body and the published-document body); `GET /v1/models` is the OpenAI-shaped list, an `Error::Decode`; an unknown model is a 404. Whether the 500s are `tev1`'s or the engine's is open.
+
 ## Open questions
 
-- **Ollama's departures are unobserved.** Option caps, `confidence` semantics and the error bodies of its endpoint are known only from its release notes until the live tests run. Confidence that the three primitives round-trip: high; on everything else: none.
+- **Ollama's departures were unobserved** until 2026-10-17 (above); the option caps and the error bodies are still known from its release notes and one model. Option caps, `confidence` semantics and the error bodies of its endpoint are known only from its release notes until the live tests run. Confidence that the three primitives round-trip: high; on everything else: none.
 - **Cloudflare's API speaks the wire's body but not its path.** Confirmed on 2026-10-06 from its model pages; the adapter is `tools/systemone/serve.py`, the first time the crate meets a model it cannot reach with a `base_url`. Whether the client should take an exact endpoint instead, as the other clients are being asked to (litellm's issue 44149), is open; the envelope would still need unwrapping, and that is Cloudflare's shape, not the wire's. Whether Fastino's API speaks the wire was not confirmed.
 - **The index's rows above are vendor-reported** and the index publishes no intervals. Re-read the board itself before acting on a difference of under three points.
 

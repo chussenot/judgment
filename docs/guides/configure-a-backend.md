@@ -2,7 +2,7 @@
 title: Configure a backend
 description: How to point the jud command, the examples and the crate's client at the hosted TypeSafe API, at Jev through OpenRouter, at Ollama on your machine, at laya-serve, at Clef on Workers AI, at any other server that speaks the wire, or at a model on Google Cloud; and what each local server does differently from the hosted API.
 status: current
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-17
 tags: [judgment, jud, configuration, typesafe, openrouter, ollama, laya, clef, cloudflare, google-cloud, how-to]
 ---
 
@@ -133,13 +133,15 @@ Observed on 2026-10-07 against Ollama 0.40.0 with `tev1:0.8b`; the limits are Ol
 | The bearer | checked; a wrong key is a 401 | ignored | Send any non-blank key. |
 | Request id | on every response | none | `Response::request_id` is `None`. |
 | Latency | hundreds of milliseconds | one to two seconds for `tev1:0.8b` on an 8-core CPU, after the load | Raise the timeout: 60 s in the file above; the crate's default is 10 s, the command's 30 s. |
+| An image | the `assets` map, each reference replaced by its image | a top-level `images` array of base64 shared by every question; a body with the `assets` map is answered with the map ignored and no error (observed on 2026-10-17, Ollama 0.40.5) | `shared_images: true` in the file, or `ClientBuilder::shared_images(true)`: the images go as that array and no map; the references stay in the state as text. A model without vision refuses the array by name, a 400. |
+| A Box question | answered on Jev 1.14 | refused by name, a 400 (`choice, score, noul`) | A Noul or a Choice about the image. |
 | `confidence` | TypeSafe's spread | the model's own formula | A threshold tuned on one model is meaningless on another. [Tune thresholds](tune-thresholds.md) again. |
 
 A rubric's policy tuned on the hosted model sends the message above to the technical desk on `tev1`; Jev sends it to billing. That is the difference between models made visible, and the reason the last row exists.
 
 ### A larger model: Clef-flash
 
-[Clef-flash](https://ollama.com/library/clef-flash) is Cloudflare's 9B decision model, Apache 2.0; `ollama pull clef-flash` (10 GB) and `model: clef-flash`. It loads 9 GB of weights plus its context, on the GPU when there is one and otherwise in RAM. A machine with 16 GB holds it; one with 13 GB does not, and the failure is the kernel killing the loader: the crate sees the connection drop, `transport error after 3 attempts`. A transport error from a local server that answered `GET /api/version` a moment earlier means the model did not fit.
+[Clef-flash](https://ollama.com/library/clef-flash) is Cloudflare's 9B decision model, Apache 2.0; `ollama pull clef-flash` (10 GB) and `model: clef-flash`. It loads 9 GB of weights plus its context, on the GPU when there is one and otherwise in RAM. A machine with 16 GB holds it; one with 13 GB does not, and the failure is the kernel killing the loader: the crate sees the connection drop, `transport error after 3 attempts`. A transport error from a local server that answered `GET /api/version` a moment earlier means the model did not fit. On a machine with no GPU the failure can be another: with Ollama 0.40.5 on an AVX-512 CPU, loading `clef-flash` aborted in two seconds with `GGML_ASSERT(*cur_backend_id != -1)` while the vision projector was being placed on the CPU backend, text-only requests included, and 16 GB of memory did not help; the crate sees a 500 whose body names the aborted `llama-server`. That is a bug in the engine Ollama ships, not a limit of the model or the machine; `tev1` on the same server answered.
 
 ## laya-serve
 

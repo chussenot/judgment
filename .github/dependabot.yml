@@ -1,0 +1,57 @@
+# Dependabot (docs/project/contributing.md, "Dependency updates"): weekly pull
+# requests for the crate's dependencies and for the actions the workflows use.
+# The container image is `FROM scratch`, so there is no base image to update,
+# and the tools mise.toml and ci.yml pin (cargo-hack, cargo-deny, cargo-mutants,
+# cocogitto, ...) are not read by Dependabot: those are moved by hand.
+#
+# Every commit is a Conventional Commit (cog.toml), so each ecosystem has a
+# prefix; Dependabot writes "chore(deps): bump ...".
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    groups:
+      # One release line, one pull request: the OpenTelemetry crates keep
+      # global state per version, and deny.toml refuses a second copy of any of
+      # them, so a bump of one is a bump of all.
+      opentelemetry:
+        patterns:
+          - "opentelemetry*"
+          - "tracing-opentelemetry"
+      # What only the tests and benches build: a failure here never reaches a
+      # user of the crate.
+      dev-dependencies:
+        dependency-type: development
+        exclude-patterns:
+          - "opentelemetry*"
+      # Compatible updates of everything else, so a quiet week is one pull
+      # request, not twenty. A breaking release (a new 0.x minor, a new major)
+      # is its own pull request, where its changelog is read.
+      compatible:
+        update-types:
+          - minor
+          - patch
+        exclude-patterns:
+          - "opentelemetry*"
+          - "tracing-opentelemetry"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns:
+          - "*"

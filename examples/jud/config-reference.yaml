@@ -3,4 +3,5 @@ base_url: https://api.typesafe.ai
 model: jev-latest
 timeout_secs: 30
 long_context: false   # true: both context limits raised to 262k tokens on every call
+shared_images: false  # true: images as Ollama's shared `images` array, not the `assets` map
 # api_key: ...   # prefer TYPESAFE_API_KEY, which no file on disk holds

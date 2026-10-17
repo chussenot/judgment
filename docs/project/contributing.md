@@ -42,6 +42,10 @@ Mutation testing ([cargo-mutants](https://mutants.rs), `.cargo/mutants.toml`) as
 
 Tests never call a real API: wiremock for the client, `Fake` and recordings for everything above it. The exceptions are the ignored live tests in `tests/live.rs` (`mise run live:typesafe`, `live:ollama`, `live:laya`, `live:clef`, `live:pplx`), whose results are recorded under [verification](verification/method.md), and `tests/openapi_drift.rs`, which refreshes the vendored OpenAPI document.
 
+## Dependency updates
+
+`.github/dependabot.yml` opens weekly pull requests for the crate's dependencies (`cargo`, `Cargo.lock` included) and for the actions the workflows use. The OpenTelemetry crates are one group, because they keep global state per version and `deny.toml` refuses a second copy; development dependencies are another; compatible updates of the rest are a third, and a breaking release (a new `0.x` minor or a major) is a pull request of its own, where its changelog is read. Dependabot does not know `rust-version`, so a proposed version that needs a newer Rust than 1.91 fails the `msrv` job: hold that dependency back with an `ignore` entry and say why, rather than raising the promise to fit it. It does not read the tools `mise.toml` and `ci.yml` pin (cargo-hack, cargo-deny, cargo-semver-checks, cargo-insta, cargo-mutants, cocogitto, lychee) either; those move by hand, in both files together. The container image is `FROM scratch`, so it has nothing to update.
+
 ## Tracking work
 
 Issues live in [beads](https://github.com/gastownhall/beads): `bd ready` lists what is open, `bd create` files one, `bd update <id> --claim` takes it. Create or claim an issue before code. The documentation audit of 2026-10-07 filed `judgment-rxl` (whether `jud` should read `TYPESAFE_MODEL` as the examples do).

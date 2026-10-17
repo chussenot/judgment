@@ -163,6 +163,23 @@
 //! limits allow, and the feature pulls in `reqwest`'s multipart encoding
 //! and `mime_guess`. The setting is the span's `multipart` field.
 //!
+//! # Shared images
+//!
+//! Ollama's `/v1/systemone` takes a request's images as a top-level
+//! `images` array of base64, shared by every question, and has no `assets`
+//! map: a body in TypeSafe's shape is answered with the map ignored, by a
+//! model that never saw the picture, and nothing says so. Asked for per call
+//! ([`CallOptions::shared_images`]) or for every call of a client
+//! ([`ClientBuilder::shared_images`]), the images go as that array, in
+//! reference order, and no `assets` key is sent; the references stay in the
+//! state and the questions as the text they are, since the server has
+//! nothing to put in their place. A request without images is unchanged,
+//! and so is everything else: the checks before the wire, the images
+//! header, the request fingerprint and hash, the observer's report and the
+//! recordings, so a recording made against Ollama replays like any other.
+//! The images are never parts under it, whatever `multipart` says. Off by
+//! default: the hosted API and the servers that copy its wire take the map.
+//!
 //! # `GET /v1/models`
 //!
 //! [`Client::list_models`] lists the models and aliases the account may
@@ -347,6 +364,7 @@ pub struct CallOptions {
     long_context: Option<bool>,
     #[cfg(feature = "multipart")]
     multipart: Option<bool>,
+    shared_images: Option<bool>,
 }
 
 impl fmt::Debug for CallOptions {
@@ -360,6 +378,7 @@ impl fmt::Debug for CallOptions {
             .field("long_context", &self.long_context);
         #[cfg(feature = "multipart")]
         debug.field("multipart", &self.multipart);
+        debug.field("shared_images", &self.shared_images);
         debug.finish()
     }
 }
@@ -420,6 +439,16 @@ impl CallOptions {
     #[must_use]
     pub fn multipart(mut self, on: bool) -> Self {
         self.multipart = Some(on);
+        self
+    }
+
+    /// Send this call's images as a top-level `images` array of base64 and
+    /// no `assets` map, the shape Ollama's `/v1/systemone` takes (module
+    /// docs, `# Shared images`). Nothing without an image in the request;
+    /// `false` turns it off for one call of a client built with it on.
+    #[must_use]
+    pub fn shared_images(mut self, on: bool) -> Self {
+        self.shared_images = Some(on);
         self
     }
 
@@ -500,6 +529,7 @@ pub struct ClientBuilder {
     long_context: bool,
     #[cfg(feature = "multipart")]
     multipart: bool,
+    shared_images: bool,
 }
 
 impl fmt::Debug for ClientBuilder {
@@ -517,6 +547,7 @@ impl fmt::Debug for ClientBuilder {
             .field("long_context", &self.long_context);
         #[cfg(feature = "multipart")]
         debug.field("multipart", &self.multipart);
+        debug.field("shared_images", &self.shared_images);
         debug.finish()
     }
 }
@@ -535,6 +566,7 @@ impl Default for ClientBuilder {
             long_context: false,
             #[cfg(feature = "multipart")]
             multipart: false,
+            shared_images: false,
         }
     }
 }
@@ -604,6 +636,17 @@ impl ClientBuilder {
     #[must_use]
     pub fn multipart(mut self, on: bool) -> Self {
         self.multipart = on;
+        self
+    }
+
+    /// Send the images of every call as a top-level `images` array of
+    /// base64 and no `assets` map, the shape Ollama's `/v1/systemone` takes
+    /// (module docs, `# Shared images`). Off by default;
+    /// [`CallOptions::shared_images`] changes it for one call. A request
+    /// without images is the JSON body it always was.
+    #[must_use]
+    pub fn shared_images(mut self, on: bool) -> Self {
+        self.shared_images = on;
         self
     }
 
@@ -696,6 +739,7 @@ impl ClientBuilder {
             long_context: self.long_context,
             #[cfg(feature = "multipart")]
             multipart: self.multipart,
+            shared_images: self.shared_images,
         })
     }
 }
@@ -740,6 +784,7 @@ pub struct Client {
     long_context: bool,
     #[cfg(feature = "multipart")]
     multipart: bool,
+    shared_images: bool,
 }
 
 impl fmt::Debug for Client {
@@ -793,13 +838,32 @@ impl Client {
         self.multipart
     }
 
+    /// Whether this client sends the images of every call as a shared
+    /// `images` array ([`ClientBuilder::shared_images`]).
+    pub const fn shared_images(&self) -> bool {
+        self.shared_images
+    }
+
+    /// Whether a call sends its images as a shared array (module docs,
+    /// `# Shared images`): asked for by the call or the client, and an image
+    /// to send.
+    fn shared_images_for<S: Serialize>(
+        &self,
+        request: &Request<'_, S>,
+        options: &CallOptions,
+    ) -> bool {
+        options.shared_images.unwrap_or(self.shared_images) && !request.assets.is_empty()
+    }
+
     /// Whether a call sends its images as multipart parts (module docs,
     /// `# Multipart`): asked for by the call or the client, and an image to
     /// send. Never without the `multipart` feature.
     fn multipart_for<S: Serialize>(&self, request: &Request<'_, S>, options: &CallOptions) -> bool {
         #[cfg(feature = "multipart")]
         {
-            options.multipart.unwrap_or(self.multipart) && !request.assets.is_empty()
+            options.multipart.unwrap_or(self.multipart)
+                && !request.assets.is_empty()
+                && !self.shared_images_for(request, options)
         }
         #[cfg(not(feature = "multipart"))]
         {
@@ -901,6 +965,7 @@ impl Client {
             request,
             &options.extra,
             self.multipart_for(request, options),
+            self.shared_images_for(request, options),
         )?;
         if !request.assets.is_empty() {
             let bytes = payload.len();
@@ -1067,7 +1132,22 @@ impl Payload {
         request: &Request<'_, S>,
         extra: &Map<String, Value>,
         multipart: bool,
+        shared_images: bool,
     ) -> Result<Self> {
+        if shared_images {
+            // The body as it would go, the map swapped for the array.
+            let mut body = serde_json::to_value(Body { request, extra })?;
+            if let Value::Object(fields) = &mut body {
+                fields.remove("assets");
+                let images: Vec<Value> = request
+                    .assets
+                    .iter()
+                    .map(|(_, image)| Value::String(crate::asset::encode_base64(image.bytes())))
+                    .collect();
+                fields.insert("images".to_owned(), Value::Array(images));
+            }
+            return Ok(Self::Json(serde_json::to_vec(&body)?));
+        }
         #[cfg(feature = "multipart")]
         if multipart {
             return multipart::Parts::new(request, extra).map(Self::Multipart);

@@ -45,6 +45,10 @@
 //! server: the expanded size after every reference is replaced by its
 //! image, and the size after the server re-encodes an image; both are a
 //! 413 ([`Error::is_request_too_large`]).
+//!
+//! EXIF is not read: an orientation tag does not turn an image, and the
+//! width and height are the frame's. The API wants images sent upright, so a
+//! photo a camera stored sideways is rotated before it becomes an [`Image`].
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -682,6 +686,114 @@ mod tests {
         let shown = format!("{png:?}");
         assert!(shown.contains("Png") && shown.contains("300"), "{shown}");
         assert!(!shown.contains("iVBOR"), "the bytes are never printed");
+    }
+
+    /// A PNG of `width` by `height` with no picture: the signature, an IHDR
+    /// chunk and an IEND, which is all the size reader looks at.
+    fn png_header(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = PNG_SIGNATURE.to_vec();
+        bytes.extend_from_slice(&13u32.to_be_bytes());
+        bytes.extend_from_slice(b"IHDR");
+        bytes.extend_from_slice(&width.to_be_bytes());
+        bytes.extend_from_slice(&height.to_be_bytes());
+        bytes.extend_from_slice(&[8, 2, 0, 0, 0, 0, 0, 0, 0]);
+        bytes.extend_from_slice(&[0, 0, 0, 0]);
+        bytes.extend_from_slice(b"IEND");
+        bytes.extend_from_slice(&[0xAE, 0x42, 0x60, 0x82]);
+        bytes
+    }
+
+    /// The limits at their edges, on headers written for the purpose: the
+    /// smallest and largest side, the smallest pixel count, the largest
+    /// file, and the largest request. The largest pixel count is 1568 by
+    /// 1568, which the side limit already bounds.
+    #[test]
+    fn the_size_limits_hold_at_their_edges() {
+        for (width, height) in [(256, 400), (400, 256), (1568, 1568), (280, 280)] {
+            let image = Image::from_bytes(png_header(width, height)).unwrap();
+            assert_eq!((image.width(), image.height()), (width, height));
+        }
+        for (width, height, needle) in [
+            (255, 400, "255 pixels wide"),
+            (400, 255, "255 pixels high"),
+            (1569, 400, "1569 pixels wide"),
+            (400, 1569, "1569 pixels high"),
+            (280, 279, "78120 pixels"),
+        ] {
+            let err = Image::from_bytes(png_header(width, height)).unwrap_err();
+            assert!(
+                matches!(&err, Error::InvalidImage { reason } if reason.contains(needle)),
+                "{width}x{height}: {err}"
+            );
+        }
+
+        let at_limit = |fill: u8| {
+            let mut bytes = png_header(400, 400);
+            bytes.resize(usize::try_from(MAX_IMAGE_BYTES).unwrap(), fill);
+            bytes
+        };
+        let largest = Image::from_bytes(at_limit(0)).unwrap();
+        assert_eq!(largest.len() as u64, MAX_IMAGE_BYTES);
+        let mut over = at_limit(0);
+        over.push(0);
+        let err = Image::from_bytes(over).unwrap_err();
+        assert!(
+            matches!(&err, Error::InvalidImage { reason } if reason.contains("over the 16777216 byte limit")),
+            "{err}"
+        );
+
+        // Two images at the file limit fill a request exactly; one more
+        // byte of image is refused as the request's, not the image's.
+        let mut assets = Assets::new();
+        assets.insert("a", largest).unwrap();
+        assets
+            .insert("b", Image::from_bytes(at_limit(1)).unwrap())
+            .unwrap();
+        assert_eq!(assets.total_bytes(), MAX_REQUEST_BYTES);
+        let err = assets
+            .insert("c", Image::from_bytes(png_header(400, 400)).unwrap())
+            .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                Error::RequestTooLarge {
+                    what: "images",
+                    limit: MAX_REQUEST_BYTES,
+                    ..
+                }
+            ),
+            "{err}"
+        );
+    }
+
+    /// EXIF is not read: a JPEG whose orientation tag says "rotate" keeps
+    /// the width and height its frame header has, and its bytes go as they
+    /// are. The API wants images upright, so a caller rotates before
+    /// building an [`Image`].
+    #[test]
+    fn an_exif_orientation_is_not_read_and_the_frame_size_stands() {
+        // SOI; APP1 "Exif" with one IFD entry, Orientation (0x0112) = 6
+        // (rotate 90° clockwise to display); SOF0 for 400 wide, 300 high.
+        let mut jpeg = vec![0xFF, 0xD8];
+        let mut app1 = b"Exif\0\0".to_vec();
+        app1.extend_from_slice(b"MM\0\x2a\0\0\0\x08"); // big-endian TIFF, IFD at 8
+        app1.extend_from_slice(&[0, 1]); // one entry
+        app1.extend_from_slice(&[0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0]);
+        app1.extend_from_slice(&[0, 0, 0, 0]); // no next IFD
+        jpeg.extend_from_slice(&[0xFF, 0xE1]);
+        jpeg.extend_from_slice(&u16::try_from(app1.len() + 2).unwrap().to_be_bytes());
+        jpeg.extend_from_slice(&app1);
+        jpeg.extend_from_slice(&[0xFF, 0xC0, 0, 17, 8]);
+        jpeg.extend_from_slice(&300u16.to_be_bytes());
+        jpeg.extend_from_slice(&400u16.to_be_bytes());
+        jpeg.extend_from_slice(&[3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
+        jpeg.extend_from_slice(&[0xFF, 0xD9]);
+        let image = Image::from_bytes(jpeg.clone()).unwrap();
+        assert_eq!(
+            (image.format(), image.width(), image.height()),
+            (ImageFormat::Jpeg, 400, 300)
+        );
+        assert_eq!(image.bytes(), jpeg.as_slice());
     }
 
     #[test]

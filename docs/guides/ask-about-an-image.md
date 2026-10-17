@@ -2,7 +2,7 @@
 title: Ask a question about an image
 description: How to send an image with a request and ask a Noul, a Choice or a Score about it, from the shell with jud --asset and in Rust with Image, Assets and answer_with_assets; the reference that places the image in the state, what the crate checks before the upload, how the answer is recorded and replayed, and what it costs.
 status: current
-last_reviewed: 2026-10-15
+last_reviewed: 2026-10-17
 tags: [judgment, images, assets, how-to, jud, rust]
 ---
 
@@ -94,13 +94,13 @@ async fn run(state: &serde_json::Value, questions: &judgment::Questions, assets:
 }
 ```
 
-A request without images is the JSON body it always was, whatever was asked. Nothing else moves: the reference check, the 32 MiB bound, the images header, the `Observer`'s report, the fingerprint and the recordings are the same under either transport, so a recording made under one answers a replay under the other, and the `typesafe.evaluate` span says which was sent as `multipart`. The parts are named `part-0`, `part-1`, … in reference order and the asset's `part` maps each reference to its part; the reference itself is not a part name, since it may hold text a header cannot carry ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)). The `jud` command sends base64.
+A request without images is the JSON body it always was, whatever was asked. Ollama takes images in a third shape, a shared `images` array, and ignores the map without a word: `ClientBuilder::shared_images(true)` sends that shape ([Configure a backend](configure-a-backend.md#what-ollama-does-differently)). Nothing else moves: the reference check, the 32 MiB bound, the images header, the `Observer`'s report, the fingerprint and the recordings are the same under either transport, so a recording made under one answers a replay under the other, and the `typesafe.evaluate` span says which was sent as `multipart`. The parts are named `part-0`, `part-1`, … in reference order and the asset's `part` maps each reference to its part; the reference itself is not a part name, since it may hold text a header cannot carry ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)). The `jud` command sends base64.
 
 ## What the crate checks, and what it reports
 
 | Check | Where | Error |
 |---|---|---|
-| PNG or JPEG, not animated; each side 256 to 1568 pixels; 78,400 to 2,458,624 pixels; at most 16 MiB | `Image::read`, `Image::from_bytes`, `Image::from_base64` | `Error::InvalidImage` |
+| PNG or JPEG, not animated; each side 256 to 1568 pixels; 78,400 to 2,458,624 pixels; at most 16 MiB; upright (an EXIF orientation tag is not read) | `Image::read`, `Image::from_bytes`, `Image::from_base64` | `Error::InvalidImage` |
 | A reference 1 to 1024 bytes, all of them at most 65,536; the same reference not two different images | `Assets::add`, `Assets::insert` | `Error::InvalidAsset` |
 | Every reference appears in the state or the questions; the body at most 32 MiB | `Client::evaluate_with`, before the upload | `Error::InvalidAsset`, `Error::RequestTooLarge` |
 

@@ -8,6 +8,15 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `ClientBuilder::shared_images` and `CallOptions::shared_images`: a
+  request's images sent as a top-level `images` array of base64 with no
+  `assets` map, the shape Ollama's `/v1/systemone` takes, which otherwise
+  answers a request in the hosted API's shape with the images ignored and
+  no error. Off by default; the references, the checks, the images header,
+  the fingerprint and the recordings are unchanged, and the images are
+  never parts under it. `jud` reads `shared_images: true` from its
+  configuration file and shows it in `jud config`; `mise run live:ollama`
+  runs the new live test.
 - `mcp`, a feature of the `jud` binary only: `jud mcp [DIR] [--replay DIR]`
   is a Model Context Protocol server over stdio (rmcp 3.5) that serves every
   Rubric under DIR as a tool named by the rubric. A call takes `{state,
