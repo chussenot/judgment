@@ -33,6 +33,7 @@ nav:
       - Export to OpenTelemetry: guides/export-to-opentelemetry.md
       - Export the jud command's telemetry: guides/export-jud-telemetry.md
       - Check the .jud schemas against the types: guides/check-schemas-against-the-types.md
+      - Serve rubrics over MCP: guides/serve-rubrics-over-mcp.md
       - Bound a stream of calls: guides/bound-a-stream.md
   - Reference:
       - The jud command line: reference/cli.md

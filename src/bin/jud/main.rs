@@ -30,6 +30,8 @@ mod batch;
 mod config;
 mod eval;
 mod fsutil;
+#[cfg(feature = "mcp")]
+mod mcp;
 mod out;
 mod record;
 mod recordings;
@@ -162,6 +164,8 @@ enum Command {
     Eval(eval::Eval),
     Tune(tune::Tune),
     Split(split::Split),
+    #[cfg(feature = "mcp")]
+    Mcp(mcp::Mcp),
     /// Print a shell completion script for jud's commands and flags.
     ///
     /// Generated from the same command tree clap parses, so it cannot drift
@@ -195,6 +199,8 @@ fn run() -> ExitCode {
         (Some(Command::Eval(args)), _) => eval::run(&args),
         (Some(Command::Tune(args)), _) => tune::run(&args),
         (Some(Command::Split(args)), _) => split::run(&args),
+        #[cfg(feature = "mcp")]
+        (Some(Command::Mcp(args)), _) => mcp::run(&args),
         (Some(Command::Completion { shell }), _) => completion(shell),
         // A subcommand's name in the RUBRIC slot got there because the flag
         // came first: with no `--replay` before it, clap runs the subcommand.

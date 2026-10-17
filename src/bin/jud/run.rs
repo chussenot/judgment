@@ -45,7 +45,7 @@ impl AssetsArg<'_> {
 
     /// `--pixels WxH` as a size, or the one image's when there is exactly
     /// one and no flag; `None` when a box cannot be put in pixels.
-    fn size(self, assets: &Assets) -> Result<Option<(u32, u32)>, Failure> {
+    pub(crate) fn size(self, assets: &Assets) -> Result<Option<(u32, u32)>, Failure> {
         if let Some(text) = self.pixels {
             let parsed = text
                 .split_once(['x', 'X'])
@@ -176,7 +176,25 @@ fn evaluate(
     assets_arg.read(&mut assets)?;
     let size = assets_arg.size(&assets)?;
     let state = read_state()?;
-    let questions = rubric.lower(&state, &supplied).map_err(|e| {
+    decide(&rubric, &state, &supplied, &assets, size, || {
+        Backend::open(replay, long_context.then_some(true)).map(Box::new)
+    })
+}
+
+/// The verdicts of `rubric` for `state` as the text `jud RUBRIC` prints, from
+/// whichever backend `open` yields (called after the request is lowered and
+/// checked, so a request that cannot be built is refused before a missing
+/// key is). Shared by `jud RUBRIC` and `jud mcp`: one path, so the two agree
+/// byte for byte.
+pub(crate) fn decide<B: std::ops::Deref<Target = Backend>>(
+    rubric: &Rubric,
+    state: &Value,
+    supplied: &Supplied,
+    assets: &Assets,
+    size: Option<(u32, u32)>,
+    open: impl FnOnce() -> Result<B, Failure>,
+) -> Result<String, Failure> {
+    let questions = rubric.lower(state, supplied).map_err(|e| {
         // The questions that take options and were given none: the likely
         // cause whatever the builder's own words, when some were supplied
         // for one question and not another as much as when none were.
@@ -202,9 +220,9 @@ fn evaluate(
     // Before the backend, whichever it is: an image under a reference the
     // state does not carry is the hosted API's 400 and, under a replay, a
     // request nobody recorded; either way the flag is what to fix.
-    check_referenced(&assets, &state, &questions)?;
-    let backend = Backend::open(replay, long_context.then_some(true))?;
-    let response = backend.answer(&state, &questions, &assets)?;
+    check_referenced(assets, state, &questions)?;
+    let backend = open()?;
+    let response = backend.answer(state, &questions, assets)?;
     let mut verdicts = rubric
         .apply(&questions, &response)
         .map_err(|e| Failure::Backend(format!("the answers do not fit the rubric: {e}")))?;

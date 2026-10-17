@@ -1308,8 +1308,13 @@ mod tests {
                    "probabilities": {"0": 0.6, "1": 0.4}, "confidence": 0.2 }
         }));
         let s = r.get(&h).unwrap();
-        assert_eq!(s.levels, vec![r#"{"examples":["a"],"what":"low"}"#, "high"]);
-        assert_eq!(s.nearest_label(), r#"{"examples":["a"],"what":"low"}"#);
+        // The text is the JSON as written; its key order is serde_json's
+        // (sorted, or the input's under `preserve_order`), so compare values.
+        let level = json!({"what": "low", "examples": ["a"]});
+        assert_eq!(s.levels[1], "high");
+        for text in [&s.levels[0], &s.nearest_label().to_owned()] {
+            assert_eq!(serde_json::from_str::<Value>(text).unwrap(), level);
+        }
     }
 
     #[test]
@@ -1329,8 +1334,13 @@ mod tests {
         }));
         r.verify(&q).unwrap();
         let s = r.get(&h).unwrap();
-        assert_eq!(s.levels, vec![r#"{"examples":["a"],"what":"low"}"#, "high"]);
-        assert_eq!(s.nearest_label(), r#"{"examples":["a"],"what":"low"}"#);
+        // The text is the JSON as written; its key order is serde_json's
+        // (sorted, or the input's under `preserve_order`), so compare values.
+        let level = json!({"what": "low", "examples": ["a"]});
+        assert_eq!(s.levels[1], "high");
+        for text in [&s.levels[0], &s.nearest_label().to_owned()] {
+            assert_eq!(serde_json::from_str::<Value>(text).unwrap(), level);
+        }
         // A string level that is JSON text: exact for `verify`, re-spaced in its label.
         let mut q = Questions::new();
         let h = q.score("s", "?", [r#"{ "what": "low" }"#, "high"]).unwrap();

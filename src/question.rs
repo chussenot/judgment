@@ -607,8 +607,8 @@ mod tests {
             );
         }
         assert_eq!(
-            serde_json::to_string(&json["none"]).unwrap(),
-            r#"{"criteria":["low","high"],"instructions":null,"type":"score"}"#
+            json["none"],
+            serde_json::json!({"criteria": ["low", "high"], "instructions": null, "type": "score"})
         );
     }
 

@@ -360,14 +360,16 @@ async fn a_rubric_whose_options_come_with_the_case_goes_round_the_loop() {
         "{err}"
     );
     let proposal: Value = serde_saphyr::from_str(&stdout(&tune)).unwrap();
-    let gates: Vec<&str> = proposal["policy"]
+    let mut gates: Vec<&str> = proposal["policy"]
         .as_object()
         .unwrap()
         .keys()
         .map(String::as_str)
         .collect();
-    // A parsed `Value` sorts its keys; every gate of the rubric is there,
-    // the ones nothing was proposed for as they were written.
+    // A parsed `Value` sorts its keys, or keeps them as written when
+    // `preserve_order` is on (feature `mcp`); every gate of the rubric is
+    // there, the ones nothing was proposed for as they were written.
+    gates.sort_unstable();
     assert_eq!(gates, ["desk", "duplicate_of", "refund_request", "tone"]);
     assert_eq!(proposal["tuning"]["model"], "jev-1.13.0");
 
@@ -548,7 +550,10 @@ fn refused(args: &[&str], env: &[(&str, &str)]) -> String {
     stderr(&out)
 }
 
+#[cfg(not(feature = "mcp"))]
 const SUBCOMMANDS: &str = "config, check, lower, record, eval, tune, split, completion";
+#[cfg(feature = "mcp")]
+const SUBCOMMANDS: &str = "config, check, lower, record, eval, tune, split, mcp, completion";
 
 #[test]
 fn a_replay_directory_with_no_rubric_says_a_rubric_is_required() {

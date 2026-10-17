@@ -8,6 +8,15 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `mcp`, a feature of the `jud` binary only: `jud mcp [DIR] [--replay DIR]`
+  is a Model Context Protocol server over stdio (rmcp 3.5) that serves every
+  Rubric under DIR as a tool named by the rubric. A call takes `{state,
+  options?}` and returns the verdict text `jud RUBRIC` prints (both go
+  through one function, `run::decide`); a call that fails is a tool error,
+  the options are asked in the order the caller wrote them, and a key is
+  required to start unless `--replay` is given, as for `jud RUBRIC`. stdout
+  carries the protocol alone. The library links no MCP code, and the
+  release binaries stay `--features cli`. A guide, "Serve rubrics over MCP".
 - `schema`, a feature (implies `jud`): `jud::schema::definitions()` returns
   the JSON Schema of the `.jud` types that are the file's own shape
   (`Metadata`, `AssetSource`, `BoxEdges`, `Gate`, `Band`, `Tuning`, `Case`,
