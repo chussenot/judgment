@@ -766,3 +766,75 @@ proptest! {
         prop_assert!(questions.is_empty());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Box edges: the overlap and the pixels
+// ---------------------------------------------------------------------------
+
+/// A region: each pair ordered and inside the image, never thinner than a
+/// millionth, so its area does not underflow to nothing.
+fn region() -> impl Strategy<Value = BoxEdges> {
+    let span = || (0.0f64..1.0, 1e-6f64..1.0).prop_map(|(lo, w)| (lo, (lo + w).min(1.0)));
+    (span(), span()).prop_filter_map("thinner than a millionth", |((t, b), (l, r))| {
+        (b - t >= 1e-6 && r - l >= 1e-6).then(|| BoxEdges::new(t, b, l, r))
+    })
+}
+
+fn close(a: f64, b: f64) -> bool {
+    (a - b).abs() <= 1e-9
+}
+
+proptest! {
+#![proptest_config(config())]
+    #[test]
+    fn overlap_is_symmetric_bounded_and_one_for_a_box_with_itself(
+        a in region(), b in region(),
+    ) {
+        let (ab, ba) = (a.iou(&b), b.iou(&a));
+        prop_assert!(close(ab, ba), "{ab} vs {ba}");
+        prop_assert!(in_unit_interval(ab), "{ab}");
+        prop_assert!(close(a.iou(&a), 1.0), "{}", a.iou(&a));
+    }
+
+    #[test]
+    fn two_boxes_that_do_not_touch_have_no_overlap(
+        a in region(), b in region(),
+    ) {
+        // `b`'s span set down against `a`'s right edge, exactly, so the two
+        // share an edge and nothing else; shifting would round into an overlap.
+        let moved = BoxEdges::new(b.top, b.bottom, a.right, (a.right + (b.right - b.left)).min(1.0));
+        prop_assume!(moved.right > moved.left);
+        prop_assert_eq!(a.iou(&moved).to_bits(), 0.0f64.to_bits());
+    }
+
+    #[test]
+    fn pixels_round_to_the_nearest_keep_the_order_and_stay_inside(
+        edges in region(), width in 1u32..4096, height in 1u32..4096,
+    ) {
+        let px = edges.to_pixels(width, height);
+        prop_assert!(px.left <= px.right && px.top <= px.bottom, "{px:?}");
+        prop_assert!(px.right <= width && px.bottom <= height, "{px:?}");
+        for (pixel, edge, size) in [
+            (px.left, edges.left, width),
+            (px.right, edges.right, width),
+            (px.top, edges.top, height),
+            (px.bottom, edges.bottom, height),
+        ] {
+            let back = f64::from(pixel) / f64::from(size);
+            prop_assert!(
+                (back - edge).abs() <= 0.5 / f64::from(size) + f64::EPSILON,
+                "{edge} -> {pixel} of {size} -> {back}"
+            );
+        }
+    }
+
+    #[test]
+    fn pixels_never_leave_the_image_whatever_the_edges(
+        top in any_float(), bottom in any_float(), left in any_float(), right in any_float(),
+        width in 1u32..4096, height in 1u32..4096,
+    ) {
+        let px = BoxEdges::new(top, bottom, left, right).to_pixels(width, height);
+        prop_assert!(px.left <= width && px.right <= width, "{px:?}");
+        prop_assert!(px.top <= height && px.bottom <= height, "{px:?}");
+    }
+}
