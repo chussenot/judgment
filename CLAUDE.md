@@ -8,7 +8,8 @@ The README says why; `docs/` says how; the rustdoc is the reference.
 ## Start here
 
 - `mise install` once, then `mise run setup` (git hooks) and `mise run check`
-  (every quality gate, CI order). `mise tasks` lists the rest.
+  (the local quality gates, CI order; CI also runs `deny`, `msrv`, `hack`
+  and `semver`, which a dependency change needs too). `mise tasks` lists the rest.
 - Track work in beads (section below): `bd ready` for what is open, create or
   claim an issue before code. Git's hooks live in `.beads/hooks` (`bd init`
   set `core.hooksPath`); `scripts/setup-hooks.sh` puts the prek block before

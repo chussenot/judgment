@@ -46,6 +46,24 @@ back to an older state. None is the expected result. If there are some,
 `bd import /tmp/main.jsonl` (newer rows win) and `scripts/bd-sync.sh
 export`, and commit the export on its own.
 
+## Several Dependabot pull requests merged
+
+Each one's CI ran on its own merge into the `main` it saw, so the set
+together was never tested; two majors can each pass and fail combined.
+After a batch merges, run CI's gates on `main` itself, the local ones and
+the four `mise run check` leaves out:
+
+```sh
+git fetch origin main && git checkout --detach origin/main
+mise run check && mise run deny msrv hack semver
+```
+
+A failure there is a pull request of its own against `main`, not a fix
+pushed into whichever branch is open. Read the changelog of any major
+(`~/.cargo/registry/src/*/<crate>-<version>/CHANGELOG.md`) against what
+the crate uses: a breaking change in an API the crate never calls is
+noise, one in an API it does call needs a test that exercises it.
+
 ## After the merge
 
 Close the bead the pull request implemented, with its number:

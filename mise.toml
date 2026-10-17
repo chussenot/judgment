@@ -168,7 +168,7 @@ run = "mkdocs build --strict --site-dir target/site"
 
 [tasks.check]
 alias = "ci"
-description = "All quality gates, in CI order"
+description = "The local quality gates, in CI order; CI also runs deny, msrv, hack and semver"
 depends = ["fmt:check", "lint", "check:minimal", "test", "doc", "docs:check"]
 
 [tasks.precommit]

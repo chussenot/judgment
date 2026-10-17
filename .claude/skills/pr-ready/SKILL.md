@@ -33,8 +33,17 @@ the README's guarantees; check both are in the diff.
 
 ## 2. The gate, before the push
 
-`mise run check` is CI's order. For a small change confined to one area,
-this subset catches what CI would, and the pre-push hook runs the tests:
+`mise run check` runs CI's local gates in CI's order, but not all of CI:
+the jobs that need the network or a second toolchain stay outside it. When
+the diff touches `Cargo.toml` or `Cargo.lock`, run them too, because that is
+the change they exist for:
+
+```sh
+mise run deny msrv hack semver
+```
+
+For a small change confined to one area, this subset catches what CI would,
+and the pre-push hook runs the tests:
 
 ```sh
 cargo fmt --all --check
@@ -50,7 +59,8 @@ A generated file is regenerated with its script, never edited:
 
 - Conventional Commits, one concern per commit (`cog verify` runs on each).
 - The pre-push hook runs `cargo test --all-features` for minutes: push in
-  the background, with its output going to the scratchpad through `tail`.
+  the background, with its whole output in the scratchpad. The first error
+  line explains the failure, and a tail can hide it.
 - `.beads/issues.jsonl` travels with the work: the hooks staged it; a
   commit that leaves it modified has not finished.
 - Hand the pushed branch to `pr-shepherd`, which opens a **draft** with the
