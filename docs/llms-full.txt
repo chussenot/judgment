@@ -4993,7 +4993,7 @@ An image is a PNG or a JPEG, not animated, each side from 256 to 1568 pixels, 78
 ```sh
 mise install          # the toolchain, cog, prek, bd and the rest
 mise run setup        # the git hooks
-mise run check        # every quality gate, in CI order
+mise run check        # the local gates, in CI order (four more below)
 mise tasks            # the rest
 ```
 

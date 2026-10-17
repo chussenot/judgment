@@ -13,7 +13,7 @@ tags: [judgment, contributing, tooling, documentation, diataxis]
 ```sh
 mise install          # the toolchain, cog, prek, bd and the rest
 mise run setup        # the git hooks
-mise run check        # every quality gate, in CI order
+mise run check        # the local gates, in CI order (four more below)
 mise tasks            # the rest
 ```
 
