@@ -120,11 +120,12 @@ fn every_example_document_validates_against_its_schema_and_parses() {
         );
         *kinds.entry(kind).or_default() += 1;
     }
-    // triage, routing, handoff, agent-mail, shapes, stamps, and the
-    // guide's screening rubric.
-    assert_eq!(kinds["Rubric"], 7);
+    // triage, routing, handoff, agent-mail, shapes, stamps, the guide's
+    // screening rubric, and the shapes rubric without its Box, for the
+    // servers that have none.
+    assert_eq!(kinds["Rubric"], 8);
     // Their cases, and the specification's example cases document.
-    assert_eq!(kinds["Cases"], 8);
+    assert_eq!(kinds["Cases"], 9);
     // The calibration recordings, and the specification's example recording.
     assert!(kinds["Recording"] >= 11, "{kinds:?}");
 }
@@ -785,6 +786,43 @@ fn the_request_fingerprint_with_an_image_matches_the_known_vector() {
         ),
         judgment::eval::canonical::request_fingerprint(&state, &questions)
     );
+}
+
+/// The same forty images asked the Noul alone, as `shapes-noul.jud` does for
+/// a server without the Box, answered by `clef-flash` on a local Ollama over
+/// the shared `images` array (`docs/project/research/compatible-servers-and-models.md`):
+/// forty of forty, as the hosted model, found by the fingerprint that folds
+/// each image in. A re-recording that moves a count fails here.
+#[tokio::test]
+async fn the_clef_recordings_answer_the_noul_alone() {
+    const CLEF: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/examples/recordings/shapes-clef"
+    );
+    let rubric = Rubric::parse(&read(EXAMPLES, "shapes-noul.jud")).unwrap();
+    let cases = Cases::parse(&read(EXAMPLES, "shapes-noul-cases.jud")).unwrap();
+    cases.bind(&rubric).unwrap();
+    let replay = Replay::open(Path::new(CLEF)).unwrap();
+    assert_eq!(replay.len(), cases.cases.len());
+    let base = Path::new(EXAMPLES);
+    let mut judgments = Vec::new();
+    for (index, case) in cases.cases.iter().enumerate() {
+        let asked = case.request(&rubric).unwrap();
+        let mut assets = judgment::Assets::new();
+        case.load_assets(base, &mut assets).unwrap();
+        let response = replay
+            .answer_with_assets(&case.state, "any", &asked, &assets)
+            .await
+            .unwrap();
+        assert_eq!(response.model, "clef-flash");
+        judgments.extend(jud::grade(&rubric, case, index, &response).unwrap());
+    }
+    let present = judgment::eval::QuestionMetrics::summarise(
+        judgments.iter().map(|(_, j)| j),
+        judgment::eval::ECE_BINS,
+    );
+    assert_eq!((present.labelled, present.correct), (40, 40));
+    assert!(present.brier.unwrap() < 0.01, "{present:?}");
 }
 
 /// The shapes recordings: `jev-1.14.0`'s live answers to the forty cases,

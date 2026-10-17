@@ -1,0 +1,29 @@
+# The shapes rubric without its Box: the one Noul, for a server that has
+# no Box (Ollama's decision models). Asked about one image: whether it
+# holds a filled circle. The images are shapes.jud's (examples/jud/images/);
+# shapes-noul-cases.jud labels them for this rubric, and
+# examples/recordings/shapes-clef/ holds clef-flash's answers.
+apiVersion: jud/v1
+kind: Rubric
+metadata:
+  name: shapes-noul
+  minor: 4
+  description: >-
+    Whether an image holds a filled circle, and where it is: the Noul gate and
+    the Box it guards, on synthetic shapes.
+spec:
+  questions:
+    circle_present:
+      type: noul
+      instructions: Is there a filled circle in `image`?
+      criteria:
+        true: one round, filled shape, whatever its colour or size
+        false: only squares, rectangles or an empty background
+
+  # Where an answer becomes an action. The Noul's threshold is the default
+  # until `jud tune` reads one off the cases; the Box's bar is the
+  # confidence under which a caller pads the box or asks again on a crop.
+  policy:
+    circle_present:
+      threshold: 0.5
+      note: a starting point; tune it on the recorded cases

@@ -1,0 +1,21 @@
+# Recorded answer for case `shape-13`; found by fingerprint.
+apiVersion: jud/v1
+kind: Recording
+metadata:
+  name: shape-13
+  minor: 4
+spec:
+  elapsed_ms: 18810
+  fingerprint: sha256:a77e795057469ad12c18477a3edd466ee425d05e0cab78ec79f735ff9f4a3439
+  recorded_at: "2026-10-17T07:52:56Z"
+  response:
+    answers:
+      circle_present:
+        noul: 0.9816685965089588
+        type: noul
+    model: clef-flash
+    usage:
+      input_tokens: 259
+      output_tokens: 0
+  rubric: shapes-noul
+  server: http://127.0.0.1:11434
