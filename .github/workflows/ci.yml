@@ -56,7 +56,14 @@ jobs:
       # The crate must build without its `http` feature, for a project that
       # brings its own transport; its tests are checked too.
       - run: cargo check --no-default-features --all-targets
+      # Snapshots (tests/snapshots/): a changed one fails and a pending one
+      # is refused, never written; `cargo insta review` accepts a change.
       - run: cargo test --all-features
+        env:
+          INSTA_UPDATE: "no"
+      # The benchmarks compile; their numbers are for a person on a quiet
+      # machine (docs/reference/performance.md), not for a shared runner.
+      - run: cargo bench --no-run
       # The README's opening example, run without the `http` feature: no
       # client is compiled in, so it cannot need a key or the network.
       - run: cargo run --example quickstart --no-default-features

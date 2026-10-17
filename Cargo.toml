@@ -166,6 +166,15 @@ tracing-opentelemetry = { version = "0.34", default-features = false, optional =
 tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"], optional = true }
 
 [dev-dependencies]
+# The benchmarks (benches/verify.rs); `cargo bench --no-run` is what CI builds,
+# the numbers are for a person on a quiet machine (docs/reference/performance.md).
+# No default features: they turn on clap's `wrap_help`, which feature unification
+# would hand to the `jud` binary in every test build and rewrap its --help text.
+divan = { version = "0.1", default-features = false }
+# Snapshots (tests/snapshots.rs): a changed wire body or report is a diff to
+# review in the PR, not an assertion edited to match. JSON because the wire is;
+# `redactions` for the fields a run writes that change between runs.
+insta = { version = "1", default-features = false, features = ["json", "redactions"] }
 # JSON Schema validation in the contract test against the vendored TypeSafe
 # OpenAPI document. No default features: nothing fetches a remote `$ref`.
 jsonschema = { version = "0.57", default-features = false }
@@ -250,6 +259,16 @@ required-features = ["http"]
 # The jud command line as a subprocess, against a wiremock backend.
 [[test]]
 name = "jud_cli"
+required-features = ["cli"]
+
+# What a call costs outside the network (divan, its own harness).
+[[bench]]
+name = "verify"
+harness = false
+
+# The wire bodies, lowered rubrics and eval reports under tests/snapshots/.
+[[test]]
+name = "snapshots"
 required-features = ["cli"]
 
 # `jud mcp` driven over stdio (feature `mcp`).

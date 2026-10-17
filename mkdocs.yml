@@ -41,6 +41,7 @@ nav:
       - The .jud format: reference/jud-format.md
       - The crate: reference/crate.md
       - The container image: reference/container-image.md
+      - Performance: reference/performance.md
       - Stability: reference/stability.md
       - Glossary: reference/glossary.md
   - Concepts:

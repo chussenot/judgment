@@ -1,0 +1,198 @@
+---
+source: tests/snapshots.rs
+expression: report
+---
+{
+  "cases": {
+    "count": 7,
+    "fingerprint": "sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6",
+    "name": "inbox-triage-cases"
+  },
+  "min_accuracy": [],
+  "models": [
+    "jev-1.13.0"
+  ],
+  "questions": [
+    {
+      "accuracy": 0.8571428571428571,
+      "accuracy_interval95": [
+        0.48686549668097007,
+        0.9743210440510253
+      ],
+      "brier": 0.09002857142857144,
+      "confidence_when_right": 0.9183333333333334,
+      "confidence_when_wrong": 0.52,
+      "correct": 6,
+      "ece": 0.14428571428571435,
+      "gate": {
+        "accuracy_when_acted": 1.0,
+        "acted": 7,
+        "deferred": 0
+      },
+      "id": "actionable",
+      "labelled": 7,
+      "majority": {
+        "labelled": 5,
+        "level": null,
+        "outcome": "yes",
+        "share": 0.7142857142857143
+      },
+      "mean_iou": null,
+      "misses": [
+        {
+          "case": "receipt",
+          "confidence": 0.52,
+          "expected": "no",
+          "predicted": "yes"
+        }
+      ],
+      "outcomes": [
+        {
+          "correct": 5,
+          "labelled": 5,
+          "level": null,
+          "outcome": "yes",
+          "predicted": 6
+        },
+        {
+          "correct": 1,
+          "labelled": 2,
+          "level": null,
+          "outcome": "no",
+          "predicted": 1
+        }
+      ],
+      "signals": []
+    },
+    {
+      "accuracy": 0.8571428571428571,
+      "accuracy_interval95": [
+        0.48686549668097007,
+        0.9743210440510253
+      ],
+      "brier": 0.15471428571428572,
+      "confidence_when_right": 0.7566666666666668,
+      "confidence_when_wrong": 0.4,
+      "correct": 6,
+      "ece": 0.15142857142857136,
+      "gate": {
+        "accuracy_when_acted": 1.0,
+        "acted": 6,
+        "deferred": 1
+      },
+      "id": "desk",
+      "labelled": 7,
+      "majority": {
+        "labelled": 2,
+        "level": null,
+        "outcome": "billing",
+        "share": 0.2857142857142857
+      },
+      "mean_iou": null,
+      "misses": [
+        {
+          "case": "receipt",
+          "confidence": 0.4,
+          "expected": "none_of_these",
+          "predicted": "billing"
+        }
+      ],
+      "outcomes": [
+        {
+          "correct": 2,
+          "labelled": 2,
+          "level": null,
+          "outcome": "billing",
+          "predicted": 3
+        },
+        {
+          "correct": 2,
+          "labelled": 2,
+          "level": null,
+          "outcome": "technical",
+          "predicted": 2
+        },
+        {
+          "correct": 1,
+          "labelled": 1,
+          "level": null,
+          "outcome": "account",
+          "predicted": 1
+        },
+        {
+          "correct": 1,
+          "labelled": 2,
+          "level": null,
+          "outcome": "none_of_these",
+          "predicted": 1
+        }
+      ],
+      "signals": []
+    },
+    {
+      "accuracy": 1.0,
+      "accuracy_interval95": [
+        0.6096569663469354,
+        0.9999999999999999
+      ],
+      "brier": 0.059,
+      "confidence_when_right": 0.7983333333333333,
+      "confidence_when_wrong": null,
+      "correct": 6,
+      "ece": 0.2016666666666666,
+      "gate": {
+        "accuracy_when_acted": 1.0,
+        "acted": 7,
+        "deferred": 0
+      },
+      "id": "tone",
+      "labelled": 6,
+      "majority": {
+        "labelled": 4,
+        "level": "calm",
+        "outcome": "0",
+        "share": 0.6666666666666666
+      },
+      "mean_iou": null,
+      "misses": [],
+      "outcomes": [
+        {
+          "correct": 4,
+          "labelled": 4,
+          "level": "calm",
+          "outcome": "0",
+          "predicted": 4
+        },
+        {
+          "correct": 1,
+          "labelled": 1,
+          "level": "annoyed",
+          "outcome": "1",
+          "predicted": 1
+        },
+        {
+          "correct": 1,
+          "labelled": 1,
+          "level": "angry",
+          "outcome": "2",
+          "predicted": 1
+        }
+      ],
+      "signals": []
+    }
+  ],
+  "requests": 7,
+  "rubric": {
+    "fingerprint": "sha256:fda347c2cba6deaa8ad784360c46a8289adbc0284b373c3d9162ce11f3e7ac8a",
+    "name": "inbox-triage",
+    "policy_fingerprint": "sha256:1585094f59711426a98044a00ded2ec747010b5369e941f33a2732a50262e99f"
+  },
+  "signal_rules": {
+    "collapse_margin": 0.2,
+    "collapse_share": 0.8,
+    "defers_most": 0.5,
+    "defers_nearly_all": 0.9,
+    "min_answers": 10,
+    "never_answered_min": 3
+  }
+}

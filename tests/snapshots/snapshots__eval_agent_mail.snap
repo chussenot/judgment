@@ -1,0 +1,305 @@
+---
+source: tests/snapshots.rs
+expression: report
+---
+{
+  "cases": {
+    "count": 33,
+    "fingerprint": "sha256:aefbd6d9f9611a03753f422fb9d1aeac4125d8ad232c1849cacc5067fef64245",
+    "name": "agent-mail-cases"
+  },
+  "min_accuracy": [],
+  "models": [
+    "jev-1.13.0"
+  ],
+  "questions": [
+    {
+      "accuracy": 0.8484848484848485,
+      "accuracy_interval95": [
+        0.6907978686153953,
+        0.9334964074203904
+      ],
+      "brier": 0.2327272727272727,
+      "confidence_when_right": 0.9007142857142857,
+      "confidence_when_wrong": 0.804,
+      "correct": 28,
+      "ece": 0.06242424242424252,
+      "gate": {
+        "accuracy_when_acted": 0.8484848484848485,
+        "acted": 33,
+        "deferred": 0
+      },
+      "id": "needs_action",
+      "labelled": 33,
+      "majority": {
+        "labelled": 23,
+        "level": null,
+        "outcome": "yes",
+        "share": 0.696969696969697
+      },
+      "mean_iou": null,
+      "misses": [
+        {
+          "case": "bump-is-yours",
+          "confidence": 0.69,
+          "expected": "yes",
+          "predicted": "no"
+        },
+        {
+          "case": "took-extra-leases",
+          "confidence": 0.85,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "contract-answers",
+          "confidence": 0.79,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "out-of-tree-references",
+          "confidence": 0.93,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "audit-split-done",
+          "confidence": 0.76,
+          "expected": "no",
+          "predicted": "yes"
+        }
+      ],
+      "outcomes": [
+        {
+          "correct": 22,
+          "labelled": 23,
+          "level": null,
+          "outcome": "yes",
+          "predicted": 26
+        },
+        {
+          "correct": 6,
+          "labelled": 10,
+          "level": null,
+          "outcome": "no",
+          "predicted": 7
+        }
+      ],
+      "signals": [
+        "no_better_than_majority"
+      ]
+    },
+    {
+      "accuracy": 0.6060606060606061,
+      "accuracy_interval95": [
+        0.4368314280651038,
+        0.7531711776849179
+      ],
+      "brier": 0.49410909090909083,
+      "confidence_when_right": 0.8575000000000002,
+      "confidence_when_wrong": 0.746923076923077,
+      "correct": 20,
+      "ece": 0.2078787878787878,
+      "gate": {
+        "accuracy_when_acted": 0.7878787878787878,
+        "acted": 33,
+        "deferred": 0
+      },
+      "id": "breaks_something",
+      "labelled": 33,
+      "majority": {
+        "labelled": 19,
+        "level": null,
+        "outcome": "no",
+        "share": 0.5757575757575758
+      },
+      "mean_iou": null,
+      "misses": [
+        {
+          "case": "swept-staged-deletion",
+          "confidence": 0.5900000000000001,
+          "expected": "yes",
+          "predicted": "no"
+        },
+        {
+          "case": "both-acknowledged",
+          "confidence": 0.7,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "took-extra-leases",
+          "confidence": 0.82,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "exact-wording",
+          "confidence": 0.65,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "confirmed-third-contradiction",
+          "confidence": 0.86,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "contract-answers",
+          "confidence": 0.92,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "wave-kickoff",
+          "confidence": 0.9,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "indicator-approved",
+          "confidence": 0.7,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "detail-landed",
+          "confidence": 0.9,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "health-done",
+          "confidence": 0.73,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "fleet-landed",
+          "confidence": 0.87,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "key-table-request",
+          "confidence": 0.52,
+          "expected": "no",
+          "predicted": "yes"
+        },
+        {
+          "case": "docs-done",
+          "confidence": 0.55,
+          "expected": "no",
+          "predicted": "yes"
+        }
+      ],
+      "outcomes": [
+        {
+          "correct": 13,
+          "labelled": 14,
+          "level": null,
+          "outcome": "yes",
+          "predicted": 25
+        },
+        {
+          "correct": 7,
+          "labelled": 19,
+          "level": null,
+          "outcome": "no",
+          "predicted": 8
+        }
+      ],
+      "signals": [
+        "no_better_than_majority"
+      ]
+    },
+    {
+      "accuracy": 0.8787878787878788,
+      "accuracy_interval95": [
+        0.7267415674973484,
+        0.9518391673241576
+      ],
+      "brier": 0.14734545454545453,
+      "confidence_when_right": 0.9593103448275863,
+      "confidence_when_wrong": 0.75,
+      "correct": 29,
+      "ece": 0.1181818181818182,
+      "gate": {
+        "accuracy_when_acted": 0.9696969696969697,
+        "acted": 33,
+        "deferred": 0
+      },
+      "id": "status_only",
+      "labelled": 33,
+      "majority": {
+        "labelled": 29,
+        "level": null,
+        "outcome": "no",
+        "share": 0.8787878787878788
+      },
+      "mean_iou": null,
+      "misses": [
+        {
+          "case": "both-acknowledged",
+          "confidence": 0.55,
+          "expected": "yes",
+          "predicted": "no"
+        },
+        {
+          "case": "read-late",
+          "confidence": 0.8,
+          "expected": "yes",
+          "predicted": "no"
+        },
+        {
+          "case": "wording-landed",
+          "confidence": 0.8200000000000001,
+          "expected": "yes",
+          "predicted": "no"
+        },
+        {
+          "case": "filter-landed",
+          "confidence": 0.83,
+          "expected": "yes",
+          "predicted": "no"
+        }
+      ],
+      "outcomes": [
+        {
+          "correct": 0,
+          "labelled": 4,
+          "level": null,
+          "outcome": "yes",
+          "predicted": 0
+        },
+        {
+          "correct": 29,
+          "labelled": 29,
+          "level": null,
+          "outcome": "no",
+          "predicted": 33
+        }
+      ],
+      "signals": [
+        "no_better_than_majority",
+        "never_answered"
+      ]
+    }
+  ],
+  "requests": 33,
+  "rubric": {
+    "fingerprint": "sha256:1709558947414ee3c5daa5b8d04cf07b7eae79aaecd3e6c9079c8b75aa4d087d",
+    "name": "agent-mail",
+    "policy_fingerprint": "sha256:5c546a6d8eaa8c5164cbe87467515966177201b3b9b53c8209efd7f170bf2723"
+  },
+  "signal_rules": {
+    "collapse_margin": 0.2,
+    "collapse_share": 0.8,
+    "defers_most": 0.5,
+    "defers_nearly_all": 0.9,
+    "min_answers": 10,
+    "never_answered_min": 3
+  }
+}

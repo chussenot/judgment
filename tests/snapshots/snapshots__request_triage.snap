@@ -1,0 +1,39 @@
+---
+source: tests/snapshots.rs
+expression: body
+---
+{
+  "model": "jev-latest",
+  "questions": {
+    "actionable": {
+      "criteria": {
+        "false": "thanks, an acknowledgement, small talk, an automated receipt",
+        "true": "a request, a question that needs an answer, a report of a fault"
+      },
+      "instructions": "Does `message` ask for something to be done, or report something that is broken?",
+      "type": "noul"
+    },
+    "desk": {
+      "criteria": {
+        "account": "Sign-in, passwords, personal details, closing an account",
+        "billing": "Invoices, payments, refunds, subscription changes",
+        "none_of_these": "Not clearly any desk, or not a request at all",
+        "technical": "Errors, outages, anything about using the product"
+      },
+      "instructions": "Which desk should take `message`?",
+      "type": "choice"
+    },
+    "tone": {
+      "criteria": [
+        "calm",
+        "annoyed",
+        "angry"
+      ],
+      "instructions": "How upset is the writer of `message`?",
+      "type": "score"
+    }
+  },
+  "state": {
+    "message": "This is the third time I'm writing. I was charged twice last month and nobody has refunded me. Fix it today or I cancel."
+  }
+}

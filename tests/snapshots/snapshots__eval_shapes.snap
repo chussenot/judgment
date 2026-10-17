@@ -1,0 +1,127 @@
+---
+source: tests/snapshots.rs
+expression: report
+---
+{
+  "cases": {
+    "count": 40,
+    "fingerprint": "sha256:f4a368d49c556c625e4a6d74437947c6720bc5d9cc907e909cb8aa42ce649adf",
+    "name": "shapes-cases"
+  },
+  "min_accuracy": [],
+  "models": [
+    "jev-1.14.0"
+  ],
+  "questions": [
+    {
+      "accuracy": 1.0,
+      "accuracy_interval95": [
+        0.9123754607496077,
+        1.0
+      ],
+      "brier": 0.0007150000000000006,
+      "confidence_when_right": 0.9852499999999997,
+      "confidence_when_wrong": null,
+      "correct": 40,
+      "ece": 0.014750000000000263,
+      "gate": {
+        "accuracy_when_acted": 1.0,
+        "acted": 40,
+        "deferred": 0
+      },
+      "id": "circle_present",
+      "labelled": 40,
+      "majority": {
+        "labelled": 30,
+        "level": null,
+        "outcome": "yes",
+        "share": 0.75
+      },
+      "mean_iou": null,
+      "misses": [],
+      "outcomes": [
+        {
+          "correct": 30,
+          "labelled": 30,
+          "level": null,
+          "outcome": "yes",
+          "predicted": 30
+        },
+        {
+          "correct": 10,
+          "labelled": 10,
+          "level": null,
+          "outcome": "no",
+          "predicted": 10
+        }
+      ],
+      "signals": []
+    },
+    {
+      "accuracy": 0.9333333333333333,
+      "accuracy_interval95": [
+        0.7867618227892791,
+        0.9815233646723066
+      ],
+      "brier": null,
+      "confidence_when_right": 0.7535714285714288,
+      "confidence_when_wrong": 0.495,
+      "correct": 28,
+      "ece": 0.21233333333333335,
+      "gate": {
+        "accuracy_when_acted": 0.9565217391304348,
+        "acted": 23,
+        "deferred": 17
+      },
+      "id": "circle",
+      "labelled": 30,
+      "majority": {
+        "labelled": 30,
+        "level": null,
+        "outcome": "box",
+        "share": 1.0
+      },
+      "mean_iou": 0.7968220718424964,
+      "misses": [
+        {
+          "case": "shape-00",
+          "confidence": 0.29,
+          "expected": "box",
+          "iou": 0.0,
+          "predicted": "box"
+        },
+        {
+          "case": "shape-10",
+          "confidence": 0.7,
+          "expected": "box",
+          "iou": 0.24391026638133032,
+          "predicted": "box"
+        }
+      ],
+      "outcomes": [
+        {
+          "correct": 28,
+          "labelled": 30,
+          "level": null,
+          "outcome": "box",
+          "predicted": 30
+        }
+      ],
+      "signals": []
+    }
+  ],
+  "requests": 40,
+  "rubric": {
+    "fingerprint": "sha256:ce690f12891229b8596a87345f78d4763fefa03a527b1e9d4aa3ca6dc5876081",
+    "name": "shapes",
+    "policy_fingerprint": "sha256:3909432a57ea86dbd757b9b3b00f1481ef9592185daef2b544f343d2cf0d1169"
+  },
+  "signal_rules": {
+    "collapse_margin": 0.2,
+    "collapse_share": 0.8,
+    "defers_most": 0.5,
+    "defers_nearly_all": 0.9,
+    "min_answers": 10,
+    "never_answered_min": 3
+  }
+}

@@ -1,0 +1,123 @@
+name: Mutation testing
+
+# cargo-mutants over the code whose tests must be strict. A pull request that
+# touches src/answer.rs, src/http.rs or src/eval/ is mutated in its diff only
+# (`--in-diff`); a weekly run mutates the whole crate and files one issue with
+# the mutants the tests let through. A surviving mutant is a question about a
+# test, so the pull request job reports it and does not block the merge (yet:
+# once the survivors of the first weekly run are answered, drop
+# `continue-on-error`). Only GitHub-owned actions are used, as in ci.yml;
+# cargo-mutants is installed from crates.io at the version mise.toml pins.
+
+on:
+  pull_request:
+    paths:
+      - src/answer.rs
+      - src/http.rs
+      - src/eval/**
+      - .cargo/mutants.toml
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  in-diff:
+    name: mutants in the diff
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+
+      - uses: actions/cache@v4
+        id: tool-cache
+        with:
+          path: ~/.cargo/bin/cargo-mutants
+          key: cargo-mutants-${{ runner.os }}-27.1.0
+
+      - name: Install cargo-mutants
+        if: steps.tool-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-mutants --locked --version 27.1.0
+
+      - name: Mutate the diff
+        run: |
+          git diff "origin/${{ github.base_ref }}...HEAD" > pr.diff
+          cargo mutants --in-diff pr.diff --no-shuffle \
+            -f src/answer.rs -f src/http.rs -f 'src/eval/**'
+
+      - name: Surviving mutants
+        if: always()
+        run: |
+          if [ -s mutants.out/missed.txt ]; then
+            { echo '### Mutants the tests let through'; echo; echo '```'; cat mutants.out/missed.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutants-in-diff
+          path: mutants.out
+
+  weekly:
+    name: mutants, whole crate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+
+      - uses: actions/cache@v4
+        id: tool-cache
+        with:
+          path: ~/.cargo/bin/cargo-mutants
+          key: cargo-mutants-${{ runner.os }}-27.1.0
+
+      - name: Install cargo-mutants
+        if: steps.tool-cache.outputs.cache-hit != 'true'
+        run: cargo install cargo-mutants --locked --version 27.1.0
+
+      # Exit status 2 is "mutants were missed", which is the report, not a
+      # failure of the run; any other non-zero status is.
+      - name: Mutate the crate
+        run: |
+          status=0
+          cargo mutants --no-shuffle || status=$?
+          [ "$status" -eq 0 ] || [ "$status" -eq 2 ]
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutants-weekly
+          path: mutants.out
+
+      - name: File the survivors
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -s mutants.out/missed.txt ] || exit 0
+          count=$(wc -l < mutants.out/missed.txt)
+          {
+            echo "cargo-mutants over the whole crate left $count mutant(s) alive. Each is a change to the code that no test noticed: a test to strengthen, or a line that does nothing."
+            echo
+            echo '```'
+            cat mutants.out/missed.txt
+            echo '```'
+            echo
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > body.md
+          gh issue create --title "mutants: $count surviving ($(date -u +%G-W%V))" --body-file body.md

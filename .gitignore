@@ -25,3 +25,6 @@ mise.local.toml
 # from the release tarballs or a local build (Dockerfile).
 /bin/
 /image/
+*.snap.new
+mutants.out
+mutants.out.old

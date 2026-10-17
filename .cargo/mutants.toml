@@ -1,0 +1,15 @@
+# cargo-mutants (docs/project/contributing.md, "Mutation testing"): which
+# mutants are worth running, and how.
+
+# The functions in `mod kani_proofs` are compiled only under `cargo kani`
+# (`#[cfg(kani)]`), so no mutant of them can change what `cargo test` sees: each
+# would survive and say nothing.
+exclude_re = ["kani_proofs"]
+
+# The code the mutated paths are tested through needs the client and the
+# `.jud` reader; the heavier binary-only features (telemetry, MCP) test nothing
+# in these files.
+additional_cargo_args = ["--features", "http,jud"]
+
+# A mutant that makes a loop spin is caught by the clock, not by waiting for it.
+minimum_test_timeout = 60

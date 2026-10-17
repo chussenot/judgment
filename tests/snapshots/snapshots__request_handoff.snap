@@ -1,0 +1,31 @@
+---
+source: tests/snapshots.rs
+expression: body
+---
+{
+  "model": "jev-latest",
+  "questions": {
+    "wants_human": {
+      "criteria": {
+        "false": "is still working with the assistant, however unhappy",
+        "true": "asks for a human, an agent or a manager, or rejects the assistant's help"
+      },
+      "instructions": "Reading the conversation so far, does the user want a person to take over from the assistant?",
+      "type": "noul"
+    }
+  },
+  "state": [
+    {
+      "role": "user",
+      "text": "Hi, my export has been stuck at 99% for an hour."
+    },
+    {
+      "role": "assistant",
+      "text": "Sorry about that. Could you tell me the export id?"
+    },
+    {
+      "role": "user",
+      "text": "It's exp_4411. Honestly, can I just talk to a person? I need this file for a meeting."
+    }
+  ]
+}

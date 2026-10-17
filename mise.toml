@@ -20,6 +20,11 @@ prek = "latest"
 "cargo:cargo-semver-checks" = "0.51.0"
 "cargo:cargo-deny" = "0.20.2"
 "cargo:cargo-hack" = "0.6.45"
+# The Phase 7 tools: snapshots to review (`cargo insta`) and mutation testing
+# (`cargo mutants`); pinned like the gates above, installed by the workflows
+# from crates.io at the same versions.
+"cargo:cargo-insta" = "1.49.0"
+"cargo:cargo-mutants" = "27.1.0"
 # bd (beads), the issue tracker (AGENTS.md, `bd prime`), from the GitHub release
 # binary and pinned: the npm package downloads a binary in a postinstall step,
 # which fails behind some proxies, and a tool that runs in every git hook
@@ -99,6 +104,23 @@ run = ["rustup toolchain install 1.91 --profile minimal", "cargo +1.91 check --a
 [tasks.hack]
 description = "Every feature on its own builds (cargo-hack --each-feature), and every combination of them, http and pacer as one group, so no flag depends on another being on"
 run = ["cargo hack check --each-feature --no-dev-deps", "cargo hack check --feature-powerset --group-features http,pacer --no-dev-deps"]
+
+[tasks.snapshots]
+description = "The snapshots under tests/snapshots/ are current: a changed wire body or eval report fails, and a pending one is refused (INSTA_UPDATE=no); `cargo insta review` accepts a change"
+env = { INSTA_UPDATE = "no" }
+run = "cargo insta test --all-features --check"
+
+[tasks.bench]
+description = "The benchmarks (benches/verify.rs, divan): Response::verify, the canonical fingerprint, a Replay lookup and a Fake round trip; run on a quiet machine, results in docs/reference/performance.md"
+run = "cargo bench --bench verify"
+
+[tasks."bench:build"]
+description = "The benchmarks compile (what CI runs; the numbers are for a person)"
+run = "cargo bench --no-run"
+
+[tasks.mutants]
+description = "Mutation testing of the code whose tests must be strict (src/answer.rs, src/http.rs, src/eval/), against the diff from main; `mise run mutants -- --list` shows the mutants without running them. The weekly workflow runs the whole crate (.github/workflows/mutants.yml)"
+run = "git diff origin/main... > ${TMPDIR:-/tmp}/judgment-mutants.diff && cargo mutants --in-diff ${TMPDIR:-/tmp}/judgment-mutants.diff -f src/answer.rs -f src/http.rs -f 'src/eval/**'"
 
 [tasks."docs:check"]
 description = "The documentation gate: frontmatter on every page, the generated pages (llms.txt, the CLI reference, the plugin's format reference and Rust templates) match their sources, every .jud document the pages show is read, and every internal link resolves"
