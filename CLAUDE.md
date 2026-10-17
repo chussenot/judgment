@@ -29,9 +29,12 @@ The README says why; `docs/` says how; the rustdoc is the reference.
 - A fact about the tools, the environment or this repository that cost
   time to learn (a command with a side effect, a host that is blocked, a
   check that runs nowhere) goes in `bd remember "..." --key <slug>` before
-  the session ends. Memories travel in the same export, so they reach every
-  machine, and `bd prime` hands them to the next session; `bd memories`
-  lists them. One that turns out wrong is rewritten under the same key.
+  the session ends, then `mise run bd:sync -- export` and a commit of
+  `.beads/memories.jsonl`. Memories travel in that file, never in the issues
+  export: a memory line there makes bd's auto-export refuse to write at all.
+  `bd prime` hands them to the next session; `bd memories` lists them. One
+  that turns out wrong is rewritten under the same key. A plain `bd export`
+  drops memories; the script's export keeps both files.
 - `docs/index.md` maps the documentation; `docs/project/decisions/` holds the records
   that govern the API; `CHANGELOG.md` is Keep a Changelog, and 0.x means a
   minor release may break.
