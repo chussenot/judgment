@@ -131,6 +131,12 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   recording style), `refactor-scout` (dead code and duplication, ranked),
   `pr-shepherd` (open the PR, read its CI checks). Reviewers report, writers
   edit; run the reviewers on a diff before opening a pull request.
+- Skills in `.claude/skills/`: `pr-ready` picks the reviewers a diff needs,
+  runs the gate and hands the branch to `pr-shepherd`; `steward` holds this
+  repository's rules for an open pull request (a merge commit to bring
+  `main` in, generated files regenerated, the beads export checked after a
+  merge, no checks at all meaning a conflict). The pull-request watcher
+  reads `steward` before acting on a CI or review event.
 - `plugins/jud/` is the jud plugin (the `jud` skill and the `/jud:rubric`,
   `/jud:cases`, `/jud:check` commands), served by
   `.claude-plugin/marketplace.json` and enabled here through
