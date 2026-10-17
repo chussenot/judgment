@@ -31,7 +31,7 @@ jobs:
     name: fmt, clippy, test, doc, docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install toolchain from rust-toolchain.toml
         run: |
@@ -40,7 +40,7 @@ jobs:
           cargo --version
           rustc --version
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -92,12 +92,12 @@ jobs:
     name: public API against the last release (cargo-semver-checks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: tool-cache
         with:
           path: ~/.cargo/bin/cargo-semver-checks
@@ -107,7 +107,7 @@ jobs:
         if: steps.tool-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-semver-checks --locked --version 0.51.0
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -126,12 +126,12 @@ jobs:
     name: licences, advisories, bans, sources (cargo-deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: tool-cache
         with:
           path: ~/.cargo/bin/cargo-deny
@@ -147,12 +147,12 @@ jobs:
     name: minimum supported Rust version (1.91)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install the minimum supported toolchain
         run: rustup toolchain install 1.91 --profile minimal
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -170,12 +170,12 @@ jobs:
     name: every feature on its own (cargo-hack)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: tool-cache
         with:
           path: ~/.cargo/bin/cargo-hack
@@ -185,7 +185,7 @@ jobs:
         if: steps.tool-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-hack --locked --version 0.6.45
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry/index
@@ -204,7 +204,7 @@ jobs:
     name: pre-commit hooks (prek)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install prek
         run: |
@@ -225,7 +225,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -235,7 +235,7 @@ jobs:
       # cocogitto is built from crates.io, pinned to the version mise.toml
       # names, and cached by that version: no third-party action, no binary
       # fetched from a release page.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: cog-cache
         with:
           path: ~/.cargo/bin/cog
@@ -256,8 +256,8 @@ jobs:
     name: mkdocs build --strict
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install mkdocs mkdocs-techdocs-core

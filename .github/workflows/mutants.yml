@@ -30,14 +30,14 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: tool-cache
         with:
           path: ~/.cargo/bin/cargo-mutants
@@ -60,7 +60,7 @@ jobs:
             { echo '### Mutants the tests let through'; echo; echo '```'; cat mutants.out/missed.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: mutants-in-diff
@@ -75,12 +75,12 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         id: tool-cache
         with:
           path: ~/.cargo/bin/cargo-mutants
@@ -98,7 +98,7 @@ jobs:
           cargo mutants --no-shuffle || status=$?
           [ "$status" -eq 0 ] || [ "$status" -eq 2 ]
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: mutants-weekly
