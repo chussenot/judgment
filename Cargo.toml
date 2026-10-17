@@ -177,7 +177,7 @@ divan = { version = "0.1", default-features = false }
 insta = { version = "1", default-features = false, features = ["json", "redactions"] }
 # JSON Schema validation in the contract test against the vendored TypeSafe
 # OpenAPI document. No default features: nothing fetches a remote `$ref`.
-jsonschema = { version = "0.57", default-features = false }
+jsonschema = { version = "0.58", default-features = false }
 # The contract test reads the committed `.jud` recordings whatever the
 # features; the crate's own reader is behind the `jud` feature.
 serde-saphyr = "2.0"
