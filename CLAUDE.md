@@ -26,6 +26,12 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   (`bd sync`, `bd dolt push`): `refs/dolt/data` is not used, the export in
   git is the one channel, and it is the one reviewers read in a pull
   request. `mise run bd:sync -- status` says whether the file is current.
+- A fact about the tools, the environment or this repository that cost
+  time to learn (a command with a side effect, a host that is blocked, a
+  check that runs nowhere) goes in `bd remember "..." --key <slug>` before
+  the session ends. Memories travel in the same export, so they reach every
+  machine, and `bd prime` hands them to the next session; `bd memories`
+  lists them. One that turns out wrong is rewritten under the same key.
 - `docs/index.md` maps the documentation; `docs/project/decisions/` holds the records
   that govern the API; `CHANGELOG.md` is Keep a Changelog, and 0.x means a
   minor release may break.
