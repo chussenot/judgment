@@ -75,7 +75,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install toolchain from rust-toolchain.toml, with the target
         run: |
@@ -167,7 +167,7 @@ jobs:
             v*) tar -tzf "dist/${{ steps.package.outputs.name }}.tar.gz" | grep -qx "$bin" || { echo "::error::$bin is not in the tarball"; exit 1; } ;;
           esac
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.package.outputs.name }}
           path: dist/${{ steps.package.outputs.name }}.tar.gz
@@ -189,7 +189,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install toolchain from rust-toolchain.toml
         run: |
@@ -262,7 +262,7 @@ jobs:
             -H 'User-Agent: judgment release workflow (github.com/chussenot/judgment)' \
             -o /dev/null -w 'revoke: HTTP %{http_code}\n' || true
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           # Every leg into one directory rather than one subdirectory each.
@@ -281,7 +281,7 @@ jobs:
 
       # Which workflow, commit and run produced each tarball, for
       # `gh attestation verify <tarball> --repo chussenot/judgment`.
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/*.tar.gz
 
@@ -305,9 +305,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -372,9 +372,9 @@ jobs:
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/jud
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -456,7 +456,7 @@ jobs:
 
       # Which workflow, commit and run produced the image, for
       # `gh attestation verify oci://ghcr.io/chussenot/jud:X.Y.Z --repo chussenot/judgment`.
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         if: github.event_name == 'push'
         with:
           subject-name: ${{ env.IMAGE }}
