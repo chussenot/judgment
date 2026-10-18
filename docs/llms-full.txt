@@ -5351,20 +5351,21 @@ The unit and integration tests never leave the process: wiremock for the client,
 
 ## Does a real server speak the wire this way?
 
-`tests/live.rs` holds eighteen `#[ignore]` tests that run the three text primitives, an image with a Box question about it (on `jev-preview` against the hosted API, where `jev-latest` is still Jev 1.13), a state over the default budget under long context, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Six tasks run them:
+`tests/live.rs` holds nineteen `#[ignore]` tests (twenty with the `multipart` feature) that run the three text primitives, an image with a Box question about it, the same image as a shared array and as a multipart part (on `jev-preview` against the hosted API, where `jev-latest` is still Jev 1.13), a state over the default budget under long context, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Seven tasks run them:
 
 | Task | Against | Needs |
 |---|---|---|
 | `mise run live:typesafe` | the hosted API, `jev-latest` by default | `TYPESAFE_API_KEY` in `.env`; spends a handful of model calls |
 | `mise run live:openrouter` | Jev through OpenRouter's System One API, base URL `https://openrouter.ai/api` (or `OPENROUTER_BASE_URL`), `jev-latest` by default | `OPENROUTER_API_KEY` in `.env`; spends a handful of model calls, billed to the OpenRouter account |
+| `mise run live:liquid` | Liquid's System One API, base URL `https://api.liquid.ai/decisions` (or `LIQUID_BASE_URL`), `d1` by default (`LIQUID_MODEL`) | `LIQUID_API_KEY` in `.env`; spends a handful of model calls, billed to the Liquid account |
 | `mise run live:laya` | `laya-serve` on `LAYA_URL` (default `http://127.0.0.1:8000`) | a running server; [the Laya record](laya-typed-decisions.md) says how to start one |
 | `mise run live:ollama` | Ollama's `/v1/systemone` on `OLLAMA_URL` (default `http://127.0.0.1:11434`) with `tev1:0.8b`, or `OLLAMA_MODEL=clef` or `clef-flash` for Cloudflare's models | Ollama 0.35 or later and `ollama pull tev1:0.8b`; that model runs on a CPU, Clef wants a GPU (0.35.1 for `ollama pull clef`) |
 | `mise run live:pplx` | Perplexity's [pplx-decider-v1.1-27b](https://huggingface.co/perplexity-ai/pplx-decider-v1.1-27b) through the `autojev-serve` its checkpoint ships, on `PPLX_URL` (default `http://127.0.0.1:8010`), model `autojev-qwen3.8-27b` by default | a CUDA GPU with about 49 GiB for the weights; the snapshot's `source/` installed with its `requirements.txt`, then `AUTOJEV_CHECKPOINT=<snapshot> PORT=8010 autojev-serve`. `PPLX_API_KEY` when the server sets `AUTOJEV_API_KEY`, which also runs the bearer test |
 | `mise run live:clef` | Cloudflare's Clef on Workers AI through `tools/systemone/serve.py`, `clef` by default and `CLEF_MODEL=clef-flash` for the 9B | `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`; spends a handful of model calls |
 
-Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `openrouter`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate; against the hosted API an unset profile stops the run instead, since its pins are what a run there is for. What each profile pins is on its server's page: [the hosted API](hosted-typesafe.md) and [its Jev 1.14 run](hosted-typesafe-jev-1-14.md), [Laya](laya-typed-decisions.md), [autojev-serve](autojev-serve.md).
+Servers that speak the wire still differ where the contract is silent: the status of a refusal, the limits, the token budget. `JUDGMENT_LIVE_PROFILE` names the server, and each task sets its own (`typesafe`, `laya`, `autojev`, `openrouter`, `liquid`, `generic` for Ollama and Clef; an exported value wins). A difference is asserted on the profile it was observed on and printed on the others, so a server's next release that changes one fails its own run, and a new server is a new profile rather than a test that guesses. The model name is not used for this: `autojev-serve` answers to `jev-latest` too, and was once held to the hosted API's status codes because of it. Unset, the profile is `generic`, which prints every outcome and asserts only what every server owes the crate; against the hosted API an unset profile stops the run instead, since its pins are what a run there is for. What each profile pins is on its server's page: [the hosted API](hosted-typesafe.md) and [its Jev 1.14 run](hosted-typesafe-jev-1-14.md), [Laya](laya-typed-decisions.md), [autojev-serve](autojev-serve.md), [Liquid](liquid.md).
 
-Every body a test reads as sent, a success, a refusal or the model list, is also checked against the vendored OpenAPI document (below), and the verdict printed: which component it was held to, and every field that fails, down to the answer kind's own branch. The client decodes into types that tolerate more than the document allows, so a server can pass every other test and still send what the contract does not; this is where that shows. A status the document does not list (only 200 and 422 are) is named as such: the hosted API's 400 and laya-serve's 413 are refusals the client handles, not bodies the document describes. A success body that fails the document fails the run on the profiles that hold their server to it, `typesafe` and `autojev`; on the others it is reported, until a run shows the server holds.
+Every body a test reads as sent, a success, a refusal or the model list, is also checked against the vendored OpenAPI document (below), and the verdict printed: which component it was held to, and every field that fails, down to the answer kind's own branch. The client decodes into types that tolerate more than the document allows, so a server can pass every other test and still send what the contract does not; this is where that shows. A status the document does not list (only 200 and 422 are) is named as such: the hosted API's 400 and laya-serve's 413 are refusals the client handles, not bodies the document describes. A success body that fails the document fails the run on the profiles that hold their server to it, `typesafe`, `autojev` and `liquid`; on the others it is reported, until a run shows the server holds.
 
 A run that passes, or that finds a departure, becomes a page under `docs/project/verification/` naming the server, its release and the date. None of these runs in CI: the gate stays offline, and a key in CI would be a secret the repository does not need.
 
@@ -5998,6 +5999,86 @@ PPLX_URL=http://127.0.0.1:8010 mise run live:pplx
 ```
 
 
+<!-- source: docs/project/verification/liquid.md -->
+
+
+# Against Liquid's System One API
+
+Liquid serves TypeSafe's System One API for its decision models `d1` and `d1-ultra` at `https://api.liquid.ai/decisions`: the client reaches `POST /decisions/v1/systemone` and `GET /decisions/v1/models` with that as its base URL and no other change. `mise run live:liquid` runs the live tests against it with `JUDGMENT_LIVE_PROFILE=liquid`; this page is what that profile pins and where each pin comes from.
+
+The short answer: the wire holds for text. Every success body conforms to the vendored OpenAPI document, and the confidence formulas hold within rounding. Liquid differs from the hosted API in its refusals: it refuses with 422 where the hosted API answers 400 or 200, in OpenAI's error envelope rather than the document's `HTTPValidationError`; it refuses a model name it does not serve; and it has no Box question.
+
+## What was tested, and with what
+
+| | |
+|---|---|
+| Server | `https://api.liquid.ai/decisions`, Liquid's hosted API |
+| Model | `d1`, then `d1-ultra` |
+| Reference | Liquid's API reference ("Liquid inference API" 1.0.0), the decision models' section, read from the Liquid console (`https://console.liquid.ai/docs`, behind a sign-in) |
+| Date | 2026-10-18 |
+| Profiles | `generic` first on `d1`, then `liquid` on both models; all 19 tests pass under `liquid` on each, the shared-images test (`JUDGMENT_LIVE_SHARED_IMAGES=1`) included |
+
+## What the server does
+
+| Request | Liquid, `d1` | The hosted API |
+|---|---|---|
+| The three primitives, a structured level, an option with no description | 200, conforming to `SystemOneResponse`; a first request by hand also carried `usage.cost` in US dollars, which `Usage::cost` reads | 200 |
+| 256 options | 422, `A Choice accepts at most 255 options.` | 400, `at most 255` |
+| 11 levels | 422, `A Score accepts at most 10 levels.` | 400 |
+| One option | 422, `A Choice needs at least 2 options.` | 200, probability 1 |
+| One level | 422, `A Score needs at least 2 levels.` | 200 |
+| An empty question id | 422, `Invalid key in record` | 400, `cannot be empty` |
+| A state of about 40,000 tokens in about 500 KB of text, with or without long context asked for | 422, `over the model's input limit of 65536 tokens, images included, or 250000 bytes of text`: the bytes, not the tokens | 400, `max_tokens_exceeded`; answered under long context |
+| An unknown extra body field | answered, the field ignored | 400, `Invalid request.` |
+| The model name `jev-latest` | 404, `not_found_error`, `The model `jev-latest` does not exist.` | 200 |
+| An image with a Box question | 422, `Invalid discriminator value. Expected 'noul' \| 'choice' \| 'score'` | 200 on `jev-preview` |
+| An image as a shared `images` array (`CallOptions::shared_images`), on `d1`, which takes images | 422, `An image must be a base64 `data:` URL or a `{ content_type, base64 }` object.` | not served |
+| `GET /v1/models` | 200, conforming to `ModelMetadataList`: `d1`, `d1-ultra` | 200 |
+| A wrong bearer token | 401 | 401 |
+
+Refusals come in OpenAI's envelope, `{"error": {"message", "type", "param", "code"}}`, with `type` `invalid_request_error` or `not_found_error` and `code` null. The client keeps `type` as `kind`, and the message as the detail. This is not the document's `HTTPValidationError` for a 422, a `detail` list of located issues: `Error::InvalidRequest::issues` is always empty on Liquid, and the schema check's "conforms" on a refusal means nothing here, since every field of `HTTPValidationError` is optional. The profile checks each refusal's message instead. There is no request id header.
+
+## What the profile pins, and why
+
+- **422 for every refusal** the limits probes, the empty id and the over-budget state draw. Liquid's reference says validation errors return 422, and the run agrees.
+- **A model name it does not serve is a 404**, an `Error::Http`, where the hosted API, Laya and autojev-serve answered it (Ollama 0.40.5 also answers 404). A client built for the hosted API, sending `jev-latest`, fails against Liquid until it names `d1`.
+- **An over-budget state is not recognisable as one.** `Error::is_request_too_large` reads a 413 or `kind == "max_tokens_exceeded"`, and Liquid sends neither: only the message says the state is over the limit. The over-budget test asserts the 422 on Liquid and leaves the predicate out; a caller that needs to tell this refusal from others has only the message to go on. The crate does not read the message, because the wording is Liquid's to change without notice and a predicate that silently stops matching is worse than one that never did.
+- **Success bodies hold to the document**, so the profile asserts it, as `typesafe` and `autojev` do.
+- **The confidence formulas hold** within the hosted API's tolerances (over three runs on `d1`, the wire's choice confidence 0.84 to 0.85 against 0.844 to 0.846 from the formula, score confidence 0.55 to 0.57 against 0.547 to 0.570, and the score 1.70 to 1.71 against an expected level of 1.698 to 1.713), so the profile asserts them, as `typesafe` does.
+
+Repeated identical requests agree on the answer but not on the hundredths (each run makes three calls; on `d1` the spread was 0.020 to 0.036 in probability and 0 to 0.039 in score over four runs, on `d1-ultra` 0.017 and 0.022), as on the hosted API.
+
+## `d1-ultra`
+
+`d1-ultra` behaved as `d1` did on every row above, with its own limit in the over-budget message (`32768 tokens`) and its own numbers in the confidence check (choice 0.82 against 0.824, score 0.92 against 0.919, score 1.95 against 1.946). One profile covers both.
+
+## What Liquid's reference adds
+
+The decision models' section documents what the run did not exercise:
+
+- An `images` array of up to 8 images, each a `data:` URL or a `{ content_type, base64 }` object, on models whose `input_modalities` include `image` (`d1`). It is Liquid's extension; the crate's `shared_images` sends bare base64 strings, which `d1` refuses (judgment-05p).
+- Images may also ride in an array state as OpenAI `image_url` parts.
+- Up to 128 questions per request; `d1-ultra` allows 32,768 tokens; both allow 250 KB of text.
+- 429 with `Retry-After` when the organisation's per-model limit is spent, and with code `model_unavailable` when the model has no healthy target. The client retries a 429 and honours `Retry-After`; neither was observed.
+
+## What is still open
+
+The runs show the wire, not the models: accuracy and calibration on real cases are not measured here. Images were never answered, only refused for their shape; that waits on the crate sending them in Liquid's (judgment-05p). A 429 was not drawn.
+
+## How to repeat it
+
+```sh
+# LIQUID_API_KEY in .env; spends a handful of model calls on the Liquid account
+mise run live:liquid
+
+# the shared-images test as well
+JUDGMENT_LIVE_SHARED_IMAGES=1 mise run live:liquid
+
+# another model
+LIQUID_MODEL=d1-ultra mise run live:liquid
+```
+
+
 <!-- source: docs/project/research/system-one-client-libraries.md -->
 
 
@@ -6161,6 +6242,7 @@ What a consumer can point the crate at, as of 2026-10-06. "Verified" means this 
 | Decider 1.8 (`pip install decider-ai`) | local, GPU | decider-2b, 2b-vision, 4b, 12b, 35b-a3b | serves `/v1/systemone` with continuous batching; temperature scaled by option count since 1.8.0; no byte-identical reproduction across runs | no |
 | OpenDecider 0.6 | local, CPU, CUDA or Apple Silicon | nano (400M encoder), small (4B), medium-td (30B), large-td (80B) | serves `/v1/systemone`; 26 options per question; nano scores 0.796 on typed-decisions against Laya's fine-tuned 0.766 | no |
 | OpenRouter System One API | hosted, `https://openrouter.ai/api` | `jev-latest` (`~typesafe/jev-latest`), `typesafe/jev-1.13` | TypeSafe's body and answers plus `id`, `provider` and `usage.cost`; the response names the dated model (`typesafe/jev-1.13-20260917`); no `x-typesafe-request-id`; 402 when the credit runs out; its `GET /v1/models` is OpenRouter's catalogue; the same body is also served at `/api/alpha/decisions` | partly: the client against a stand-in built from the documented shapes, 2026-10-09 ([Configure a backend](../../guides/configure-a-backend.md#jev-through-openrouter)); `mise run live:openrouter` not yet run |
+| Liquid System One API | hosted, `https://api.liquid.ai/decisions` | `d1` (65,536 tokens, images), `d1-ultra` (32,768) | TypeSafe's body and answers plus `usage.cost`; 422 for every refusal, including one option or one level, which the hosted API answers; a model it does not serve is a 404; over budget is a 422 named only in its message; no Box; images in its own `images` array of `data:` URLs or `{content_type, base64}` objects; refusals in OpenAI's `error` envelope; up to 128 questions | yes, text on `d1` and `d1-ultra`, [2026-10-18](../verification/liquid.md) |
 | Perplexity Decisions API | hosted | `pplx-decider-v1-27b` | TypeSafe's primitives (choice, noul, score), 255 options, 250k context, images in the state, $0.04 per million input tokens, weights Apache 2.0 | no; the strongest candidate for a second hosted provider |
 | Cloudflare Workers AI | hosted | `clef` (27B), `clef-flash` (9B) | TypeSafe's body and answers, `model` set to `clef` or `clef-flash`, 64 questions per request, images and video in the state; but at one exact URL per model (`/accounts/{account}/ai/run/@cf/cloudflare/{model}`, no `/v1/systemone`, no model list) and inside Cloudflare's `{"result", "success", "errors"}` envelope, so a `base_url` alone does not reach it: `tools/systemone/serve.py cloudflare` maps the path and unwraps the envelope; weights Apache 2.0, self-hosted with Transformers, vLLM or SGLang at about 54 GB (Clef) or 18 GB (Clef-flash) of GPU memory | no: `mise run live:clef`, or `OLLAMA_MODEL=clef mise run live:ollama` for the same weights locally |
 | Fastino GLiDE | hosted, closed | GLiDE | 40k context, optional reasoning mode; wire compatibility not confirmed | no |

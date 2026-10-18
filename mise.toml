@@ -245,6 +245,19 @@ JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-openrouter}" \
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 
+[tasks."live:liquid"]
+description = "The ignored live tests against Liquid's System One API (https://api.liquid.ai/decisions, model d1); needs LIQUID_API_KEY in .env and spends a few model calls, billed to the Liquid account"
+run = '''
+set -eu
+: "${LIQUID_API_KEY:?set LIQUID_API_KEY (in .env) to run the live tests against Liquid}"
+base="${LIQUID_BASE_URL:-https://api.liquid.ai/decisions}"
+JUDGMENT_LIVE_BASE_URL="$base" JUDGMENT_LIVE_API_KEY="$LIQUID_API_KEY" \
+JUDGMENT_LIVE_AUTH_BASE_URL="$base" JUDGMENT_LIVE_AUTH_API_KEY="$LIQUID_API_KEY" \
+JUDGMENT_LIVE_MODEL="${LIQUID_MODEL:-d1}" \
+JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-liquid}" \
+  cargo test --test live -- --ignored --nocapture --test-threads=1
+'''
+
 [tasks."live:ollama"]
 description = "The ignored live tests against Ollama's /v1/systemone on OLLAMA_URL (default http://127.0.0.1:11434; Ollama 0.35 or later, `ollama pull tev1:0.8b` first); OLLAMA_MODEL picks another decision model (nimble, tev1, and clef or clef-flash on 0.35.1)"
 run = '''

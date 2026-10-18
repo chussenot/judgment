@@ -138,7 +138,8 @@ pub enum Error {
     /// Any other non-success status. Most often the API's own 408 or 5xx
     /// once the retry policy stopped (wait and try again); otherwise a
     /// proxy, a base URL that is not the API (a 3xx among them, since the
-    /// client follows no redirect), or a status newer than this crate.
+    /// client follows no redirect), a model name the server does not serve
+    /// (Liquid's 404), or a status newer than this crate.
     #[error(
         "unexpected HTTP status {status} after {attempts} attempts: {}{}",
         body_or_none(.body),
