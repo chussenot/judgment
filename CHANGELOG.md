@@ -8,6 +8,18 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `ClientBuilder::shared_images_as_data_urls` and
+  `CallOptions::shared_images_as_data_urls`: the shared `images` array
+  with each image a `data:` URL (`data:image/png;base64,...`), the
+  spelling Liquid's `/decisions/v1/systemone` takes. Liquid refuses the
+  bare base64 `shared_images` sends with a 422, and Ollama refuses a
+  `data:` URL with a 400, so the two are separate switches; the later
+  call on a builder wins, and `shared_images(false)` on a call turns
+  either off. `Client::shared_images_as_data_urls` says which a client
+  sends. `jud` reads `shared_images: data-urls` from its configuration
+  file and shows it in `jud config`. On the `liquid` profile the live
+  shared-images test now sends data URLs, and `d1` and `d1-ultra` both
+  answer it.
 - `mise run live:liquid` runs the ignored live tests against Liquid's
   System One API (`https://api.liquid.ai/decisions`, model `d1`, or
   `d1-ultra` with `LIQUID_MODEL`) with `LIQUID_API_KEY`, under a new

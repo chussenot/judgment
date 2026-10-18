@@ -31,7 +31,7 @@ flowchart TD
 | Model | | | `model` | `jev-latest` |
 | Timeout per attempt | | | `timeout_secs` | `30` |
 | Long context | `--long-context` on `jud RUBRIC`, `jud record` and `jud eval` | | `long_context` | `false`: the model's own limits, 64k tokens per request and 32k per question; `true` raises both to 262k on every call of the run through the crate's `ClientBuilder::long_context`, slower and less accurate by TypeSafe's own account ([Use long context](../guides/use-long-context.md#from-the-shell)). Nothing under a replay, which asks no server. |
-| Shared images | | | `shared_images` | `false`: a request's images go as the `assets` map the hosted API takes; `true`: as the top-level `images` array Ollama takes, with no map, through the crate's `ClientBuilder::shared_images` ([Configure a backend](../guides/configure-a-backend.md#what-ollama-does-differently)) |
+| Shared images | | | `shared_images` | `false`: a request's images go as the `assets` map the hosted API takes; `true`: as the top-level `images` array of base64 Ollama takes, with no map, through the crate's `ClientBuilder::shared_images` ([Configure a backend](../guides/configure-a-backend.md#what-ollama-does-differently)); `data-urls`: the same array of `data:` URLs, Liquid's spelling, through `ClientBuilder::shared_images_as_data_urls` ([Liquid](../guides/configure-a-backend.md#liquids-decision-models)) |
 | Replay directory | `--replay DIR` | `JUD_REPLAY` | | none; [which commands read it](#replay) |
 
 `TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL` set to an empty or blank value count as unset. `JUD_REPLAY` set to an empty or blank value does not: [Replay](#replay) says what happens. No environment variable names the model for the command; the examples under `examples/` read `TYPESAFE_MODEL` for their `--live` runs, the command does not ([beads issue `judgment-rxl`](../project/contributing.md#tracking-work)).
@@ -57,7 +57,7 @@ base_url: https://api.typesafe.ai
 model: jev-latest
 timeout_secs: 30
 long_context: false   # true: both context limits raised to 262k tokens on every call
-shared_images: false  # true: images as Ollama's shared `images` array, not the `assets` map
+shared_images: false  # true: images as Ollama's shared `images` array, not the `assets` map; data-urls: Liquid's
 # api_key: ...   # prefer TYPESAFE_API_KEY, which no file on disk holds
 ```
 
@@ -115,7 +115,7 @@ A request nobody recorded is a backend failure (status 1); a directory that does
 | Retries | `ClientBuilder::retry_policy`, or `CallOptions` for one call | `RetryPolicy::default()`: [The crate](crate.md#defaults) |
 | Long context | `ClientBuilder::long_context`, or `CallOptions::long_context` for one call | off: the model's own limits, 64k tokens per request and 32k per question; on, 262k for both through the `TypeSafe-Danger-Zone-Long-Context` header, slower and less accurate by TypeSafe's own account ([decision 0027](../project/decisions/0027-long-context-is-a-switch-on-the-call.md)) |
 | Images as parts (feature `multipart`) | `ClientBuilder::multipart`, or `CallOptions::multipart` for one call | off: the images as base64 in the JSON body; on, a `multipart/form-data` body with a JSON `request` part and one part per image, the request keyed and checked as before ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) |
-| Shared images | `ClientBuilder::shared_images`, or `CallOptions::shared_images` for one call | off: the images as the `assets` map; on, a top-level `images` array of base64 and no map, the shape Ollama's `/v1/systemone` takes, which otherwise answers with the map ignored; never parts, whatever `multipart` says; the request keyed and checked as before |
+| Shared images | `ClientBuilder::shared_images`, or `CallOptions::shared_images` for one call | off: the images as the `assets` map; on, a top-level `images` array of base64 and no map, the shape Ollama's `/v1/systemone` takes, which otherwise answers with the map ignored; never parts, whatever `multipart` says; the request keyed and checked as before. `shared_images_as_data_urls` on either sends the same array as `data:` URLs, which Liquid takes and Ollama refuses |
 
 The crate's client reads no base URL from the environment; the `jud` command and the examples do, and pass it to the builder. The two timeouts differ on purpose: a library call is usually one of many on a request path and fails fast at 10 s; a command-line run has a person waiting and a local model that may be loading, so it waits 30 s.
 
