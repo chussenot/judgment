@@ -270,6 +270,18 @@ sharper question or another model can. When a question falls short, say what
 would raise it, with the arithmetic (with 50 of 60 right, relabelling one
 case gives 51 of 60, 0.85, still short of 0.9, which needs 54).
 
+A Choice whose options are the answers being compared (a pairwise judge)
+can also be tested for bias: `eval --swap` asks each case again with the
+options reversed, and `--tone-perturb FILE` with the labelled answer
+rewritten in another tone (FILE: case id, question id, rewrite). The table
+at the end of the report gives the flip rate, the flip rate among verdicts
+at `--confident-at` or above, the mean change in probability and the
+accuracy under each form. A confident flip is a verdict a gate would act on
+that the perturbation moved: say so, and name the cases. The perturbed
+requests are recorded with the same flags (`record --swap ...`), as
+`CASE.swapped.jud` and `CASE.toned.jud` (`docs/guides/test-a-judge-for-position-and-tone-bias.md`
+in the judgment repository).
+
 ## Triage every miss
 
 The numbers say how often; the misses say why. For each miss, read the
