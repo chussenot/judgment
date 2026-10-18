@@ -135,9 +135,11 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   `/jud:cases`, `/jud:check` commands), served by
   `.claude-plugin/marketplace.json` and enabled here through
   `.claude/settings.json`; `docs/guides/use-the-claude-code-plugin.md` describes it.
-- Hooks in `.claude/hooks/`: Rust files are formatted after every edit;
+- Hooks in `.claude/hooks/`: Rust files are formatted after every edit and
   `docs/llms.txt` is regenerated after a page, the README, `llms-intro.txt`
-  or `mkdocs.yml` is written; a Bash guard denies pushes to `main`,
+  or `mkdocs.yml` is written, whether through Edit and Write or through a
+  Bash command (`tidy-after-bash.sh` asks git what changed); a Bash guard
+  denies pushes to `main`,
   committing `.env`, `cargo publish` and `bd edit` (it opens an editor and
   hangs). In a cloud session `session-start.sh` installs the tools
   (`mise.cloud.toml`, pinned release URLs), imports the beads from the
@@ -145,7 +147,14 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   (`scripts/claude-plugins.sh`: `jud` from the checkout, `typesafe` from
   `typesafe-ai/skills`, `ponytail` from `DietrichGebert/ponytail`, since a
   cloud session never installs what `.claude/settings.json` declares) and
-  warms the build; then `bd prime` runs. `mise run plugins:install` does
+  caps the mbx cache (`gc.max_total_size`, the session disk is a fixed
+  allowance), warms the build and probes the hosts the work depends on,
+  handing the session the list of blocked ones; then `bd prime` runs. A
+  background command writes its output to the scratchpad through `tail`:
+  the task output filesystem is small. After a merge or a checkout, a
+  hook names the tools `mise.toml` pins and the machine lacks: run `mise
+  install` then, before a `mise exec` stops to compile them. `mise run
+  plugins:install` does
   the same on a laptop and `mise run plugins:update` moves `jud` and
   `typesafe` to their latest and `ponytail` to its pin.
 - Ponytail is required: the plugin is pinned to a tag (`v5.2.0`, in
