@@ -161,6 +161,18 @@ fn the_example_cases_bind_to_their_rubric_and_the_tuning_names_them() {
     assert_eq!(asked[0], ["desk", "tone", "refund_request"]);
     assert_eq!(asked[1], ["desk", "tone"]);
     assert_eq!(asked[2], ["desk", "tone", "duplicate_of"]);
+    // The pairwise cases bind to their rubric, and half put the better answer
+    // first: what makes a judge that always picks one place score 0.5.
+    let pairwise = Rubric::parse(&read(EXAMPLES, "pairwise-judge.jud")).unwrap();
+    let pairwise_cases = Cases::parse(&read(EXAMPLES, "pairwise-judge-cases.jud")).unwrap();
+    pairwise_cases.bind(&pairwise).unwrap();
+    assert_eq!(pairwise_cases.cases.len(), 50);
+    let first = pairwise_cases
+        .cases
+        .iter()
+        .filter(|c| c.expect["better"] == jud::Expect::Text("a".to_owned()))
+        .count();
+    assert_eq!(first, 25, "the better answer comes first in half the cases");
     // The recordings name the rubric they answer.
     for path in example_files("jud") {
         if let Document::Recording(recording) =
