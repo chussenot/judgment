@@ -69,6 +69,7 @@ nav:
           - Compatible servers and models: project/research/compatible-servers-and-models.md
           - Compared with the other Rust clients: project/research/client-comparison.md
           - System One models on Google Cloud: project/research/system-one-on-google-cloud.md
+          - StartLux-Decision v1.1 27B AutoThink: project/research/startlux-decision-27b-autothink.md
       - Decisions:
           - Index: project/decisions/README.md
           - 0003 Typed handles between questions and answers: project/decisions/0003-typed-handles-between-questions-and-answers.md
