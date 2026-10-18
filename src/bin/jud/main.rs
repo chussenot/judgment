@@ -33,6 +33,7 @@ mod fsutil;
 #[cfg(feature = "mcp")]
 mod mcp;
 mod out;
+mod perturb;
 mod record;
 mod recordings;
 mod run;

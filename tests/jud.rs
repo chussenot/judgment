@@ -121,11 +121,11 @@ fn every_example_document_validates_against_its_schema_and_parses() {
         *kinds.entry(kind).or_default() += 1;
     }
     // triage, routing, handoff, agent-mail, shapes, stamps, the guide's
-    // screening rubric, and the shapes rubric without its Box, for the
-    // servers that have none.
-    assert_eq!(kinds["Rubric"], 8);
+    // screening rubric, the shapes rubric without its Box, for the servers
+    // that have none, and the pairwise judge.
+    assert_eq!(kinds["Rubric"], 9);
     // Their cases, and the specification's example cases document.
-    assert_eq!(kinds["Cases"], 9);
+    assert_eq!(kinds["Cases"], 10);
     // The calibration recordings, and the specification's example recording.
     assert!(kinds["Recording"] >= 11, "{kinds:?}");
 }

@@ -2,7 +2,7 @@
 title: The jud command line
 description: Every command, flag, argument and environment variable of the jud binary, with each command's help text as the binary prints it, the verdict JSON a run writes, the report jud eval prints and its JSON keys, what jud record, jud tune and jud split write, and the exit status.
 status: current
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-18
 tags: [judgment, jud, cli, record, eval, tune, split, reference]
 ---
 
@@ -271,6 +271,20 @@ Options:
 
           Without it a request is held to 64k tokens, and the state with any one question to 32k, and a case over either fails its call as `max_tokens_exceeded`. Under long context it is answered, slower and less accurately by TypeSafe's own account, which is why it is a switch and never the default; `long_context: true` in the configuration file turns it on for every run. The recordings are keyed as without it: the header changes the limits, not the request.
 
+      --swap [<HOW>]
+          Ask every case again with each Choice's options in the reverse order, and report how often the pick changes.
+
+          Each key stays with its description, so only the answers' places change; keys that say nothing about place (not `first`) keep it a test of position. `separate` (the default) asks the reversed order as a second request; `joint` adds it to the same request as a second question, `ID.swapped`, which a server that answers questions independently allows. Recordings are kept per request: record with the flag you evaluate with.
+
+          Possible values:
+          - separate: A second request per case, the options reversed: the two orders cannot see each other, and the original order's recording is the one a plain `jud eval` reads
+          - joint:    One request per case holding both orders, the reversed copy of each Choice under `ID.swapped`: the state is sent once. For a server that answers a request's questions independently, as System One does
+
+      --tone-perturb <FILE>
+          Ask every case the file names again with its better answer rewritten, and report how often the pick changes.
+
+          FILE is YAML or JSON: case id, then question id, then the rewrite (text, or an object or array as an option's description may be): `{case-7: {better: "That is SO wrong, it's 4!"}}`. The rewrite replaces the description of the option the case labels right, so the content stays and the tone changes, as in CALM's sentiment test. A case or question the file names that the cases do not have, or a question the case does not label with an option, is refused before any call.
+
   -h, --help
           Print help (see a summary with '-h')
 ```
@@ -279,7 +293,7 @@ Reads `RUBRIC`, `CASES` and the recordings already in `DIR`. Asks the backend [C
 
 ### What it writes
 
-One file per request, `DIR/NAME.jud`, where `NAME` is the case's `id`, or `ID-turn-N` for a turn of a conversation. `DIR` is created when it does not exist. Each file is a [Recording](jud-format.md#recording) under a one-line comment: the verified response, the request's fingerprint, the rubric's name, the server and the time.
+One file per request, `DIR/NAME.jud`, where `NAME` is the case's `id`, or `ID-turn-N` for a turn of a conversation. With `--swap` a case's reversed order is a request of its own, `NAME.swapped.jud`, and with `--tone-perturb` its rewritten one is `NAME.toned.jud`; `--swap=joint` keeps both orders in `NAME.jud` ([Position and tone](#position-and-tone)). Record with the flags you evaluate with: a replay finds a request by its fingerprint, and each of these is a different request. `DIR` is created when it does not exist. Each file is a [Recording](jud-format.md#recording) under a one-line comment: the verified response, the request's fingerprint, the rubric's name, the server and the time.
 
 - **Server.** It is written without the userinfo, the query and the fragment of the base URL, so a recording can be committed.
 - **Atomic.** The text goes to a temporary file in `DIR` and is renamed onto the recording's name, so a reader never sees half a file. A temporary name never ends in `.jud` or `.json`.
@@ -375,6 +389,25 @@ Options:
           Ask for long context on every call: both context limits raised to 262k tokens, whatever the configuration file says.
 
           Without it a request is held to 64k tokens, and the state with any one question to 32k, and a case over either fails its call as `max_tokens_exceeded`. Under long context it is answered, slower and less accurately by TypeSafe's own account, which is why it is a switch and never the default; `long_context: true` in the configuration file turns it on for every run. Nothing under --replay, which asks no server.
+
+      --swap [<HOW>]
+          Ask every case again with each Choice's options in the reverse order, and report how often the pick changes.
+
+          Each key stays with its description, so only the answers' places change; keys that say nothing about place (not `first`) keep it a test of position. `separate` (the default) asks the reversed order as a second request; `joint` adds it to the same request as a second question, `ID.swapped`, which a server that answers questions independently allows. Recordings are kept per request: record with the flag you evaluate with.
+
+          Possible values:
+          - separate: A second request per case, the options reversed: the two orders cannot see each other, and the original order's recording is the one a plain `jud eval` reads
+          - joint:    One request per case holding both orders, the reversed copy of each Choice under `ID.swapped`: the state is sent once. For a server that answers a request's questions independently, as System One does
+
+      --tone-perturb <FILE>
+          Ask every case the file names again with its better answer rewritten, and report how often the pick changes.
+
+          FILE is YAML or JSON: case id, then question id, then the rewrite (text, or an object or array as an option's description may be): `{case-7: {better: "That is SO wrong, it's 4!"}}`. The rewrite replaces the description of the option the case labels right, so the content stays and the tone changes, as in CALM's sentiment test. A case or question the file names that the cases do not have, or a question the case does not label with an option, is refused before any call.
+
+      --confident-at <TAU>
+          The confidence, 0 to 1, at or above which a pair counts as confident in the flip rate --swap and --tone-perturb report beside the overall one: the original answer's confidence, so the column says how often a verdict the gate would act on moves
+
+          [default: 0.5]
 
   -h, --help
           Print help (see a summary with '-h')
@@ -490,6 +523,20 @@ A report holds three things that are not the same number: what the model got rig
 | `signal_rules.never_answered_min` | integer | The fewest labels an outcome needs for `never_answered`: 3. |
 | `signal_rules.defers_most` | number | The deferred share for `defers_most`: 0.5. |
 | `signal_rules.defers_nearly_all` | number | The deferred share for `defers_nearly_all`: 0.9. |
+| `robustness` | object | Only with `--swap` or `--tone-perturb` ([Position and tone](#position-and-tone)); absent otherwise. |
+| `robustness.confident_at` | number | The bar the `confident_*` keys use, from `--confident-at` (0.5 unless given). |
+| `robustness.perturbed_requests` | integer | Perturbed requests answered; a joint swap rides in its case's request and adds none. |
+| `robustness.comparisons` | array of objects | One per question and test that has a pair, the swap first, each in the rubric's question order. |
+| `robustness.comparisons[].question` | string | The question. |
+| `robustness.comparisons[].test` | string | `swap` or `tone`. |
+| `robustness.comparisons[].pairs` | integer | Cases answered both as written and perturbed. |
+| `robustness.comparisons[].flips` | integer | Pairs whose pick differs. |
+| `robustness.comparisons[].flip_rate`, `flip_rate_interval95` | number or `null`, `[low, high]` or `null` | `flips / pairs` and its 95 % Wilson interval. One minus CALM's robustness rate. |
+| `robustness.comparisons[].confident_pairs`, `confident_flips` | integer | The same counts over the pairs whose original answer's confidence is at least `confident_at`. |
+| `robustness.comparisons[].confident_flip_rate`, `confident_flip_rate_interval95` | number or `null`, `[low, high]` or `null` | Their rate and its interval. |
+| `robustness.comparisons[].mean_abs_dp` | number or `null` | The mean over the pairs of the absolute difference between the probability the original answer put on its pick and the probability the perturbed answer put on that same option. |
+| `robustness.comparisons[].original`, `perturbed` | object | `labelled`, `correct`, `accuracy` and `accuracy_interval95` (Wilson), over the labelled pairs, as written and perturbed. |
+| `robustness.comparisons[].flipped` | array of strings | The cases whose pick moved, in document order. |
 
 The same report with one question kept and `--min-accuracy desk=0.9`:
 
@@ -594,6 +641,28 @@ The same report with one question kept and `--min-accuracy desk=0.9`:
   }
 }
 ```
+
+### Position and tone
+
+`--swap` and `--tone-perturb` ask every case again in a perturbed form and report how far the verdicts move; the [guide](../guides/test-a-judge-for-position-and-tone-bias.md) runs both on a pairwise judge. They apply to Choice questions, whose options are the answers being compared. The report above reads the cases as written, so it is the same with or without them.
+
+- **`--swap`** reverses the order of every Choice of two or more options. Each key stays with its description, so the one thing that changes is where each answer sits. The reversed copy is asked under the id `ID.swapped`: a request's fingerprint sorts object keys and cannot see order, so under the question's own id the reversed request would be answered from the original's recording. TypeSafe's API documents that a question's key "is not sent to the underlying model and is not used in inference" ([HTTP API](https://docs.typesafe.ai/api)); another server may differ, and one that puts ids in its prompt would see `ID.swapped`. `--swap` alone is `--swap=separate`, the copy in a request of its own; `--swap=joint` adds it to the case's request beside the original, for a server that answers a request's questions independently (TypeSafe's guidance: questions in one request "run in parallel and cannot see one another's answers"). Joint doubles the Choices a request asks: a server's limit on questions or options per request (Laya's 64 and 512) or the token budget comes twice as soon.
+- **`--tone-perturb FILE`** replaces the description of the option a case labels right with a rewrite from `FILE`: case id, question id, rewrite. A case or question the file names that the cases or their requests do not have, or a question the case does not label with an option, is refused with status 2 before any call.
+- **`--confident-at TAU`** (0.5 unless given) is the confidence of the original answer from which a pair counts in the `confident` column: how often a verdict a gate would act on moves.
+
+The text report ends with the comparisons as a Markdown table, one row per question and test, then the cases that flipped:
+
+```text
+robustness (N perturbed requests; rates with 95% Wilson intervals)
+
+| question | test | pairs | flip rate | flip rate, confidence ≥ TAU | mean \|Δp\| | accuracy, original | accuracy, perturbed |
+|---|---|---:|---|---|---:|---|---|
+| QUESTION | swap | P | RATE [LOW, HIGH] (F/P) | RATE [LOW, HIGH] (F/C) | D | ACC [LOW, HIGH] (R/L) | ACC [LOW, HIGH] (R/L) |
+
+flipped under swap on QUESTION: CASE, CASE
+```
+
+A rate with nothing to count is `-`. `--json` carries the same numbers under `robustness`.
 
 ### Gating on accuracy
 

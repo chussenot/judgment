@@ -8,6 +8,22 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `jud eval --swap` and `--tone-perturb FILE`: every case asked again with
+  each Choice's options in the reverse order (CALM's position test), or
+  with the option the case labels right rewritten from FILE (its sentiment
+  test), and a `robustness` section that reports, per question and test,
+  the flip rate, the flip rate among verdicts at `--confident-at` or above
+  (0.5 unless given), the mean change in the original pick's probability
+  and the accuracy under each form, rates with 95 % Wilson intervals; the
+  text report prints it as a Markdown table, `--json` under `robustness`.
+  The reversed copy is asked under `ID.swapped`, in a request of its own
+  (`--swap`, `--swap=separate`) or beside the original (`--swap=joint`),
+  since a request's fingerprint cannot see option order. `jud record`
+  takes `--swap` and `--tone-perturb` and writes `CASE.swapped.jud` and
+  `CASE.toned.jud`.
+  `examples/jud/pairwise-judge.jud` with 50 LLMBar Natural pairs (MIT) and
+  tone rewrites, and recordings from `jev-1.13.0` and `jev-1.14.0`, which
+  replay with no key; motivated by arXiv 2610.18122.
 - `ClientBuilder::shared_images` and `CallOptions::shared_images`: a
   request's images sent as a top-level `images` array of base64 with no
   `assets` map, the shape Ollama's `/v1/systemone` takes, which otherwise

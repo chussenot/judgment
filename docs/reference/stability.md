@@ -2,7 +2,7 @@
 title: Stability
 description: What stays the same across versions and for how long, so a document, a recording or a dependency written today keeps working; the jud/v1 format is stable, a minor version (metadata.minor) only adds, a reader accepts every v1 document for at least twelve months after a later minor is published, fingerprints exclude the envelope and never change for a document's spec, the jud command's exit status, JSON output and file writes are a contract, and the crate's 0.x releases say what they break.
 status: current
-last_reviewed: 2026-10-15
+last_reviewed: 2026-10-18
 tags: [judgment, jud, stability, versioning, compatibility, fingerprint, reference]
 ---
 
@@ -44,7 +44,7 @@ The `jud` command follows the crate's version, and its contract is what a script
 - **Files written.** Three commands write files and no other does: `jud record`, into its `--out` directory, `jud tune --out`, one rubric file, and `jud split`, two new cases files. None writes over a rubric or a cases document it was given, and `jud split` writes over no file at all; [the command line reference](cli.md#exit-status) states the rule.
 - **Configuration.** What the command reads, and in what order ([Configuration](configuration.md)), including which commands read `JUD_REPLAY`.
 
-Exit status 3, `jud eval`'s `--json` keys and the two places that write files are such additions: they are part of the contract from the release that ships `jud record`, `jud eval` and `jud tune`, and not a break ([decision 0021](../project/decisions/0021-record-eval-and-tune-from-the-command-line.md)). So are `jud split`, the files it writes, and the `outcomes`, `majority`, `signals` and `signal_rules` keys of `jud eval --json` ([decision 0022](../project/decisions/0022-jud-reports-what-the-tuning-loop-counted-by-hand.md)). The thresholds in `signal_rules` decide when a signal is raised, so a change to one is a change of meaning, made only in a minor and listed as breaking; a report carries the thresholds it was read with.
+Exit status 3, `jud eval`'s `--json` keys and the two places that write files are such additions: they are part of the contract from the release that ships `jud record`, `jud eval` and `jud tune`, and not a break ([decision 0021](../project/decisions/0021-record-eval-and-tune-from-the-command-line.md)). So are `jud split`, the files it writes, and the `outcomes`, `majority`, `signals` and `signal_rules` keys of `jud eval --json` ([decision 0022](../project/decisions/0022-jud-reports-what-the-tuning-loop-counted-by-hand.md)). So are `--swap` and `--tone-perturb` on `jud eval` and `jud record`, `--confident-at` on `jud eval`, the `NAME.swapped.jud` and `NAME.toned.jud` files `jud record` writes with them, and the `robustness` key of `jud eval --json`, present only with them ([Position and tone](cli.md#position-and-tone)). The thresholds in `signal_rules` decide when a signal is raised, so a change to one is a change of meaning, made only in a minor and listed as breaking; a report carries the thresholds it was read with.
 
 ## In one table
 
