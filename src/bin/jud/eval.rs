@@ -22,8 +22,9 @@ use serde::Serialize;
 
 use crate::EXIT_UNMET;
 use crate::backend::{Backend, Failure};
-use crate::batch::{self, Answered, Loaded};
+use crate::batch::{self, Answered, Loaded, Variant};
 use crate::out;
+use crate::perturb::{self, PerturbArgs, Robustness};
 
 /// Grade a model's answers against the labelled cases.
 ///
@@ -67,6 +68,25 @@ pub(crate) struct Eval {
     /// --replay, which asks no server.
     #[arg(long)]
     pub long_context: bool,
+    #[command(flatten)]
+    pub perturb: PerturbArgs,
+    /// The confidence, 0 to 1, at or above which a pair counts as
+    /// confident in the flip rate --swap and --tone-perturb report beside
+    /// the overall one: the original answer's confidence, so the column
+    /// says how often a verdict the gate would act on moves.
+    #[arg(long, value_name = "TAU", default_value_t = 0.5, value_parser = parse_unit)]
+    pub confident_at: f64,
+}
+
+fn parse_unit(text: &str) -> Result<f64, String> {
+    let value: f64 = text
+        .parse()
+        .map_err(|_| format!("`{text}` is not a number from 0 to 1"))?;
+    if (0.0..=1.0).contains(&value) {
+        Ok(value)
+    } else {
+        Err(format!("{value} is not from 0 to 1"))
+    }
 }
 
 /// One `--min-accuracy` gate: the bar, and the question it applies to
@@ -149,7 +169,22 @@ const TOLERANCE: f64 = 1e-9;
 ///                                        // with, so a change to one shows
 ///   "min_accuracy": [                    // one per --min-accuracy check, [] without any
 ///     { "question": "desk" | null, "bar", "labelled", "accuracy", "met" }
-///   ]
+///   ],
+///   "robustness": {                      // only with --swap or --tone-perturb
+///     "confident_at", "perturbed_requests",
+///     "comparisons": [                   // per question and test, swap first
+///       { "question", "test": "swap" | "tone", "pairs", "flips",
+///         "flip_rate", "flip_rate_interval95",
+///         "confident_pairs", "confident_flips",
+///         "confident_flip_rate", "confident_flip_rate_interval95",
+///                                        // pairs whose ORIGINAL answer's
+///                                        // confidence is >= confident_at
+///         "mean_abs_dp",                 // |p - p'| on the original pick
+///         "original":  { "labelled", "correct", "accuracy", "accuracy_interval95" },
+///         "perturbed": { ... the same, over the same pairs },
+///         "flipped": [ case, ... ] }
+///     ]
+///   }
 /// }
 /// ```
 ///
@@ -173,6 +208,9 @@ struct Report {
     min_accuracy: Vec<BarCheck>,
     /// The thresholds the signals were read with.
     signal_rules: SignalRules,
+    /// What `--swap` and `--tone-perturb` measured; absent without them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    robustness: Option<Robustness>,
 }
 
 /// The thresholds behind [`Signal`], written into the JSON report: a change
@@ -454,6 +492,7 @@ impl Report {
             questions,
             min_accuracy,
             signal_rules: SignalRules::IN_USE,
+            robustness: None,
         }
     }
 
@@ -809,6 +848,10 @@ impl Display for Report {
                 writeln!(f, "  {status:<8} {}", check.describe())?;
             }
         }
+        if let Some(robustness) = &self.robustness {
+            writeln!(f)?;
+            write!(f, "{robustness}")?;
+        }
         Ok(())
     }
 }
@@ -1034,9 +1077,23 @@ fn evaluate(args: &Eval) -> Result<Report, Failure> {
     let loaded = batch::load(&args.rubric, &args.cases)?;
     check_bars(&loaded.rubric, &args.min_accuracy, &args.rubric)?;
     let backend = Backend::open(args.replay.as_deref(), args.long_context.then_some(true))?;
-    let planned = batch::plan(&loaded)?;
+    let planned = perturb::expand(&loaded, batch::plan(&loaded)?, &args.perturb)?;
     let answered = batch::answer_all(&backend, &loaded, planned)?;
-    Ok(Report::build(&loaded, &answered, &args.min_accuracy))
+    // The report reads the cases as written; the perturbed answers are read
+    // against them, and only there.
+    let (original, perturbed): (Vec<Answered>, Vec<Answered>) = answered
+        .into_iter()
+        .partition(|a| a.unit.variant == Variant::Original);
+    let mut report = Report::build(&loaded, &original, &args.min_accuracy);
+    if args.perturb.any() {
+        report.robustness = Some(Robustness::build(
+            &loaded,
+            &original,
+            &perturbed,
+            args.confident_at,
+        ));
+    }
+    Ok(report)
 }
 
 fn render(report: &Report, json: bool) -> Result<String, Failure> {

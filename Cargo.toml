@@ -304,6 +304,11 @@ required-features = ["cli"]
 name = "jud_tune"
 required-features = ["cli"]
 
+# `jud eval --swap` and `--tone-perturb`.
+[[test]]
+name = "jud_perturb"
+required-features = ["cli"]
+
 # `jud split` (decision 0022).
 [[test]]
 name = "jud_split"

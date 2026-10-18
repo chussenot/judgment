@@ -76,6 +76,11 @@ pub(crate) struct Record {
     /// keyed as without it: the header changes the limits, not the request.
     #[arg(long)]
     pub long_context: bool,
+    /// The perturbed requests to record beside each case, as `jud eval`
+    /// asks them: `CASE.swapped.jud`, `CASE.toned.jud`, or with
+    /// `--swap=joint` both orders in `CASE.jud`.
+    #[command(flatten)]
+    pub perturb: crate::perturb::PerturbArgs,
 }
 
 pub(crate) fn run(args: &Record) -> ExitCode {
@@ -142,7 +147,7 @@ struct Session<'a> {
 /// DIR, so it is the backend's own pace, and unknown before the first.
 fn plan_only(args: &Record) -> Result<String, Failure> {
     let loaded = batch::load(&args.rubric, &args.cases)?;
-    let shared = batch::plan(&loaded)?;
+    let shared = crate::perturb::expand(&loaded, batch::plan(&loaded)?, &args.perturb)?;
     let units: Vec<Unit> = shared.iter().map(|p| p.unit.clone()).collect();
     let names = recording_names(&units, &args.cases)?;
     let planned: Vec<Planned> = names
@@ -150,8 +155,8 @@ fn plan_only(args: &Record) -> Result<String, Failure> {
         .zip(shared)
         .map(|(name, p)| Planned {
             name,
+            questions: p.sent(),
             unit: p.unit,
-            questions: p.questions,
             assets: p.assets,
         })
         .collect();
@@ -367,7 +372,7 @@ fn record(args: &Record) -> Result<(), Failure> {
     // Every request is lowered, and every label of a conversation's turn
     // checked, before the first call (`batch::plan`): a request that does not
     // lower must be found before case 1 is paid for, not after case 4.
-    let shared = batch::plan(&loaded)?;
+    let shared = crate::perturb::expand(&loaded, batch::plan(&loaded)?, &args.perturb)?;
     let units: Vec<Unit> = shared.iter().map(|p| p.unit.clone()).collect();
     let names = recording_names(&units, &args.cases)?;
     let planned: Vec<Planned> = names
@@ -375,8 +380,8 @@ fn record(args: &Record) -> Result<(), Failure> {
         .zip(shared)
         .map(|(name, p)| Planned {
             name,
+            questions: p.sent(),
             unit: p.unit,
-            questions: p.questions,
             assets: p.assets,
         })
         .collect();
