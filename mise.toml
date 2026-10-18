@@ -124,6 +124,9 @@ run = "git diff origin/main... > ${TMPDIR:-/tmp}/judgment-mutants.diff && cargo 
 
 [tasks."docs:check"]
 description = "The documentation gate: frontmatter on every page, the generated pages (llms.txt, the CLI reference, the plugin's format reference and Rust templates) match their sources, every .jud document the pages show is read, and every internal link resolves"
+# The CLI reference and jud:check rebuild target/debug/jud without `mcp`;
+# run beside `test` (as `check` does) they replace the binary its tests run.
+wait_for = ["test"]
 run = """
 set -eu
 scripts/check-frontmatter.sh docs
