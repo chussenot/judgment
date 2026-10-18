@@ -6013,10 +6013,10 @@ The short answer: the wire holds for text. Every success body conforms to the ve
 | | |
 |---|---|
 | Server | `https://api.liquid.ai/decisions`, Liquid's hosted API |
-| Model | `d1`; the model list also names `d1-ultra`, not run |
+| Model | `d1`, then `d1-ultra` |
 | Reference | Liquid's API reference ("Liquid inference API" 1.0.0), the decision models' section |
 | Date | 2026-10-18 |
-| Profiles | `generic` first, then `liquid`; all 19 tests pass under `liquid` |
+| Profiles | `generic` first on `d1`, then `liquid` on both models; all 19 tests pass under `liquid` on each, the shared-images test included |
 
 ## What the server does
 
@@ -6046,7 +6046,11 @@ Refusals come in OpenAI's envelope, `{"error": {"message", "type", "param", "cod
 - **Success bodies hold to the document**, so the profile asserts it, as `typesafe` and `autojev` do.
 - **The confidence formulas hold** within the hosted API's tolerances (on the run, choice 0.85 against 0.846, score 0.55 against 0.547, score 1.70 against an expected level of 1.698), so the profile asserts them, as `typesafe` does.
 
-Repeated identical requests agree on the answer but not on the hundredths (a spread of 0.032 in probability and 0.006 in score over three calls), as on the hosted API.
+Repeated identical requests agree on the answer but not on the hundredths (on `d1`, a spread of 0.032 in probability and 0.006 in score over three calls; on `d1-ultra`, 0.017 and 0.022), as on the hosted API.
+
+## `d1-ultra`
+
+`d1-ultra` behaved as `d1` did on every row above, with its own limit in the over-budget message (`32768 tokens`) and its own numbers in the confidence check (choice 0.82 against 0.824, score 0.92 against 0.919, score 1.95 against 1.946). One profile covers both.
 
 ## What Liquid's reference adds
 
@@ -6059,7 +6063,7 @@ The decision models' section documents what the run did not exercise:
 
 ## What is still open
 
-`d1-ultra`, images through `images` once the crate can send them in Liquid's shape, and a 429.
+Images through `images` once the crate can send them in Liquid's shape, and a 429.
 
 ## How to repeat it
 
