@@ -1,9 +1,9 @@
 ---
 title: Configure a backend
-description: How to point the jud command, the examples and the crate's client at the hosted TypeSafe API, at Jev through OpenRouter, at Ollama on your machine, at laya-serve, at Clef on Workers AI, at any other server that speaks the wire, or at a model on Google Cloud; and what each local server does differently from the hosted API.
+description: How to point the jud command, the examples and the crate's client at the hosted TypeSafe API, at Jev through OpenRouter, at Liquid's decision models, at Ollama on your machine, at laya-serve, at Clef on Workers AI, at any other server that speaks the wire, or at a model on Google Cloud; and what each local server does differently from the hosted API.
 status: current
-last_reviewed: 2026-10-17
-tags: [judgment, jud, configuration, typesafe, openrouter, ollama, laya, clef, cloudflare, google-cloud, how-to]
+last_reviewed: 2026-10-18
+tags: [judgment, jud, configuration, typesafe, openrouter, liquid, ollama, laya, clef, cloudflare, google-cloud, how-to]
 ---
 
 # Configure a backend
@@ -52,6 +52,25 @@ What differs from the hosted API, as [OpenRouter's guide for TypeSafe's SDKs](ht
 - **The model list.** `GET /api/v1/models` is OpenRouter's own catalogue, not TypeSafe's list, so `Client::list_models` fails to decode there. Nothing else in the crate calls it.
 
 OpenRouter also serves the same body at `POST /api/alpha/decisions`, its Decisions API, which it marks alpha; the System One path is the one TypeSafe's SDKs, and this client, are pointed at. `mise run live:openrouter` runs the live tests against it with `OPENROUTER_API_KEY` from `.env`; no run is recorded yet ([Compatible servers and models](../project/research/compatible-servers-and-models.md)).
+
+## Liquid's decision models
+
+Liquid serves its decision models, `d1` and `d1-ultra`, behind TypeSafe's wire: its System One API is `POST https://api.liquid.ai/decisions/v1/systemone`, so the base URL is `https://api.liquid.ai/decisions`, the model is one of Liquid's, and the key is a Liquid one.
+
+```sh
+export TYPESAFE_BASE_URL=https://api.liquid.ai/decisions
+export TYPESAFE_API_KEY=liquid_...  # a Liquid key, not a TypeSafe one
+jud rubric.jud < state.json         # with `model: d1` and `shared_images: data-urls` in the configuration file
+```
+
+What differs from the hosted API, from live runs on both models ([Against Liquid's System One API](../project/verification/liquid.md)):
+
+- **Model names.** A name Liquid does not serve, `jev-latest` among them, is a 404 and an `Error::Http`, not an answer from another model: name `d1` or `d1-ultra`.
+- **Images.** Liquid takes a request's images as a top-level `images` array, not the `assets` map, each a `data:` URL or a `{content_type, base64}` object; the crate sends `data:` URLs, with `ClientBuilder::shared_images_as_data_urls(true)` or `shared_images: data-urls` in the `jud` configuration file. Both models take images. The bare base64 that `shared_images(true)` sends for Ollama is refused with a 422. Liquid's own limits are tighter than the crate's 32 MiB bound and are not checked before the call: up to 8 images, JPEG, PNG or WebP, 5 MB each, in a request body of at most 4.5 MB; a request past one is a 422, `Error::InvalidRequest`, not retried. There is no Box question.
+- **Refusals.** Every refusal is a 422 in OpenAI's `{"error": {...}}` envelope, so `Error::InvalidRequest` carries the message and no located issues. A state over the budget is one of them, and only its message says so: `Error::is_request_too_large` is false for it.
+- **Cost.** Every response carries `usage.cost` in US dollars, read into `Usage::cost`.
+
+`mise run live:liquid` runs the live tests against it with `LIQUID_API_KEY` from `.env`, `LIQUID_MODEL=d1-ultra` for the other model.
 
 ## Ollama on your machine
 
@@ -133,7 +152,7 @@ Observed on 2026-10-07 against Ollama 0.40.0 with `tev1:0.8b`; the limits are Ol
 | The bearer | checked; a wrong key is a 401 | ignored | Send any non-blank key. |
 | Request id | on every response | none | `Response::request_id` is `None`. |
 | Latency | hundreds of milliseconds | one to two seconds for `tev1:0.8b` on an 8-core CPU, after the load | Raise the timeout: 60 s in the file above; the crate's default is 10 s, the command's 30 s. |
-| An image | the `assets` map, each reference replaced by its image | a top-level `images` array of base64 shared by every question; a body with the `assets` map is answered with the map ignored and no error (observed on 2026-10-17, Ollama 0.40.5) | `shared_images: true` in the file, or `ClientBuilder::shared_images(true)`: the images go as that array and no map; the references stay in the state as text. A model without vision refuses the array by name, a 400. |
+| An image | the `assets` map, each reference replaced by its image | a top-level `images` array of base64 shared by every question; a body with the `assets` map is answered with the map ignored and no error (observed on 2026-10-17, Ollama 0.40.5) | `shared_images: true` in the file, or `ClientBuilder::shared_images(true)`: the images go as that array and no map; the references stay in the state as text. A model without vision refuses the array by name, a 400. Each image must be bare base64: a `data:` URL is a 400, `illegal base64 data` (Ollama 0.40.6), so `shared_images: data-urls`, Liquid's spelling, does not serve Ollama. |
 | A Box question | answered on Jev 1.14 | refused by name, a 400 (`choice, score, noul`) | A Noul or a Choice about the image. |
 | `confidence` | TypeSafe's spread | the model's own formula | A threshold tuned on one model is meaningless on another. [Tune thresholds](tune-thresholds.md) again. |
 

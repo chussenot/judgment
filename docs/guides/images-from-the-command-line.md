@@ -2,7 +2,7 @@
 title: Get verdicts on images from the command line
 description: How to get a verdict on a photo or a page with the jud command alone; a rubric that names the image, --asset to send it and --pixels to read a box in pixels, the verdicts a Noul and a Box print and why the Noul is read first, what is refused before any call, images a rubric always sends, labelled photos through jud check, record, eval and tune, and what a real run needs and costs; every transcript replayed from the committed recordings, so no key is needed to follow it.
 status: current
-last_reviewed: 2026-10-15
+last_reviewed: 2026-10-18
 tags: [judgment, jud, cli, images, box, how-to]
 ---
 
@@ -60,7 +60,7 @@ Three things to copy from it. The questions name the image by its reference and 
 
 ## 2. Send the image with `--asset`
 
-`--asset REF=PATH` adds the image under the reference the state uses; the file is read, held to the API's limits, base64-encoded and sent with the header the API requires, and nothing else in the request changes. Replayed from the committed recordings, so the step needs no key:
+`--asset REF=PATH` adds the image under the reference the state uses; the file is read, held to the API's limits, base64-encoded and sent with the header the API requires, and nothing else in the request changes (unless the configuration file sets `shared_images` for Ollama or Liquid: [Configure a backend](configure-a-backend.md)). Replayed from the committed recordings, so the step needs no key:
 
 ```sh
 echo '{"page": "page-00"}' \
@@ -326,7 +326,7 @@ jud config                                                  # "api_key": "enviro
 echo '{"page": "page-00"}' | jud --asset page-00=examples/jud/images/page-00.png examples/jud/stamps.jud
 ```
 
-A Noul, a Choice or a Score about an image needs no change of model. `jud record` and `jud eval` name the model and the server before their first call, so a run aimed at the wrong one can be stopped ([What `jud record` prints](../reference/cli.md#what-it-prints)). What a run costs is tokens by pixels: a 600 by 780 page is about 1,600 input tokens, a 1200 by 1560 one 5,200, for the same thirty-seven output tokens and a latency under 200 ms either way. Send the smallest image that keeps the target legible, about a hundred pixels across for something a Box is to find; the two calibration studies measured both ([shapes](../project/verification/box-calibration-study.md), [pages](../project/verification/box-calibration-study-pages.md)). The command sends every image as base64 in the JSON body; the crate's `multipart` feature is for a Rust caller who has measured the bytes ([Ask a question about an image](ask-about-an-image.md#send-the-images-as-parts)).
+A Noul, a Choice or a Score about an image needs no change of model. `jud record` and `jud eval` name the model and the server before their first call, so a run aimed at the wrong one can be stopped ([What `jud record` prints](../reference/cli.md#what-it-prints)). What a run costs is tokens by pixels: a 600 by 780 page is about 1,600 input tokens, a 1200 by 1560 one 5,200, for the same thirty-seven output tokens and a latency under 200 ms either way. Send the smallest image that keeps the target legible, about a hundred pixels across for something a Box is to find; the two calibration studies measured both ([shapes](../project/verification/box-calibration-study.md), [pages](../project/verification/box-calibration-study-pages.md)). The command sends every image as base64 in the JSON body (in the `assets` map, or the shared array `shared_images` asks for); the crate's `multipart` feature is for a Rust caller who has measured the bytes ([Ask a question about an image](ask-about-an-image.md#send-the-images-as-parts)).
 
 ## Next
 

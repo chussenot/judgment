@@ -10,7 +10,7 @@ tags: [judgment, liquid, d1, d1-ultra, compatibility]
 
 Liquid serves TypeSafe's System One API for its decision models `d1` and `d1-ultra` at `https://api.liquid.ai/decisions`: the client reaches `POST /decisions/v1/systemone` and `GET /decisions/v1/models` with that as its base URL and no other change. `mise run live:liquid` runs the live tests against it with `JUDGMENT_LIVE_PROFILE=liquid`; this page is what that profile pins and where each pin comes from.
 
-The short answer: the wire holds for text. Every success body conforms to the vendored OpenAPI document, and the confidence formulas hold within rounding. Liquid differs from the hosted API in its refusals: it refuses with 422 where the hosted API answers 400 or 200, in OpenAI's error envelope rather than the document's `HTTPValidationError`; it refuses a model name it does not serve; and it has no Box question.
+The short answer: the wire holds, for text and, sent as Liquid spells them, for images. Every success body conforms to the vendored OpenAPI document, and the confidence formulas hold within rounding. Liquid differs from the hosted API in its refusals: it refuses with 422 where the hosted API answers 400 or 200, in OpenAI's error envelope rather than the document's `HTTPValidationError`; it refuses a model name it does not serve; and it has no Box question.
 
 ## What was tested, and with what
 
@@ -36,7 +36,8 @@ The short answer: the wire holds for text. Every success body conforms to the ve
 | An unknown extra body field | answered, the field ignored | 400, `Invalid request.` |
 | The model name `jev-latest` | 404, `not_found_error`, `The model `jev-latest` does not exist.` | 200 |
 | An image with a Box question | 422, `Invalid discriminator value. Expected 'noul' \| 'choice' \| 'score'` | 200 on `jev-preview` |
-| An image as a shared `images` array (`CallOptions::shared_images`), on `d1`, which takes images | 422, `An image must be a base64 `data:` URL or a `{ content_type, base64 }` object.` | not served |
+| An image as a shared `images` array of bare base64 (`CallOptions::shared_images`) | 422, `An image must be a base64 `data:` URL or a `{ content_type, base64 }` object.` | not served |
+| The same array of `data:` URLs (`CallOptions::shared_images_as_data_urls`) | 200 on both models: `circle_present` 1.00 for the drawn circle, against about 0.5 for the same question with no image | not served |
 | `GET /v1/models` | 200, conforming to `ModelMetadataList`: `d1`, `d1-ultra` | 200 |
 | A wrong bearer token | 401 | 401 |
 
@@ -58,16 +59,16 @@ Repeated identical requests agree on the answer but not on the hundredths (each 
 
 ## What Liquid's reference adds
 
-The decision models' section documents what the run did not exercise:
+The decision models' section documents what the runs did not exercise, and the image rules the shared-images rows above follow:
 
-- An `images` array of up to 8 images, each a `data:` URL or a `{ content_type, base64 }` object, on models whose `input_modalities` include `image` (`d1`). It is Liquid's extension; the crate's `shared_images` sends bare base64 strings, which `d1` refuses (judgment-05p).
+- An `images` array of up to 8 images, each a `data:` URL or a `{ content_type, base64 }` object, on models whose `input_modalities` include `image`; `GET /v1/models` lists `text` and `image` for both `d1` and `d1-ultra` on 2026-10-18. It is Liquid's extension. Ollama's array takes only bare base64 ([what Ollama does differently](../../guides/configure-a-backend.md#what-ollama-does-differently)), so no one spelling serves both, and the crate sends Liquid's with `shared_images_as_data_urls` (judgment-05p).
 - Images may also ride in an array state as OpenAI `image_url` parts.
 - Up to 128 questions per request; `d1-ultra` allows 32,768 tokens; both allow 250 KB of text.
 - 429 with `Retry-After` when the organisation's per-model limit is spent, and with code `model_unavailable` when the model has no healthy target. The client retries a 429 and honours `Retry-After`; neither was observed.
 
 ## What is still open
 
-The runs show the wire, not the models: accuracy and calibration on real cases are not measured here. Images were never answered, only refused for their shape; that waits on the crate sending them in Liquid's (judgment-05p). A 429 was not drawn.
+The runs show the wire, not the models: accuracy and calibration on real cases are not measured here. Images were answered for one drawn circle on each model, not measured on cases. A 429 was not drawn.
 
 ## How to repeat it
 

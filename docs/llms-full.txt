@@ -542,6 +542,25 @@ What differs from the hosted API, as [OpenRouter's guide for TypeSafe's SDKs](ht
 
 OpenRouter also serves the same body at `POST /api/alpha/decisions`, its Decisions API, which it marks alpha; the System One path is the one TypeSafe's SDKs, and this client, are pointed at. `mise run live:openrouter` runs the live tests against it with `OPENROUTER_API_KEY` from `.env`; no run is recorded yet ([Compatible servers and models](../project/research/compatible-servers-and-models.md)).
 
+## Liquid's decision models
+
+Liquid serves its decision models, `d1` and `d1-ultra`, behind TypeSafe's wire: its System One API is `POST https://api.liquid.ai/decisions/v1/systemone`, so the base URL is `https://api.liquid.ai/decisions`, the model is one of Liquid's, and the key is a Liquid one.
+
+```sh
+export TYPESAFE_BASE_URL=https://api.liquid.ai/decisions
+export TYPESAFE_API_KEY=liquid_...  # a Liquid key, not a TypeSafe one
+jud rubric.jud < state.json         # with `model: d1` and `shared_images: data-urls` in the configuration file
+```
+
+What differs from the hosted API, from live runs on both models ([Against Liquid's System One API](../project/verification/liquid.md)):
+
+- **Model names.** A name Liquid does not serve, `jev-latest` among them, is a 404 and an `Error::Http`, not an answer from another model: name `d1` or `d1-ultra`.
+- **Images.** Liquid takes a request's images as a top-level `images` array, not the `assets` map, each a `data:` URL or a `{content_type, base64}` object; the crate sends `data:` URLs, with `ClientBuilder::shared_images_as_data_urls(true)` or `shared_images: data-urls` in the `jud` configuration file. Both models take images. The bare base64 that `shared_images(true)` sends for Ollama is refused with a 422. Liquid's own limits are tighter than the crate's 32 MiB bound and are not checked before the call: up to 8 images, JPEG, PNG or WebP, 5 MB each, in a request body of at most 4.5 MB; a request past one is a 422, `Error::InvalidRequest`, not retried. There is no Box question.
+- **Refusals.** Every refusal is a 422 in OpenAI's `{"error": {...}}` envelope, so `Error::InvalidRequest` carries the message and no located issues. A state over the budget is one of them, and only its message says so: `Error::is_request_too_large` is false for it.
+- **Cost.** Every response carries `usage.cost` in US dollars, read into `Usage::cost`.
+
+`mise run live:liquid` runs the live tests against it with `LIQUID_API_KEY` from `.env`, `LIQUID_MODEL=d1-ultra` for the other model.
+
 ## Ollama on your machine
 
 Open-weight decision models speak the wire, and Ollama 0.35 or later serves them; the first example is [tev1](https://ollama.com/library/tev1) at 0.8B parameters, 811 MB, which runs on a CPU.
@@ -622,7 +641,7 @@ Observed on 2026-10-07 against Ollama 0.40.0 with `tev1:0.8b`; the limits are Ol
 | The bearer | checked; a wrong key is a 401 | ignored | Send any non-blank key. |
 | Request id | on every response | none | `Response::request_id` is `None`. |
 | Latency | hundreds of milliseconds | one to two seconds for `tev1:0.8b` on an 8-core CPU, after the load | Raise the timeout: 60 s in the file above; the crate's default is 10 s, the command's 30 s. |
-| An image | the `assets` map, each reference replaced by its image | a top-level `images` array of base64 shared by every question; a body with the `assets` map is answered with the map ignored and no error (observed on 2026-10-17, Ollama 0.40.5) | `shared_images: true` in the file, or `ClientBuilder::shared_images(true)`: the images go as that array and no map; the references stay in the state as text. A model without vision refuses the array by name, a 400. |
+| An image | the `assets` map, each reference replaced by its image | a top-level `images` array of base64 shared by every question; a body with the `assets` map is answered with the map ignored and no error (observed on 2026-10-17, Ollama 0.40.5) | `shared_images: true` in the file, or `ClientBuilder::shared_images(true)`: the images go as that array and no map; the references stay in the state as text. A model without vision refuses the array by name, a 400. Each image must be bare base64: a `data:` URL is a 400, `illegal base64 data` (Ollama 0.40.6), so `shared_images: data-urls`, Liquid's spelling, does not serve Ollama. |
 | A Box question | answered on Jev 1.14 | refused by name, a 400 (`choice, score, noul`) | A Noul or a Choice about the image. |
 | `confidence` | TypeSafe's spread | the model's own formula | A threshold tuned on one model is meaningless on another. [Tune thresholds](tune-thresholds.md) again. |
 
@@ -2089,7 +2108,7 @@ async fn run(state: &serde_json::Value, questions: &judgment::Questions, assets:
 }
 ```
 
-A request without images is the JSON body it always was, whatever was asked. Ollama takes images in a third shape, a shared `images` array, and ignores the map without a word: `ClientBuilder::shared_images(true)` sends that shape ([Configure a backend](configure-a-backend.md#what-ollama-does-differently)). Nothing else moves: the reference check, the 32 MiB bound, the images header, the `Observer`'s report, the fingerprint and the recordings are the same under either transport, so a recording made under one answers a replay under the other, and the `typesafe.evaluate` span says which was sent as `multipart`. The parts are named `part-0`, `part-1`, … in reference order and the asset's `part` maps each reference to its part; the reference itself is not a part name, since it may hold text a header cannot carry ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)). The `jud` command sends base64.
+A request without images is the JSON body it always was, whatever was asked. Ollama takes images in a third shape, a shared `images` array, and ignores the map without a word: `ClientBuilder::shared_images(true)` sends that shape ([Configure a backend](configure-a-backend.md#what-ollama-does-differently)). Liquid takes the same array but refuses bare base64, and Ollama refuses the `data:` URLs Liquid takes: `ClientBuilder::shared_images_as_data_urls(true)` sends those ([Liquid](configure-a-backend.md#liquids-decision-models)). Nothing else moves: the reference check, the 32 MiB bound, the images header, the `Observer`'s report, the fingerprint and the recordings are the same under either transport, so a recording made under one answers a replay under the other, and the `typesafe.evaluate` span says which was sent as `multipart`. The parts are named `part-0`, `part-1`, … in reference order and the asset's `part` maps each reference to its part; the reference itself is not a part name, since it may hold text a header cannot carry ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)). The `jud` command sends base64 in the `assets` map, or in the shared array when its configuration file sets `shared_images`.
 
 ## What the crate checks, and what it reports
 
@@ -2364,7 +2383,7 @@ Three things to copy from it. The questions name the image by its reference and 
 
 ## 2. Send the image with `--asset`
 
-`--asset REF=PATH` adds the image under the reference the state uses; the file is read, held to the API's limits, base64-encoded and sent with the header the API requires, and nothing else in the request changes. Replayed from the committed recordings, so the step needs no key:
+`--asset REF=PATH` adds the image under the reference the state uses; the file is read, held to the API's limits, base64-encoded and sent with the header the API requires, and nothing else in the request changes (unless the configuration file sets `shared_images` for Ollama or Liquid: [Configure a backend](configure-a-backend.md)). Replayed from the committed recordings, so the step needs no key:
 
 ```sh
 echo '{"page": "page-00"}' \
@@ -2630,7 +2649,7 @@ jud config                                                  # "api_key": "enviro
 echo '{"page": "page-00"}' | jud --asset page-00=examples/jud/images/page-00.png examples/jud/stamps.jud
 ```
 
-A Noul, a Choice or a Score about an image needs no change of model. `jud record` and `jud eval` name the model and the server before their first call, so a run aimed at the wrong one can be stopped ([What `jud record` prints](../reference/cli.md#what-it-prints)). What a run costs is tokens by pixels: a 600 by 780 page is about 1,600 input tokens, a 1200 by 1560 one 5,200, for the same thirty-seven output tokens and a latency under 200 ms either way. Send the smallest image that keeps the target legible, about a hundred pixels across for something a Box is to find; the two calibration studies measured both ([shapes](../project/verification/box-calibration-study.md), [pages](../project/verification/box-calibration-study-pages.md)). The command sends every image as base64 in the JSON body; the crate's `multipart` feature is for a Rust caller who has measured the bytes ([Ask a question about an image](ask-about-an-image.md#send-the-images-as-parts)).
+A Noul, a Choice or a Score about an image needs no change of model. `jud record` and `jud eval` name the model and the server before their first call, so a run aimed at the wrong one can be stopped ([What `jud record` prints](../reference/cli.md#what-it-prints)). What a run costs is tokens by pixels: a 600 by 780 page is about 1,600 input tokens, a 1200 by 1560 one 5,200, for the same thirty-seven output tokens and a latency under 200 ms either way. Send the smallest image that keeps the target legible, about a hundred pixels across for something a Box is to find; the two calibration studies measured both ([shapes](../project/verification/box-calibration-study.md), [pages](../project/verification/box-calibration-study-pages.md)). The command sends every image as base64 in the JSON body (in the `assets` map, or the shared array `shared_images` asks for); the crate's `multipart` feature is for a Rust caller who has measured the bytes ([Ask a question about an image](ask-about-an-image.md#send-the-images-as-parts)).
 
 ## Next
 
@@ -3930,7 +3949,7 @@ flowchart TD
 | Model | | | `model` | `jev-latest` |
 | Timeout per attempt | | | `timeout_secs` | `30` |
 | Long context | `--long-context` on `jud RUBRIC`, `jud record` and `jud eval` | | `long_context` | `false`: the model's own limits, 64k tokens per request and 32k per question; `true` raises both to 262k on every call of the run through the crate's `ClientBuilder::long_context`, slower and less accurate by TypeSafe's own account ([Use long context](../guides/use-long-context.md#from-the-shell)). Nothing under a replay, which asks no server. |
-| Shared images | | | `shared_images` | `false`: a request's images go as the `assets` map the hosted API takes; `true`: as the top-level `images` array Ollama takes, with no map, through the crate's `ClientBuilder::shared_images` ([Configure a backend](../guides/configure-a-backend.md#what-ollama-does-differently)) |
+| Shared images | | | `shared_images` | `false`: a request's images go as the `assets` map the hosted API takes; `true`: as the top-level `images` array of base64 Ollama takes, with no map, through the crate's `ClientBuilder::shared_images` ([Configure a backend](../guides/configure-a-backend.md#what-ollama-does-differently)); `data-urls`: the same array of `data:` URLs, Liquid's spelling, through `ClientBuilder::shared_images_as_data_urls` ([Liquid](../guides/configure-a-backend.md#liquids-decision-models)) |
 | Replay directory | `--replay DIR` | `JUD_REPLAY` | | none; [which commands read it](#replay) |
 
 `TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL` set to an empty or blank value count as unset. `JUD_REPLAY` set to an empty or blank value does not: [Replay](#replay) says what happens. No environment variable names the model for the command; the examples under `examples/` read `TYPESAFE_MODEL` for their `--live` runs, the command does not ([beads issue `judgment-rxl`](../project/contributing.md#tracking-work)).
@@ -3956,7 +3975,7 @@ base_url: https://api.typesafe.ai
 model: jev-latest
 timeout_secs: 30
 long_context: false   # true: both context limits raised to 262k tokens on every call
-shared_images: false  # true: images as Ollama's shared `images` array, not the `assets` map
+shared_images: false  # true: images as Ollama's shared `images` array, not the `assets` map; data-urls: Liquid's
 # api_key: ...   # prefer TYPESAFE_API_KEY, which no file on disk holds
 ```
 
@@ -4014,7 +4033,7 @@ A request nobody recorded is a backend failure (status 1); a directory that does
 | Retries | `ClientBuilder::retry_policy`, or `CallOptions` for one call | `RetryPolicy::default()`: [The crate](crate.md#defaults) |
 | Long context | `ClientBuilder::long_context`, or `CallOptions::long_context` for one call | off: the model's own limits, 64k tokens per request and 32k per question; on, 262k for both through the `TypeSafe-Danger-Zone-Long-Context` header, slower and less accurate by TypeSafe's own account ([decision 0027](../project/decisions/0027-long-context-is-a-switch-on-the-call.md)) |
 | Images as parts (feature `multipart`) | `ClientBuilder::multipart`, or `CallOptions::multipart` for one call | off: the images as base64 in the JSON body; on, a `multipart/form-data` body with a JSON `request` part and one part per image, the request keyed and checked as before ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) |
-| Shared images | `ClientBuilder::shared_images`, or `CallOptions::shared_images` for one call | off: the images as the `assets` map; on, a top-level `images` array of base64 and no map, the shape Ollama's `/v1/systemone` takes, which otherwise answers with the map ignored; never parts, whatever `multipart` says; the request keyed and checked as before |
+| Shared images | `ClientBuilder::shared_images`, or `CallOptions::shared_images` for one call | off: the images as the `assets` map; on, a top-level `images` array of base64 and no map, the shape Ollama's `/v1/systemone` takes, which otherwise answers with the map ignored; never parts, whatever `multipart` says; the request keyed and checked as before. `shared_images_as_data_urls` on either sends the same array as `data:` URLs, which Liquid takes and Ollama refuses |
 
 The crate's client reads no base URL from the environment; the `jud` command and the examples do, and pass it to the builder. The two timeouts differ on purpose: a library call is usually one of many on a request path and fails fast at 10 s; a command-line run has a person waiting and a local model that may be loading, so it waits 30 s.
 
@@ -6230,7 +6249,7 @@ PPLX_URL=http://127.0.0.1:8010 mise run live:pplx
 
 Liquid serves TypeSafe's System One API for its decision models `d1` and `d1-ultra` at `https://api.liquid.ai/decisions`: the client reaches `POST /decisions/v1/systemone` and `GET /decisions/v1/models` with that as its base URL and no other change. `mise run live:liquid` runs the live tests against it with `JUDGMENT_LIVE_PROFILE=liquid`; this page is what that profile pins and where each pin comes from.
 
-The short answer: the wire holds for text. Every success body conforms to the vendored OpenAPI document, and the confidence formulas hold within rounding. Liquid differs from the hosted API in its refusals: it refuses with 422 where the hosted API answers 400 or 200, in OpenAI's error envelope rather than the document's `HTTPValidationError`; it refuses a model name it does not serve; and it has no Box question.
+The short answer: the wire holds, for text and, sent as Liquid spells them, for images. Every success body conforms to the vendored OpenAPI document, and the confidence formulas hold within rounding. Liquid differs from the hosted API in its refusals: it refuses with 422 where the hosted API answers 400 or 200, in OpenAI's error envelope rather than the document's `HTTPValidationError`; it refuses a model name it does not serve; and it has no Box question.
 
 ## What was tested, and with what
 
@@ -6256,7 +6275,8 @@ The short answer: the wire holds for text. Every success body conforms to the ve
 | An unknown extra body field | answered, the field ignored | 400, `Invalid request.` |
 | The model name `jev-latest` | 404, `not_found_error`, `The model `jev-latest` does not exist.` | 200 |
 | An image with a Box question | 422, `Invalid discriminator value. Expected 'noul' \| 'choice' \| 'score'` | 200 on `jev-preview` |
-| An image as a shared `images` array (`CallOptions::shared_images`), on `d1`, which takes images | 422, `An image must be a base64 `data:` URL or a `{ content_type, base64 }` object.` | not served |
+| An image as a shared `images` array of bare base64 (`CallOptions::shared_images`) | 422, `An image must be a base64 `data:` URL or a `{ content_type, base64 }` object.` | not served |
+| The same array of `data:` URLs (`CallOptions::shared_images_as_data_urls`) | 200 on both models: `circle_present` 1.00 for the drawn circle, against about 0.5 for the same question with no image | not served |
 | `GET /v1/models` | 200, conforming to `ModelMetadataList`: `d1`, `d1-ultra` | 200 |
 | A wrong bearer token | 401 | 401 |
 
@@ -6278,16 +6298,16 @@ Repeated identical requests agree on the answer but not on the hundredths (each 
 
 ## What Liquid's reference adds
 
-The decision models' section documents what the run did not exercise:
+The decision models' section documents what the runs did not exercise, and the image rules the shared-images rows above follow:
 
-- An `images` array of up to 8 images, each a `data:` URL or a `{ content_type, base64 }` object, on models whose `input_modalities` include `image` (`d1`). It is Liquid's extension; the crate's `shared_images` sends bare base64 strings, which `d1` refuses (judgment-05p).
+- An `images` array of up to 8 images, each a `data:` URL or a `{ content_type, base64 }` object, on models whose `input_modalities` include `image`; `GET /v1/models` lists `text` and `image` for both `d1` and `d1-ultra` on 2026-10-18. It is Liquid's extension. Ollama's array takes only bare base64 ([what Ollama does differently](../../guides/configure-a-backend.md#what-ollama-does-differently)), so no one spelling serves both, and the crate sends Liquid's with `shared_images_as_data_urls` (judgment-05p).
 - Images may also ride in an array state as OpenAI `image_url` parts.
 - Up to 128 questions per request; `d1-ultra` allows 32,768 tokens; both allow 250 KB of text.
 - 429 with `Retry-After` when the organisation's per-model limit is spent, and with code `model_unavailable` when the model has no healthy target. The client retries a 429 and honours `Retry-After`; neither was observed.
 
 ## What is still open
 
-The runs show the wire, not the models: accuracy and calibration on real cases are not measured here. Images were never answered, only refused for their shape; that waits on the crate sending them in Liquid's (judgment-05p). A 429 was not drawn.
+The runs show the wire, not the models: accuracy and calibration on real cases are not measured here. Images were answered for one drawn circle on each model, not measured on cases. A 429 was not drawn.
 
 ## How to repeat it
 
@@ -6466,7 +6486,7 @@ What a consumer can point the crate at, as of 2026-10-06. "Verified" means this 
 | Decider 1.8 (`pip install decider-ai`) | local, GPU | decider-2b, 2b-vision, 4b, 12b, 35b-a3b | serves `/v1/systemone` with continuous batching; temperature scaled by option count since 1.8.0; no byte-identical reproduction across runs | no |
 | OpenDecider 0.6 | local, CPU, CUDA or Apple Silicon | nano (400M encoder), small (4B), medium-td (30B), large-td (80B) | serves `/v1/systemone`; 26 options per question; nano scores 0.796 on typed-decisions against Laya's fine-tuned 0.766 | no |
 | OpenRouter System One API | hosted, `https://openrouter.ai/api` | `jev-latest` (`~typesafe/jev-latest`), `typesafe/jev-1.13` | TypeSafe's body and answers plus `id`, `provider` and `usage.cost`; the response names the dated model (`typesafe/jev-1.13-20260917`); no `x-typesafe-request-id`; 402 when the credit runs out; its `GET /v1/models` is OpenRouter's catalogue; the same body is also served at `/api/alpha/decisions` | partly: the client against a stand-in built from the documented shapes, 2026-10-09 ([Configure a backend](../../guides/configure-a-backend.md#jev-through-openrouter)); `mise run live:openrouter` not yet run |
-| Liquid System One API | hosted, `https://api.liquid.ai/decisions` | `d1` (65,536 tokens, images), `d1-ultra` (32,768) | TypeSafe's body and answers plus `usage.cost`; 422 for every refusal, including one option or one level, which the hosted API answers; a model it does not serve is a 404; over budget is a 422 named only in its message; no Box; images in its own `images` array of `data:` URLs or `{content_type, base64}` objects; refusals in OpenAI's `error` envelope; up to 128 questions | yes, text on `d1` and `d1-ultra`, [2026-10-18](../verification/liquid.md) |
+| Liquid System One API | hosted, `https://api.liquid.ai/decisions` | `d1` (65,536 tokens), `d1-ultra` (32,768), both with images | TypeSafe's body and answers plus `usage.cost`; 422 for every refusal, including one option or one level, which the hosted API answers; a model it does not serve is a 404; over budget is a 422 named only in its message; no Box; images in its own `images` array of `data:` URLs or `{content_type, base64}` objects (`shared_images_as_data_urls`); refusals in OpenAI's `error` envelope; up to 128 questions | yes, text and images on `d1` and `d1-ultra`, [2026-10-18](../verification/liquid.md) |
 | Perplexity Decisions API | hosted | `pplx-decider-v1-27b` | TypeSafe's primitives (choice, noul, score), 255 options, 250k context, images in the state, $0.04 per million input tokens, weights Apache 2.0 | no; the strongest candidate for a second hosted provider |
 | Cloudflare Workers AI | hosted | `clef` (27B), `clef-flash` (9B) | TypeSafe's body and answers, `model` set to `clef` or `clef-flash`, 64 questions per request, images and video in the state; but at one exact URL per model (`/accounts/{account}/ai/run/@cf/cloudflare/{model}`, no `/v1/systemone`, no model list) and inside Cloudflare's `{"result", "success", "errors"}` envelope, so a `base_url` alone does not reach it: `tools/systemone/serve.py cloudflare` maps the path and unwraps the envelope; weights Apache 2.0, self-hosted with Transformers, vLLM or SGLang at about 54 GB (Clef) or 18 GB (Clef-flash) of GPU memory | no: `mise run live:clef`, or `OLLAMA_MODEL=clef mise run live:ollama` for the same weights locally |
 | Fastino GLiDE | hosted, closed | GLiDE | 40k context, optional reasoning mode; wire compatibility not confirmed | no |

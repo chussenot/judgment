@@ -41,7 +41,23 @@ struct File {
     model: Option<String>,
     timeout_secs: Option<u64>,
     long_context: Option<bool>,
-    shared_images: Option<bool>,
+    shared_images: Option<SharedImages>,
+}
+
+/// `shared_images` in the file and in `jud config`: `false` for the
+/// `assets` map, `true` for Ollama's `images` array of bare base64, or
+/// `data-urls` for the same array of `data:` URLs, Liquid's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(untagged, expecting = "true, false or data-urls")]
+enum SharedImages {
+    Flag(bool),
+    Spelling(Spelling),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum Spelling {
+    DataUrls,
 }
 
 /// Where a value came from, for `jud config`.
@@ -83,10 +99,11 @@ pub(crate) struct Resolved {
     /// run's `--long-context` says so.
     long_context: bool,
     long_context_from: Source,
-    /// Whether the images of a request go as Ollama's shared `images`
-    /// array instead of the `assets` map (the crate's
-    /// `ClientBuilder::shared_images`); off unless the file says so.
-    shared_images: bool,
+    /// Whether the images of a request go as a shared `images` array
+    /// instead of the `assets` map (the crate's
+    /// `ClientBuilder::shared_images`, or `shared_images_as_data_urls` for
+    /// `data-urls`); off unless the file says so.
+    shared_images: SharedImages,
     /// `environment`, `config_file` or `missing`; never the key.
     api_key: &'static str,
     #[serde(skip)]
@@ -180,7 +197,7 @@ pub(crate) fn resolve_with(long_context: Option<bool>) -> Fallible<Resolved> {
         timeout_secs: file.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS),
         long_context,
         long_context_from,
-        shared_images: file.shared_images.unwrap_or(false),
+        shared_images: file.shared_images.unwrap_or(SharedImages::Flag(false)),
         api_key,
         api_key_value,
         ignored_environment: ignored_environment(),
@@ -258,8 +275,11 @@ impl Resolved {
             .base_url(self.base_url.clone())
             .model(self.model.clone())
             .timeout(Duration::from_secs(self.timeout_secs))
-            .long_context(self.long_context)
-            .shared_images(self.shared_images);
+            .long_context(self.long_context);
+        builder = match self.shared_images {
+            SharedImages::Flag(on) => builder.shared_images(on),
+            SharedImages::Spelling(Spelling::DataUrls) => builder.shared_images_as_data_urls(true),
+        };
         if let Some(key) = &self.api_key_value {
             builder = builder.api_key(key.clone());
         }

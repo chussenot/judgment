@@ -1248,10 +1248,13 @@ async fn an_image_goes_as_a_shared_array_when_the_server_takes_it() {
         .unwrap();
     let model = requested_model();
     let request = Request::new(&state, &model, &q).with_assets(&assets);
-    match client()
-        .evaluate_with(&request, &CallOptions::new().shared_images(true))
-        .await
-    {
+    // Liquid refuses the bare base64 Ollama takes, and Ollama its data URLs.
+    let options = if *PROFILE == Profile::Liquid {
+        CallOptions::new().shared_images_as_data_urls(true)
+    } else {
+        CallOptions::new().shared_images(true)
+    };
+    match client().evaluate_with(&request, &options).await {
         Ok(response) => {
             let answer = response.get(&present).unwrap();
             eprintln!(

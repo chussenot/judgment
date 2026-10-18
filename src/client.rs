@@ -181,6 +181,15 @@
 //! The images are never parts under it, whatever `multipart` says. Off by
 //! default: the hosted API and the servers that copy its wire take the map.
 //!
+//! Liquid's `/decisions/v1/systemone` takes the same array but refuses bare
+//! base64 with a 422, and Ollama refuses a `data:` URL with a 400 (0.40.6),
+//! so no one spelling serves both: [`ClientBuilder::shared_images_as_data_urls`]
+//! and [`CallOptions::shared_images_as_data_urls`] send each image as a
+//! `data:` URL (`data:image/png;base64,...`) instead, everything else as
+//! above. A second switch beside the first, not a value on it, keeps
+//! `shared_images(bool)` as it was; `data:` URLs over the objects Liquid also
+//! takes, since they are the spelling more servers read.
+//!
 //! # `GET /v1/models`
 //!
 //! [`Client::list_models`] lists the models and aliases the account may
@@ -365,7 +374,7 @@ pub struct CallOptions {
     long_context: Option<bool>,
     #[cfg(feature = "multipart")]
     multipart: Option<bool>,
-    shared_images: Option<bool>,
+    shared_images: Option<SharedImages>,
 }
 
 impl fmt::Debug for CallOptions {
@@ -449,7 +458,17 @@ impl CallOptions {
     /// `false` turns it off for one call of a client built with it on.
     #[must_use]
     pub fn shared_images(mut self, on: bool) -> Self {
-        self.shared_images = Some(on);
+        self.shared_images = Some(SharedImages::from_flag(on, SharedImages::Base64));
+        self
+    }
+
+    /// As [`CallOptions::shared_images`], each image a `data:` URL instead
+    /// of bare base64, the shape Liquid's `/decisions/v1/systemone` takes
+    /// (module docs, `# Shared images`). `false` turns shared images off for
+    /// one call, whichever spelling the client was built with.
+    #[must_use]
+    pub fn shared_images_as_data_urls(mut self, on: bool) -> Self {
+        self.shared_images = Some(SharedImages::from_flag(on, SharedImages::DataUrls));
         self
     }
 
@@ -530,7 +549,7 @@ pub struct ClientBuilder {
     long_context: bool,
     #[cfg(feature = "multipart")]
     multipart: bool,
-    shared_images: bool,
+    shared_images: SharedImages,
 }
 
 impl fmt::Debug for ClientBuilder {
@@ -567,7 +586,7 @@ impl Default for ClientBuilder {
             long_context: false,
             #[cfg(feature = "multipart")]
             multipart: false,
-            shared_images: false,
+            shared_images: SharedImages::Off,
         }
     }
 }
@@ -647,7 +666,17 @@ impl ClientBuilder {
     /// without images is the JSON body it always was.
     #[must_use]
     pub fn shared_images(mut self, on: bool) -> Self {
-        self.shared_images = on;
+        self.shared_images = SharedImages::from_flag(on, SharedImages::Base64);
+        self
+    }
+
+    /// As [`ClientBuilder::shared_images`], each image a `data:` URL
+    /// (`data:image/png;base64,...`) instead of bare base64, the shape
+    /// Liquid's `/decisions/v1/systemone` takes and Ollama's refuses (module
+    /// docs, `# Shared images`). The later of the two calls wins.
+    #[must_use]
+    pub fn shared_images_as_data_urls(mut self, on: bool) -> Self {
+        self.shared_images = SharedImages::from_flag(on, SharedImages::DataUrls);
         self
     }
 
@@ -785,7 +814,7 @@ pub struct Client {
     long_context: bool,
     #[cfg(feature = "multipart")]
     multipart: bool,
-    shared_images: bool,
+    shared_images: SharedImages,
 }
 
 impl fmt::Debug for Client {
@@ -840,20 +869,29 @@ impl Client {
     }
 
     /// Whether this client sends the images of every call as a shared
-    /// `images` array ([`ClientBuilder::shared_images`]).
+    /// `images` array ([`ClientBuilder::shared_images`]), in either
+    /// spelling.
     pub const fn shared_images(&self) -> bool {
-        self.shared_images
+        !matches!(self.shared_images, SharedImages::Off)
     }
 
-    /// Whether a call sends its images as a shared array (module docs,
-    /// `# Shared images`): asked for by the call or the client, and an image
-    /// to send.
+    /// Whether that array holds `data:` URLs
+    /// ([`ClientBuilder::shared_images_as_data_urls`]).
+    pub const fn shared_images_as_data_urls(&self) -> bool {
+        matches!(self.shared_images, SharedImages::DataUrls)
+    }
+
+    /// How a call sends its images (module docs, `# Shared images`): as
+    /// asked by the call or the client, and the map when there is no image.
     fn shared_images_for<S: Serialize>(
         &self,
         request: &Request<'_, S>,
         options: &CallOptions,
-    ) -> bool {
-        options.shared_images.unwrap_or(self.shared_images) && !request.assets.is_empty()
+    ) -> SharedImages {
+        if request.assets.is_empty() {
+            return SharedImages::Off;
+        }
+        options.shared_images.unwrap_or(self.shared_images)
     }
 
     /// Whether a call sends its images as multipart parts (module docs,
@@ -864,7 +902,7 @@ impl Client {
         {
             options.multipart.unwrap_or(self.multipart)
                 && !request.assets.is_empty()
-                && !self.shared_images_for(request, options)
+                && self.shared_images_for(request, options) == SharedImages::Off
         }
         #[cfg(not(feature = "multipart"))]
         {
@@ -1126,6 +1164,22 @@ enum Payload {
     Multipart(multipart::Parts),
 }
 
+/// How a call's images go (module docs, `# Shared images`): the `assets`
+/// map, or a top-level `images` array spelled for Ollama or for Liquid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SharedImages {
+    Off,
+    Base64,
+    DataUrls,
+}
+
+impl SharedImages {
+    /// `on` as the given spelling, `false` as the map.
+    const fn from_flag(on: bool, spelling: Self) -> Self {
+        if on { spelling } else { Self::Off }
+    }
+}
+
 impl Payload {
     /// `multipart` is [`Client::multipart_for`]'s answer: never true
     /// without the feature.
@@ -1133,9 +1187,9 @@ impl Payload {
         request: &Request<'_, S>,
         extra: &Map<String, Value>,
         multipart: bool,
-        shared_images: bool,
+        shared_images: SharedImages,
     ) -> Result<Self> {
-        if shared_images {
+        if shared_images != SharedImages::Off {
             // The body as it would go, the map swapped for the array.
             let mut body = serde_json::to_value(Body { request, extra })?;
             if let Value::Object(fields) = &mut body {
@@ -1143,7 +1197,14 @@ impl Payload {
                 let images: Vec<Value> = request
                     .assets
                     .iter()
-                    .map(|(_, image)| Value::String(crate::asset::encode_base64(image.bytes())))
+                    .map(|(_, image)| {
+                        let base64 = crate::asset::encode_base64(image.bytes());
+                        Value::String(if shared_images == SharedImages::DataUrls {
+                            format!("data:{};base64,{base64}", image.format().content_type())
+                        } else {
+                            base64
+                        })
+                    })
                     .collect();
                 fields.insert("images".to_owned(), Value::Array(images));
             }

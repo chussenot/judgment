@@ -1272,6 +1272,69 @@ async fn options_that_cannot_be_asked_are_refused_before_any_call() {
     );
 }
 
+/// `shared_images: data-urls` sends the array as `data:` URLs, Liquid's
+/// spelling, and `jud config` shows it; a misspelled value is refused.
+#[tokio::test]
+async fn shared_images_as_data_urls_is_a_setting_of_the_file() {
+    let home = config_home();
+    let rubric_path = home.join("red.jud");
+    std::fs::write(
+        &rubric_path,
+        "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: red\n  minor: 4\nspec:\n  questions:\n    red: {type: noul, instructions: Is `photo` mostly red?}\n",
+    )
+    .unwrap();
+    let rubric = rubric_path.to_str().unwrap();
+    let image = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/images/square-300.png"
+    );
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "d1",
+            "answers": { "red": { "type": "noul", "noul": 0.9 } },
+            "usage": { "input_tokens": 500, "output_tokens": 0 }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let uri = server.uri();
+    let env = [
+        ("TYPESAFE_API_KEY", "test-key"),
+        ("TYPESAFE_BASE_URL", &uri),
+    ];
+
+    std::fs::write(home.join("jud/config.yaml"), "shared_images: data-url\n").unwrap();
+    let misspelled = jud(&["config"], "", &env, &home);
+    assert!(!misspelled.status.success(), "{}", stdout(&misspelled));
+    assert!(
+        stderr(&misspelled).contains("true, false or data-urls"),
+        "{}",
+        stderr(&misspelled)
+    );
+
+    std::fs::write(home.join("jud/config.yaml"), "shared_images: data-urls\n").unwrap();
+    let config = jud(&["config"], "", &env, &home);
+    assert!(config.status.success(), "{}", stderr(&config));
+    let shown: Value = serde_json::from_str(&stdout(&config)).unwrap();
+    assert_eq!(shown["shared_images"], "data-urls");
+
+    let asset = format!("photo={image}");
+    let out = jud(
+        &[rubric, "--asset", &asset],
+        r#"{"photo": "photo"}"#,
+        &env,
+        &home,
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let sent = server.received_requests().await.unwrap();
+    let body: Value = serde_json::from_slice(&sent[0].body).unwrap();
+    assert!(body.get("assets").is_none(), "{body}");
+    let first = body["images"][0].as_str().unwrap_or_default();
+    assert!(first.starts_with("data:image/png;base64,iVBOR"), "{body}");
+}
+
 /// `shared_images: true` in the configuration file sends a run's images as
 /// Ollama's top-level `images` array and no `assets` map, and `jud config`
 /// shows the setting; without it the map goes, as it always has.
