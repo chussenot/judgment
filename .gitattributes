@@ -6,3 +6,4 @@ docs/llms-full.txt linguist-generated=true
 # lines merge as the union of both, the post-merge hook imports the result
 # (newer rows win) and the next write exports it deduplicated.
 .beads/issues.jsonl merge=union
+.beads/memories.jsonl merge=union
