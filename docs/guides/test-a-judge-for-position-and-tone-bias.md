@@ -62,6 +62,7 @@ spec:
 - **The answers are the options**, supplied by each case (`options_from: request`), so the descriptions are the texts being compared. A Choice that takes its options from the rubric can be swapped too, but then the test is about the option list, not about two answers.
 - **The keys say nothing about place.** The example's `a` and `b` are the pair's two outputs as LLMBar numbers them. A key such as `first` would tell the model the original order after the swap.
 - **Each case labels the better answer** (`expect: {better: a}`), which `--tone-perturb` needs to know which description to rewrite and both tests need for accuracy.
+- **The instructions are part of what is measured.** The example's rule tells the judge that neither order nor tone is evidence, so its flip rates are the judge's with that rule. A judge asked in production without it can move more: run the tests once with the instructions as they will be asked, then with the rule, and the difference is what the rule buys.
 
 The example's cases are fifty pairs of LLMBar's Natural set (Zeng et al., ICLR 2024, MIT licence): twenty-five whose better answer is `a`, twenty-five whose better answer is `b`. A judge that always picks one place scores 0.5.
 
