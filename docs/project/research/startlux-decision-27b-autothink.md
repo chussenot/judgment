@@ -10,7 +10,7 @@ tags: [research, judgment, compatibility, startlux, autothink, decision-index, c
 
 [StartLux-Decision-v1.1-27B-AutoThink](https://huggingface.co/startlux-models/StartLux-Decision-v1.1-27B-AutoThink) is a decision model that answers a typed question in one pass when it is sure, and writes a thought first when it is not. Its server, `startlux-decide serve`, speaks `/v1/systemone`, so it is a backend this crate can reach with a base URL. This page says what the model is, what its numbers show, and what it would change for a caller of this crate. It is a reading of published sources: the model was not run, since its weights take about 55 GB at BF16 and need a GPU this repository's environment does not have.
 
-The short answer: the wire is compatible for what the crate sends by default, two of the server's additions are lost or break decoding, and a sampled thought makes the model's answers vary between runs in a way the crate's recordings and thresholds have to be read with. The weights are licensed for non-commercial use only.
+The short answer: by its documentation the wire fits what the crate sends by default, two of the server's additions are lost or break decoding, and a sampled thought makes the model's answers vary between runs in a way the crate's recordings and thresholds have to be read with. The weights are licensed for non-commercial use only.
 
 ## Sources
 
@@ -29,7 +29,7 @@ A 27.4 billion parameter model (27,356,728,560 at BF16) of the `qwen3_5` archite
 
 **How it answers.** Each question is its own prompt holding the whole state. The model reads the logits of the option letters A to Z at the last prompt position, divides them by a temperature per question type (Noul 1.376, Choice 0.9503, Score 1.0108, from `decision_config.json`) and normalises them over the listed options. If the top probability reaches a gate, that read-out is the answer. Otherwise the same weights write a thought of at most 4,096 tokens, sampled at temperature 0.6, top-p 0.95, top-k 20, read the letters again, and answer 0.25 × the first read-out + 0.75 × the second. The gate is 0.6 by default; the published results use 0.9.
 
-**How it was trained.** In three stages: shared decision training, a split into the one-pass Instant models (bidirectional attention over the prompt) and the causal AutoThink ones, then supervised reasoning examples followed by RLCD², reinforcement learning that rewards a better probability under a proper scoring rule, scored by a frozen model, and penalises long thoughts. The abstract reports that this raised the share of thoughts that end within the limit by up to 48 points and cut their length by up to 65%, "while largely preserving decision accuracy".
+**How it was trained.** In three stages: shared decision training, a split into the one-pass Instant models (bidirectional attention in their full-attention layers) and the causal AutoThink ones, then supervised reasoning examples followed by RLCD², reinforcement learning that rewards a better probability under a proper scoring rule, scored by a frozen model, and penalises long thoughts. The abstract reports that this raised the share of thoughts that end within the limit by up to 48 points and cut their length by up to 65%, "while largely preserving decision accuracy".
 
 **Its family.** Instant models at 0.8B, 2B, 4B, 9B and 27B, and AutoThink models at 4B, 9B and 27B, with GGUF and MLX builds of this one.
 
@@ -51,18 +51,18 @@ From the card, AutoThink at a gate of 0.9.
 
 ## On the wire, for this crate
 
-The server answers `POST /v1/systemone`, and `POST /v1/decisions` under OpenRouter's name. Read against what the crate sends and decodes:
+The server answers `POST /v1/systemone`, and `POST /v1/decisions` under OpenRouter's name. Every row below reads the server's documentation against the crate's code; none was run.
 
 | What the server does | What the crate does with it |
 |---|---|
 | Ignores the request's `model` and answers with its own name | The response's `model` is the server's, as with any server; recordings record it. |
-| Takes images as base64 strings or data URIs, at most 8 | Both of the crate's shared-image spellings fit: `shared_images(true)` and `shared_images_as_data_urls(true)`. The `assets` map is not documented, so set one of them. Not run. |
+| Takes images as base64 strings or data URIs, at most 8 | Both of the crate's shared-image spellings fit: `shared_images(true)` and `shared_images_as_data_urls(true)`. The `assets` map is not documented, so set one of them. |
 | Adds `none_probability` to every Choice answer (`none_check`, on by default) | **Dropped.** `Response::extra` keeps unknown top-level fields, but an answer's own fields are fixed, so the value cannot be read through the crate. |
-| With `"allow_none": true`, returns `"choice": null` when "None of the above" is most likely | **Fails to decode.** The crate reads `choice` as a string, so the whole response is an `Error::Decode`, never retried. Off by default; a caller who sets it through `CallOptions::extra` breaks every call that comes back null. |
+| With `"allow_none": true`, returns `"choice": null` when "None of the above" is most likely | **Fails to decode.** The crate reads `choice` as a string, so the whole response is an `Error::Decode`, never retried, and its usage, thought tokens included, never reaches the `Observer`. Off by default, but on for every request of a server started with `--allow-none`, and settable per question, so a caller who never sets it can still meet it. Sending `"allow_none": false` with `CallOptions::extra` guards against a server's default. |
 | Takes `think_mode`, `gate`, `think_budget`, `mix`, `return_details` as top-level fields | Sent with `CallOptions::extra`. `details` per answer is dropped like `none_probability`; `timing_ms` at the top level is kept in `Response::extra`. |
 | Counts thought tokens in `usage.output_tokens` | Reported to the `Observer` as output tokens. A thought is the only cost besides the prompt, so it is the number to watch. |
 | Follows TypeSafe's confidence formulas; a Noul answer has no `confidence` | As the crate expects. |
-| Refuses with 422 and `{"error", "detail": [{"loc", "msg", "type"}]}`; 401 without a key; 429 with `Retry-After: 1` at its in-flight limit; 502 when its engine fails | The located `detail` list becomes `Error::InvalidRequest` issues; 429 and 502 are retried and `Retry-After` honoured. Not run. |
+| Refuses with 422 and `{"error", "detail": [{"loc", "msg", "type"}]}`; 401 without a key; 429 with `Retry-After: 1` at its in-flight limit; 502 when its engine fails | The top-level `error` string becomes the `Error::InvalidRequest` message and the located `detail` list its issues; 429 and 502 are retried and `Retry-After` honoured. The server has already tried its engine four times before a 502. |
 | Sends `x-typesafe-request-id` | Read into `Response::request_id`. |
 | Reads 26 options per pass; longer lists are knocked out in groups of 25, the 3 best of each to a final round, the rest sharing 0.001 | Accepted: the crate allows 255 options. The probabilities of options knocked out in the group rounds are a shared remainder, not estimates, so read only the leaders of a long list. |
 
@@ -70,10 +70,11 @@ Of the two gaps, the null `choice` is the one that fails a call; `none_probabili
 
 ## What a thought does to recordings and thresholds
 
-- **The same request can get a different answer.** A thought is sampled, so a question that thinks may answer differently on another run. A recording keeps one answer, and a replay returns that one. The request fingerprint does not change, so a second recording of the same case is a second sample, not a mistake. Before tuning a threshold on recordings of this model, record the cases more than once and read how often the answers differ.
+- **The same request can get a different answer.** A thought is sampled, so a question that thinks may answer differently on another run. A recording keeps one answer, and a replay returns that one. The fingerprint is the same for every run of a request, so a second recording into the same directory replaces the first (`Recorder` writes one file per fingerprint, `jud record` one per case). To see how often answers differ, record each run into a directory of its own and compare them.
+- **The gate and `think_mode` are not in a recording.** The fingerprint covers the state, the questions and the images, not the model or any extra body field, and per-call options do not reach `Recorder` or `jud record`. Set them on the server instead (`serve --think-mode`, or the `auto_think` block of the model folder's `decision_config.json`) and note them beside the recordings, since a recording made at a gate of 0.6 and one made at 0.9 look the same.
 - **`think_mode: never` makes it repeatable, and makes it a different model.** Without a thought its DecisionPivot pair accuracy is 48.0, against 86.9 with one. A threshold tuned with thoughts off does not hold with them on.
 - **The gate is part of what is measured.** The default is 0.6 and the published numbers use 0.9. Record and evaluate with the gate the application will run. The card's own advice is the crate's: set thresholds on the answers your own policy returns, because a confidence used to select or route answers overstates their accuracy.
-- **Latency depends on the case.** One read-out takes 49 ms at 256 tokens on one H200 (vLLM, BF16). A thought is generated at about 27 tokens per second on an A800, so the average thought adds about 10 seconds, and one that runs to its 4,096-token budget about 150 seconds. The authors report 4% of questions running to the budget, mostly hard ones. A per-call timeout set for one-pass models (the client's default is 10 s) will cut thinking calls, and a timeout is retried.
+- **Latency depends on the case.** One read-out takes 49 ms at 256 tokens on one H200 (vLLM, BF16, from the card). A thought is generated at about 27 tokens per second on an A800 (BF16, from the server's documentation). The card's 273 thought tokens are an average over all questions, those that did not think included, so they come to about 10 seconds per question on that machine. In the authors' `none_probability` run about half of the well-posed questions thought (51%), which would put a thought itself nearer 20 seconds, and one that runs to its 4,096-token budget at about 150 seconds. They report 4% of questions running to the budget, mostly hard ones. The client's default timeout of 10 seconds is per attempt, and a timed-out attempt is retried, up to 3 attempts by default, so a thinking call can time out three times over. The `jud` command's default is 30 seconds.
 
 ## Licence
 
@@ -83,6 +84,6 @@ For this repository: no weights or code of theirs would enter it. Whether record
 
 ## What would settle the open points
 
-- A run of `tests/live.rs` against `startlux-decide serve` on a GPU, under the `generic` profile, with the 27B AutoThink and with a small Instant model, and a profile for what it pins. The 27B needs about 55 GB at BF16, the Q8_0 GGUF on llama.cpp less. That run would test every "Not run" row above, the image spellings first.
+- A run of `tests/live.rs` against `startlux-decide serve` on a GPU, under the `generic` profile, with the 27B AutoThink and with a small Instant model, and a profile for what it pins. The 27B needs about 55 GB at BF16, the Q8_0 GGUF on llama.cpp less. That run would test every row of the wire table above, the image spellings first, and could share one recording directory per run with the repeat test below.
 - Recording the same cases two or three times, to measure how often a thinking question's answer changes.
 - A decision on whether the crate should keep an answer's unknown fields, as `Response::extra` does at the top level, which would make `none_probability` and `details` readable, and whether a null `choice` should decode.
