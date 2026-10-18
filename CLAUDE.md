@@ -70,6 +70,7 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   `TYPESAFE_API_KEY` in `.env`, `mise run live:clef` with `CLOUDFLARE_ACCOUNT_ID`
   and `CLOUDFLARE_API_TOKEN` in `.env` through `tools/systemone/serve.py`,
   `mise run live:openrouter` with `OPENROUTER_API_KEY` in `.env`,
+  `mise run live:liquid` with `LIQUID_API_KEY` in `.env`,
   `mise run live:laya`, `mise run live:ollama` and `mise run live:pplx`
   against a local server, each setting `JUDGMENT_LIVE_PROFILE`, which says
   whose behaviour is asserted where servers differ; every body read as sent
