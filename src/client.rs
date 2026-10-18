@@ -30,8 +30,9 @@
 //! it; 402 is [`Error::PaymentRequired`], `OpenRouter`'s answer when the
 //! credit runs out; 429 is [`Error::RateLimited`] and 529 [`Error::Overloaded`] once the
 //! policy stopped; anything else is [`Error::Http`], a 404 included, since
-//! neither path carries a resource id and a 404 is always a base URL that
-//! is not the API or a server without the path.
+//! neither path carries a resource id and a 404 is a base URL that is not
+//! the API, a server without the path, or a model name the server does not
+//! serve (Liquid's `not_found_error`).
 //!
 //! A 2xx that does not decode is [`Error::Decode`]; one that does not
 //! answer the questions sent is what [`Response::verify`] names

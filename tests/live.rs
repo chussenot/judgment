@@ -9,8 +9,8 @@
 //!   cargo test -p judgment --test live -- --ignored --nocapture
 //! ```
 //!
-//! `JUDGMENT_LIVE_PROFILE` names the server (`typesafe`, `laya`, `autojev`
-//! or `generic`, the default): where servers differ, a status code or a
+//! `JUDGMENT_LIVE_PROFILE` names the server (`typesafe`, `laya`, `autojev`,
+//! `openrouter`, `liquid` or `generic`, the default): where servers differ, a status code or a
 //! limit, the behaviour is asserted for the server it was observed on and
 //! printed for the others ([`Profile`]). Every body a test reads raw is
 //! checked against the vendored OpenAPI document, and the answer is printed
@@ -100,6 +100,12 @@ enum Profile {
     /// nothing else of it has been observed yet, so every other difference
     /// is printed.
     OpenRouter,
+    /// Liquid's System One API, base URL `https://api.liquid.ai/decisions`,
+    /// models `d1` and `d1-ultra` (`mise run live:liquid`,
+    /// `docs/project/verification/liquid.md`). It refuses with 422 where the
+    /// hosted API answers 400 or 200, a model name it does not serve with
+    /// 404, and says a state is over its budget only in the message.
+    Liquid,
     /// Any other server: outcomes are printed, and only what the crate needs
     /// of every server is asserted.
     Generic,
@@ -115,19 +121,21 @@ enum Limit {
 }
 
 impl Profile {
-    const NAMES: [(&'static str, Self); 5] = [
+    const NAMES: [(&'static str, Self); 6] = [
         ("typesafe", Self::Typesafe),
         ("laya", Self::Laya),
         ("autojev", Self::Autojev),
         ("openrouter", Self::OpenRouter),
+        ("liquid", Self::Liquid),
         ("generic", Self::Generic),
     ];
 
     /// The hosts whose calls are billed, so that a run against one without
     /// a profile stops before it asks, and the profile each takes.
-    const BILLED: [(&'static str, &'static str); 2] = [
+    const BILLED: [(&'static str, &'static str); 3] = [
         ("api.typesafe.ai", "typesafe"),
         ("openrouter.ai", "openrouter"),
+        ("api.liquid.ai", "liquid"),
     ];
 
     /// `JUDGMENT_LIVE_PROFILE`, or [`Profile::Generic`] when it is unset,
@@ -177,10 +185,17 @@ impl Profile {
     /// OpenAPI document, or only checked and printed. Asserted where a run
     /// found it held: the document is the hosted API's own, and
     /// autojev-serve's bodies held on 2026-10-09
-    /// (`docs/project/verification/autojev-serve.md`). laya-serve's have not been
-    /// checked yet, so they are reported until a run shows they hold.
+    /// (`docs/project/verification/autojev-serve.md`), Liquid's on 2026-10-18.
+    /// laya-serve's have not been checked yet, so they are reported until a
+    /// run shows they hold.
     fn holds_to_the_schema(self) -> bool {
-        matches!(self, Self::Typesafe | Self::Autojev)
+        matches!(self, Self::Typesafe | Self::Autojev | Self::Liquid)
+    }
+
+    /// Whether a model name the server does not serve is refused, with 404,
+    /// rather than answered by whichever checkpoint the server routes to.
+    fn refuses_an_unknown_model(self) -> bool {
+        self == Self::Liquid
     }
 
     /// The status of a limits probe on this server, where one was observed.
@@ -188,7 +203,8 @@ impl Profile {
         match (self, limit) {
             (Self::Typesafe, Limit::Options256 | Limit::Levels11) => Some(400),
             (Self::Laya, Limit::Options256) => Some(413),
-            (Self::Autojev, Limit::Options256 | Limit::Levels11 | Limit::Levels1) => Some(422),
+            (Self::Autojev, Limit::Options256 | Limit::Levels11 | Limit::Levels1)
+            | (Self::Liquid, _) => Some(422),
             (Self::Typesafe | Self::Laya | Self::Autojev, _) => Some(200),
             (Self::OpenRouter | Self::Generic, _) => None,
         }
@@ -198,7 +214,7 @@ impl Profile {
     fn empty_id_status(self) -> Option<u16> {
         match self {
             Self::Typesafe => Some(400),
-            Self::Laya => Some(422),
+            Self::Laya | Self::Liquid => Some(422),
             Self::Autojev => Some(200),
             Self::OpenRouter | Self::Generic => None,
         }
@@ -211,6 +227,7 @@ impl Profile {
         match self {
             Self::Typesafe => Some(400),
             Self::Laya => Some(413),
+            Self::Liquid => Some(422),
             Self::Autojev | Self::OpenRouter | Self::Generic => None,
         }
     }
@@ -613,7 +630,8 @@ async fn the_model_list_is_either_served_or_absent() {
 #[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
 async fn a_model_name_the_server_does_not_know_is_still_answered() {
     // A client built for the hosted API sends `jev-latest`; a server that
-    // routes by name must not fail the request for it. Which checkpoint
+    // routes by name must not fail the request for it. Liquid does, with a
+    // 404 (`Profile::refuses_an_unknown_model`). Which checkpoint
     // answered is the server's business; the response says so in `model`.
     let base_url = base_url();
     let client = Client::builder()
@@ -627,10 +645,18 @@ async fn a_model_name_the_server_does_not_know_is_still_answered() {
     let urgent = q
         .noul("urgent", "Does `message` convey urgency?", None)
         .unwrap();
-    let response = client
+    let result = client
         .system_one(&json!({ "message": STATE_PAYOUTS }), &q)
-        .await
-        .unwrap();
+        .await;
+    if PROFILE.refuses_an_unknown_model() {
+        eprintln!("jev-latest: {result:?}");
+        assert!(
+            matches!(&result, Err(Error::Http { status: 404, body, .. }) if body.contains("does not exist")),
+            "{result:?}"
+        );
+        return;
+    }
+    let response = result.unwrap();
     response.get(&urgent).unwrap();
     eprintln!("jev-latest was answered by model {:?}", response.model);
 }
@@ -864,6 +890,15 @@ async fn the_server_s_limits_match_the_reference_page() {
             continue;
         };
         assert_eq!(status, expected, "{what} on {profile:?}: {text}");
+        if profile == Profile::Liquid {
+            // Any 422 would match the status; the message names the bound.
+            let bound = if matches!(limit, Limit::Options256 | Limit::Levels11) {
+                "at most"
+            } else {
+                "at least"
+            };
+            assert!(text.contains(bound), "{what}: {text}");
+        }
         if profile != Profile::Typesafe {
             continue;
         }
@@ -913,6 +948,9 @@ async fn an_empty_question_id_is_refused_by_the_server_too() {
     }
     if profile == Profile::Typesafe {
         assert!(text.contains("cannot be empty"), "{text}");
+    }
+    if profile == Profile::Liquid {
+        assert!(text.contains("Invalid key"), "{text}");
     }
 }
 
@@ -996,10 +1034,11 @@ async fn repeated_calls_agree_on_the_answer_but_not_on_the_hundredths() {
 async fn confidence_follows_the_documented_formulas_on_jev() {
     // The confidence page gives the formulas; the OpenAPI document defines
     // `score` as the expected level. On the hosted API all three held
-    // within rounding on 2026-10-03. Laya defines confidence otherwise, so
-    // on any other profile the differences are printed and not asserted; they are
-    // what `Choice::confidence_from_probabilities` and its Score siblings
-    // exist to show.
+    // within rounding on 2026-10-03, and on Liquid's `d1` on 2026-10-18.
+    // Laya defines confidence otherwise, so on any other profile the
+    // differences are printed and not asserted; they are what
+    // `Choice::confidence_from_probabilities` and its Score siblings exist
+    // to show.
     let mut q = Questions::new();
     let dept = q
         .choice::<Department>("department", "Which team should handle `message`?")
@@ -1031,7 +1070,7 @@ async fn confidence_follows_the_documented_formulas_on_jev() {
         s.value,
         s.expected_value()
     );
-    if *PROFILE == Profile::Typesafe {
+    if matches!(*PROFILE, Profile::Typesafe | Profile::Liquid) {
         assert!(choice_gap <= 0.015, "choice confidence off by {choice_gap}");
         assert!(score_gap <= 0.02, "score confidence off by {score_gap}");
         assert!(
@@ -1073,7 +1112,14 @@ async fn a_state_over_the_budget_is_refused_as_too_large() {
                     "{err:?}"
                 );
             }
-            assert!(err.is_request_too_large(), "{err:?}");
+            // Liquid's 422 says the state is over its budget only in the
+            // message (`invalid_request_error`, no code), so the predicate
+            // cannot tell it from any other invalid request.
+            if profile == Profile::Liquid {
+                assert!(err.to_string().contains("input limit"), "{err:?}");
+            } else {
+                assert!(err.is_request_too_large(), "{err:?}");
+            }
         }
         Ok(response) => {
             eprintln!("over budget: answered by {}", response.model);

@@ -63,6 +63,7 @@ nav:
           - Position and tone bias of Jev 1.13 and 1.14: project/verification/pairwise-judge-position-and-tone.md
           - Against Laya typed-decisions: project/verification/laya-typed-decisions.md
           - Against autojev-serve: project/verification/autojev-serve.md
+          - Against Liquid's System One API: project/verification/liquid.md
       - Research:
           - System One client libraries: project/research/system-one-client-libraries.md
           - Compatible servers and models: project/research/compatible-servers-and-models.md

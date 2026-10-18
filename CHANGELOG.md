@@ -8,6 +8,15 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `mise run live:liquid` runs the ignored live tests against Liquid's
+  System One API (`https://api.liquid.ai/decisions`, model `d1`, or
+  `d1-ultra` with `LIQUID_MODEL`) with `LIQUID_API_KEY`, under a new
+  `liquid` profile: 422 for every refusal, a 404 for a model name it does
+  not serve, and an over-budget 422 that `Error::is_request_too_large`
+  cannot tell from other refusals, since only its message says so. All
+  the live tests pass on both models; an unprofiled run
+  against `api.liquid.ai` stops before it asks. What it does is in
+  `docs/project/verification/liquid.md`. The client needed no change.
 - `jud eval --swap` and `--tone-perturb FILE`: every case asked again with
   each Choice's options in the reverse order (CALM's position test), or
   with the option the case labels right rewritten from FILE (its sentiment
