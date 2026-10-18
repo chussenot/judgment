@@ -12,7 +12,7 @@ The unit and integration tests never leave the process: wiremock for the client,
 
 ## Does a real server speak the wire this way?
 
-`tests/live.rs` holds eighteen `#[ignore]` tests that run the three text primitives, an image with a Box question about it (on `jev-preview` against the hosted API, where `jev-latest` is still Jev 1.13), a state over the default budget under long context, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Seven tasks run them:
+`tests/live.rs` holds nineteen `#[ignore]` tests (twenty with the `multipart` feature) that run the three text primitives, an image with a Box question about it, the same image as a shared array and as a multipart part (on `jev-preview` against the hosted API, where `jev-latest` is still Jev 1.13), a state over the default budget under long context, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Seven tasks run them:
 
 | Task | Against | Needs |
 |---|---|---|

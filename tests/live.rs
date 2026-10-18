@@ -101,7 +101,7 @@ enum Profile {
     /// is printed.
     OpenRouter,
     /// Liquid's System One API, base URL `https://api.liquid.ai/decisions`,
-    /// model `d1` (`mise run live:liquid`,
+    /// models `d1` and `d1-ultra` (`mise run live:liquid`,
     /// `docs/project/verification/liquid.md`). It refuses with 422 where the
     /// hosted API answers 400 or 200, a model name it does not serve with
     /// 404, and says a state is over its budget only in the message.
@@ -630,7 +630,8 @@ async fn the_model_list_is_either_served_or_absent() {
 #[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
 async fn a_model_name_the_server_does_not_know_is_still_answered() {
     // A client built for the hosted API sends `jev-latest`; a server that
-    // routes by name must not fail the request for it. Which checkpoint
+    // routes by name must not fail the request for it. Liquid does, with a
+    // 404 (`Profile::refuses_an_unknown_model`). Which checkpoint
     // answered is the server's business; the response says so in `model`.
     let base_url = base_url();
     let client = Client::builder()
@@ -650,7 +651,7 @@ async fn a_model_name_the_server_does_not_know_is_still_answered() {
     if PROFILE.refuses_an_unknown_model() {
         eprintln!("jev-latest: {result:?}");
         assert!(
-            matches!(&result, Err(Error::Http { status: 404, .. })),
+            matches!(&result, Err(Error::Http { status: 404, body, .. }) if body.contains("does not exist")),
             "{result:?}"
         );
         return;
@@ -889,6 +890,15 @@ async fn the_server_s_limits_match_the_reference_page() {
             continue;
         };
         assert_eq!(status, expected, "{what} on {profile:?}: {text}");
+        if profile == Profile::Liquid {
+            // Any 422 would match the status; the message names the bound.
+            let bound = if matches!(limit, Limit::Options256 | Limit::Levels11) {
+                "at most"
+            } else {
+                "at least"
+            };
+            assert!(text.contains(bound), "{what}: {text}");
+        }
         if profile != Profile::Typesafe {
             continue;
         }
@@ -938,6 +948,9 @@ async fn an_empty_question_id_is_refused_by_the_server_too() {
     }
     if profile == Profile::Typesafe {
         assert!(text.contains("cannot be empty"), "{text}");
+    }
+    if profile == Profile::Liquid {
+        assert!(text.contains("Invalid key"), "{text}");
     }
 }
 
@@ -1100,9 +1113,11 @@ async fn a_state_over_the_budget_is_refused_as_too_large() {
                 );
             }
             // Liquid's 422 says the state is over its budget only in the
-            // message (`invalid_request_error`, no code), so nothing tells
-            // it from any other invalid request.
-            if profile != Profile::Liquid {
+            // message (`invalid_request_error`, no code), so the predicate
+            // cannot tell it from any other invalid request.
+            if profile == Profile::Liquid {
+                assert!(err.to_string().contains("input limit"), "{err:?}");
+            } else {
                 assert!(err.is_request_too_large(), "{err:?}");
             }
         }
