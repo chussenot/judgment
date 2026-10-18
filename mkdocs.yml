@@ -22,6 +22,7 @@ nav:
       - Label cases: guides/label-cases.md
       - Record, replay and test: guides/record-replay-and-test.md
       - Tune thresholds: guides/tune-thresholds.md
+      - Test a judge for position and tone bias: guides/test-a-judge-for-position-and-tone-bias.md
       - Run in CI: guides/run-in-ci.md
       - Run in a container: guides/run-in-a-container.md
       - Use the Claude Code plugin: guides/use-the-claude-code-plugin.md
@@ -59,6 +60,7 @@ nav:
           - Jev 1.14 on the hosted API, images and the Box: project/verification/hosted-typesafe-jev-1-14.md
           - A Box calibration study on synthetic shapes: project/verification/box-calibration-study.md
           - A Box calibration study on document pages: project/verification/box-calibration-study-pages.md
+          - Position and tone bias of Jev 1.13 and 1.14: project/verification/pairwise-judge-position-and-tone.md
           - Against Laya typed-decisions: project/verification/laya-typed-decisions.md
           - Against autojev-serve: project/verification/autojev-serve.md
           - Against Liquid's System One API: project/verification/liquid.md

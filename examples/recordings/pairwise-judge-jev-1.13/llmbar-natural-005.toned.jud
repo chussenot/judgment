@@ -1,0 +1,26 @@
+# Recorded answer for case `llmbar-natural-005.toned`; found by fingerprint.
+apiVersion: jud/v1
+kind: Recording
+metadata:
+  name: llmbar-natural-005.toned
+  minor: 4
+spec:
+  elapsed_ms: 171
+  fingerprint: sha256:cfd78f633660023fa55e39efe90f3eb1f95e4e9b072f749246d40ad219928245
+  recorded_at: "2026-10-18T08:05:57Z"
+  response:
+    answers:
+      better:
+        choice: a
+        confidence: 0.96
+        probabilities:
+          a: 0.98
+          b: 0.02
+        type: choice
+    model: jev-1.13.0
+    request_id: req_01a14e0bc79575128624d20f96e4096a
+    usage:
+      input_tokens: 517
+      output_tokens: 31
+  rubric: pairwise-judge
+  server: https://api.typesafe.ai

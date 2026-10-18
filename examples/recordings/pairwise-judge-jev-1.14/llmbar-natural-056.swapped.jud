@@ -1,0 +1,26 @@
+# Recorded answer for case `llmbar-natural-056.swapped`; found by fingerprint.
+apiVersion: jud/v1
+kind: Recording
+metadata:
+  name: llmbar-natural-056.swapped
+  minor: 4
+spec:
+  elapsed_ms: 132
+  fingerprint: sha256:c2c758489915086f32fa054e0d8d91a1ebfab378fbcec856ebc6af08faebe653
+  recorded_at: "2026-10-18T08:06:25Z"
+  response:
+    answers:
+      better.swapped:
+        choice: b
+        confidence: 0.88
+        probabilities:
+          a: 0.06
+          b: 0.94
+        type: choice
+    model: jev-1.14.0
+    request_id: req_01a14e0c36c67ebab7e597331838dc9c
+    usage:
+      input_tokens: 473
+      output_tokens: 33
+  rubric: pairwise-judge
+  server: https://api.typesafe.ai

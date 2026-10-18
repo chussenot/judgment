@@ -1,0 +1,392 @@
+# Fifty pairs from LLMBar's Natural set, for pairwise-judge.jud: an
+# instruction, two answers and which of them follows it (`a` is the set's
+# output_1, `b` its output_2). Taken as published, nothing reworded: the 25
+# shortest pairs whose better answer is output_1 and the 25 shortest whose
+# better answer is output_2, in the set's order, so a judge that always
+# picks one place scores 0.5. The case id is the pair's index in the set.
+#
+# Source: https://github.com/princeton-nlp/LLMBar, Dataset/LLMBar/Natural/dataset.json
+# (sha256 f7127b7aa78104cb8e03a2b1b3ac0077e95b125714dd441a8ee63666145a3375, fetched 2026-10-18).
+# Zeng et al., Evaluating Large Language Models at Evaluating Instruction
+# Following, ICLR 2024 (arXiv 2310.07641). Its licence:
+#
+# MIT License
+#
+# Copyright (c) 2023 Princeton Natural Language Processing
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+apiVersion: jud/v1
+kind: Cases
+metadata:
+  name: pairwise-judge-cases
+  minor: 4
+  description: Fifty LLMBar Natural pairs, half with the better answer first.
+spec:
+  rubric: pairwise-judge
+  cases:
+    - id: llmbar-natural-001
+      state: {instruction: "Complete a brief story given the following first sentence. [MALE] was a weatherman."}
+      options:
+        better:
+          a: "He learned his weather report. He prepared for his forecast. He expected the forecast would be wrong. Yet when the forecast report came back positive!"
+          b: "He would always mistreat it every day. He eats a lot of food. He is glad he had a cow."
+      expect: {better: a}
+    - id: llmbar-natural-005
+      state: {instruction: "Complete a brief story given the following first sentence.\n\nOne day my wife and I were on the bench in front of our building."}
+      options:
+        better:
+          a: "My wife felt very down so I started to play a game. She ended up making a lot of friends on the bench. She had a big smile on her face to show her appreciation. I had fun that day."
+          b: "We were expecting a refund. the next week, the store had an iPad. The next week, the other kids were transferred to the store. We were all the best we had ever washed the car."
+      expect: {better: a}
+    - id: llmbar-natural-010
+      state: {instruction: "Complete a brief story given the following first sentence. we sat down to watch the news with dinner."}
+      options:
+        better:
+          a: "They had caught a big storm about tonight. The news says the storm had made it a mud puddle. We decided to do some things about it. We cleaned the puddle up afterward."
+          b: "Our girlfriend was not allowed to go to the party. She told us she was not to be upset. She was very upset. She joined the club."
+      expect: {better: a}
+    - id: llmbar-natural-020
+      state: {instruction: "Generate two rhymes for the following word. Moon"}
+      options:
+        better:
+          a: "Soon, Loon"
+          b: "Clone, June, Nore, Tune"
+      expect: {better: a}
+    - id: llmbar-natural-021
+      state: {instruction: "Given the following input statement, provide the type of sentiment in the statement and the extent of sentiment in terms of sentiment scores. This restaurant has the best service I've ever seen. You can design the score scale by yourself."}
+      options:
+        better:
+          a: "This statement has a sentiment score of 9 / 10"
+          b: "Positive sentiment, sentiment score: 9.5 out of 10"
+      expect: {better: b}
+    - id: llmbar-natural-024
+      state: {instruction: "Generate a new sentence combining two of the following given sentences, with a correct relationship between them. My daughter was jumping up and down. She was excited to go out to the park."}
+      options:
+        better:
+          a: "My daughter was jumping up and down, because she was excited to go out to the park."
+          b: "My daughter was jumping up and down, but she was excited to go out to the park."
+      expect: {better: a}
+    - id: llmbar-natural-027
+      state: {instruction: "Rewrite this sentence in a more concise way: \"Cloud computing is an emerging technology which allows businesses to store and manage data and applications on servers hosted on the internet.\""}
+      options:
+        better:
+          a: "Cloud hosting provides on-demand access to data and applications from any location."
+          b: "Cloud computing lets businesses store and manage data and applications on internet-hosted servers."
+      expect: {better: b}
+    - id: llmbar-natural-028
+      state: {instruction: "Convert the following date from the Gregorian calendar to the Julian calendar: November 29, 2020"}
+      options:
+        better:
+          a: "By the year 2020, November 29, 2020 (Julian date) is 13 days behind the Gregorian calendar."
+          b: "The Julian calendar date of November 29, 2020 (Gregorian calendar) is November 16, 2020."
+      expect: {better: b}
+    - id: llmbar-natural-029
+      state: {instruction: "Create a complete function that will generate an array of random numbers from 1 to 100"}
+      options:
+        better:
+          a: "for x in range(1, 101):\n    data.append(x)"
+          b: "def generate_array(n): \n    array = [] \n    while len(array) != n: \n        num = random.randint(1, 101) \n        array.append(num) \n    return array \n\nprint(generate_array(100))"
+      expect: {better: b}
+    - id: llmbar-natural-031
+      state: {instruction: "Give a helpful response to the following statement: My bag is lost."}
+      options:
+        better:
+          a: "I'm sorry to hear that. Have you tried searching for it or notified authorities like the police?"
+          b: "I'm sorry to hear about your loss."
+      expect: {better: a}
+    - id: llmbar-natural-033
+      state: {instruction: "Given a base number and a power, calculate the result.\n\nBase:5   Power:3"}
+      options:
+        better:
+          a: "5 x 5 x 5 = 625"
+          b: "125"
+      expect: {better: b}
+    - id: llmbar-natural-034
+      state: {instruction: "Generate a realistic mathematical equation for the students to solve."}
+      options:
+        better:
+          a: "x+4 = 5\nwhere x is a real number."
+          b: "2 + 2 = 4."
+      expect: {better: a}
+    - id: llmbar-natural-035
+      state: {instruction: "Provide a suitable synonym for the word 'deceptive' that is in a formal tone."}
+      options:
+        better:
+          a: "The word that best matches the synonym of 'deceptive' is 'misleading'."
+          b: "Cunning."
+      expect: {better: a}
+    - id: llmbar-natural-036
+      state: {instruction: "List 10 synonyms for 'sad'."}
+      options:
+        better:
+          a: "1. gloomy\n2. morose\n3. sorrowful\n4. despairing\n5. melancholy\n6. doleful\n7. glum\n8. afflicted\n9. mournful\n10. despondent"
+          b: "Astounded, Beleaguered, Brooding, Candidate, Circumstantial, Languid, Mournful, Musing, Nostalgic, Pensive"
+      expect: {better: a}
+    - id: llmbar-natural-038
+      state: {instruction: "Modify the given function to accept and use two parameters. def greet_customer():\n    return \"Welcome!\""}
+      options:
+        better:
+          a: "def greet_customer(name, customer):\n    return \"Welcome!\" + name + \"!\""
+          b: "def greet_customer(name, surname):\n    return \"Welcome!\" + name + \" \" + surname + \"!\""
+      expect: {better: b}
+    - id: llmbar-natural-039
+      state: {instruction: "Generate a new headline from the following that is less clickbait. This One Trick Will Change Your Life!"}
+      options:
+        better:
+          a: "Discover how simple changes can influence your life"
+          b: "Experts Baffled: Discover the Single Secret that Can Revolutionize Your Life NOW!"
+      expect: {better: a}
+    - id: llmbar-natural-040
+      state: {instruction: "Group the following items into two categories:\n\nmouse, keyboard, printer, screen"}
+      options:
+        better:
+          a: "mouse, keyboard, printer, screen\nGroup 1: Input device \nGroup 2: Output device"
+          b: "Input devices: mouse, keyboard\nOutput devices: printer, screen"
+      expect: {better: b}
+    - id: llmbar-natural-041
+      state: {instruction: "Rewrite the given sentence using a variety of grammar, punctuation, and structure: the woman ran quickly"}
+      options:
+        better:
+          a: "Swift-footed, she darted onward."
+          b: "She ran quickly."
+      expect: {better: a}
+    - id: llmbar-natural-042
+      state: {instruction: "Construct a sentence using the words \"effervescence\", \"hesitant\" and \"integrity\"."}
+      options:
+        better:
+          a: "The effervescence in the room helped to ease the hesitant nature of the individual."
+          b: "The hesitant effervescence of his words gave away his integrity."
+      expect: {better: b}
+    - id: llmbar-natural-043
+      state: {instruction: "Write an SQL query to find all words that start with the letter 'd'."}
+      options:
+        better:
+          a: "SELECT word FROM words WHERE word = 'd';"
+          b: "SELECT word FROM table WHERE word LIKE 'd%';"
+      expect: {better: b}
+    - id: llmbar-natural-044
+      state: {instruction: "Determine the most common word in the text. Humans are created in the image of God, from a spiritual perspective and from a physical perspective."}
+      options:
+        better:
+          a: "\"from\", \"a\", and \"perspective\""
+          b: "The most common word in the text is \"humans\", which appears twice."
+      expect: {better: a}
+    - id: llmbar-natural-045
+      state: {instruction: "Read the following sentence and suggest one correction. I am going to the the store."}
+      options:
+        better:
+          a: "I am going to the store."
+          b: "Remove one of the two adjacent \"the\""
+      expect: {better: b}
+    - id: llmbar-natural-047
+      state: {instruction: "Classify the following list as either a positive or negative emotion:  amazed, joyful, scared, excited"}
+      options:
+        better:
+          a: "Amazed - Positive, Joyful - Positive, Scared - Negative, Excited - Positive."
+          b: "Amazed, joyful, and excited all have positive sentiments."
+      expect: {better: a}
+    - id: llmbar-natural-052
+      state: {instruction: "Which word does not belong to others?\n\nInch\nKilogram\nCentimeter\nYard"}
+      options:
+        better:
+          a: "The word that does not belong to others is \"Inch\"."
+          b: "Kilogram"
+      expect: {better: b}
+    - id: llmbar-natural-056
+      state: {instruction: "```\n\n 14:00 \u2013 16:00\n \n\n 16:00 \u2013 18:00\n \n\n 18:00 \u2013 20:00\n \n```\n\nWhat is this code doing?"}
+      options:
+        better:
+          a: "The next one should be \u2014 20:00 \u2013 22:00\n \n\n"
+          b: "This code appears to be representing a schedule or time slots for different periods of time."
+      expect: {better: b}
+    - id: llmbar-natural-058
+      state: {instruction: "Generate a sentence predicting what will happen in the following scenario in an imaginative way. A chicken walks into a library."}
+      options:
+        better:
+          a: "The chicken will navigate through the library and explore its many sections, looking for new books to read and new places to explore."
+          b: "The chicken will likely be perceived as a disruptive presence in the library and may be asked to leave."
+      expect: {better: a}
+    - id: llmbar-natural-061
+      state: {instruction: "Determine if the following equation is valid: 2X+Y=100, and provide your reason. Assume there's no constraint on the variables."}
+      options:
+        better:
+          a: "The equation 2X + Y = 100 is valid in the sense that it's a mathematical expression. However, since there are no constraints on the variables X and Y, the equation represents a straight line in a two-dimensional plane, and it has infinitely many solutions."
+          b: "No, the equation is not valid."
+      expect: {better: a}
+    - id: llmbar-natural-063
+      state: {instruction: "Combine the following words in the list by giving an example sentence. Words: flexible, practical, smart."}
+      options:
+        better:
+          a: "The combined feature is \"flexible and smart\"."
+          b: "A car with flexible, practical, and smart features."
+      expect: {better: b}
+    - id: llmbar-natural-064
+      state: {instruction: "Give me ten prime numbers, sorted from smallest onwards, starting with the smallest prime number possible."}
+      options:
+        better:
+          a: "2, 3, 5, 7, 11, 13, 17, 19, 23, 29"
+          b: "Certainly, here are ten prime numbers sorted from smallest onwards, starting with the smallest prime number: 5, 7, 11, 13, 17, 19, 23, 29, 31, 37"
+      expect: {better: a}
+    - id: llmbar-natural-066
+      state: {instruction: "Name three public figures and their occupation who support renewable energy"}
+      options:
+        better:
+          a: "1. Al Gore, climate change advocate and former vice-president of the United States. \n2. Elon Musk, business magnate, investor, and philanthropist. \n3. Mark Zuckerberg, CEO of Facebook, environmentalist, and philanthropist."
+          b: "Three public figures who support renewable energy include Bill Gates, Elon Musk, and Mark Zuckerberg."
+      expect: {better: a}
+    - id: llmbar-natural-067
+      state: {instruction: "What is an antonym for the word \"cogent\"?"}
+      options:
+        better:
+          a: "The antonym of the word \"cogent\" is \"irrelevant\"."
+          b: "unconvincing"
+      expect: {better: b}
+    - id: llmbar-natural-068
+      state: {instruction: "Given an economic concept, define it in simple terms. Inflation"}
+      options:
+        better:
+          a: "Inflation is a rise in the general level of prices of goods and services in an economy over a period of time. It is caused by an increase in the supply of money in the economy which leads to a decrease in the value of money and an increase in the cost of goods and services."
+          b: "Inflation is like when you're blowing up a balloon. The more air you put in, the bigger it gets. Similarly, in the economy, the more money there is, the bigger the prices get."
+      expect: {better: a}
+    - id: llmbar-natural-069
+      state: {instruction: "Talk about Who wears short shorts?"}
+      options:
+        better:
+          a: "The one who feels comfortable and confident in them."
+          b: "The phrase \"Who wears short shorts?\" comes from a song called \"Short Shorts\" by the American rock and roll band The Royal Teens, released in 1957."
+      expect: {better: b}
+    - id: llmbar-natural-071
+      state: {instruction: "Read the following code and suggest a better code segment:\n\n# Search a list and print all the odd numbers\nL = [1,2,3,4,5,6,7,8]\nfor i in L:\n    if i % 2 != 0:\n        print(i)"}
+      options:
+        better:
+          a: "List = [1,2,3,4,5,6,7,8]\nprint(List) # prints all the odd numbers"
+          b: "L = [1,2,3,4,5,6,7,8]\nL = [i for i in L if i % 2 != 0]\nprint(L)"
+      expect: {better: b}
+    - id: llmbar-natural-072
+      state: {instruction: "Detect if the following item is a prime number: 17"}
+      options:
+        better:
+          a: "Yes, 17 is a prime number."
+          b: "No, 17 is not a prime number."
+      expect: {better: a}
+    - id: llmbar-natural-073
+      state: {instruction: "Can you provide a syntactic inversion of the following sentence?\nThe trees were covered with snow."}
+      options:
+        better:
+          a: "The trees were not covered with snow."
+          b: "Covered with snow were the trees."
+      expect: {better: b}
+    - id: llmbar-natural-075
+      state: {instruction: "Replace the words in brackets with a suitable synonym\nThe provision of [generous] incentives motivated many employees to work hard."}
+      options:
+        better:
+          a: "The provision of [charitable] incentives motivated many employees to work hard."
+          b: "The provision of [bountiful] incentives motivated many employees to work hard."
+      expect: {better: b}
+    - id: llmbar-natural-076
+      state: {instruction: "Analyze given speech for sentiment:\nI'm so grateful for the help and support that I received from my family."}
+      options:
+        better:
+          a: "Negative sentiment"
+          b: "Positive sentiment."
+      expect: {better: b}
+    - id: llmbar-natural-077
+      state: {instruction: "Revise the following statement so that it is grammatically correct:\nThe history of the United Sates are full of remarkable milestones"}
+      options:
+        better:
+          a: "The history of the United States are full of remarkable milestones."
+          b: "The history of the United States is full of remarkable milestones."
+      expect: {better: b}
+    - id: llmbar-natural-083
+      state: {instruction: "Reformat the sentence so it is a question: I was surprised by the outcome."}
+      options:
+        better:
+          a: "What surprised you about the outcome?"
+          b: "What was most surprising was the outcome."
+      expect: {better: a}
+    - id: llmbar-natural-084
+      state: {instruction: "Given a list of numbers and the letter \"a\", sort the list in the following order: All the even numbers followed by \"a\" followed by all the odd numbers.\nList of numbers: 5, 2, 9, 12, 8, 6, a, 11"}
+      options:
+        better:
+          a: "5, 8, 12, 2, 6, 11, a, 9, 1"
+          b: "2, 12, 8, 6, a, 5, 9, 11"
+      expect: {better: b}
+    - id: llmbar-natural-085
+      state: {instruction: "What is the smallest positive integer number that is divisible by 5?"}
+      options:
+        better:
+          a: "5"
+          b: "15 is the smallest positive integer number that is divisible by 5."
+      expect: {better: a}
+    - id: llmbar-natural-087
+      state: {instruction: "Provide three example sentences that use the word \u201credundant\u201d to show its meaning and usage"}
+      options:
+        better:
+          a: "Sentence 1: The amount of money he was given was redundant as he had already received the maximum amount allowed. \nSentence 2: His constant complaining was highly redundant as nothing ever changed. \nSentence 3: All the unnecessary details in the report were redundant and quite exhausting to read."
+          b: "1. It is redundant.\n2. This sentence contains the word \"redundant\".\n3. Provide three example sentences that use the word \u201credundant\u201d."
+      expect: {better: a}
+    - id: llmbar-natural-088
+      state: {instruction: "Tom loves to go hiking on the weekends."}
+      options:
+        better:
+          a: "What an amazing hobby! Where do you usually go?"
+          b: "What do you like to do on the weekends, Tom?\n\nTom: I love to go hiking on the weekends. It's the perfect way to unwind and get some exercise."
+      expect: {better: a}
+    - id: llmbar-natural-090
+      state: {instruction: "Create an original proverb that describes friendship."}
+      options:
+        better:
+          a: "A friend in need is a friend indeed."
+          b: "In the garden of life, true friends are the flowers that never wither."
+      expect: {better: b}
+    - id: llmbar-natural-091
+      state: {instruction: "Divide this list of numbers by 10.\n[5, 15, 17, 20, 39]"}
+      options:
+        better:
+          a: "[0.5, 1.5, 1.7, 2, 3.9]"
+          b: "The result of dividing the list of numbers by 10 is [5, 15, 17, 20, 39]."
+      expect: {better: a}
+    - id: llmbar-natural-092
+      state: {instruction: "Infer the implied meaning of the following sentence: She is not what she used to be."}
+      options:
+        better:
+          a: "She is not as she once was."
+          b: "She has changed substantially over time."
+      expect: {better: b}
+    - id: llmbar-natural-096
+      state: {instruction: "Complete the following sentence: \"Yesterday it was raining, so I put on my ____.\""}
+      options:
+        better:
+          a: "Yesterday it was raining, so I put on my jacket to keep out the rain."
+          b: "Yesterday it was raining, so I put on my raincoat."
+      expect: {better: b}
+    - id: llmbar-natural-097
+      state: {instruction: "Find the nearest restaurant from a given address: 715 Church Street, Evanston, IL 60201"}
+      options:
+        better:
+          a: "The nearest restaurant to 715 Church St, Evanston, IL 60201 is Kuma\u2019s Corner, located at 5307 N Clark St, Chicago, IL 60660."
+          b: "The nearest restaurant is \"elephant + vine\", located at 719 Church St, Evanston, IL 60201."
+      expect: {better: b}
+    - id: llmbar-natural-099
+      state: {instruction: "Rewrite the given sentence to make it more expressive and keep its meaning unchanged: She was caught in the heavy rain."}
+      options:
+        better:
+          a: "She found herself drenched in the pouring rain."
+          b: "She was soaked in a sudden downpour as she made her way home."
+      expect: {better: a}

@@ -6,12 +6,13 @@
 //! Every step is the library's: `Cases::bind`, `Case::request`,
 //! `Case::per_turn`, `jud::grade`, `Rubric::apply`.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
 use judgment::eval::{Judgment, is_name};
 use judgment::jud::{Case, Cases, Expect, Rubric, Verdict};
-use judgment::{Assets, Questions, Response};
+use judgment::{Answer, Assets, Questions, Response};
 
 use crate::backend::{Backend, Failure};
 use crate::tools;
@@ -90,6 +91,24 @@ pub(crate) struct Unit {
     /// True for one turn of a conversation, a state cut short of the
     /// document's.
     pub by_turn: bool,
+    /// What the request is: the case as written, or a perturbation of it
+    /// (`perturb`).
+    pub variant: Variant,
+    /// The name of the unit this one perturbs; its own name for the case
+    /// as written. What pairs a perturbed answer with the original one.
+    pub base: String,
+}
+
+/// A request as the case writes it, or one `jud eval --swap` or
+/// `--tone-perturb` derives from it (`perturb`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Variant {
+    /// The case's own request.
+    Original,
+    /// Every Choice's options in the reverse order.
+    Swapped,
+    /// The better answer rewritten in another tone.
+    Toned,
 }
 
 impl Unit {
@@ -115,18 +134,23 @@ pub(crate) fn units(cases: &Cases) -> Vec<Unit> {
         let turns = if by_turn { case.per_turn() } else { Vec::new() };
         if turns.is_empty() {
             out.push(Unit {
+                base: name.clone(),
                 name,
                 index,
                 case: case.clone(),
                 by_turn: false,
+                variant: Variant::Original,
             });
         } else {
             for turn in turns {
+                let name = format!("{name}-turn-{}", turn.index);
                 out.push(Unit {
-                    name: format!("{name}-turn-{}", turn.index),
+                    base: name.clone(),
+                    name,
                     index,
                     case: turn.case,
                     by_turn: true,
+                    variant: Variant::Original,
                 });
             }
         }
@@ -145,6 +169,11 @@ pub(crate) struct Answered {
     pub verdicts: IndexMap<String, Verdict>,
     /// One judgment per labelled question, in the case's order.
     pub judgments: Vec<(String, Judgment)>,
+    /// The answers to the reversed copies asked in the same request
+    /// (`jud eval --swap=joint`), by the id of the question they copy;
+    /// empty otherwise. They are kept out of `response`, which the rubric
+    /// reads, since the rubric asks no such question.
+    pub joint: BTreeMap<String, Answer>,
 }
 
 /// A unit with its request lowered and its images loaded: what [`plan`]
@@ -153,6 +182,21 @@ pub(crate) struct Planned {
     pub unit: Unit,
     pub questions: Questions,
     pub assets: Assets,
+    /// Reversed copies of the Choice questions, asked in the same request
+    /// under `ID.swapped` (`jud eval --swap=joint`); empty otherwise.
+    pub joint: Questions,
+}
+
+impl Planned {
+    /// The questions the request sends: the rubric's, then any joint copies.
+    pub(crate) fn sent(&self) -> Questions {
+        let mut sent = self.questions.clone();
+        for (id, question) in self.joint.iter() {
+            // The copies were validated and named apart when they were made.
+            let _ = sent.add(id, question.clone());
+        }
+        sent
+    }
 }
 
 /// Lower a unit's request, a usage failure when the rubric does not lower
@@ -192,6 +236,7 @@ pub(crate) fn plan(loaded: &Loaded) -> Result<Vec<Planned>, Failure> {
             unit,
             questions,
             assets,
+            joint: Questions::new(),
         });
     }
     let turns: Vec<Case> = planned
@@ -217,11 +262,7 @@ pub(crate) fn answer(
     loaded: &Loaded,
     planned: Planned,
 ) -> Result<Answered, Failure> {
-    let response = backend.answer(
-        &planned.unit.case.state,
-        &planned.questions,
-        &planned.assets,
-    )?;
+    let response = backend.answer(&planned.unit.case.state, &planned.sent(), &planned.assets)?;
     grade(loaded, planned, response)
 }
 
@@ -235,7 +276,22 @@ pub(crate) fn grade(
         unit,
         questions,
         assets,
+        joint: copies,
     } = planned;
+    let (response, joint) = crate::perturb::split_joint(response, &copies);
+    // A swap asked on its own (`jud eval --swap`) asks none of the rubric's
+    // questions: there is nothing for the policy or the labels to read.
+    if questions.is_empty() {
+        return Ok(Answered {
+            unit,
+            questions,
+            assets,
+            response,
+            verdicts: IndexMap::new(),
+            judgments: Vec::new(),
+            joint,
+        });
+    }
     let verdicts = loaded.rubric.apply(&questions, &response).map_err(|e| {
         Failure::Backend(format!(
             "the answer for case {} does not fit the rubric: {e}",
@@ -256,6 +312,7 @@ pub(crate) fn grade(
         response,
         verdicts,
         judgments,
+        joint,
     })
 }
 
