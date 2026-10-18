@@ -37,7 +37,14 @@ export)
   # Import both files first (newer rows win, nothing is deleted): a database
   # behind the file would otherwise write its older rows over newer ones.
   [ -f "$file" ] && BD_GIT_HOOK=1 bd import "$file" >/dev/null 2>&1 || true
-  [ -f "$mem" ] && BD_GIT_HOOK=1 bd import "$mem" >/dev/null 2>&1 || true
+  # Memories have no timestamp, so the file's row would overwrite one just
+  # rewritten with `bd remember --key`: take only the keys the database lacks.
+  if [ -f "$mem" ]; then
+    export_mem | sed 's/.*\("key":"[^"]*"\).*/\1/' >"$mem.keys"
+    grep -vF -f "$mem.keys" "$mem" >"$mem.new" || true
+    [ -s "$mem.new" ] && { BD_GIT_HOOK=1 bd import "$mem.new" >/dev/null 2>&1 || true; }
+    rm -f "$mem.keys" "$mem.new"
+  fi
   bd export -o "$file"
   export_mem >"$mem.tmp" && mv "$mem.tmp" "$mem"
   [ -s "$mem" ] || rm -f "$mem"
