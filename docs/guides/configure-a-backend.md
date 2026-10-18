@@ -66,7 +66,7 @@ jud rubric.jud < state.json         # with `model: d1` in the configuration file
 What differs from the hosted API, from live runs on both models ([Against Liquid's System One API](../project/verification/liquid.md)):
 
 - **Model names.** A name Liquid does not serve, `jev-latest` among them, is a 404 and an `Error::Http`, not an answer from another model: name `d1` or `d1-ultra`.
-- **Images.** Liquid takes a request's images as a top-level `images` array, not the `assets` map, and each as a `data:` URL: `ClientBuilder::shared_images_as_data_urls(true)`, or `shared_images: data-urls` in the `jud` configuration file. The bare base64 that `shared_images(true)` sends for Ollama is refused with a 422. There is no Box question.
+- **Images.** Liquid takes a request's images as a top-level `images` array, not the `assets` map, and each as a `data:` URL: `ClientBuilder::shared_images_as_data_urls(true)`, or `shared_images: data-urls` in the `jud` configuration file. The bare base64 that `shared_images(true)` sends for Ollama is refused with a 422. Liquid's own limits are tighter than the crate's 32 MiB bound and are not checked before the call: up to 8 images, JPEG, PNG or WebP, 5 MB each, in a request body of at most 4.5 MB; a request past one is a 422, `Error::InvalidRequest`, not retried. There is no Box question.
 - **Refusals.** Every refusal is a 422 in OpenAI's `{"error": {...}}` envelope, so `Error::InvalidRequest` carries the message and no located issues. A state over the budget is one of them, and only its message says so: `Error::is_request_too_large` is false for it.
 - **Cost.** Every response carries `usage.cost` in US dollars, read into `Usage::cost`.
 

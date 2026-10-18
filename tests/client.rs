@@ -2838,8 +2838,10 @@ async fn images_go_as_data_urls_when_asked() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/v1/systemone"))
+        .and(header("typesafe-danger-zone-images", "true"))
+        .and(header("content-type", "application/json"))
         .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
-        .expect(3)
+        .expect(4)
         .mount(&server)
         .await;
     let mut assets = judgment::Assets::new();
@@ -2884,6 +2886,13 @@ async fn images_go_as_data_urls_when_asked() {
         )
         .await
         .unwrap();
+    on_the_call
+        .evaluate_with(
+            &request,
+            &CallOptions::new().shared_images_as_data_urls(false),
+        )
+        .await
+        .unwrap();
 
     let as_map = serde_json::to_value(&request).unwrap();
     let base64 = |name: &str| {
@@ -2908,6 +2917,47 @@ async fn images_go_as_data_urls_when_asked() {
     assert!(bodies[1].get("images").is_none(), "{}", bodies[1]);
     assert_eq!(bodies[1]["assets"], as_map["assets"]);
     assert_eq!(bodies[2]["images"], as_urls, "{}", bodies[2]);
+    assert!(bodies[3].get("images").is_none(), "{}", bodies[3]);
+    assert_eq!(bodies[3]["assets"], as_map["assets"]);
+}
+
+/// Of the two builder switches, the later wins: data URLs then bare
+/// base64 sends bare base64.
+#[tokio::test]
+async fn the_later_shared_images_switch_wins() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut assets = judgment::Assets::new();
+    assets
+        .insert("door", fixture_image("square-300.png"))
+        .unwrap();
+    let state = json!({ "door": "door" });
+    let q = one_noul();
+    let request = Request::new(&state, "clef-flash", &q).with_assets(&assets);
+    let c = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .shared_images_as_data_urls(true)
+        .shared_images(true)
+        .build()
+        .unwrap();
+    assert!(c.shared_images() && !c.shared_images_as_data_urls());
+    c.evaluate_with(&request, &CallOptions::new())
+        .await
+        .unwrap();
+    let as_map = serde_json::to_value(&request).unwrap();
+    let body: serde_json::Value =
+        serde_json::from_slice(&server.received_requests().await.unwrap()[0].body).unwrap();
+    assert_eq!(
+        body["images"],
+        json!([as_map["assets"]["door"]["data_base64"]])
+    );
 }
 
 /// Shared images win over multipart: the body is JSON with the array.

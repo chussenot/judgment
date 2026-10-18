@@ -48,7 +48,7 @@ struct File {
 /// `assets` map, `true` for Ollama's `images` array of bare base64, or
 /// `data-urls` for the same array of `data:` URLs, Liquid's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(untagged)]
+#[serde(untagged, expecting = "true, false or data-urls")]
 enum SharedImages {
     Flag(bool),
     Spelling(Spelling),

@@ -1308,6 +1308,11 @@ async fn shared_images_as_data_urls_is_a_setting_of_the_file() {
     std::fs::write(home.join("jud/config.yaml"), "shared_images: data-url\n").unwrap();
     let misspelled = jud(&["config"], "", &env, &home);
     assert!(!misspelled.status.success(), "{}", stdout(&misspelled));
+    assert!(
+        stderr(&misspelled).contains("true, false or data-urls"),
+        "{}",
+        stderr(&misspelled)
+    );
 
     std::fs::write(home.join("jud/config.yaml"), "shared_images: data-urls\n").unwrap();
     let config = jud(&["config"], "", &env, &home);

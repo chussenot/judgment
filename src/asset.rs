@@ -99,7 +99,7 @@ impl ImageFormat {
     }
 
     /// The media type a file of this format is sent under in a multipart
-    /// body: `image/png` or `image/jpeg`.
+    /// body or a `data:` URL: `image/png` or `image/jpeg`.
     pub const fn content_type(self) -> &'static str {
         match self {
             Self::Png => "image/png",
