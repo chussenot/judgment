@@ -2,7 +2,7 @@
 title: Configuration
 description: Every setting the jud command and the crate's client read, where each comes from, in what order of precedence, and what the defaults are; the configuration file's fields, long context as a field and a flag, the output of jud config, and which commands read JUD_REPLAY.
 status: current
-last_reviewed: 2026-10-17
+last_reviewed: 2026-10-18
 tags: [judgment, jud, cli, configuration, reference]
 ---
 

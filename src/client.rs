@@ -182,10 +182,13 @@
 //! default: the hosted API and the servers that copy its wire take the map.
 //!
 //! Liquid's `/decisions/v1/systemone` takes the same array but refuses bare
-//! base64 with a 422, and Ollama refuses anything else with a 400, so no one
-//! spelling serves both: [`ClientBuilder::shared_images_as_data_urls`] and
-//! [`CallOptions::shared_images_as_data_urls`] send each image as a `data:`
-//! URL (`data:image/png;base64,...`) instead, everything else as above.
+//! base64 with a 422, and Ollama refuses a `data:` URL with a 400 (0.40.6),
+//! so no one spelling serves both: [`ClientBuilder::shared_images_as_data_urls`]
+//! and [`CallOptions::shared_images_as_data_urls`] send each image as a
+//! `data:` URL (`data:image/png;base64,...`) instead, everything else as
+//! above. A second switch beside the first, not a value on it, keeps
+//! `shared_images(bool)` as it was; `data:` URLs over the objects Liquid also
+//! takes, since they are the spelling more servers read.
 //!
 //! # `GET /v1/models`
 //!
