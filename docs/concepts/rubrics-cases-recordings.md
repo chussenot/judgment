@@ -2,7 +2,7 @@
 title: Rubrics, cases and recordings
 description: Why a decision is written as a rubric, why the labelled examples it is graded on and the answers a model gave are documents of their own, how the three name each other by content, and the loop that tunes a policy from them.
 status: current
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-24
 tags: [judgment, jud, rubric, cases, recordings, calibration, concepts]
 ---
 
@@ -82,7 +82,7 @@ You write the rubric and label the cases; the commands run the five steps.
 4. **Tune.** Sweep each Noul's threshold and read off the best F1; table each Choice's confidence bar against accuracy and coverage and read off the lowest bar that keeps the accuracy wanted; sweep each Score's levels. `jud tune` prints the tables and a proposal.
 5. **Write back.** Put the gates into `policy`, with the cases' fingerprint, the model, the server and the time in `tuning`. The next person to open the file sees what the numbers rest on. Paste the blocks `jud tune` prints, or let `jud tune --out` write the rubric to a new file.
 
-When the model version moves, run step 2 again (`jud record --refresh`). The questions do not change, so their fingerprint does not; the bars may, and the policy fingerprint shows it; `tuning` names the new model.
+When the model version moves, run step 2 again (`jud record --refresh`) into a directory of its own. The questions do not change, so their fingerprint does not; the bars may, and the policy fingerprint shows it; `tuning` names the new model. Before labelling anything new, `jud eval --against` sets the new answers beside the old (below).
 
 ## The metrics
 
@@ -94,6 +94,12 @@ The crate reports per question, from `eval::metrics`:
 - **Mean confidence when right and when wrong**, which says whether the confidence separates the two at all.
 
 [Tune thresholds](../guides/tune-thresholds.md) reads them in practice.
+
+## Agreement before labels
+
+Every metric above needs labels, and labels are the expensive part. When the model changes (a new version behind `jev-latest`, an open-weight model served locally in place of the hosted one), the first question is cheaper: does the new model answer these cases the way the old one did? `jud eval --against DIR` answers it from two sets of recordings, with no label and no call: per question, how often the pick differs, with its Wilson interval, and how far the probability on the old pick moved. Over the 50 pairwise-judge cases, Jev 1.14 picks what Jev 1.13 picks every time, and the probability moves by 0.016 on average.
+
+Agreement is a screen, not a grade. Two models that agree can both be wrong: the same two Jev versions miss the same 3 cases. So agreement never gates, and the report says so on its first line. Where the models differ, the cases it names are the ones to label first. This is the screening stage of [DeShong et al. 2026](https://arxiv.org/abs/2610.24335), which compares LLM judges with each other before experts grade them, and reaches the same conclusion: judges can agree and still be wrong, so only graded cases say which is right. Typed questions remove the problems that study's audit had to repair (scores between the levels, answers it could not parse), since `Response::verify` refuses them.
 
 ## Why one format
 

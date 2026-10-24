@@ -1,7 +1,8 @@
 //! `--swap` and `--tone-perturb`, on `jud eval` and `jud record`: the same
 //! cases asked again with each Choice's options in the reverse order, or
 //! with the better answer rewritten in another tone, and the report of how
-//! far the verdicts move.
+//! far the verdicts move. `jud eval --against DIR` reads the same table
+//! between the run's answers and another model's recordings.
 //!
 //! A swap reverses the options' order and keeps every key with its
 //! description, so the one thing that changes is where each answer sits: a
@@ -18,12 +19,12 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display, Formatter};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, ValueEnum, ValueHint};
 use indexmap::IndexMap;
-use judgment::eval::Z_95;
 use judgment::eval::metrics::wilson_interval;
+use judgment::eval::{Judgment, Z_95};
 use judgment::jud::Expect;
 use judgment::{Answer, Question, Questions, Response};
 use serde::Serialize;
@@ -319,6 +320,8 @@ pub(crate) enum Test {
     Swap,
     /// The better answer in another tone.
     Tone,
+    /// The same request, answered in the recordings `--against` names.
+    Against,
 }
 
 impl Test {
@@ -326,6 +329,7 @@ impl Test {
         match self {
             Self::Swap => "swap",
             Self::Tone => "tone",
+            Self::Against => "against",
         }
     }
 }
@@ -397,29 +401,44 @@ fn ratio(n: usize, of: usize) -> Option<f64> {
     (of > 0).then(|| n as f64 / of as f64)
 }
 
-/// A Choice answer's pick, confidence and distribution.
-fn choice(
-    answer: Option<&Answer>,
-) -> Option<(&str, f64, &BTreeMap<String, judgment::Probability>)> {
-    match answer? {
-        Answer::Choice {
-            choice,
-            probabilities,
-            confidence,
-        } => Some((choice.as_str(), confidence.value(), probabilities)),
-        _ => None,
-    }
-}
-
 /// One pair, as the totals count it.
 struct Pair {
     case: String,
     flipped: bool,
     confident: bool,
     abs_dp: f64,
-    label: Option<String>,
     original: String,
     perturbed: String,
+    /// Whether each answer is right, when the case labels the question.
+    correct: Option<(bool, bool)>,
+}
+
+/// Two answers to one question as a pair, read as `jud eval` grades them
+/// (`Judgment::of_answer`): a Choice by its option, a Score by its level, a
+/// Noul as yes from 0.5. `None` when either has no pick and distribution
+/// to compare: a Box, an answer of a kind this release does not know, or
+/// none at all.
+fn pair(case: &str, a: Option<&Answer>, b: Option<&Answer>, confident_at: f64) -> Option<Pair> {
+    let comparable = |x: Option<&Answer>| {
+        x.filter(|x| {
+            matches!(
+                x,
+                Answer::Choice { .. } | Answer::Score { .. } | Answer::Noul { .. }
+            )
+        })
+        .map(|x| Judgment::of_answer(x, None))
+    };
+    let (a, b) = (comparable(a)?, comparable(b)?);
+    let on_pick = |j: &Judgment| j.probabilities.get(&a.predicted).copied().unwrap_or(0.0);
+    Some(Pair {
+        case: case.to_owned(),
+        flipped: a.predicted != b.predicted,
+        confident: a.confidence >= confident_at,
+        abs_dp: (on_pick(&a) - on_pick(&b)).abs(),
+        correct: None,
+        original: a.predicted,
+        perturbed: b.predicted,
+    })
 }
 
 impl Robustness {
@@ -441,27 +460,17 @@ impl Robustness {
             }
         }
         let mut push = |id: &str, test: Test, base: &Answered, answer: Option<&Answer>| {
-            let (Some((pick, confidence, p)), Some((pick2, _, p2))) =
-                (choice(base.response.answers.get(id)), choice(answer))
-            else {
+            // A swap or a tone rewrite changes a Choice only.
+            let Some(original @ Answer::Choice { .. }) = base.response.answers.get(id) else {
                 return;
             };
-            let value = |m: &BTreeMap<String, judgment::Probability>| {
-                m.get(pick).map_or(0.0, |v| v.value())
+            let Some(mut p) = pair(&base.unit.name, Some(original), answer, confident_at) else {
+                return;
             };
-            let label = match base.unit.case.expect.get(id) {
-                Some(Expect::Text(label)) => Some(label.clone()),
-                _ => None,
-            };
-            pairs.entry((id.to_owned(), test)).or_default().push(Pair {
-                case: base.unit.name.clone(),
-                flipped: pick != pick2,
-                confident: confidence >= confident_at,
-                abs_dp: (value(p) - value(p2)).abs(),
-                label,
-                original: pick.to_owned(),
-                perturbed: pick2.to_owned(),
-            });
+            if let Some(Expect::Text(label)) = base.unit.case.expect.get(id) {
+                p.correct = Some((&p.original == label, &p.perturbed == label));
+            }
+            pairs.entry((id.to_owned(), test)).or_default().push(p);
         };
         // Joint copies, in the original's own response.
         for base in original {
@@ -502,13 +511,8 @@ fn summarise(question: String, test: Test, pairs: &[Pair]) -> Comparison {
     let flips = pairs.iter().filter(|p| p.flipped).count();
     let confident: Vec<&Pair> = pairs.iter().filter(|p| p.confident).collect();
     let confident_flips = confident.iter().filter(|p| p.flipped).count();
-    let labelled: Vec<&Pair> = pairs.iter().filter(|p| p.label.is_some()).collect();
-    let right = |pick: fn(&Pair) -> &str| {
-        labelled
-            .iter()
-            .filter(|p| p.label.as_deref() == Some(pick(p)))
-            .count()
-    };
+    let labelled: Vec<(bool, bool)> = pairs.iter().filter_map(|p| p.correct).collect();
+    let right = |side: fn(&(bool, bool)) -> bool| labelled.iter().filter(|c| side(c)).count();
     Comparison {
         question,
         test,
@@ -521,8 +525,8 @@ fn summarise(question: String, test: Test, pairs: &[Pair]) -> Comparison {
         confident_flip_rate: ratio(confident_flips, confident.len()),
         confident_flip_rate_interval95: wilson_interval(confident_flips, confident.len(), Z_95),
         mean_abs_dp: ratio(1, n).map(|per| pairs.iter().map(|p| p.abs_dp).sum::<f64>() * per),
-        original: Accuracy::of(right(|p| p.original.as_str()), labelled.len()),
-        perturbed: Accuracy::of(right(|p| p.perturbed.as_str()), labelled.len()),
+        original: Accuracy::of(right(|c| c.0), labelled.len()),
+        perturbed: Accuracy::of(right(|c| c.1), labelled.len()),
         flipped: pairs
             .iter()
             .filter(|p| p.flipped)
@@ -539,69 +543,205 @@ fn rate(value: Option<f64>, interval: Option<(f64, f64)>, n: usize, of: usize) -
     }
 }
 
-/// The comparisons as a Markdown table, then the cases that flipped: what
-/// the text report prints, ready to paste into a pull request or a page.
+/// What `jud eval --against DIR` found: the run's answers and the ones
+/// recorded in DIR, request by request, as the JSON report's `agreement`
+/// holds them. A report and never a gate: two models that agree can both
+/// be wrong, so agreement says where to look before labelling, not which
+/// model is right (`docs/concepts/rubrics-cases-recordings.md`).
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct Agreement {
+    /// The directory the other answers were replayed from.
+    pub against: String,
+    /// The distinct models its recordings name, in the order first seen.
+    pub models: Vec<String>,
+    /// The confidence bar the `confident_*` counts use, from `--confident-at`.
+    pub confident_at: f64,
+    /// The requests answered on both sides.
+    pub requests: usize,
+    /// One per question, in the rubric's order: `test` is `against`,
+    /// `original` the run's answers and `perturbed` DIR's.
+    pub comparisons: Vec<Comparison>,
+}
+
+impl Agreement {
+    /// Pair each of the run's answers with DIR's answer to the same
+    /// request, question by question. `ours` and `theirs` come from the
+    /// same plan, so they are in the same order.
+    pub(crate) fn build(
+        loaded: &Loaded,
+        ours: &[Answered],
+        theirs: &[Answered],
+        against: &Path,
+        confident_at: f64,
+    ) -> Self {
+        let correct = |a: &Answered, id: &str| {
+            a.judgments
+                .iter()
+                .find(|(q, _)| q == id)
+                .and_then(|(_, j)| j.correct)
+        };
+        let mut comparisons = Vec::new();
+        for id in loaded.rubric.questions.keys() {
+            let pairs: Vec<Pair> = ours
+                .iter()
+                .zip(theirs)
+                .filter_map(|(a, b)| {
+                    debug_assert_eq!(a.unit.name, b.unit.name, "one plan, one order");
+                    let mut p = pair(
+                        &a.unit.name,
+                        a.response.answers.get(id),
+                        b.response.answers.get(id),
+                        confident_at,
+                    )?;
+                    p.correct = correct(a, id).zip(correct(b, id));
+                    Some(p)
+                })
+                .collect();
+            if !pairs.is_empty() {
+                comparisons.push(summarise(id.clone(), Test::Against, &pairs));
+            }
+        }
+        let mut models: Vec<String> = Vec::new();
+        for b in theirs {
+            if !models.contains(&b.response.model) {
+                models.push(b.response.model.clone());
+            }
+        }
+        Self {
+            against: against.display().to_string(),
+            models,
+            confident_at,
+            requests: theirs.len(),
+            comparisons,
+        }
+    }
+}
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 { "" } else { "s" }
+}
+
+/// The comparisons as a Markdown table, then the cases that moved, each
+/// line opening with `moved`: what both reports print, ready to paste
+/// into a pull request or a page. `columns` names the counts, the change
+/// and the two accuracies; `test` adds the test's column.
+fn table(
+    f: &mut Formatter<'_>,
+    comparisons: &[Comparison],
+    confident_at: f64,
+    columns: [&str; 4],
+    test: bool,
+    moved: impl Fn(&Comparison) -> String,
+) -> fmt::Result {
+    let [change, confident, original, perturbed] = columns;
+    let (test_head, test_rule) = if test { (" test |", "---|") } else { ("", "") };
+    writeln!(
+        f,
+        "| question |{test_head} pairs | {change} | {confident} ≥ {confident_at:.2} | mean \\|Δp\\| | {original} | {perturbed} |"
+    )?;
+    writeln!(f, "|---|{test_rule}---:|---|---|---:|---|---|")?;
+    for c in comparisons {
+        let test_cell = if test {
+            format!(" {} |", c.test.label())
+        } else {
+            String::new()
+        };
+        writeln!(
+            f,
+            "| {} |{test_cell} {} | {} | {} | {} | {} | {} |",
+            out::plain(&c.question),
+            c.pairs,
+            rate(c.flip_rate, c.flip_rate_interval95, c.flips, c.pairs),
+            rate(
+                c.confident_flip_rate,
+                c.confident_flip_rate_interval95,
+                c.confident_flips,
+                c.confident_pairs
+            ),
+            c.mean_abs_dp
+                .map_or_else(|| "-".to_owned(), |v| format!("{v:.3}")),
+            rate(
+                c.original.accuracy,
+                c.original.accuracy_interval95,
+                c.original.correct,
+                c.original.labelled
+            ),
+            rate(
+                c.perturbed.accuracy,
+                c.perturbed.accuracy_interval95,
+                c.perturbed.correct,
+                c.perturbed.labelled
+            ),
+        )?;
+    }
+    for c in comparisons.iter().filter(|c| !c.flipped.is_empty()) {
+        writeln!(f)?;
+        let cases: Vec<String> = c.flipped.iter().map(|n| out::plain(n)).collect();
+        writeln!(f, "{}: {}", moved(c), cases.join(", "))?;
+    }
+    Ok(())
+}
+
+/// The swap and tone comparisons: how far the verdicts move when only the
+/// request's form does.
 impl Display for Robustness {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "robustness ({} perturbed request{}; rates with 95% Wilson intervals)",
             self.perturbed_requests,
-            if self.perturbed_requests == 1 {
-                ""
-            } else {
-                "s"
-            }
+            plural(self.perturbed_requests)
         )?;
         writeln!(f)?;
+        table(
+            f,
+            &self.comparisons,
+            self.confident_at,
+            [
+                "flip rate",
+                "flip rate, confidence",
+                "accuracy, original",
+                "accuracy, perturbed",
+            ],
+            true,
+            |c| {
+                format!(
+                    "flipped under {} on {}",
+                    c.test.label(),
+                    out::plain(&c.question)
+                )
+            },
+        )
+    }
+}
+
+/// The run's answers beside DIR's, with the reminder that agreeing is not
+/// being right.
+impl Display for Agreement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let models: Vec<String> = self.models.iter().map(|m| out::plain(m)).collect();
         writeln!(
             f,
-            "| question | test | pairs | flip rate | flip rate, confidence ≥ {:.2} | mean \\|Δp\\| | accuracy, original | accuracy, perturbed |",
-            self.confident_at
+            "agreement with {} ({}; {} request{}; rates with 95% Wilson intervals; agreement is not accuracy)",
+            out::plain(&self.against),
+            models.join(", "),
+            self.requests,
+            plural(self.requests)
         )?;
-        writeln!(f, "|---|---|---:|---|---|---:|---|---|")?;
-        for c in &self.comparisons {
-            writeln!(
-                f,
-                "| {} | {} | {} | {} | {} | {} | {} | {} |",
-                out::plain(&c.question),
-                c.test.label(),
-                c.pairs,
-                rate(c.flip_rate, c.flip_rate_interval95, c.flips, c.pairs),
-                rate(
-                    c.confident_flip_rate,
-                    c.confident_flip_rate_interval95,
-                    c.confident_flips,
-                    c.confident_pairs
-                ),
-                c.mean_abs_dp
-                    .map_or_else(|| "-".to_owned(), |v| format!("{v:.3}")),
-                rate(
-                    c.original.accuracy,
-                    c.original.accuracy_interval95,
-                    c.original.correct,
-                    c.original.labelled
-                ),
-                rate(
-                    c.perturbed.accuracy,
-                    c.perturbed.accuracy_interval95,
-                    c.perturbed.correct,
-                    c.perturbed.labelled
-                ),
-            )?;
-        }
-        for c in self.comparisons.iter().filter(|c| !c.flipped.is_empty()) {
-            writeln!(f)?;
-            let cases: Vec<String> = c.flipped.iter().map(|n| out::plain(n)).collect();
-            writeln!(
-                f,
-                "flipped under {} on {}: {}",
-                c.test.label(),
-                out::plain(&c.question),
-                cases.join(", ")
-            )?;
-        }
-        Ok(())
+        writeln!(f)?;
+        table(
+            f,
+            &self.comparisons,
+            self.confident_at,
+            [
+                "differs",
+                "differs, confidence",
+                "accuracy",
+                "accuracy, against",
+            ],
+            false,
+            |c| format!("differs on {}", out::plain(&c.question)),
+        )
     }
 }
 
@@ -670,6 +810,53 @@ mod tests {
     }
 
     #[test]
+    fn a_pair_reads_a_noul_and_a_score_as_eval_grades_them_and_skips_a_box() {
+        let noul = |p: f64| Answer::Noul {
+            noul: judgment::Probability::new(p).unwrap(),
+        };
+        let p = pair("c", Some(&noul(0.93)), Some(&noul(0.2)), 0.5).unwrap();
+        assert_eq!((p.original.as_str(), p.perturbed.as_str()), ("yes", "no"));
+        assert!(p.flipped && p.confident);
+        assert!((p.abs_dp - 0.73).abs() < 1e-12, "on yes: 0.93 to 0.2");
+        let at_the_bar = pair("c", Some(&noul(0.93)), Some(&noul(0.2)), 0.93).unwrap();
+        assert!(at_the_bar.confident, "confident from the bar, not above it");
+
+        let score = |dist: [f64; 3]| -> Answer {
+            serde_json::from_value(json!({"type": "score", "score": 1.0,
+                "legend": {"0": "calm", "1": "annoyed", "2": "angry"},
+                "probabilities": {"0": dist[0], "1": dist[1], "2": dist[2]},
+                "confidence": 0.4}))
+            .unwrap()
+        };
+        let p = pair(
+            "c",
+            Some(&score([0.3, 0.6, 0.1])),
+            Some(&score([0.1, 0.7, 0.2])),
+            0.5,
+        )
+        .unwrap();
+        assert!(!p.flipped, "level 1 both times");
+        assert!(!p.confident, "0.4 is below the bar");
+        assert!(
+            (p.abs_dp - 0.1).abs() < 1e-12,
+            "on level 1: 0.6 to 0.7, a distance"
+        );
+
+        let boxed = Answer::Box {
+            edges: judgment::BoxEdges::new(0.1, 0.5, 0.1, 0.5),
+            confidence: None,
+        };
+        assert!(
+            pair("c", Some(&boxed), Some(&boxed), 0.5).is_none(),
+            "a Box has no pick"
+        );
+        assert!(
+            pair("c", Some(&noul(0.9)), None, 0.5).is_none(),
+            "nothing to compare"
+        );
+    }
+
+    #[test]
     fn the_totals_count_flips_confident_flips_and_both_accuracies() {
         let pair =
             |flipped: bool, confident: bool, label: &str, original: &str, perturbed: &str| Pair {
@@ -677,7 +864,7 @@ mod tests {
                 flipped,
                 confident,
                 abs_dp: if flipped { 0.4 } else { 0.0 },
-                label: Some(label.to_owned()),
+                correct: Some((original == label, perturbed == label)),
                 original: original.to_owned(),
                 perturbed: perturbed.to_owned(),
             };
