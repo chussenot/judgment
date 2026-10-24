@@ -395,3 +395,36 @@ fn the_pairwise_recordings_reproduce_the_guides_numbers() {
         assert_eq!(tone["perturbed"]["correct"], toned_right, "jev-{model}");
     }
 }
+
+#[test]
+fn jev_1_14_picks_what_jev_1_13_picks_on_every_pairwise_case() {
+    let dir = |model: &str| format!("{ROOT}/examples/recordings/pairwise-judge-jev-{model}");
+    let out = jud(
+        &[
+            "eval",
+            PAIRWISE,
+            PAIRWISE_CASES,
+            "--replay",
+            &dir("1.13"),
+            "--against",
+            &dir("1.14"),
+            "--json",
+        ],
+        "",
+        &[],
+    );
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let report: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    let agreement = &report["agreement"];
+    assert_eq!(agreement["models"], json!(["jev-1.14.0"]));
+    let better = &agreement["comparisons"][0];
+    assert_eq!(
+        (better["pairs"].as_u64(), better["flips"].as_u64()),
+        (Some(50), Some(0))
+    );
+    let dp = better["mean_abs_dp"].as_f64().unwrap();
+    assert!((dp - 0.016).abs() < 1e-9, "{dp}");
+    // The same 47 right on both sides: agreeing, they also miss together.
+    assert_eq!(better["original"]["correct"], 47);
+    assert_eq!(better["perturbed"]["correct"], 47);
+}

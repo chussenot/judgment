@@ -2,7 +2,7 @@
 title: The jud command line
 description: Every command, flag, argument and environment variable of the jud binary, with each command's help text as the binary prints it, the verdict JSON a run writes, the report jud eval prints and its JSON keys, what jud record, jud tune and jud split write, and the exit status.
 status: current
-last_reviewed: 2026-10-18
+last_reviewed: 2026-10-24
 tags: [judgment, jud, cli, record, eval, tune, split, reference]
 ---
 
@@ -405,9 +405,14 @@ Options:
           FILE is YAML or JSON: case id, then question id, then the rewrite (text, or an object or array as an option's description may be): `{case-7: {better: "That is SO wrong, it's 4!"}}`. The rewrite replaces the description of the option the case labels right, so the content stays and the tone changes, as in CALM's sentiment test. A case or question the file names that the cases do not have, or a question the case does not label with an option, is refused before any call.
 
       --confident-at <TAU>
-          The confidence, 0 to 1, at or above which a pair counts as confident in the flip rate --swap and --tone-perturb report beside the overall one: the original answer's confidence, so the column says how often a verdict the gate would act on moves
+          The confidence, 0 to 1, at or above which a pair counts as confident in the flip rate --swap, --tone-perturb and --against report beside the overall one: the original answer's confidence (this run's, under --against), so the column says how often a verdict the gate would act on moves
 
           [default: 0.5]
+
+      --against <DIR>
+          Set every answer beside the one recorded in DIR for the same request (another model's, from `jud record`), and report per question how often the two differ and how far the probability moves.
+
+          Needs no label: it is the check to run when the model changes, before any case is labelled. Agreement is not accuracy, since two models can agree and both be wrong, so it never gates and never changes the status. Every case as written needs a recording in DIR, as under --replay.
 
   -h, --help
           Print help (see a summary with '-h')
@@ -415,7 +420,7 @@ Options:
 
 Against a server, before the first call, eval writes the same line to stderr that `jud record` does ([What it prints](#what-it-prints)): `asking MODEL at URL for up to N requests (base URL from SOURCE)`. A replay writes nothing there.
 
-Reads `RUBRIC`, `CASES` and, with `--replay DIR` or `JUD_REPLAY`, the recordings in `DIR`; the flag overrides the variable. Writes nothing, against a server too: use [`jud record`](#jud-record) to keep what a server answered. Without a replay it asks the configured backend once per request and needs a key. With one it needs no key and no network.
+Reads `RUBRIC`, `CASES` and, with `--replay DIR` or `JUD_REPLAY`, the recordings in `DIR`; the flag overrides the variable. With `--against DIR` it also reads the recordings in that `DIR`, before asking anything. Writes nothing, against a server too: use [`jud record`](#jud-record) to keep what a server answered. Without a replay it asks the configured backend once per request and needs a key. With one it needs no key and no network.
 
 Stdout carries the report, as text or, with `--json`, as one JSON object. Both come from one value, so they say the same things. Status 0 whatever the accuracy, unless a [gate](#gating-on-accuracy) is given.
 
@@ -523,6 +528,12 @@ A report holds three things that are not the same number: what the model got rig
 | `signal_rules.never_answered_min` | integer | The fewest labels an outcome needs for `never_answered`: 3. |
 | `signal_rules.defers_most` | number | The deferred share for `defers_most`: 0.5. |
 | `signal_rules.defers_nearly_all` | number | The deferred share for `defers_nearly_all`: 0.9. |
+| `agreement` | object | Only with `--against` ([Agreement with another model](#agreement-with-another-model)); absent otherwise. |
+| `agreement.against` | string | The directory the other answers came from, as given. |
+| `agreement.models` | array of strings | The distinct models its recordings name, in the order first seen. |
+| `agreement.confident_at` | number | As `robustness.confident_at`, read on this run's answer. |
+| `agreement.requests` | integer | Requests answered on both sides. |
+| `agreement.comparisons` | array of objects | One per question with a pair, in the rubric's order, with the keys of `robustness.comparisons[]` below: `test` is `against`, `flips` the pairs whose pick differs, `original` this run's accuracy and `perturbed` that of `DIR`'s answers. |
 | `robustness` | object | Only with `--swap` or `--tone-perturb` ([Position and tone](#position-and-tone)); absent otherwise. |
 | `robustness.confident_at` | number | The bar the `confident_*` keys use, from `--confident-at` (0.5 unless given). |
 | `robustness.perturbed_requests` | integer | Perturbed requests answered; a joint swap rides in its case's request and adds none. |
@@ -663,6 +674,29 @@ flipped under swap on QUESTION: CASE, CASE
 ```
 
 A rate with nothing to count is `-`. `--json` carries the same numbers under `robustness`.
+
+### Agreement with another model
+
+`--against DIR` sets every answer beside the one recorded in `DIR` for the same request, typically another model's (`jud record` into a directory of its own, the other model set in the [configuration](configuration.md)), and reports per question how often the two differ. It needs no label, so it is the check to run when the model changes, before any case is labelled; the [concepts page](../concepts/rubrics-cases-recordings.md#agreement-before-labels) says why it is a screen and not a grade.
+
+- **What is compared.** Each answer as `jud eval` grades it: a Choice by its option, a Score by its most probable level, a Noul as `yes` from 0.5. A Box has no pick to compare and is left out. `mean |Δp|` is the mean absolute difference between the probability this run's answer put on its own pick (option, level, or `yes`/`no`) and what `DIR`'s answer put on it.
+- **Labels, when there are some.** `accuracy` and `accuracy, against` are each side's accuracy over the labelled pairs; without labels they are `-`.
+- **Never a gate.** `--against` changes no status, and `--min-accuracy` reads this run's answers only ([why](../concepts/rubrics-cases-recordings.md#agreement-before-labels)).
+- **Recordings.** Every case as written needs a recording in `DIR`, as under `--replay`, and not its swapped or toned forms; a `DIR` recorded with `--swap=joint` holds the joint requests and answers none. A missing one stops the run, naming `DIR` and the cases, before this run asks a server anything. A recording is found by its request's fingerprint, which leaves the model out, so another model's recordings of the same rubric and cases are found. With `--replay` as well, the run costs no call.
+
+The text report ends with the table, followed by the robustness table when `--swap` or `--tone-perturb` is given. `MODELS` are the distinct models `DIR`'s recordings name, comma-separated:
+
+```text
+agreement with DIR (MODELS; N requests; rates with 95% Wilson intervals; agreement is not accuracy)
+
+| question | pairs | differs | differs, confidence ≥ TAU | mean \|Δp\| | accuracy | accuracy, against |
+|---|---:|---|---|---:|---|---|
+| QUESTION | P | RATE [LOW, HIGH] (D/P) | RATE [LOW, HIGH] (D/C) | X | ACC [LOW, HIGH] (R/L) | ACC [LOW, HIGH] (R/L) |
+
+differs on QUESTION: CASE, CASE
+```
+
+`--json` carries the same numbers under `agreement`. `--confident-at` sets `TAU` here too, read on this run's answer.
 
 ### Gating on accuracy
 

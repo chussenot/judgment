@@ -71,7 +71,7 @@ This decides the order of everything else, so know it first.
 | Anything under `questions` (instructions, criteria, options, levels, `when`) | no, for every case that asks it | one call per case |
 | An image's bytes (resized, re-encoded, replaced), under a case's or the rubric's `assets` | no, for every case that sends it: a recording is keyed by each image's digest as well as the state | one call per such case; a `path` that moves while the bytes stay costs nothing |
 | A label's `iou_at_least`, or the box in a label | yes: labels are never sent | none |
-| The model (`model` in `jud config`) | the old answers still replay, but they are the old model's | a full `record --refresh` to measure the new one |
+| The model (`model` in `jud config`) | the old answers still replay, but they are the old model's | a full record into a new directory (`record --out NEW`), then `eval --replay NEW --against OLD` to see where it answers differently before labelling; `--refresh` writes over the old answers |
 
 A state over the model's context (`max_tokens_exceeded`, 400, from the
 hosted API at 32k tokens for the state and one question, 64k for the

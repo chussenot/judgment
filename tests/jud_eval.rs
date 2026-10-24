@@ -1644,3 +1644,144 @@ fn a_box_question_is_reported_by_its_iou() {
         "{text}"
     );
 }
+
+/// A copy of the example recordings in which `login-loop` was answered by
+/// another model the other way on every question: no instead of yes
+/// (0.93 to 0.2), `account` instead of `technical`, `angry` instead of
+/// `annoyed`. Every other case is answered as before.
+fn recordings_answering_login_loop_otherwise() -> String {
+    let dir = copy_dir(RECORDINGS);
+    let path = dir.join("login-loop.jud");
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    for (from, to) in [
+        ("    model: jev-1.13.0\n", "    model: jev-1.14.0\n"),
+        ("        noul: 0.93\n", "        noul: 0.2\n"),
+        ("        choice: technical\n", "        choice: account\n"),
+        ("          account: 0.05\n", "          account: 0.92\n"),
+        ("          technical: 0.92\n", "          technical: 0.05\n"),
+        ("        score: 0.8\n", "        score: 1.6\n"),
+        (
+            "          \"0\": 0.3\n          \"1\": 0.6\n          \"2\": 0.1\n",
+            "          \"0\": 0.1\n          \"1\": 0.2\n          \"2\": 0.7\n",
+        ),
+    ] {
+        text = replaced(&text, from, to);
+    }
+    std::fs::write(&path, text).unwrap();
+    dir.to_str().unwrap().to_owned()
+}
+
+fn comparison<'a>(agreement: &'a Value, id: &str) -> &'a Value {
+    agreement["comparisons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["question"] == id)
+        .unwrap_or_else(|| panic!("no comparison for {id} in {agreement}"))
+}
+
+#[test]
+fn against_counts_per_question_where_the_other_recordings_answer_otherwise() {
+    let other = recordings_answering_login_loop_otherwise();
+    let out = triage(&["--against", &other, "--json"]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let r = report(&out);
+    let agreement = &r["agreement"];
+    assert_eq!(
+        keys(agreement),
+        [
+            "against",
+            "comparisons",
+            "confident_at",
+            "models",
+            "requests"
+        ]
+    );
+    assert_eq!(agreement["against"], other.as_str());
+    // Only login-loop's recording names the other model.
+    assert_eq!(agreement["models"], json!(["jev-1.13.0", "jev-1.14.0"]));
+    assert_eq!(agreement["requests"], 7);
+    // |p - p'| on the run's own pick: yes 0.93 to 0.2, technical 0.92 to
+    // 0.05, level 1 (annoyed) 0.6 to 0.2; one pair in seven moved.
+    for (id, dp) in [("actionable", 0.73), ("desk", 0.87), ("tone", 0.4)] {
+        let c = comparison(agreement, id);
+        assert_eq!(c["test"], "against", "{id}");
+        assert_eq!(
+            (c["pairs"].as_u64(), c["flips"].as_u64()),
+            (Some(7), Some(1)),
+            "{id}"
+        );
+        assert_eq!(c["flipped"], json!(["login-loop"]), "{id}");
+        let mean = c["mean_abs_dp"].as_f64().unwrap();
+        assert!((mean - dp / 7.0).abs() < 1e-9, "{id}: {mean}");
+        // login-loop is labelled yes, technical, annoyed: right here, wrong there.
+        let right = c["original"]["correct"].as_u64().unwrap();
+        assert_eq!(c["perturbed"]["correct"].as_u64(), Some(right - 1), "{id}");
+    }
+    // The run's own report is the run's: the other side moves nothing in it.
+    assert_eq!(r, {
+        let mut plain = report(&triage(&["--json"]));
+        plain["agreement"] = agreement.clone();
+        plain
+    });
+
+    let text = stdout(&triage(&["--against", &other]));
+    assert!(
+        text.contains(
+            "(jev-1.13.0, jev-1.14.0; 7 requests; rates with 95% Wilson intervals; agreement is not accuracy)\n\n| question | pairs | differs |"
+        ),
+        "{text}"
+    );
+    assert!(text.contains("differs on desk: login-loop\n"), "{text}");
+}
+
+#[test]
+fn against_needs_no_label() {
+    let other = recordings_answering_login_loop_otherwise();
+    let cases = write("triage-cases.jud", &cases_without_labels("desk"));
+    let out = eval(TRIAGE, &cases, &["--against", &other, "--json"]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let desk = comparison(&report(&out)["agreement"], "desk").clone();
+    assert_eq!(
+        (desk["pairs"].as_u64(), desk["flips"].as_u64()),
+        (Some(7), Some(1))
+    );
+    assert_eq!(desk["original"]["labelled"], 0);
+    assert!(desk["original"]["accuracy"].is_null());
+}
+
+#[tokio::test]
+async fn a_case_missing_from_the_against_recordings_is_refused_before_any_call() {
+    let other = copy_dir(RECORDINGS);
+    std::fs::remove_file(other.join("invoice-vat.jud")).unwrap();
+    let server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    let out = jud(
+        &[
+            "eval",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--against",
+            other.to_str().unwrap(),
+        ],
+        "",
+        &[
+            ("TYPESAFE_API_KEY", "test-key"),
+            ("TYPESAFE_BASE_URL", &server.uri()),
+        ],
+    );
+    assert_eq!(code(&out), 1, "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains(&format!(
+            "--against {}: no recording answers 1 case: invoice-vat",
+            other.display()
+        )),
+        "{}",
+        stderr(&out)
+    );
+    assert!(stdout(&out).is_empty());
+    assert!(server.received_requests().await.unwrap().is_empty());
+}

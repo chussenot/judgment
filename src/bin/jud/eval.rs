@@ -24,7 +24,7 @@ use crate::EXIT_UNMET;
 use crate::backend::{Backend, Failure};
 use crate::batch::{self, Answered, Loaded, Variant};
 use crate::out;
-use crate::perturb::{self, PerturbArgs, Robustness};
+use crate::perturb::{self, Agreement, PerturbArgs, Robustness};
 
 /// Grade a model's answers against the labelled cases.
 ///
@@ -71,11 +71,23 @@ pub(crate) struct Eval {
     #[command(flatten)]
     pub perturb: PerturbArgs,
     /// The confidence, 0 to 1, at or above which a pair counts as
-    /// confident in the flip rate --swap and --tone-perturb report beside
-    /// the overall one: the original answer's confidence, so the column
-    /// says how often a verdict the gate would act on moves.
+    /// confident in the flip rate --swap, --tone-perturb and --against
+    /// report beside the overall one: the original answer's confidence (this
+    /// run's, under --against), so the column says how often a verdict the
+    /// gate would act on moves.
     #[arg(long, value_name = "TAU", default_value_t = 0.5, value_parser = parse_unit)]
     pub confident_at: f64,
+    /// Set every answer beside the one recorded in DIR for the same request
+    /// (another model's, from `jud record`), and report per question how
+    /// often the two differ and how far the probability moves.
+    ///
+    /// Needs no label: it is the check to run when the model changes, before
+    /// any case is labelled. Agreement is not accuracy, since two models can
+    /// agree and both be wrong, so it never gates and never changes the
+    /// status. Every case as written needs a recording in DIR, as under
+    /// --replay.
+    #[arg(long, value_name = "DIR", value_hint = ValueHint::DirPath)]
+    pub against: Option<PathBuf>,
 }
 
 fn parse_unit(text: &str) -> Result<f64, String> {
@@ -170,6 +182,12 @@ const TOLERANCE: f64 = 1e-9;
 ///   "min_accuracy": [                    // one per --min-accuracy check, [] without any
 ///     { "question": "desk" | null, "bar", "labelled", "accuracy", "met" }
 ///   ],
+///   "agreement": {                       // only with --against
+///     "against", "models", "confident_at", "requests",
+///     "comparisons": [ ... as under robustness, one per question,
+///                      "test": "against"; "original" is this run's
+///                      answers, "perturbed" those in DIR ]
+///   },
 ///   "robustness": {                      // only with --swap or --tone-perturb
 ///     "confident_at", "perturbed_requests",
 ///     "comparisons": [                   // per question and test, swap first
@@ -208,6 +226,9 @@ struct Report {
     min_accuracy: Vec<BarCheck>,
     /// The thresholds the signals were read with.
     signal_rules: SignalRules,
+    /// What `--against` measured; absent without it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agreement: Option<Agreement>,
     /// What `--swap` and `--tone-perturb` measured; absent without them.
     #[serde(skip_serializing_if = "Option::is_none")]
     robustness: Option<Robustness>,
@@ -492,6 +513,7 @@ impl Report {
             questions,
             min_accuracy,
             signal_rules: SignalRules::IN_USE,
+            agreement: None,
             robustness: None,
         }
     }
@@ -848,6 +870,10 @@ impl Display for Report {
                 writeln!(f, "  {status:<8} {}", check.describe())?;
             }
         }
+        if let Some(agreement) = &self.agreement {
+            writeln!(f)?;
+            write!(f, "{agreement}")?;
+        }
         if let Some(robustness) = &self.robustness {
             writeln!(f)?;
             write!(f, "{robustness}")?;
@@ -1076,6 +1102,25 @@ fn check_bars(rubric: &Rubric, bars: &[MinAccuracy], rubric_path: &str) -> Resul
 fn evaluate(args: &Eval) -> Result<Report, Failure> {
     let loaded = batch::load(&args.rubric, &args.cases)?;
     check_bars(&loaded.rubric, &args.min_accuracy, &args.rubric)?;
+    // The other side first: it is a replay and costs nothing, so a missing
+    // recording there stops the run before a server is asked anything.
+    let theirs = match &args.against {
+        Some(dir) => Some((
+            dir,
+            batch::answer_all(
+                &Backend::open(Some(dir), None)?,
+                &loaded,
+                batch::plan(&loaded)?,
+            )
+            .map_err(|e| match e {
+                Failure::Missing(m) => {
+                    Failure::Missing(format!("--against {}: {m}", dir.display()))
+                }
+                e => e,
+            })?,
+        )),
+        None => None,
+    };
     let backend = Backend::open(args.replay.as_deref(), args.long_context.then_some(true))?;
     let planned = perturb::expand(&loaded, batch::plan(&loaded)?, &args.perturb)?;
     let answered = batch::answer_all(&backend, &loaded, planned)?;
@@ -1085,6 +1130,8 @@ fn evaluate(args: &Eval) -> Result<Report, Failure> {
         .into_iter()
         .partition(|a| a.unit.variant == Variant::Original);
     let mut report = Report::build(&loaded, &original, &args.min_accuracy);
+    report.agreement = theirs
+        .map(|(dir, theirs)| Agreement::build(&loaded, &original, &theirs, dir, args.confident_at));
     if args.perturb.any() {
         report.robustness = Some(Robustness::build(
             &loaded,
