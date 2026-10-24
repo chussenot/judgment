@@ -12,8 +12,8 @@
 #   2. MISE_ENV=cloud, so mise.cloud.toml replaces the backends the sandbox cannot
 #      use with pinned release URLs; the tools go on PATH as plain binaries.
 #   3. The toolchain rust-toolchain.toml names, through rustup, as CI does.
-#   4. `mise install`: mbx, prek, bd, cocogitto, lychee and the cargo gates
-#      (semver-checks, deny, hack, insta, mutants), all release binaries.
+#   4. `mise install`: mbx, prek, bd, cocogitto, lychee, the cargo gates
+#      (semver-checks, deny, hack), insta and mutants, all release binaries.
 #   5. The beads database: `bd bootstrap` from the committed export, then the
 #      import the post-merge hook runs (scripts/bd-sync.sh; the export is how
 #      the beads travel between machines).
@@ -172,11 +172,15 @@ probe() {
   done
   printf '%s' "$blocked"
 }
-blocked=$(probe api.typesafe.ai docs.typesafe.ai index.crates.io static.crates.io static.rust-lang.org docs.rs github.com release-assets.githubusercontent.com pypi.org)
+hosts="api.typesafe.ai docs.typesafe.ai index.crates.io static.crates.io static.rust-lang.org docs.rs github.com release-assets.githubusercontent.com"
+# PyPI serves only beads-mcp, which step 8 installs on request.
+pypi=""
+if [ "${JUDGMENT_SESSION_BEADS_MCP:-}" = "1" ]; then hosts="$hosts pypi.org"; pypi=", PyPI"; fi
+blocked=$(probe $hosts)
 if [ -n "$blocked" ]; then
   network="blocked by the egress policy:$blocked. The contract work (tests/openapi_drift.rs, the live TypeSafe docs CLAUDE.md names) needs api.typesafe.ai and docs.typesafe.ai; the environment's allowed domains are the fix (docs/project/contributing.md, Cloud sessions)."
 else
-  network="every host the work depends on answers (TypeSafe API and docs, crates.io, rust-lang, docs.rs, GitHub releases, PyPI)."
+  network="every host the work depends on answers (TypeSafe API and docs, crates.io, rust-lang, docs.rs, GitHub releases$pypi)."
 fi
 log "network: $network"
 log "done"

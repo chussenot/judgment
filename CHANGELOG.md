@@ -142,12 +142,6 @@ All notable changes to the `judgment` crate. The format follows
   is `gen_ai.usage.input_tokens`. A `tracing` subscriber or an
   `tracing-opentelemetry` view that reads the old names must read the new
   ones. `images`, `long_context`, `multipart` and `request_id` are unchanged.
-- A cloud session's start hook no longer compiles a tool: `mise.cloud.toml`
-  supplies cocogitto, lychee, cargo-semver-checks, cargo-deny, cargo-hack,
-  cargo-insta and cargo-mutants from their pinned release binaries, as it
-  did mbx, prek and bd, and a fresh container's `mise install` takes
-  seconds instead of twelve minutes. The hook installs `beads-mcp` only
-  when `JUDGMENT_SESSION_BEADS_MCP=1`, since it never registers it.
 
 ## [0.14.0] - 2026-10-15
 
