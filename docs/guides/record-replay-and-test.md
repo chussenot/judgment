@@ -2,7 +2,7 @@
 title: Record, replay and test
 description: How to test a decision with no key and no network, with the Fake backend that refuses an answer the question could not produce, the Recorder and Replay pair keyed by the request's content, jud --replay for a rubric on the command line, and jud record to answer a rubric's labelled cases once and keep the answers.
 status: current
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-24
 tags: [judgment, testing, fake, replay, recordings, record, how-to]
 ---
 
@@ -74,7 +74,7 @@ async fn main() -> judgment::Result<()> {
 }
 ```
 
-A recording is found by two keys, in this order: the request's `sha256:` fingerprint, [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical JSON of the state and the questions, which any tool computes the same way ([Fingerprints](../reference/jud-format.md#fingerprints)); then the crate's own 16-hex-digit `request_hash`. Both cover the questions, so a question changed without re-recording misses the recording and fails the test rather than grading old answers under new questions. The model is not in either key: two models answering the same request share a fingerprint, and a comparison keeps their recordings in two directories.
+A recording is found by two keys, in this order: the request's `sha256:` fingerprint, [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical JSON of the state and the questions, which any tool computes the same way ([Fingerprints](../reference/jud-format.md#fingerprints)); then the crate's own 16-hex-digit `request_hash`. Both cover the questions, so a question changed without re-recording misses the recording and fails the test rather than grading old answers under new questions. The model is not in either key: two models answering the same request share a fingerprint, and a comparison keeps their recordings in two directories (`jud eval --against`, below).
 
 `Replay` verifies each recording against the questions as the client would, so a recording made under one set of options cannot answer a question that offers another. A request nobody recorded is `Error::NoRecording`, never a guess: the test that reaches for a missing recording has found a request the suite never saw.
 
@@ -150,7 +150,7 @@ What the command does:
 - **It records a conversation turn by turn** when a label uses `from_turn`. Each turn is its own request, with the label resolved at that turn, and its file is `CASE-turn-N.jud`, from `escalates-turn-0.jud` for a case named `escalates`. [Conversations](../reference/jud-format.md#conversations) has the rule.
 - **It resumes.** A request already recorded in `DIR` is kept, found by its fingerprint under whatever file name, so an interrupted run continues where it stopped. A new case costs one call, and so does a recording you deleted. A case whose state changed, or a rubric whose questions changed, has another fingerprint and is asked again.
 - **It asks the model the configuration names.** That is the `model` field of the configuration file, `jev-latest` when there is none. No flag and no environment variable names it, and `jud config` prints the model a run would use and where it came from ([Configure a backend](configure-a-backend.md)). To record another model, set `model` first, in the file or in another one that `XDG_CONFIG_HOME` points the run at, such as `model: tev1:0.8b` for a local model.
-- **`--refresh` asks every case again.** Each answer is written over the file named after its case. Use it once the model has changed, since a request's fingerprint leaves the model out and a recording of the old model would be kept ([Tune thresholds](tune-thresholds.md#when-the-model-moves)). Recording into a new directory keeps the old answers beside the new. A file under another name is left alone, and the run warns when two files record one request, since a replay reads only one.
+- **`--refresh` asks every case again.** Each answer is written over the file named after its case. Use it once the model has changed, since a request's fingerprint leaves the model out and a recording of the old model would be kept ([Tune thresholds](tune-thresholds.md#when-the-model-moves)). Recording into a new directory keeps the old answers beside the new, and `jud eval --replay NEW --against OLD` compares the two ([Agreement with another model](../reference/cli.md#agreement-with-another-model)). A file under another name is left alone, and the run warns when two files record one request, since a replay reads only one.
 - **A failed call stops the run** with status 1. The message names the case it stopped at, how many were recorded and kept before it, and the directory. What was written stays, and the next run resumes.
 - **It strips credentials.** The server written into a recording is the base URL without its user information, query and fragment, so a recording can be committed.
 

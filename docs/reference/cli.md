@@ -405,14 +405,14 @@ Options:
           FILE is YAML or JSON: case id, then question id, then the rewrite (text, or an object or array as an option's description may be): `{case-7: {better: "That is SO wrong, it's 4!"}}`. The rewrite replaces the description of the option the case labels right, so the content stays and the tone changes, as in CALM's sentiment test. A case or question the file names that the cases do not have, or a question the case does not label with an option, is refused before any call.
 
       --confident-at <TAU>
-          The confidence, 0 to 1, at or above which a pair counts as confident in the flip rate --swap and --tone-perturb report beside the overall one: the original answer's confidence, so the column says how often a verdict the gate would act on moves
+          The confidence, 0 to 1, at or above which a pair counts as confident in the flip rate --swap, --tone-perturb and --against report beside the overall one: the original answer's confidence (this run's, under --against), so the column says how often a verdict the gate would act on moves
 
           [default: 0.5]
 
       --against <DIR>
           Set every answer beside the one recorded in DIR for the same request (another model's, from `jud record`), and report per question how often the two differ and how far the probability moves.
 
-          Needs no label: it is the check to run when the model changes, before any case is labelled. Agreement is not accuracy, since two models can agree and both be wrong, so it never gates and never changes the status. Every case needs a recording in DIR, as under --replay.
+          Needs no label: it is the check to run when the model changes, before any case is labelled. Agreement is not accuracy, since two models can agree and both be wrong, so it never gates and never changes the status. Every case as written needs a recording in DIR, as under --replay.
 
   -h, --help
           Print help (see a summary with '-h')
@@ -679,15 +679,15 @@ A rate with nothing to count is `-`. `--json` carries the same numbers under `ro
 
 `--against DIR` sets every answer beside the one recorded in `DIR` for the same request, typically another model's (`jud record` into a directory of its own, the other model set in the [configuration](configuration.md)), and reports per question how often the two differ. It needs no label, so it is the check to run when the model changes, before any case is labelled; the [concepts page](../concepts/rubrics-cases-recordings.md#agreement-before-labels) says why it is a screen and not a grade.
 
-- **What is compared.** Each answer as `jud eval` grades it: a Choice by its option, a Score by its most probable level, a Noul as `yes` from 0.5. A Box has no pick to compare and is left out. `mean |Δp|` is the probability this run's answer put on its own pick, against what `DIR`'s answer put on that same option or level.
+- **What is compared.** Each answer as `jud eval` grades it: a Choice by its option, a Score by its most probable level, a Noul as `yes` from 0.5. A Box has no pick to compare and is left out. `mean |Δp|` is the mean absolute difference between the probability this run's answer put on its own pick (option, level, or `yes`/`no`) and what `DIR`'s answer put on it.
 - **Labels, when there are some.** `accuracy` and `accuracy, against` are each side's accuracy over the labelled pairs; without labels they are `-`.
-- **Never a gate.** Two models can agree and both be wrong, so `--against` changes no status, and `--min-accuracy` reads this run's answers only.
-- **Recordings.** Every request needs a recording in `DIR`, as under `--replay`; a missing one stops the run, naming the cases, before this run asks a server anything. A recording is found by its request's fingerprint, which leaves the model out, so another model's recordings of the same rubric and cases are found.
+- **Never a gate.** `--against` changes no status, and `--min-accuracy` reads this run's answers only ([why](../concepts/rubrics-cases-recordings.md#agreement-before-labels)).
+- **Recordings.** Every case as written needs a recording in `DIR`, as under `--replay`, and not its swapped or toned forms; a `DIR` recorded with `--swap=joint` holds the joint requests and answers none. A missing one stops the run, naming `DIR` and the cases, before this run asks a server anything. A recording is found by its request's fingerprint, which leaves the model out, so another model's recordings of the same rubric and cases are found. With `--replay` as well, the run costs no call.
 
-The text report ends with the table:
+The text report ends with the table, followed by the robustness table when `--swap` or `--tone-perturb` is given. `MODELS` are the distinct models `DIR`'s recordings name, comma-separated:
 
 ```text
-agreement with DIR (MODEL; N requests; rates with 95% Wilson intervals; agreement is not accuracy)
+agreement with DIR (MODELS; N requests; rates with 95% Wilson intervals; agreement is not accuracy)
 
 | question | pairs | differs | differs, confidence ≥ TAU | mean \|Δp\| | accuracy | accuracy, against |
 |---|---:|---|---|---:|---|---|

@@ -71,9 +71,10 @@ pub(crate) struct Eval {
     #[command(flatten)]
     pub perturb: PerturbArgs,
     /// The confidence, 0 to 1, at or above which a pair counts as
-    /// confident in the flip rate --swap and --tone-perturb report beside
-    /// the overall one: the original answer's confidence, so the column
-    /// says how often a verdict the gate would act on moves.
+    /// confident in the flip rate --swap, --tone-perturb and --against
+    /// report beside the overall one: the original answer's confidence (this
+    /// run's, under --against), so the column says how often a verdict the
+    /// gate would act on moves.
     #[arg(long, value_name = "TAU", default_value_t = 0.5, value_parser = parse_unit)]
     pub confident_at: f64,
     /// Set every answer beside the one recorded in DIR for the same request
@@ -83,7 +84,8 @@ pub(crate) struct Eval {
     /// Needs no label: it is the check to run when the model changes, before
     /// any case is labelled. Agreement is not accuracy, since two models can
     /// agree and both be wrong, so it never gates and never changes the
-    /// status. Every case needs a recording in DIR, as under --replay.
+    /// status. Every case as written needs a recording in DIR, as under
+    /// --replay.
     #[arg(long, value_name = "DIR", value_hint = ValueHint::DirPath)]
     pub against: Option<PathBuf>,
 }
@@ -1109,7 +1111,13 @@ fn evaluate(args: &Eval) -> Result<Report, Failure> {
                 &Backend::open(Some(dir), None)?,
                 &loaded,
                 batch::plan(&loaded)?,
-            )?,
+            )
+            .map_err(|e| match e {
+                Failure::Missing(m) => {
+                    Failure::Missing(format!("--against {}: {m}", dir.display()))
+                }
+                e => e,
+            })?,
         )),
         None => None,
     };

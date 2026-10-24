@@ -1775,7 +1775,10 @@ async fn a_case_missing_from_the_against_recordings_is_refused_before_any_call()
     );
     assert_eq!(code(&out), 1, "{}", stderr(&out));
     assert!(
-        stderr(&out).contains("no recording answers 1 case: invoice-vat"),
+        stderr(&out).contains(&format!(
+            "--against {}: no recording answers 1 case: invoice-vat",
+            other.display()
+        )),
         "{}",
         stderr(&out)
     );

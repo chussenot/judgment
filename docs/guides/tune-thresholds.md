@@ -2,7 +2,7 @@
 title: Tune thresholds
 description: How to grade a model's recorded answers against a rubric's labelled cases with jud eval, hold them to an accuracy bar that fails CI, and replace the guessed bars of the policy with bars proposed by jud tune from a table, then write them back with their provenance.
 status: current
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-24
 tags: [judgment, jud, tuning, calibration, metrics, eval, how-to]
 ---
 
@@ -225,7 +225,7 @@ Each case is copied as read, so the recordings made over the whole set answer bo
 
 ## When the model moves
 
-A bar is tuned per model version, and a confidence is the model's own formula: a threshold tuned on `jev-1.13.0` says nothing about `tev1:0.8b`. Record the cases again against the new model, which `jud record` reads from the `model` field of the configuration file: no flag and no environment variable names it ([Configure a backend](configure-a-backend.md), [the file](../reference/configuration.md#the-file)). Read how it grades with `jud eval`, and run `jud tune` for the new bars. Pass `--refresh` to `jud record`, or record into a new directory: a request's fingerprint leaves the model out, so otherwise the old model's answers are kept. `tuning.model` names which model answered.
+A bar is tuned per model version, and a confidence is the model's own formula: a threshold tuned on `jev-1.13.0` says nothing about `tev1:0.8b`. Record the cases again against the new model, which `jud record` reads from the `model` field of the configuration file: no flag and no environment variable names it ([Configure a backend](configure-a-backend.md), [the file](../reference/configuration.md#the-file)). Read how it grades with `jud eval`, and run `jud tune` for the new bars. Pass `--refresh` to `jud record`, or record into a new directory: a request's fingerprint leaves the model out, so otherwise the old model's answers are kept. A new directory keeps the old answers for a comparison: `jud eval RUBRIC CASES --replay NEW --against OLD` shows, before any new label, where the new model answers differently ([Agreement with another model](../reference/cli.md#agreement-with-another-model)). `tuning.model` names which model answered.
 
 When the cases change, the cost depends on what changed. A new case, or one whose state changed, has no recording, so `jud eval` and `jud tune` exit 1 naming it; `jud record` asks only that one. A changed label needs no new recording. A changed question has a new request fingerprint, so every case needs a recording again.
 

@@ -2,7 +2,7 @@
 title: Position and tone bias of Jev 1.13 and 1.14
 description: Fifty LLMBar Natural pairs asked as a pairwise Choice of Jev 1.13.0 and Jev 1.14.0 through jud record on 2026-10-18, each as written, with the two answers' order reversed (jud eval --swap) and with the better answer rewritten in a cheerful, sad, angry or fearful tone (--tone-perturb); the flip rates with their Wilson intervals, the flips among confident verdicts, the change in probability, the accuracy under each form and which cases moved; the recordings are committed, so every number replays with no key.
 status: current
-last_reviewed: 2026-10-18
+last_reviewed: 2026-10-24
 tags: [judgment, verification, bias, pairwise, jev, calibration]
 ---
 
@@ -36,6 +36,22 @@ The confident column counts the pairs whose original verdict had a confidence of
 - **The tone moved more, and confident verdicts too.** Jev 1.13 flipped 8 of 50, every one a right verdict made wrong, and fell from 0.94 to 0.78; Jev 1.14 flipped 6, five made wrong and one corrected, and fell to 0.86. Seven and four of those flips were verdicts at a confidence of 0.5 or more, so a gate at that bar would have acted on them. The cases that moved: on 1.13, `021`, `038`, `040`, `045`, `067`, `092`, `096` and `099`; on 1.14, `021`, `040`, `045`, `067`, `069` and `092`, of which `069`, a miss as written, became right.
 - **No one tone did it.** The 1.13 flips were 3 angry, 2 cheerful, 2 sad and 1 fearful; the 1.14 flips 3 cheerful, 2 angry and 1 sad. Twelve or thirteen cases per tone is too few to rank them.
 - **1.14 is less moved by tone than 1.13**, by 4 flips in 50; the intervals overlap, so fifty pairs do not show the difference to be real.
+
+## Agreement between the two versions
+
+Added on 2026-10-24 with `jud eval --against`, from the same recordings, no call:
+
+```sh
+jud eval examples/jud/pairwise-judge.jud examples/jud/pairwise-judge-cases.jud \
+  --replay examples/recordings/pairwise-judge-jev-1.14 \
+  --against examples/recordings/pairwise-judge-jev-1.13
+```
+
+| question | pairs | differs | differs, confidence ≥ 0.50 | mean \|Δp\| | accuracy | accuracy, against |
+|---|---:|---|---|---:|---|---|
+| better | 50 | 0.00 [0.00, 0.07] (0/50) | 0.00 [0.00, 0.08] (0/47) | 0.016 | 0.94 [0.84, 0.98] (47/50) | 0.94 [0.84, 0.98] (47/50) |
+
+Jev 1.14 picks what Jev 1.13 picks on every case as written, and its probability on the pick is within two points of 1.13's on average. They agree on their misses too, the same three, which is why agreement is a screen and not a grade ([Agreement before labels](../../concepts/rubrics-cases-recordings.md#agreement-before-labels)). The two versions differ only once the request is perturbed (the tone rows above). `tests/jud_perturb.rs` replays it.
 
 ## What this does not show
 

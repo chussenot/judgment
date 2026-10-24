@@ -12,8 +12,9 @@ All notable changes to the `judgment` crate. The format follows
   `DIR` for the same request, another model's typically, and reports per
   question how often the two differ (95 % Wilson interval) and how far the
   probability on this run's pick moved, with each side's accuracy when the
-  cases are labelled. It needs no label and no call, so it is the check to
-  run when the model changes, before labelling; it never gates, since two
+  cases are labelled. It needs no label, and with `--replay` no call, so it
+  is the check to run when the model changes, before labelling; it never
+  gates, since two
   models can agree and both be wrong. Choice, Score and Noul answers are
   compared; a Box is left out. The pairwise-judge recordings show Jev 1.14
   picking what Jev 1.13 picks on all 50 cases. The JSON report gains
