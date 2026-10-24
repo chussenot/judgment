@@ -64,7 +64,7 @@ Agents working in the repository cannot do steps 3 and 6 by accident: the Bash g
 - **The Homebrew tap.** The `homebrew` job pushes to [chussenot/homebrew-tap](https://github.com/chussenot/homebrew-tap) with the `HOMEBREW_TAP_TOKEN` repository secret: a fine-grained personal access token whose only repository is the tap and whose only permission is Contents, read and write, with an expiry, renewed when it lapses. Without the secret the job fails after the publish, with a message, and is re-run once the secret exists.
 - **The container image.** The `image` job pushes to `ghcr.io/chussenot/jud` with the job's own token (`packages: write`), so no secret is needed. The first push creates the package as private: on its settings page on GitHub, make it public and link it to this repository (the `org.opencontainers.image.source` label does the linking on later pushes). Pulls need no account once it is public.
 - **Merge method.** Disable squash merging and rebase merging in the repository settings, or take care on the release pull request (step 5 above).
-- **Locally.** `mise install` builds `cog` from crates.io; `mise run setup` installs the hooks, the `commit-msg` one included; `mise run commits:check` is what CI runs on a pull request.
+- **Locally.** `mise install` builds `cog` from crates.io (a cloud session downloads its release binary); `mise run setup` installs the hooks, the `commit-msg` one included; `mise run commits:check` is what CI runs on a pull request.
 
 ## When something goes wrong
 

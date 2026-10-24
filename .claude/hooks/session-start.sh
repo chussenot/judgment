@@ -12,7 +12,8 @@
 #   2. MISE_ENV=cloud, so mise.cloud.toml replaces the backends the sandbox cannot
 #      use with pinned release URLs; the tools go on PATH as plain binaries.
 #   3. The toolchain rust-toolchain.toml names, through rustup, as CI does.
-#   4. `mise install`: mbx, prek, bd, cocogitto, lychee.
+#   4. `mise install`: mbx, prek, bd, cocogitto, lychee, the cargo gates
+#      (semver-checks, deny, hack), insta and mutants, all release binaries.
 #   5. The beads database: `bd bootstrap` from the committed export, then the
 #      import the post-merge hook runs (scripts/bd-sync.sh; the export is how
 #      the beads travel between machines).
@@ -27,8 +28,9 @@
 #      reload so the first session may see them too.
 #   8. beads-mcp, the MCP server for beads (a separate Python package, not part
 #      of the bd binary), through `uv tool install` at the version bd is
-#      pinned to. Installed, not registered: `claude mcp add` is a choice of
-#      scope, left to whoever wants the tools.
+#      pinned to, when JUDGMENT_SESSION_BEADS_MCP=1. Installed, not
+#      registered: `claude mcp add` is a choice of scope, left to whoever
+#      wants the tools.
 #   9. A ceiling on the mbx cache (gc.max_total_size) and a collection, so
 #      the session disk, a fixed allowance, is never filled by the cache.
 #  10. A warm build of every test target through mbx, so the first
@@ -81,8 +83,8 @@ rustup toolchain install >/dev/null 2>&1 || rustup toolchain install
 rustup component add rustfmt clippy >/dev/null 2>&1 || true
 log "$(cargo --version)"
 
-# 4. The tools (mise.toml, overridden by mise.cloud.toml). cocogitto and lychee
-#    build from crates.io the first time, then live in the snapshot.
+# 4. The tools (mise.toml, overridden by mise.cloud.toml), every one a pinned
+#    release binary: nothing is compiled, so a fresh container pays seconds.
 log "mise install"
 mise install
 
@@ -114,10 +116,14 @@ mise run setup
 scripts/claude-plugins.sh install
 
 # 8. beads-mcp, at bd's own version (`bd --version`, so the pin in mise.toml
-#    and mise.cloud.toml is the only one). Idempotent: uv leaves a tool that
-#    is already at that version alone. A missing uv or a failed install is
-#    logged, not fatal: the MCP server is a convenience, `bd` is the tool.
-if command -v uv >/dev/null 2>&1; then
+#    and mise.cloud.toml is the only one), only on request: the hook does not
+#    register it, so an install nobody asked for is half a minute for nothing.
+#    Idempotent: uv leaves a tool that is already at that version alone. A
+#    missing uv or a failed install is logged, not fatal: the MCP server is a
+#    convenience, `bd` is the tool.
+if [ "${JUDGMENT_SESSION_BEADS_MCP:-}" != "1" ]; then
+  log "beads-mcp skipped (JUDGMENT_SESSION_BEADS_MCP=1 installs it)"
+elif command -v uv >/dev/null 2>&1; then
   bd_version=$(bd --version 2>/dev/null | sed -n 's/^bd version \([0-9][0-9.]*\).*/\1/p' | head -1 || true)
   spec="beads-mcp${bd_version:+==$bd_version}"
   if uv tool install "$spec" >/dev/null 2>&1; then
@@ -166,11 +172,15 @@ probe() {
   done
   printf '%s' "$blocked"
 }
-blocked=$(probe api.typesafe.ai docs.typesafe.ai index.crates.io static.crates.io static.rust-lang.org docs.rs github.com release-assets.githubusercontent.com pypi.org)
+hosts="api.typesafe.ai docs.typesafe.ai index.crates.io static.crates.io static.rust-lang.org docs.rs github.com release-assets.githubusercontent.com"
+# PyPI serves only beads-mcp, which step 8 installs on request.
+pypi=""
+if [ "${JUDGMENT_SESSION_BEADS_MCP:-}" = "1" ]; then hosts="$hosts pypi.org"; pypi=", PyPI"; fi
+blocked=$(probe $hosts)
 if [ -n "$blocked" ]; then
   network="blocked by the egress policy:$blocked. The contract work (tests/openapi_drift.rs, the live TypeSafe docs CLAUDE.md names) needs api.typesafe.ai and docs.typesafe.ai; the environment's allowed domains are the fix (docs/project/contributing.md, Cloud sessions)."
 else
-  network="every host the work depends on answers (TypeSafe API and docs, crates.io, rust-lang, docs.rs, GitHub releases, PyPI)."
+  network="every host the work depends on answers (TypeSafe API and docs, crates.io, rust-lang, docs.rs, GitHub releases$pypi)."
 fi
 log "network: $network"
 log "done"

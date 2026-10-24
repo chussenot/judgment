@@ -8,10 +8,26 @@
 # versions, come from pinned release URLs; rust stays rustup's, which reads
 # rust-toolchain.toml. Ollama (1.4 GB) serves only the live Ollama tests and is
 # not installed. Keep the versions in step with mise.toml.
+#
+# The cargo tools come from their release binaries too: built from crates.io,
+# they took twelve minutes of a fresh container's start, and `mise exec` or
+# `mise run` builds a missing one before its command, so leaving them out
+# would only move the wait.
 [settings]
-disable_tools = ["rust", "prek", "mr-boxington", "github:gastownhall/beads", "ollama"]
+disable_tools = [
+  "rust", "prek", "mr-boxington", "github:gastownhall/beads", "ollama",
+  "cargo:cocogitto", "cargo:lychee", "cargo:cargo-semver-checks", "cargo:cargo-deny",
+  "cargo:cargo-hack", "cargo:cargo-insta", "cargo:cargo-mutants",
+]
 
 [tools]
 "http:mbx" = { version = "1.22.0", url = "https://github.com/jdx/mr-boxington/releases/download/v1.22.0/mbx-x86_64-unknown-linux-gnu.tar.gz" }
 "http:prek" = { version = "0.5.5", url = "https://github.com/j178/prek/releases/download/v0.5.5/prek-x86_64-unknown-linux-gnu.tar.gz" }
 "http:bd" = { version = "1.3.1", url = "https://github.com/gastownhall/beads/releases/download/v1.3.1/beads_1.3.1_linux_amd64.tar.gz" }
+"http:cog" = { version = "7.0.0", url = "https://github.com/cocogitto/cocogitto/releases/download/7.0.0/cocogitto-7.0.0-x86_64-unknown-linux-musl.tar.gz" }
+"http:lychee" = { version = "0.24.2", url = "https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-musl.tar.gz" }
+"http:cargo-semver-checks" = { version = "0.51.0", url = "https://github.com/obi1kenobi/cargo-semver-checks/releases/download/v0.51.0/cargo-semver-checks-x86_64-unknown-linux-gnu.tar.gz" }
+"http:cargo-deny" = { version = "0.20.2", url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz" }
+"http:cargo-hack" = { version = "0.6.45", url = "https://github.com/taiki-e/cargo-hack/releases/download/v0.6.45/cargo-hack-x86_64-unknown-linux-musl.tar.gz" }
+"http:cargo-insta" = { version = "1.49.0", url = "https://github.com/mitsuhiko/insta/releases/download/1.49.0/cargo-insta-x86_64-unknown-linux-musl.tar.xz" }
+"http:cargo-mutants" = { version = "27.1.0", url = "https://github.com/sourcefrog/cargo-mutants/releases/download/v27.1.0/cargo-mutants-x86_64-unknown-linux-gnu.tar.gz" }

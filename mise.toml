@@ -3,6 +3,7 @@ wrappers = { cargo = { command = "mbx", env = { MBX_CARGO_SHIM_MODE = "1" } } }
 # https://mise.jdx.dev — run `mise install` once, then `mise run <task>` (or `mise tasks`).
 
 [tools]
+# A version bump here is a bump of the version and the release URL in mise.cloud.toml too.
 # Keep in step with rust-toolchain.toml, which rustup and CI read. mise must not read that
 # file itself: its parser keeps the TOML quotes and rejects the version (mise 2026.9.12).
 rust = { version = "1.94.1", components = "rustfmt,clippy" }
