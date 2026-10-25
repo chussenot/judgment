@@ -6,6 +6,16 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- The lockfile takes `rustls-webpki` 0.103.16 and `webpki-root-certs`
+  1.0.11, past RUSTSEC-2026-0382 (a certificate path through a distrusted
+  intermediate could be accepted) and RUSTSEC-2026-0383 (distrusted emSign
+  roots in the bundled set). Both come in through `reqwest`'s platform
+  verifier, so the `jud` binaries built from this lockfile verify the
+  server they call against the corrected roots. A library consumer's own
+  lockfile resolves these on its next `cargo update`.
+
 ### Added
 
 - `jud eval --against DIR` sets every answer beside the one recorded in
