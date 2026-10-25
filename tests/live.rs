@@ -109,11 +109,12 @@ enum Profile {
     /// Ollaya's TypeSafe-compatible API, on a local base URL
     /// (`http://127.0.0.1:11435` by default) with an open model, `laya:en`
     /// by default (`mise run live:ollaya`,
-    /// `docs/project/verification/ollaya.md`). Every refusal is a 422 with
-    /// an `error`, a `code` and TypeSafe's `detail`, a model it has not
-    /// pulled is a 404 `MODEL_NOT_FOUND`, a Box is refused, an image is
-    /// answered without being seen, and each model has a context of its
-    /// own that bounds the options and the state.
+    /// `docs/project/verification/ollaya.md`). Every validation refusal is
+    /// a 422 with an `error`, a `code` and TypeSafe's `detail`, a model it
+    /// has not pulled is a 404 `MODEL_NOT_FOUND`, a Box is refused, an
+    /// image is dropped by its `/v1` API, which has no image field, and
+    /// each model has a context of its own that bounds the options and the
+    /// state.
     Ollaya,
     /// Any other server: outcomes are printed, and only what the crate needs
     /// of every server is asserted.
@@ -212,7 +213,7 @@ impl Profile {
         match self {
             Self::Liquid => Some("does not exist"),
             Self::Ollaya => Some("MODEL_NOT_FOUND"),
-            _ => None,
+            Self::Typesafe | Self::Laya | Self::Autojev | Self::OpenRouter | Self::Generic => None,
         }
     }
 
@@ -953,7 +954,8 @@ async fn the_server_s_limits_match_the_reference_page() {
 async fn an_empty_question_id_is_refused_by_the_server_too() {
     // The builder refuses it (`question` unit tests); this is the hosted
     // API's half of the reason: a 400 that says `Question key cannot be
-    // empty.` laya-serve refuses it as a 422; autojev-serve answers it.
+    // empty.` laya-serve refuses it as a 422; autojev-serve and Ollaya
+    // answer it.
     let model = requested_model();
     let (status, text) = post_raw(&json!({
         "model": model,
@@ -1240,7 +1242,7 @@ async fn an_image_and_a_box_question_round_trip() {
     if profile == Profile::Ollaya {
         // Its question types are choice, score and noul.
         assert_eq!(status, 422, "{text}");
-        assert!(text.contains("box"), "{text}");
+        assert!(text.contains("box") && text.contains("noul"), "{text}");
     }
     if profile == Profile::Typesafe {
         assert_eq!(status, 200, "{text}");
@@ -1447,9 +1449,18 @@ async fn the_model_s_context_bounds_the_options_and_the_state() {
             "{what}: {status} {}",
             text.chars().take(160).collect::<String>()
         );
-        if profile == Profile::Ollaya && status != 200 {
+        // `laya:en`'s context was measured, so both refusals are pinned on
+        // it; another model may answer, or refuse 200 options for the room
+        // they leave the state rather than for their number.
+        let laya_en = model == "laya:en";
+        if profile == Profile::Ollaya && (status != 200 || laya_en) {
             assert_eq!(status, 422, "{what}: {text}");
-            assert!(text.contains(code), "{what}: {text}");
+            let codes = if laya_en {
+                vec![code]
+            } else {
+                vec!["TOO_MANY_OPTIONS", "STATE_TRUNCATED"]
+            };
+            assert!(codes.iter().any(|c| text.contains(c)), "{what}: {text}");
         }
     }
 }
@@ -1498,6 +1509,7 @@ async fn an_image_the_model_cannot_see_is_answered_without_it() {
             read(&without).expect("answered"),
         );
         assert_eq!(with.1, without.1, "the image added no input tokens");
-        assert!((with.0 - without.0).abs() < 1e-9, "nor moved the answer");
+        // fp16 on a GPU can move the last digits, never the tokens.
+        assert!((with.0 - without.0).abs() < 1e-3, "nor moved the answer");
     }
 }

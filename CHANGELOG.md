@@ -22,11 +22,13 @@ All notable changes to the `judgment` crate. The format follows
   live tests against Ollaya's TypeSafe-compatible API (`OLLAYA_URL`,
   default `http://127.0.0.1:11435`; `OLLAYA_MODEL`, default `laya:en`).
   Run on 2026-10-25 against Ollaya 0.17.0 with `laya:en` on a CPU: 21 of
-  21 pass. The profile pins what the run showed: every refusal a 422, a
-  model not pulled a 404 `MODEL_NOT_FOUND`, an empty question id answered,
-  the model's context bounding the options (`TOO_MANY_OPTIONS`) and the
-  state (`STATE_TRUNCATED`), a Box refused, and an image answered without
-  being seen; two live tests cover the last two that only Ollaya has.
+  21 pass. The profile pins what the run showed: every validation refusal
+  a 422, a model not pulled a 404 `MODEL_NOT_FOUND`, an empty question id
+  answered, the model's context bounding the options (`TOO_MANY_OPTIONS`)
+  and the state (`STATE_TRUNCATED`), a Box refused, and an image dropped
+  without a word, since Ollaya's `/v1` API has no image field; two new
+  live tests cover the context bounds and the unseen image. With
+  `OLLAYA_API_KEY` set, the task also runs the bearer test.
   `docs/project/verification/ollaya.md` records the run.
 - `jud eval --against DIR` sets every answer beside the one recorded in
   `DIR` for the same request, another model's typically, and reports per
