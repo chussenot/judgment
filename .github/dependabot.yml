@@ -14,6 +14,10 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # A release waits a week before it is proposed, so one pulled for being
+    # malicious or broken is gone first; security updates are not delayed.
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(deps)"
@@ -48,6 +52,8 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 3
     commit-message:
       prefix: "chore(ci)"

@@ -46,7 +46,7 @@ permissions:
 jobs:
   gate:
     name: gate
-    uses: ./.github/workflows/ci.yml
+    uses: $/.github/workflows/ci.yml
 
 
   build:
@@ -75,7 +75,9 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install toolchain from rust-toolchain.toml, with the target
         run: |
@@ -143,6 +145,8 @@ jobs:
       # and the binary's path inside it, or a published version would send
       # binstall to a 404 and a source build.
       - name: The binstall metadata names this tarball
+        env:
+          PACKAGE_NAME: ${{ steps.package.outputs.name }}
         run: |
           set -eu
           meta=$(cargo metadata --no-deps --format-version 1 | jq -c '.packages[] | select(.name == "judgment") | {version, repository, binstall: .metadata.binstall}')
@@ -164,10 +168,10 @@ jobs:
           [ "$fmt" = tgz ] || { echo "::error::pkg-fmt is '$fmt', the tarball is .tar.gz"; exit 1; }
           # On a tag the packaged tarball is the asset itself: the path must be in it.
           case "$GITHUB_REF_NAME" in
-            v*) tar -tzf "dist/${{ steps.package.outputs.name }}.tar.gz" | grep -qx "$bin" || { echo "::error::$bin is not in the tarball"; exit 1; } ;;
+            v*) tar -tzf "dist/${PACKAGE_NAME}.tar.gz" | grep -qx "$bin" || { echo "::error::$bin is not in the tarball"; exit 1; } ;;
           esac
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.package.outputs.name }}
           path: dist/${{ steps.package.outputs.name }}.tar.gz
@@ -189,7 +193,9 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install toolchain from rust-toolchain.toml
         run: |
@@ -211,8 +217,10 @@ jobs:
       # Written outside the checkout: `cargo publish` refuses a working tree
       # with an uncommitted file, and --allow-dirty would hide a real one.
       - name: The CHANGELOG has a section for the version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          version='${{ steps.version.outputs.version }}'
+          version="$VERSION"
           notes="$RUNNER_TEMP/release-notes.md"
           awk -v v="$version" '
             $0 ~ "^## \\[" v "\\]" { inside = 1; next }
@@ -262,7 +270,7 @@ jobs:
             -H 'User-Agent: judgment release workflow (github.com/chussenot/judgment)' \
             -o /dev/null -w 'revoke: HTTP %{http_code}\n' || true
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           # Every leg into one directory rather than one subdirectory each.
@@ -281,17 +289,18 @@ jobs:
 
       # Which workflow, commit and run produced each tarball, for
       # `gh attestation verify <tarball> --repo chussenot/judgment`.
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*.tar.gz
 
       - name: GitHub release with the CHANGELOG section as notes and the binaries as assets
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "judgment ${{ steps.version.outputs.version }}" \
+            --title "judgment $VERSION" \
             --notes-file "$RUNNER_TEMP/release-notes.md" \
             --verify-tag \
             dist/*.tar.gz dist/SHA256SUMS
@@ -305,9 +314,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           merge-multiple: true
@@ -372,9 +383,11 @@ jobs:
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/jud
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           merge-multiple: true
@@ -419,7 +432,9 @@ jobs:
 
       - name: Log in to ghcr.io
         if: github.event_name == 'push'
-        run: echo '${{ github.token }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
       # One manifest list for both platforms, tagged with the version, its
       # major.minor and latest; pushed with the job's own token, which can
@@ -456,7 +471,7 @@ jobs:
 
       # Which workflow, commit and run produced the image, for
       # `gh attestation verify oci://ghcr.io/chussenot/jud:X.Y.Z --repo chussenot/judgment`.
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         if: github.event_name == 'push'
         with:
           subject-name: ${{ env.IMAGE }}

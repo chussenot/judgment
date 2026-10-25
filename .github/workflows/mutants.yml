@@ -20,6 +20,10 @@ on:
     - cron: "17 3 * * 1"
   workflow_dispatch:
 
+# Read-only by default; the weekly job asks for `issues: write` itself.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -30,14 +34,15 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tool-cache
         with:
           path: ~/.cargo/bin/cargo-mutants
@@ -48,8 +53,10 @@ jobs:
         run: cargo install cargo-mutants --locked --version 27.1.0
 
       - name: Mutate the diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git diff "origin/${{ github.base_ref }}...HEAD" > pr.diff
+          git diff "origin/${BASE_REF}...HEAD" > pr.diff
           cargo mutants --in-diff pr.diff --no-shuffle \
             -f src/answer.rs -f src/http.rs -f 'src/eval/**'
 
@@ -60,7 +67,7 @@ jobs:
             { echo '### Mutants the tests let through'; echo; echo '```'; cat mutants.out/missed.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: mutants-in-diff
@@ -75,12 +82,14 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tool-cache
         with:
           path: ~/.cargo/bin/cargo-mutants
@@ -98,7 +107,7 @@ jobs:
           cargo mutants --no-shuffle || status=$?
           [ "$status" -eq 0 ] || [ "$status" -eq 2 ]
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: mutants-weekly
