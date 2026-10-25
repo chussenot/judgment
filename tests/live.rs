@@ -10,7 +10,7 @@
 //! ```
 //!
 //! `JUDGMENT_LIVE_PROFILE` names the server (`typesafe`, `laya`, `autojev`,
-//! `openrouter`, `liquid` or `generic`, the default): where servers differ, a status code or a
+//! `openrouter`, `liquid`, `ollaya` or `generic`, the default): where servers differ, a status code or a
 //! limit, the behaviour is asserted for the server it was observed on and
 //! printed for the others ([`Profile`]). Every body a test reads raw is
 //! checked against the vendored OpenAPI document, and the answer is printed
@@ -106,6 +106,15 @@ enum Profile {
     /// hosted API answers 400 or 200, a model name it does not serve with
     /// 404, and says a state is over its budget only in the message.
     Liquid,
+    /// Ollaya's TypeSafe-compatible API, on a local base URL
+    /// (`http://127.0.0.1:11435` by default) with an open model, `laya:en`
+    /// by default (`mise run live:ollaya`,
+    /// `docs/project/verification/ollaya.md`). Every refusal is a 422 with
+    /// an `error`, a `code` and TypeSafe's `detail`, a model it has not
+    /// pulled is a 404 `MODEL_NOT_FOUND`, a Box is refused, an image is
+    /// answered without being seen, and each model has a context of its
+    /// own that bounds the options and the state.
+    Ollaya,
     /// Any other server: outcomes are printed, and only what the crate needs
     /// of every server is asserted.
     Generic,
@@ -121,12 +130,13 @@ enum Limit {
 }
 
 impl Profile {
-    const NAMES: [(&'static str, Self); 6] = [
+    const NAMES: [(&'static str, Self); 7] = [
         ("typesafe", Self::Typesafe),
         ("laya", Self::Laya),
         ("autojev", Self::Autojev),
         ("openrouter", Self::OpenRouter),
         ("liquid", Self::Liquid),
+        ("ollaya", Self::Ollaya),
         ("generic", Self::Generic),
     ];
 
@@ -185,17 +195,25 @@ impl Profile {
     /// OpenAPI document, or only checked and printed. Asserted where a run
     /// found it held: the document is the hosted API's own, and
     /// autojev-serve's bodies held on 2026-10-09
-    /// (`docs/project/verification/autojev-serve.md`), Liquid's on 2026-10-18.
-    /// laya-serve's have not been checked yet, so they are reported until a
-    /// run shows they hold.
+    /// (`docs/project/verification/autojev-serve.md`), Liquid's on 2026-10-18,
+    /// Ollaya's on 2026-10-25. laya-serve's have not been checked yet, so
+    /// they are reported until a run shows they hold.
     fn holds_to_the_schema(self) -> bool {
-        matches!(self, Self::Typesafe | Self::Autojev | Self::Liquid)
+        matches!(
+            self,
+            Self::Typesafe | Self::Autojev | Self::Liquid | Self::Ollaya
+        )
     }
 
-    /// Whether a model name the server does not serve is refused, with 404,
-    /// rather than answered by whichever checkpoint the server routes to.
-    fn refuses_an_unknown_model(self) -> bool {
-        self == Self::Liquid
+    /// What the 404 body says when a model name the server does not serve
+    /// is refused, rather than answered by whichever checkpoint the server
+    /// routes to; `None` where it is answered.
+    fn unknown_model_refusal(self) -> Option<&'static str> {
+        match self {
+            Self::Liquid => Some("does not exist"),
+            Self::Ollaya => Some("MODEL_NOT_FOUND"),
+            _ => None,
+        }
     }
 
     /// The status of a limits probe on this server, where one was observed.
@@ -204,7 +222,7 @@ impl Profile {
             (Self::Laya, Limit::Options256) => Some(413),
             (Self::Typesafe, Limit::Options256 | Limit::Levels11)
             | (Self::Autojev, Limit::Options256 | Limit::Levels11 | Limit::Levels1)
-            | (Self::Liquid, _) => Some(422),
+            | (Self::Liquid | Self::Ollaya, _) => Some(422),
             (Self::Typesafe | Self::Laya | Self::Autojev, _) => Some(200),
             (Self::OpenRouter | Self::Generic, _) => None,
         }
@@ -215,7 +233,7 @@ impl Profile {
         match self {
             Self::Typesafe => Some(400),
             Self::Laya | Self::Liquid => Some(422),
-            Self::Autojev => Some(200),
+            Self::Autojev | Self::Ollaya => Some(200),
             Self::OpenRouter | Self::Generic => None,
         }
     }
@@ -227,7 +245,7 @@ impl Profile {
         match self {
             Self::Typesafe => Some(400),
             Self::Laya => Some(413),
-            Self::Liquid => Some(422),
+            Self::Liquid | Self::Ollaya => Some(422),
             Self::Autojev | Self::OpenRouter | Self::Generic => None,
         }
     }
@@ -631,7 +649,7 @@ async fn the_model_list_is_either_served_or_absent() {
 async fn a_model_name_the_server_does_not_know_is_still_answered() {
     // A client built for the hosted API sends `jev-latest`; a server that
     // routes by name must not fail the request for it. Liquid does, with a
-    // 404 (`Profile::refuses_an_unknown_model`). Which checkpoint
+    // 404 and Ollaya too (`Profile::unknown_model_refusal`). Which checkpoint
     // answered is the server's business; the response says so in `model`.
     let base_url = base_url();
     let client = Client::builder()
@@ -648,10 +666,10 @@ async fn a_model_name_the_server_does_not_know_is_still_answered() {
     let result = client
         .system_one(&json!({ "message": STATE_PAYOUTS }), &q)
         .await;
-    if PROFILE.refuses_an_unknown_model() {
+    if let Some(says) = PROFILE.unknown_model_refusal() {
         eprintln!("jev-latest: {result:?}");
         assert!(
-            matches!(&result, Err(Error::Http { status: 404, body, .. }) if body.contains("does not exist")),
+            matches!(&result, Err(Error::Http { status: 404, body, .. }) if body.contains(says)),
             "{result:?}"
         );
         return;
@@ -891,7 +909,7 @@ async fn the_server_s_limits_match_the_reference_page() {
             continue;
         };
         assert_eq!(status, expected, "{what} on {profile:?}: {text}");
-        if profile == Profile::Liquid {
+        if matches!(profile, Profile::Liquid | Profile::Ollaya) {
             // Any 422 would match the status; the message names the bound.
             let bound = if matches!(limit, Limit::Options256 | Limit::Levels11) {
                 "at most"
@@ -1072,7 +1090,10 @@ async fn confidence_follows_the_documented_formulas_on_jev() {
         s.value,
         s.expected_value()
     );
-    if matches!(*PROFILE, Profile::Typesafe | Profile::Liquid) {
+    if matches!(
+        *PROFILE,
+        Profile::Typesafe | Profile::Liquid | Profile::Ollaya
+    ) {
         assert!(choice_gap <= 0.015, "choice confidence off by {choice_gap}");
         assert!(score_gap <= 0.02, "score confidence off by {score_gap}");
         assert!(
@@ -1117,8 +1138,15 @@ async fn a_state_over_the_budget_is_refused_as_too_large() {
             // Liquid's 422 says the state is over its budget only in the
             // message (`invalid_request_error`, no code), so the predicate
             // cannot tell it from any other invalid request.
+            // Ollaya's 422 names it in its issue, `input_too_long`, which the
+            // predicate does not read either.
             if profile == Profile::Liquid {
                 assert!(err.to_string().contains("input limit"), "{err:?}");
+            } else if profile == Profile::Ollaya {
+                assert!(
+                    matches!(&err, Error::InvalidRequest { issues, .. } if issues.iter().any(|i| i.kind == "input_too_long")),
+                    "{err:?}"
+                );
             } else {
                 assert!(err.is_request_too_large(), "{err:?}");
             }
@@ -1209,6 +1237,11 @@ async fn an_image_and_a_box_question_round_trip() {
     assert_eq!(body["assets"]["image"]["format"], "png");
     let (status, text) = post_raw_with(&body, &[("typesafe-danger-zone-images", "true")]).await;
     eprintln!("raw with the header: {status}");
+    if profile == Profile::Ollaya {
+        // Its question types are choice, score and noul.
+        assert_eq!(status, 422, "{text}");
+        assert!(text.contains("box"), "{text}");
+    }
     if profile == Profile::Typesafe {
         assert_eq!(status, 200, "{text}");
         let (status, text) = post_raw(&body).await;
@@ -1377,5 +1410,94 @@ async fn an_image_goes_as_a_multipart_part_too() {
             eprintln!("multipart: {err}");
             assert!(profile != Profile::Typesafe, "{err:?}");
         }
+    }
+}
+
+/// What a model's context holds on Ollaya: the options and the state share
+/// it (512 tokens on `laya:en`, about 125 options), so a Choice with more
+/// options than fit is a 422 `TOO_MANY_OPTIONS`, and a state that would not
+/// fit whole is a 422 `STATE_TRUNCATED` rather than an answer from part of
+/// it; TypeSafe answers both. Printed for every server and asserted on
+/// Ollaya, where a model with a longer context may answer instead.
+#[tokio::test]
+#[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
+async fn the_model_s_context_bounds_the_options_and_the_state() {
+    let model = requested_model();
+    let profile = *PROFILE;
+    let options: serde_json::Map<String, Value> = (0..200)
+        .map(|i| (format!("opt_{i:03}"), json!(format!("option {i}"))))
+        .collect();
+    let cases = [
+        (
+            "200 options",
+            json!({ "model": model, "state": "Pick one.", "questions": {
+                "c": { "type": "choice", "instructions": "Which?", "criteria": options } } }),
+            "TOO_MANY_OPTIONS",
+        ),
+        (
+            "a 2,000-word state",
+            json!({ "model": model, "state": vec!["payout"; 2000].join(" "), "questions": {
+                "u": { "type": "noul", "instructions": "Is it urgent?" } } }),
+            "STATE_TRUNCATED",
+        ),
+    ];
+    for (what, body, code) in cases {
+        let (status, text) = post_raw(&body).await;
+        eprintln!(
+            "{what}: {status} {}",
+            text.chars().take(160).collect::<String>()
+        );
+        if profile == Profile::Ollaya && status != 200 {
+            assert_eq!(status, 422, "{what}: {text}");
+            assert!(text.contains(code), "{what}: {text}");
+        }
+    }
+}
+
+/// A Noul about an image, asked of a model without vision. Ollaya answers
+/// it without the image: with the image in `assets` the answer and the
+/// input tokens are those of the same request without it. Printed for
+/// every server and asserted on Ollaya, so a release that starts reading
+/// images fails here and the profile is revisited.
+#[tokio::test]
+#[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
+async fn an_image_the_model_cannot_see_is_answered_without_it() {
+    let (image, _) = shape_01();
+    let mut assets = Assets::new();
+    assets.insert("image", image).unwrap();
+    let state = json!({ "image": "image" });
+    let mut q = Questions::new();
+    let present = q
+        .noul(
+            "circle_present",
+            "Is there a filled circle in `image`?",
+            None,
+        )
+        .unwrap();
+    let model = requested_model();
+    let with = client()
+        .evaluate(&Request::new(&state, &model, &q).with_assets(&assets))
+        .await;
+    let without = client().evaluate(&Request::new(&state, &model, &q)).await;
+    // `None` for a refusal, printed below with the error itself.
+    let read = |r: &Result<judgment::Response, Error>| {
+        r.as_ref()
+            .ok()
+            .map(|r| (r.get(&present).unwrap().yes.value(), r.usage.input_tokens))
+    };
+    eprintln!(
+        "image unseen? with {:?}, without {:?} ({:?}, {:?})",
+        read(&with),
+        read(&without),
+        with.as_ref().err(),
+        without.as_ref().err()
+    );
+    if *PROFILE == Profile::Ollaya {
+        let (with, without) = (
+            read(&with).expect("answered"),
+            read(&without).expect("answered"),
+        );
+        assert_eq!(with.1, without.1, "the image added no input tokens");
+        assert!((with.0 - without.0).abs() < 1e-9, "nor moved the answer");
     }
 }
