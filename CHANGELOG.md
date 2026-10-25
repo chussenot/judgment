@@ -184,6 +184,13 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Changed
 
+- The jud plugin's `jud-tune` skill loads a quarter of what it did when it
+  triggers: its SKILL.md keeps how to run the commands, what each edit
+  costs, what never to do and what a reply must contain (11 KB, from 41 KB),
+  and the detail moves to `references/` (`record.md`, `eval.md`,
+  `triage.md`, `tune.md`), each read before the step it covers. Nothing
+  was reworded; `/jud:record`, `/jud:eval` and `/jud:tune` name the pages
+  they need. A pre-commit hook refuses a plugin SKILL.md over 500 lines.
 - **Breaking** for a caller that set it: `Content-Encoding` is a reserved
   header, with or without the `zstd` feature. `CallOptions::header` and
   `ClientBuilder::default_header` refuse it with `Error::ReservedHeader`,
