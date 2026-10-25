@@ -1,9 +1,9 @@
 ---
 title: Compatible servers and models
-description: The servers and models that speak the System One wire as of 2026-10-06, hosted and local, what the Jev Decision Index 0.2.1 says about how close the open ones are to Jev, what each one's limits and confidence semantics mean for a consumer of this crate, and which the crate has been run against or should be next.
+description: The servers and models that speak the System One wire as of 2026-10-06, hosted and local, what the Jev Decision Index 0.2.1 says about how close the open ones are to Jev, what each one's limits and confidence semantics mean for a consumer of this crate, and which the crate has been run against or should be next; and OpenAI's Decisions API, generally available on 2026-10-22, which answers the same three kinds of question on a wire of its own.
 status: current
-last_reviewed: 2026-10-18
-tags: [research, judgment, typesafe, jev, compatibility, calibration, ollama, laya, cloudflare, clef]
+last_reviewed: 2026-10-25
+tags: [research, judgment, typesafe, jev, compatibility, calibration, ollama, laya, cloudflare, clef, openai]
 ---
 
 # Compatible servers and models
@@ -91,6 +91,45 @@ A run of `mise run live:ollama` against Ollama 0.40.5 with `tev1:0.8b` on a 4-vC
 - **With the image in the shared array the model sees it; in the `assets` map it does not.** The same Noul, "Is there a filled circle in `image`?", answered 0.975 on an image with a circle and 0.010 on one without when the image went as `images[]`, and 0.204 on both, and on no image at all, to the last digit, when it went as the hosted API's `assets` map: the map is dropped and the text alone is judged. That is the case for `ClientBuilder::shared_images`.
 - **On the forty shapes cases, Clef-flash matches Jev on the Noul.** `jud record` with `shared_images: true` asked the Noul alone (`examples/jud/shapes-noul.jud`, the shapes rubric without its Box, which Ollama has not) and the recordings are committed under `examples/recordings/shapes-clef/`: forty of forty right, Brier 0.001, calibration error 0.022, confidence 0.98 when right; Jev 1.14.0 on the same images with the Box beside it ([the calibration study](../verification/box-calibration-study.md)): forty of forty, 0.001, 0.015, 0.99. The median call took 19.9 s on four CPU cores (16.5 to 37.3 s), against half a second hosted. One rubric, two servers, the same verdicts: what the wire promises, on images too, with the Box the one thing the local model cannot do. `tests/jud.rs` replays both sets.
 - **Five live tests fail under the generic profile on 0.40.5 that passed on 0.40.0** (judgment-2qk): three bodies get a 500, `the model could not evaluate the decision` (the three primitives in one request, the repeated-calls body and the published-document body); `GET /v1/models` is the OpenAI-shaped list, an `Error::Decode`; an unknown model is a 404. Whether the 500s are `tev1`'s or the engine's is open.
+
+## Off the wire: OpenAI's Decisions API
+
+Read on 2026-10-25 from OpenAI's developer documentation: the [Decisions guide](https://developers.openai.com/api/docs/guides/decisions), the [API reference](https://developers.openai.com/api/reference/resources/decisions), the [changelog](https://developers.openai.com/api/docs/changelog), [Connect voice to Decisions](https://developers.openai.com/api/docs/guides/decisions-voice), [pricing](https://developers.openai.com/api/docs/pricing) and the [`gpt-6-luna` model page](https://developers.openai.com/api/docs/models/gpt-6-luna). The announcement post (`openai.com/index/decisions-api/`) answered 403 to the environment this page was written in, so nothing below rests on it; every fact is from one of the pages above.
+
+**What is documented.**
+
+- **Release.** In beta on 2026-10-06, generally available on 2026-10-22, with native GPT-Live integration added on 2026-10-09 ([changelog](https://developers.openai.com/api/docs/changelog)).
+- **Endpoint and model.** `POST /v1/decisions`, with `gpt-6-luna` the only supported model ([guide](https://developers.openai.com/api/docs/guides/decisions)).
+- **Questions.** Three types: `predicate` (the probability that a condition is true), `choice` (one of the values supplied) and `score` (the probability-weighted average of the level indices, which can fall between levels). There are 1 to 400 questions per request, up from 200 in the beta, and 2 to 10 levels per score ([guide](https://developers.openai.com/api/docs/guides/decisions)).
+- **Input.** A text string, or an ordered array of messages, tool calls and tool outputs. User messages take `input_text`, `input_image` and `input_json` parts. An image is a base64 data URL or a public HTTP(S) URL, and file IDs are not supported. Question instructions may carry images of their own ([guide](https://developers.openai.com/api/docs/guides/decisions), [reference](https://developers.openai.com/api/reference/resources/decisions)). `input_json` is limited to 32 container levels, 10,000 values and 256 KiB ([reference](https://developers.openai.com/api/reference/resources/decisions)). The guide states no per-request token limit; the model page gives a 1,050,000-token context window ([model](https://developers.openai.com/api/docs/models/gpt-6-luna)).
+- **Answers.** An array in question order. Each answer echoes the question's `name`, and any answer can be a `refusal` while the other questions are still answered. `choice` and `score` answers carry `probabilities` as an array and a separate `confidence`, and a choice value may be a string or a boolean ([reference](https://developers.openai.com/api/reference/resources/decisions)). The guide does not define how `confidence` is computed, and says to set thresholds from labelled examples of your own ([guide](https://developers.openai.com/api/docs/guides/decisions)).
+- **Prompt caching.** An implicit breakpoint at the end of the shared `input`, or explicit breakpoints, with `prompt_cache_key` to partition reuse and a prefix of at least 1,024 tokens. Question content is never part of the reusable prefix ([guide](https://developers.openai.com/api/docs/guides/decisions)); the cache lifetime is `prompt_cache_options.ttl` ([reference](https://developers.openai.com/api/reference/resources/decisions)).
+- **Price.** Uncached input is $0.10 per million tokens, and output is not charged on `/v1/decisions`. Cache reads and writes are billed at `gpt-6-luna`'s standard caching rates ([guide](https://developers.openai.com/api/docs/guides/decisions)): $0.01 per million cached input tokens, $0.125 for a 30-minute write and $0.25 for a 12-hour write ([pricing](https://developers.openai.com/api/docs/pricing)).
+- **Data handling.** Zero Data Retention and HIPAA use for eligible customers, with regional processing in the United States and in Europe (EEA and Switzerland) ([guide](https://developers.openai.com/api/docs/guides/decisions)).
+- **GPT-Live.** A Live session set with `session.delegation` of type `decisions` lets `gpt-live-1` call Decisions itself, and `session.triggers` fire a decision on input or output transcript deltas. Decisions reads the transcript, and the results come back as `decision.event` messages on the session. The page gives no latency figure ([voice guide](https://developers.openai.com/api/docs/guides/decisions-voice)).
+
+**What is the vendor's claim.** "About 10x faster than the Responses API" is OpenAI's wording on the [guide](https://developers.openai.com/api/docs/guides/decisions) and in the beta's [changelog](https://developers.openai.com/api/docs/changelog) entry, with no baseline, workload, figures or method. It is a statement about OpenAI's two APIs, not a measurement, and nothing on this page measures it. No accuracy or calibration figure is published. Latencies and comparisons with Jev that appear in secondary coverage are not on OpenAI's pages and are not used here.
+
+**Where the wire departs from `/v1/systemone`.**
+
+| | `/v1/systemone` (this crate) | `/v1/decisions` |
+|---|---|---|
+| Evidence | `state`, any JSON value, with images in `assets` | `input`, text or a message array with text, image and JSON parts |
+| Questions | a map from id to question | an array, each question named by `name` |
+| Kinds | `noul`, `choice`, `score`, `box` | `predicate`, `choice`, `score`; no region |
+| Options and levels | `criteria`: a map of key to description, or a list of levels | `choices` of `{value, description}`; `levels` of `{label, description}` |
+| Answers | a map keyed by question id; `probabilities` a map | an array in question order; `probabilities` an array; a value typed string or boolean |
+| A question it will not answer | the request fails with an HTTP error | a `refusal` answer for that question alone |
+| `confidence` | TypeSafe's spread, documented | present, its formula not documented |
+| Caching | none on the wire | prompt caching, implicit or explicit |
+
+**What this means for the crate.** Nothing changes. `/v1/decisions` is not a server for the crate: a `base_url` does not reach it, and the body, the answers and the refusals all differ, so it is not a row of the table above. The three kinds of question carry over one for one, so an adapter could map the bodies, as `tools/systemone/serve.py` does for Cloudflare's envelope, with three losses:
+
+- **No Box.** There is no region question to send one to.
+- **A refusal fails the whole request.** `Response::verify` requires an answer to every question sent, so a per-question refusal would make the request an error.
+- **The policy does not carry over.** `confidence` is not documented, so a bar tuned on Jev means nothing until it is refit on labelled cases. That is the advice OpenAI's own guide gives, and the work `jud tune` does, with `jud eval --against` to compare the answers first.
+
+None of this is a reason to build the adapter before someone asks for it. The `.jud` format is untouched: its questions are the System One wire's shape ([decision 0014](../decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md)). Three vendors now call their product a Decisions API, and the name says nothing about the wire: Liquid's serves `/v1/systemone` under `/decisions`, Perplexity's takes TypeSafe's primitives, and OpenAI's speaks a wire of its own.
 
 ## Open questions
 
