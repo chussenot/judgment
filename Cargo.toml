@@ -148,7 +148,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "h
 bytes = { version = "1.9", optional = true }
 tokio = { version = "1", features = ["time", "rt"], optional = true }
 # The compressed JSON body (feature `zstd`): libzstd, the reference encoder.
-zstd = { version = "0.13", default-features = false, optional = true }
+zstd = { version = "0.14", default-features = false, optional = true }
 fastrand = { version = "2", optional = true }
 # HTTP dates in `Retry-After` (the retry loop).
 httpdate = { version = "1", optional = true }
