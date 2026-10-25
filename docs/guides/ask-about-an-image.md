@@ -2,7 +2,7 @@
 title: Ask a question about an image
 description: How to send an image with a request and ask a Noul, a Choice or a Score about it, from the shell with jud --asset and in Rust with Image, Assets and answer_with_assets; the reference that places the image in the state, what the crate checks before the upload, how the answer is recorded and replayed, and what it costs.
 status: current
-last_reviewed: 2026-10-18
+last_reviewed: 2026-10-25
 tags: [judgment, images, assets, how-to, jud, rust]
 ---
 
@@ -106,7 +106,7 @@ A request without images is the JSON body it always was, whatever was asked. Oll
 
 The hosted API refuses the same with a 400, and a 413 for a body over its size limits; both read as `Error::is_request_too_large` when the remedy is a smaller image. The images' count and bytes reach the `Observer` (`on_assets`) once per call, and the `typesafe.evaluate` span carries the count as `images`, so an application's own metrics can price a visual judgment.
 
-An image costs input tokens in proportion to its pixels ([Visual judgments](../concepts/visual-judgments.md)): resize before sending when the target stays legible. `jev-latest` (Jev 1.13) answers a Noul, a Choice or a Score about an image; a Box needs `jev-preview` until the alias moves ([Locate something with a Box question](locate-with-a-box.md)).
+An image costs input tokens in proportion to its pixels ([Visual judgments](../concepts/visual-judgments.md)): resize before sending when the target stays legible. Jev 1.13 and later answer a Noul, a Choice or a Score about an image; a Box needs Jev 1.14 or later, which `jev-latest` points to as of 2026-10-25 ([Locate something with a Box question](locate-with-a-box.md)).
 
 ## Next
 

@@ -165,6 +165,18 @@ All notable changes to the `judgment` crate. The format follows
   `tracing-opentelemetry` view that reads the old names must read the new
   ones. `images`, `long_context`, `multipart` and `request_id` are unchanged.
 
+### Fixed
+
+- The Box guidance no longer says `jev-latest` refuses a Box. On the
+  hosted API `jev-latest` and `jev-preview` both point to `jev-1.14.0`
+  (<https://docs.typesafe.ai/models>, read 2026-10-25), and a Box needs
+  Jev 1.14 or later (<https://docs.typesafe.ai/images>): the guides, the
+  rustdoc of `Questions::r#box`, the shapes example and the jud
+  plugin's commands and skills now name `jev-latest`, keep the warning for
+  a model pinned to `jev-1.13.0`, and advise pinning `jev-1.14.0` once a
+  rubric's bars are tuned, since an alias moves with the next release.
+  The verification records keep what was true when they were written.
+
 ## [0.14.0] - 2026-10-15
 
 ### Added

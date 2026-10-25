@@ -2,13 +2,13 @@
 title: Locate something with a Box question
 description: How to ask where something is in an image with a Box question and read the box in fractions or pixels, why the Box is gated by a Noul beside it and a confidence bar, how to label cases with boxes and grade them by intersection over union with jud eval, and how to pad and crop from the answer, from the shell and in Rust.
 status: current
-last_reviewed: 2026-10-15
+last_reviewed: 2026-10-25
 tags: [judgment, box, images, iou, how-to, jud, rust]
 ---
 
 # Locate something with a Box question
 
-**You will** ask a model where something is in an image, read the answer as a box, decide whether to trust it, and grade a set of such answers against labelled boxes. **Prerequisites:** [Ask a question about an image](ask-about-an-image.md); a checkout of the repository for the replayed steps, which need no key. A Box needs Jev 1.14: `jev-preview` on the hosted API until `jev-latest` moves.
+**You will** ask a model where something is in an image, read the answer as a box, decide whether to trust it, and grade a set of such answers against labelled boxes. **Prerequisites:** [Ask a question about an image](ask-about-an-image.md); a checkout of the repository for the replayed steps, which need no key. A Box needs Jev 1.14 or later: on the hosted API `jev-latest` and `jev-preview` both point to `jev-1.14.0` as of 2026-10-25 ([Models](https://docs.typesafe.ai/models)), and a model pinned to `jev-1.13.0` refuses it ([Images](https://docs.typesafe.ai/images)). Pin `jev-1.14.0` once a Box's bars are tuned, since an alias moves with the next release; `jev-preview` can move ahead of `jev-latest` ([Models](https://docs.typesafe.ai/models)).
 
 ## Ask where, and whether
 
@@ -128,7 +128,7 @@ async fn run() -> judgment::Result<()> {
 
     let client = Client::from_env()?;
     let response = client
-        .answer_with_assets(&state, "jev-preview", &questions, &assets)
+        .answer_with_assets(&state, "jev-latest", &questions, &assets)
         .await?;
     let signed = response.get(&signed)?;
     let signature: BoundingBox = response.get(&signature)?;

@@ -1151,8 +1151,8 @@ fn shape_01() -> (Image, BoxEdges) {
 }
 
 /// An image in the request and a Box question about it: the hosted API
-/// takes both under the images header on Jev 1.14 (`jev-preview` while
-/// `jev-latest` is 1.13) and answers a box inside the image with a
+/// takes both under the images header on Jev 1.14 (`jev-preview`, chosen
+/// while `jev-latest` was 1.13; judgment-7k5.9) and answers a box inside the image with a
 /// confidence, overlapping the generator's own box; a server without the
 /// primitive refuses the request by name, which is printed. The body is
 /// then sent raw, as the client serialises it, and checked against the

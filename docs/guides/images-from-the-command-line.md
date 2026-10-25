@@ -2,7 +2,7 @@
 title: Get verdicts on images from the command line
 description: How to get a verdict on a photo or a page with the jud command alone; a rubric that names the image, --asset to send it and --pixels to read a box in pixels, the verdicts a Noul and a Box print and why the Noul is read first, what is refused before any call, images a rubric always sends, labelled photos through jud check, record, eval and tune, and what a real run needs and costs; every transcript replayed from the committed recordings, so no key is needed to follow it.
 status: current
-last_reviewed: 2026-10-18
+last_reviewed: 2026-10-25
 tags: [judgment, jud, cli, images, box, how-to]
 ---
 
@@ -56,7 +56,7 @@ spec:
       note: below it, pad the box before cropping, or ask again on a larger crop
 ```
 
-Three things to copy from it. The questions name the image by its reference and nothing else about it: no path, no size, no format. A Box has `instructions` and no `criteria`, and it is gated by `confidence` or `bands`, never by a threshold. And a Box has a Noul beside it, because a Box always answers with a box, found or not; the Noul says whether to use it (step 3). A Noul, a Choice or a Score about an image is answered by Jev 1.13 (`jev-latest`); a Box needs Jev 1.14, `jev-preview` on the hosted API until the alias moves. `minor: 4` is the format minor that reads a Box and images ([The .jud format](../reference/jud-format.md)).
+Three things to copy from it. The questions name the image by its reference and nothing else about it: no path, no size, no format. A Box has `instructions` and no `criteria`, and it is gated by `confidence` or `bands`, never by a threshold. And a Box has a Noul beside it, because a Box always answers with a box, found or not; the Noul says whether to use it (step 3). A Noul, a Choice or a Score about an image is answered by Jev 1.13 and later; a Box needs Jev 1.14 or later, which `jev-latest` points to as of 2026-10-25. `minor: 4` is the format minor that reads a Box and images ([The .jud format](../reference/jud-format.md)).
 
 ## 2. Send the image with `--asset`
 
@@ -277,7 +277,7 @@ API key: missing; the run would stop before the first call (a local server that 
 time: nothing to ask
 ```
 
-A run of your own goes to a fresh directory and needs a key and, for a Box, `model: jev-preview` in the configuration file ([step 7](#7-against-a-real-model)); the recordings are keyed by each image's digest as well as the state, so a photo that is re-encoded or resized is asked again, and `--refresh` asks every case again. Then `jud eval` grades the recordings against the labels, a Box by intersection over union at 0.5 unless the label says `iou_at_least` ([decision 0026](../project/decisions/0026-a-box-is-graded-by-intersection-over-union.md)), with the mean overlap where a Noul has a Brier score and each miss's overlap:
+A run of your own goes to a fresh directory and needs a key, and a Box needs Jev 1.14 or later ([step 7](#7-against-a-real-model)); the recordings are keyed by each image's digest as well as the state, so a photo that is re-encoded or resized is asked again, and `--refresh` asks every case again. Then `jud eval` grades the recordings against the labels, a Box by intersection over union at 0.5 unless the label says `iou_at_least` ([decision 0026](../project/decisions/0026-a-box-is-graded-by-intersection-over-union.md)), with the mean overlap where a Noul has a Brier score and each miss's overlap:
 
 ```sh
 jud eval examples/jud/stamps.jud examples/jud/stamps-cases.jud --replay examples/recordings/stamps
@@ -317,12 +317,12 @@ Read the six misses before the accuracy: every one is at an overlap of 0.45 to 0
 
 ## 7. Against a real model
 
-Drop `--replay` and the same command asks the configured backend. For the hosted API that is a key and, when the rubric has a Box, the preview alias:
+Drop `--replay` and the same command asks the configured backend. For the hosted API that is a key. A Box needs Jev 1.14 or later, which `jev-latest`, the default, points to as of 2026-10-25; a model pinned to `jev-1.13.0` refuses it. Pin the version once its bars are tuned, so that the next release does not move them ([Models](https://docs.typesafe.ai/models)):
 
 ```sh
 export TYPESAFE_API_KEY=...
-printf 'model: jev-preview\n' > ~/.config/jud/config.yaml   # a Box needs Jev 1.14 until jev-latest moves
-jud config                                                  # "api_key": "environment", "model": "jev-preview"
+printf 'model: jev-1.14.0\n' > ~/.config/jud/config.yaml    # the release the recordings name; jev-latest moves with the next one
+jud config                                                  # "model": "jev-1.14.0", "model_from": "config_file", "api_key": "environment"
 echo '{"page": "page-00"}' | jud --asset page-00=examples/jud/images/page-00.png examples/jud/stamps.jud
 ```
 

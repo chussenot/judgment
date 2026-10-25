@@ -205,7 +205,8 @@ round trip.
   Images cost input tokens by their pixels (fifteen times more at the
   largest size the API takes than at the smallest), so the state carries
   the smallest image that keeps the target legible, and a Box needs Jev
-  1.14 (`jev-preview` on the hosted API until `jev-latest` moves).
+  1.14 or later (`jev-latest` on the hosted API; a pinned `jev-1.13.0`
+  refuses it).
 - **Be honest in the policy.** A hand-written rubric has no `tuning` block,
   and a `threshold: 0.5` with no `note` says "a guess" plainly. A `note` on a
   gate says why the bar is where it is. Do not invent a `tuning` block, a

@@ -122,11 +122,16 @@ files, so this is where a bad path first shows. Read the plan and say:
   `git log -p -1 -- RUBRIC` for a committed change) and name it.
 - **Which backend and model.** `(from default)` means nothing chose the
   model; `jev-latest` is an alias, and the recordings will name the version
-  that answered. A rubric with a Box needs Jev 1.14: on the hosted API
-  that is `jev-preview` (in the configuration file's `model`) until
-  `jev-latest` moves, and `jev-latest` refuses every such request with a
-  bare `Invalid request.`, one failed call per case. Images alone (a Noul,
-  a Choice or a Score about one) are answered by Jev 1.13 and later.
+  that answered. A rubric with a Box needs Jev 1.14 or later: on the
+  hosted API `jev-latest` and `jev-preview` both point to `jev-1.14.0`
+  (as of 2026-10-25), and a model pinned to `jev-1.13.0` refuses every
+  such request, one failed call per case (observed on 2026-10-15 as a
+  400 with a bare `Invalid request.`, while `jev-latest` was 1.13).
+  Bars tuned on one release stay meaningful only on it, so pin the
+  version (`model: jev-1.14.0`) rather than an alias that moves when the
+  next release ships; `jev-preview` can move ahead of `jev-latest`. Images
+  alone (a Noul, a Choice or a Score about one) are answered by Jev 1.13
+  and later.
 - **Whether a key is set.** A missing one stops the run before the first
   call; any non-blank word does for a local server that ignores it. The
   user sets it outside the conversation: `export TYPESAFE_API_KEY=...` in

@@ -44,10 +44,15 @@ tool.
    stale means a question changed; some, those cases did.
 5. **Read the backend from the plan.** `(from default)` means nothing set
    the model: `jev-latest` is an alias, and the recordings will name the
-   version that answered. A rubric with a Box needs Jev 1.14: when the
-   model is `jev-latest` or any 1.13, stop and say that `jev-preview` (in
-   the configuration file's `model`) answers a Box and `jev-latest` refuses
-   every such request, rather than spend one failed call per case. Neither
+   version that answered. A rubric with a Box needs Jev 1.14 or later.
+   On the hosted API `jev-latest` and `jev-preview` both point to
+   `jev-1.14.0` (as of 2026-10-25) and answer it; when the model is a
+   Jev 1.13 (`jev-1.13.0`, or `jev-1.13` through OpenRouter), stop and say
+   that Jev 1.13 refuses every Box request, rather than spend one failed
+   call per case. To keep the recordings on
+   one release, `jev-1.14.0` in the configuration file's `model` pins it;
+   `jev-preview` is the newest release, official or not, and can move
+   ahead of `jev-latest`. Neither
    the plan nor `jud config` prints the key or contacts the backend; never
    print the key, and do not probe the backend yourself.
 6. **Stop if there is no key.** If the plan says `API key: missing`, stop
