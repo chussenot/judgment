@@ -9,7 +9,7 @@ and tuned on without asking again:
 $ARGUMENTS
 
 Follow the jud-tune skill: read `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/SKILL.md`,
-in particular "What costs what" and "Before spending calls".
+in particular "What costs what", then `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/record.md`.
 
 Run every `jud` command through the plugin's script,
 `${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh`, written out in full, one
@@ -35,7 +35,7 @@ tool.
    model's source, whether a key is set, and the time at the pace of the
    recordings already there. Take every count and name in the
    announcement from it. A `jud` that refuses `--dry-run` predates it:
-   then count by hand as the skill says ("Before spending calls").
+   then count by hand as `references/record.md` says.
 4. **Name what made recordings stale.** When the plan lists stale ones,
    find what changed: `git diff -- <rubric> <cases>` as written (no `-C`,
    no `cd`), or `git log -p -1 -- <rubric>` for a committed change. Name it

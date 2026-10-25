@@ -8,8 +8,9 @@ Grade this rubric on its cases and say what to change:
 $ARGUMENTS
 
 Follow the jud-tune skill: read `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/SKILL.md`
-first, in particular "Reading `jud eval`", "Triage every miss", "Coverage"
-and "What the reply contains".
+first, in particular "What the reply contains", then
+`${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/eval.md` (reading `jud eval`, coverage) and
+`${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/triage.md` (every miss).
 
 Run every `jud` command through the plugin's script,
 `${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh`, written out in full, one

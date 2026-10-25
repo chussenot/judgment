@@ -8,8 +8,9 @@ Tune the bars of this rubric on its recorded answers:
 $ARGUMENTS
 
 Follow the jud-tune skill: read `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/SKILL.md`
-first, in particular "Reading `jud tune`", "Applying a proposal", "Do not
-grade on what you tuned on" and "What the reply contains".
+first, in particular "What the reply contains", then
+`${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/tune.md` (reading `jud tune`, applying a proposal, holding
+cases out), `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/eval.md` and `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/triage.md`.
 
 Run every `jud` command through the plugin's script,
 `${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh`, written out in full, one
@@ -51,7 +52,7 @@ project, as the skill says, never beside the rubric.
    - Tune on the tuning set.
 4. **Grade first.** Run `jud.sh eval <rubric> <cases> --replay <dir>
    --json`, on the held-out set too when there is one. This is the
-   *before*. Triage every miss into the skill's table.
+   *before*. Triage every miss into the table in `references/triage.md`.
 5. **Tune.** Run `jud.sh tune <rubric> <cases> --replay <dir>` with any
    `--target-accuracy` or `--min-covered` given. The tables and warnings
    come on stderr; the `policy:` and `tuning:` blocks come on stdout at
@@ -96,7 +97,7 @@ project, as the skill says, never beside the rubric.
    pasted as it printed. Ask whether
    to apply it.
 8. **With `apply`:**
-   - Edit the rubric in place as "Applying a proposal" says. Change the
+   - Edit the rubric in place as "Applying a proposal" in `references/tune.md` says. Change the
      values of the gates whose value moves. A gate proposed at its current
      value keeps its value and its note, except a part the run makes stale
      ("a guess"), which becomes what `tune` printed. Replace the `tuning`
