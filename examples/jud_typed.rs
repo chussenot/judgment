@@ -138,7 +138,7 @@ mod tests {
             let mut assets = judgment::Assets::new();
             case.load_assets(&root.join("examples/jud"), &mut assets)
                 .unwrap();
-            let decision = shapes::decide(&backend, "jev-preview", &case.state, &assets)
+            let decision = shapes::decide(&backend, "jev-latest", &case.state, &assets)
                 .await
                 .unwrap_or_else(|e| panic!("{}: {e}", case.name(i)));
             let present = matches!(case.expect.get("circle_present"), Some(Expect::Bool(true)));
@@ -164,7 +164,7 @@ mod tests {
         let first = &cases.cases[0];
         let err = shapes::decide(
             &backend,
-            "jev-preview",
+            "jev-latest",
             &first.state,
             &judgment::Assets::new(),
         )

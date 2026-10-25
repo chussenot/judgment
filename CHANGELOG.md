@@ -152,6 +152,13 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Changed
 
+- The vendored TypeSafe OpenAPI document (`contract::OPENAPI_DOCUMENT`,
+  feature `openapi`) is the live one of 2026-10-25. A Choice's `criteria`
+  now holds 1 to 255 entries and a Score's at most 10 levels, which the
+  hosted API enforces with a 422 from its schema (it was a 400); a 400 is
+  documented on both paths as `HTTPBadRequestError`; a `ValidationError`'s
+  `input` is a text preview. The builder already refused 256 options and
+  11 levels, so no request the crate builds changes.
 - An image's shortest side is now 280 pixels (`asset::MIN_SIDE_PX`), up
   from 256. The hosted API refuses a side under 280 with a 400, `Invalid
   image dimensions.`, as its Images page now says

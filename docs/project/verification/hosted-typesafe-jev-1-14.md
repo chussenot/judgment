@@ -2,7 +2,7 @@
 title: Jev 1.14 on the hosted API, images and the Box
 description: The live run of 2026-10-15 against api.typesafe.ai with jev-preview (Jev 1.14.0) that verified the crate's image support, its Box primitive and long context against the hosted wire, with two new live tests and forty-odd raw probes; what the hosted API did on each point, where it departs from its own documentation, and what the crate does about each departure.
 status: current
-last_reviewed: 2026-10-15
+last_reviewed: 2026-10-25
 tags: [judgment, typesafe, jev, images, box, compatibility, verification]
 ---
 
@@ -43,6 +43,8 @@ Four images about a filled circle, one Noul each, sent as `jev-latest` with the 
 
 - **`jev-latest` is Jev 1.14.** Every answer named `jev-1.14.0`, the model this page had to request as `jev-preview` on 2026-10-15.
 - **The smallest side is now 280, as the [Images](https://docs.typesafe.ai/images) page says.** 280 by 280 and 280 by 400 were answered (0.98 and 0.97); 279 by 400, 256 by 400 and 400 by 256 were refused with the same 400 as above, `api_usage_error`, "Invalid image dimensions.". The 256 recorded above was the limit on 2026-10-15; `asset::MIN_SIDE_PX` follows it to 280, so the crate refuses those images before the wire again.
+- **The option and level bounds moved into the schema.** The OpenAPI document of the same day bounds a Choice's `criteria` at 255 and a Score's at 10, and the hosted API refuses 256 options or 11 levels with a 422 from that schema ("Dictionary should have at most 255 items", "List should have at most 10 items") where it sent a 400 on 2026-10-03; one option and one level are still answered. The vendored document was refreshed and `tests/contract.rs` follows it.
+- **The live suite passes on `jev-latest`.** `mise run live:typesafe`: nineteen of nineteen, the Box among them, with the `jev-preview` special case gone.
 
 ## Multipart, later the same day
 

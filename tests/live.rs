@@ -201,9 +201,9 @@ impl Profile {
     /// The status of a limits probe on this server, where one was observed.
     fn limit_status(self, limit: Limit) -> Option<u16> {
         match (self, limit) {
-            (Self::Typesafe, Limit::Options256 | Limit::Levels11) => Some(400),
             (Self::Laya, Limit::Options256) => Some(413),
-            (Self::Autojev, Limit::Options256 | Limit::Levels11 | Limit::Levels1)
+            (Self::Typesafe, Limit::Options256 | Limit::Levels11)
+            | (Self::Autojev, Limit::Options256 | Limit::Levels11 | Limit::Levels1)
             | (Self::Liquid, _) => Some(422),
             (Self::Typesafe | Self::Laya | Self::Autojev, _) => Some(200),
             (Self::OpenRouter | Self::Generic, _) => None,
@@ -835,8 +835,9 @@ fn requested_model() -> String {
 #[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
 async fn the_server_s_limits_match_the_reference_page() {
     // The builder stops at 255 options and 10 levels and starts at 2 of
-    // each. The hosted API refuses what is above (a 400 with a sentence)
-    // and answers what is below with probability 1, so the upper bounds are
+    // each. The hosted API refuses what is above (a 422 from its schema
+    // since 2026-10-25, a 400 with a sentence before) and answers what is
+    // below with probability 1, so the upper bounds are
     // the server's and the lower ones the crate's alone (the rustdoc of
     // `question`, `# Limits are checked here`). laya-serve's own upper
     // limits are lower (100 options, as a 413) and it answers one option or
@@ -902,9 +903,7 @@ async fn the_server_s_limits_match_the_reference_page() {
         if profile != Profile::Typesafe {
             continue;
         }
-        if status == 400 {
-            assert!(text.contains("at most"), "{what}: {text}");
-        } else {
+        if status == 200 {
             let response: judgment::Response = serde_json::from_str(&text).unwrap();
             let answer = response.answers.values().next().unwrap();
             // Two arms with one body: the bindings differ in type.
@@ -924,6 +923,9 @@ async fn the_server_s_limits_match_the_reference_page() {
             };
             assert_eq!(count, 1, "{what}: {answer:?}");
             assert!((confidence - 1.0).abs() < 1e-9, "{what}: {answer:?}");
+        } else {
+            // A 422 from the schema since 2026-10-25, a 400 before: both say so.
+            assert!(text.contains("at most"), "{what}: {text}");
         }
     }
 }
@@ -1151,8 +1153,8 @@ fn shape_01() -> (Image, BoxEdges) {
 }
 
 /// An image in the request and a Box question about it: the hosted API
-/// takes both under the images header on Jev 1.14 (`jev-preview`, chosen
-/// while `jev-latest` was 1.13; judgment-7k5.9) and answers a box inside the image with a
+/// takes both under the images header on Jev 1.14 and later (`jev-latest`
+/// since the alias moved) and answers a box inside the image with a
 /// confidence, overlapping the generator's own box; a server without the
 /// primitive refuses the request by name, which is printed. The body is
 /// then sent raw, as the client serialises it, and checked against the
@@ -1175,11 +1177,7 @@ async fn an_image_and_a_box_question_round_trip() {
         .unwrap();
     let circle = q.r#box("circle", "the filled circle in `image`").unwrap();
     let profile = *PROFILE;
-    let model = if profile == Profile::Typesafe {
-        "jev-preview".to_owned()
-    } else {
-        requested_model()
-    };
+    let model = requested_model();
     match client()
         .answer_with_assets(&state, &model, &q, &assets)
         .await
@@ -1344,11 +1342,7 @@ async fn an_image_goes_as_a_multipart_part_too() {
         .unwrap();
     let circle = q.r#box("circle", "the filled circle in `image`").unwrap();
     let profile = *PROFILE;
-    let model = if profile == Profile::Typesafe {
-        "jev-preview".to_owned()
-    } else {
-        requested_model()
-    };
+    let model = requested_model();
     let client = Client::builder()
         .base_url(base_url())
         .api_key(env_or("JUDGMENT_LIVE_API_KEY", "unused"))

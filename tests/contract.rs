@@ -711,7 +711,7 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
     let with_image = json!({ "door": door, "message": "Someone at the door." });
     results.push(
         client
-            .evaluate(&Request::new(&with_image, "jev-preview", &q).with_assets(&assets))
+            .evaluate(&Request::new(&with_image, "jev-latest", &q).with_assets(&assets))
             .await,
     );
     // Without a Box question and without an image: the request as it was
@@ -1047,7 +1047,10 @@ fn what_the_builder_refuses_and_the_schema_allows() {
     };
     let levels = |n: usize| -> Vec<Value> { (0..n).map(|i| json!(format!("level {i}"))).collect() };
 
-    for n in [1, 256] {
+    // The builder refuses all four. The schema allows the lower two, which
+    // the reference page forbids, and since the 2026-10-25 document
+    // (`maxProperties: 255`, `maxItems: 10`) refuses the upper two as well.
+    for (n, allowed) in [(1, true), (256, false)] {
         let refused = Questions::new().dynamic_choice(
             "q",
             "pick",
@@ -1057,27 +1060,30 @@ fn what_the_builder_refuses_and_the_schema_allows() {
             matches!(refused, Err(Error::InvalidQuestion { .. })),
             "{n} options: {refused:?}"
         );
-        assert_conforms(
-            &schema,
-            &hand_written(
-                json!({ "type": "choice", "instructions": "pick", "criteria": options(n) }),
-            ),
-            &format!("a Choice of {n} options"),
+        let body = hand_written(
+            json!({ "type": "choice", "instructions": "pick", "criteria": options(n) }),
         );
+        let what = format!("a Choice of {n} options");
+        if allowed {
+            assert_conforms(&schema, &body, &what);
+        } else {
+            assert_refused_at(&schema, &body, "/questions/q", &what);
+        }
     }
-    for n in [1, 11] {
+    for (n, allowed) in [(1, true), (11, false)] {
         let refused = Questions::new().score("q", "rate", levels(n));
         assert!(
             matches!(refused, Err(Error::InvalidQuestion { .. })),
             "{n} levels: {refused:?}"
         );
-        assert_conforms(
-            &schema,
-            &hand_written(
-                json!({ "type": "score", "instructions": "rate", "criteria": levels(n) }),
-            ),
-            &format!("a Score of {n} levels"),
-        );
+        let body =
+            hand_written(json!({ "type": "score", "instructions": "rate", "criteria": levels(n) }));
+        let what = format!("a Score of {n} levels");
+        if allowed {
+            assert_conforms(&schema, &body, &what);
+        } else {
+            assert_refused_at(&schema, &body, "/questions/q", &what);
+        }
     }
     // Not vacuous: the schema's own lower bound on levels holds.
     assert_refused_at(
@@ -1671,7 +1677,7 @@ async fn a_multipart_request_is_the_documented_form() {
     let state = json!({ "door": door, "yard": "yard" });
     let q = every_question_shape();
     let result = client
-        .evaluate(&Request::new(&state, "jev-preview", &q).with_assets(&assets))
+        .evaluate(&Request::new(&state, "jev-latest", &q).with_assets(&assets))
         .await;
     assert!(
         !matches!(result, Err(Error::Decode { .. })),
