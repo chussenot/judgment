@@ -889,7 +889,6 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
     }
 }
 
-#[cfg(feature = "http")]
 /// A compressed body (feature `zstd`) is a `SystemOneRequest` once
 /// decompressed, sent as JSON under `Content-Encoding: zstd`. The OpenAPI
 /// document does not name the header: the hosted API's request rules do
@@ -940,6 +939,7 @@ async fn a_compressed_body_is_a_system_one_request() {
     );
 }
 
+#[cfg(feature = "http")]
 #[tokio::test]
 async fn the_model_list_example_is_what_list_models_returns() {
     let schema = schema_of(MODELS_200);
