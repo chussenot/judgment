@@ -36,7 +36,7 @@ The official Python SDK 0.7.5 and JavaScript SDK 0.7.0 compress every request bo
 Chosen option 1.
 
 - The switch lives where long context and multipart do ([decision 0027](0027-long-context-is-a-switch-on-the-call.md), [decision 0028](0028-multipart-is-a-feature-and-a-switch.md)): on the call, with a client-wide default, never on the `Request`, so the request's serialisation, fingerprint and hash are untouched.
-- The JSON body is built as before, held to the 32 MiB bound as before, then compressed once with zstd at level 3 (a window of at most 2 MiB, inside the hosted API's 8 MiB) when it weighs 1 KiB or more, and sent under `Content-Encoding: zstd` with `Content-Type: application/json` on every attempt. A smaller body goes as it always did, and so does a multipart body, whose images are already compressed.
+- The JSON body is built as before, held to the 32 MiB bound as before when the request has images, then compressed once with zstd at level 3 (a window of at most 2 MiB, inside the hosted API's 8 MiB) when it weighs 1 KiB or more, and sent under `Content-Encoding: zstd` with `Content-Type: application/json` on every attempt. A smaller body goes as it always did, and so does a multipart body, whose images are already compressed.
 - `Content-Encoding` is a reserved header with or without the feature: a caller's value would label a body the client did not encode.
 - The span's `zstd` field says whether the body went compressed; the observer's report is unchanged.
 
@@ -50,7 +50,7 @@ Chosen option 1.
 
 ### Confirmation
 
-`tests/client.rs` (under the feature) decompresses what the server received and holds it to the plain JSON byte for byte, at 1,024 bytes compressed and 1,023 not; checks that the switch is off by default and turns on and off per call and per client, that a retried attempt carries the same compressed body, that a recording made through a compressing client replays, and (with `multipart`) that a multipart body is never compressed; without the feature it checks that `Content-Encoding` is refused as a header. `tests/live.rs` sends the same request plain and compressed to the hosted API: `jev-1.14.0` answered both with 566 input tokens on 2026-10-25 ([the hosted API](../verification/hosted-typesafe.md#compressed-bodies-2026-10-25)).
+`tests/client.rs` (under the feature) decompresses what the server received and holds it to the plain JSON byte for byte, at 1,024 bytes compressed and 1,023 not; checks that the switch is off by default and turns on and off per call and per client, that a retried attempt carries the same compressed body, that a recording made through a compressing client replays, and (with `multipart`) that a multipart body is never compressed; with or without the feature it checks that `Content-Encoding` is refused as a header; `tests/contract.rs` holds the decompressed body to `SystemOneRequest` and pins that the OpenAPI document does not name the header. `tests/live.rs` sends the same request plain and compressed to the hosted API: `jev-1.14.0` answered both with 566 input tokens on 2026-10-25 ([Jev 1.14 on the hosted API](../verification/hosted-typesafe-jev-1-14.md#compressed-bodies-2026-10-25)).
 
 ## Pros and cons of the options
 

@@ -174,6 +174,27 @@ async fn maps_4xx_by_remedy_without_retrying() {
         }
         other => panic!("unexpected: {other:?}"),
     }
+    server.verify().await;
+    server.reset().await;
+
+    // A 415, the hosted API's answer to a `Content-Encoding` it does not
+    // decode: a refused body, fixed by sending it plain, not by waiting.
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(415)
+                .set_body_string(r#"{"detail":"Unsupported Content-Encoding."}"#),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    match c.system_one(&"s", &q).await {
+        Err(Error::InvalidRequest {
+            status: 415,
+            detail,
+            ..
+        }) => assert_eq!(detail, "Unsupported Content-Encoding."),
+        other => panic!("unexpected: {other:?}"),
+    }
 }
 
 #[tokio::test]

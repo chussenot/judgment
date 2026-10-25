@@ -178,10 +178,15 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Changed
 
-- `Content-Encoding` is a reserved header, with or without the `zstd`
-  feature: `CallOptions::header` and `ClientBuilder::default_header` refuse
-  it with `Error::ReservedHeader`, since a caller's value would label a body
-  the client did not encode.
+- **Breaking** for a caller that set it: `Content-Encoding` is a reserved
+  header, with or without the `zstd` feature. `CallOptions::header` and
+  `ClientBuilder::default_header` refuse it with `Error::ReservedHeader`,
+  since a caller's value would label a body the client did not encode.
+  Drop the header; with the `zstd` feature, use `ClientBuilder::zstd(true)`.
+- A 415 is `Error::InvalidRequest`, as 400, 413 and 422 are, where it was
+  `Error::Http`: the hosted API answers it for a `Content-Encoding` it does
+  not take, which sending the body plain fixes, not waiting. Not retried,
+  as before.
 - `Error::InvalidRequest::kind` also reads a top-level string `code`,
   Ollaya's envelope (`{error, code, detail}`), where it was `None`; the
   hosted API's fields still come first. `Error::is_request_too_large` is

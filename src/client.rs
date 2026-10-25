@@ -86,8 +86,9 @@
 //! alike; [`ClientBuilder::default_header`] sets a header on every call.
 //! The model is not an option: it is on the [`Request`], and a second place
 //! to set it would let the span's `gen_ai.request.model` field name a model that was not
-//! sent. No option's value is a span field either, since a header can be a
-//! credential and an extra field a piece of the state.
+//! sent. No header or extra field is a span field, since a header can be a
+//! credential and an extra field a piece of the state; the switches below
+//! (long context, multipart, zstd) are.
 //!
 //! Precedence, lowest first: the builder's settings and default headers,
 //! the call's options, then what the client owns, which is refused before
@@ -137,9 +138,9 @@
 //! a switch, not a default: TypeSafe says a long request is slower and less
 //! accurate than one within the limits, so the crate sends the header only
 //! when asked, for one call ([`CallOptions::long_context`]) or for every
-//! call of a client ([`ClientBuilder::long_context`], the one option with a
-//! client-wide default, so a [`Recorder`](crate::Recorder) over the client
-//! sends it too). It is not read off the request: the crate has no
+//! call of a client ([`ClientBuilder::long_context`], a client-wide default
+//! like multipart's and zstd's, so a [`Recorder`](crate::Recorder) over the
+//! client sends it too). It is not read off the request: the crate has no
 //! tokeniser, and the caller who built a long state knows it did. The
 //! setting is the span's `long_context` field.
 //!
@@ -176,12 +177,17 @@
 //! not, and one that does not would read the bytes as JSON and refuse
 //! them. A smaller body goes as it always did, and so does a multipart
 //! one, whose images are compressed already. The body is compressed once,
-//! after the size check, and sent the same on every attempt; nothing else
+//! after the 32 MiB check a request with images gets, and sent the same on
+//! every attempt; nothing else
 //! moves: the request fingerprint and hash are over the request, not its
 //! bytes on the wire, so a recording answers a replay either way, and the
 //! response is read as before. `Content-Encoding` is the client's header
-//! ([`Error::ReservedHeader`]), with or without the feature. Whether the
-//! body went compressed is the span's `zstd` field.
+//! ([`Error::ReservedHeader`]), with or without the feature. A server that
+//! does not take it answers a 415 (the hosted API's status for an encoding
+//! it does not decode) or a 400 or 422 for bytes it read as JSON, all
+//! [`Error::InvalidRequest`]: send that server's bodies plain. Whether the
+//! body went compressed is the span's `zstd` field (`false` without the
+//! feature).
 //!
 //! # Shared images
 //!
@@ -518,7 +524,7 @@ impl CallOptions {
     /// A header sent on every attempt of this call, replacing a
     /// [`ClientBuilder::default_header`] of the same (case-insensitive) name.
     ///
-    /// `authorization`, `content-type`, `user-agent`,
+    /// `authorization`, `content-type`, `content-encoding`, `user-agent`,
     /// `x-typesafe-retry-count`, `typesafe-danger-zone-images`,
     /// `typesafe-danger-zone-long-context`, `content-length`,
     /// `transfer-encoding`, `host`, `connection`, `te` and `upgrade` are
@@ -1090,8 +1096,9 @@ impl Client {
                 request.assets.total_bytes(),
             );
         }
-        // After the size check, which bounds the body as the server reads
-        // it: the limit holds compressed and decompressed alike.
+        // After the 32 MiB check a request with images gets, which bounds
+        // the body as the server reads it: the limit holds compressed and
+        // decompressed alike.
         #[cfg(feature = "zstd")]
         let payload = if options.zstd.unwrap_or(self.zstd) {
             payload.zstd()?
@@ -1529,7 +1536,7 @@ fn classify(
     request_id: Option<String>,
 ) -> Error {
     match status.as_u16() {
-        code @ (400 | 413 | 422) => {
+        code @ (400 | 413 | 415 | 422) => {
             let body = error_detail(&body);
             Error::InvalidRequest {
                 status: code,

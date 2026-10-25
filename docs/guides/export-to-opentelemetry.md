@@ -29,7 +29,7 @@ The client's `typesafe.evaluate` span is a `client` span named `system_one {mode
 | `server.address` | the base URL's host |
 | `error.type` | on failure: an HTTP status as a number (`500`), or a short name (`rate_limited`, `transport`, `decode`, `unfit`, `too_large`, ...) |
 
-The span's `images`, `long_context`, `multipart` and `request_id` fields are as before; `zstd` says whether the body went compressed (feature `zstd`). The retries of one call are `warn` events inside this span, not spans of their own.
+The span's `images`, `long_context`, `multipart` and `request_id` fields are as before; `zstd` says whether the body went compressed, so a trace shows which calls a server refused because of it (always `false` without the `zstd` feature, empty when the call failed before its body was built). The retries of one call are `warn` events inside this span, not spans of their own.
 
 ## The metrics
 

@@ -95,7 +95,7 @@ cli = ["jud", "http", "dep:clap", "dep:clap_complete"]
 multipart = ["http", "reqwest/multipart", "dep:bytes"]
 # `ClientBuilder::zstd` and `CallOptions::zstd`: a JSON body of 1 KiB or more
 # sent compressed with zstd under `Content-Encoding: zstd`, as the official
-# SDKs send every such body since Python 0.7.5 and JS 0.7.0. The hosted API
+# SDKs do by default since Python 0.7.5 and JS 0.7.0. The hosted API
 # takes it (https://docs.typesafe.ai/api/errors#compression); a compatible
 # server may not, so it is asked for, never on by default. The feature pulls
 # in libzstd, a C build as aws-lc already is.

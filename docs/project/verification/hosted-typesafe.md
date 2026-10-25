@@ -2,7 +2,7 @@
 title: Against the hosted TypeSafe API
 description: The judgment crate's live tests run against api.typesafe.ai with a real key, what each one showed about the hosted wire that the mocks and the Laya run could not, what probing past the builder's limits taught (three 400 shapes, the token budget, non-determinism at two decimals, the confidence formulas) and what the crate changed for it, and how to repeat the check with one task.
 status: current
-last_reviewed: 2026-10-25
+last_reviewed: 2026-10-09
 tags: [judgment, typesafe, jev, compatibility, verification]
 ---
 
@@ -66,10 +66,6 @@ The ten tests send what the builder lets through. On 2026-10-03 the hosted API w
 | Load and cost | p50 250 ms per request; 25 Nouls in one request in 344 ms for 820 input tokens; ten mixed questions in 229 ms. Output tokens scale with the answer (about 20 per Noul, 17 per Score, 24 plus 6 per option for a Choice; 2,826 for 255 options) and are free | Batching is nearly free in latency; a Choice over many options is a flat distribution (top probability 0.05 over 255), which is the documented reason for hierarchical selection |
 
 The OpenAPI drift test ran the same day: the vendored document is the live one, so every contract pin above describes the current server.
-
-## Compressed bodies, 2026-10-25
-
-The official SDKs compress a request body of 1 KiB or more with zstd by default since Python 0.7.5 and JS 0.7.0, and the API's [request rules](https://docs.typesafe.ai/api/errors#compression) take `Content-Encoding: zstd` or `gzip`: one layer, a zstd window of at most 8 MiB, the 32 MiB limit on the body both compressed and decompressed, `415` for an encoding it does not take and `400` for a malformed compressed body. `a_zstd_body_is_read_as_the_json_it_holds` sent the same request of about 1.8 KB plain and then compressed (the `zstd` feature, level 3, a window under 2 MiB): `jev-1.14.0` answered both, with 566 input tokens each and `urgent` at 0.94 each, so the server read the compressed bytes as the JSON they hold. Only the hosted API was run; the crate keeps compression off by default for the servers that copy its wire ([decision 0029](../decisions/0029-request-compression-is-a-feature-and-a-switch.md)).
 
 ## What this does and does not establish
 
