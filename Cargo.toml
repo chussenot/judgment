@@ -93,6 +93,13 @@ cli = ["jud", "http", "dep:clap", "dep:clap_complete"]
 # by default: base64 carries every image the limits allow, and the feature
 # pulls in reqwest's multipart encoding and `mime_guess`.
 multipart = ["http", "reqwest/multipart", "dep:bytes"]
+# `ClientBuilder::zstd` and `CallOptions::zstd`: a JSON body of 1 KiB or more
+# sent compressed with zstd under `Content-Encoding: zstd`, as the official
+# SDKs do by default since Python 0.7.5 and JS 0.7.0. The hosted API
+# takes it (https://docs.typesafe.ai/api/errors#compression); a compatible
+# server may not, so it is asked for, never on by default. The feature pulls
+# in libzstd, a C build as aws-lc already is.
+zstd = ["http", "dep:zstd"]
 # `judgment::observer::otel::OtelObserver`: an `Observer` that reports to
 # OpenTelemetry metrics, through the OpenTelemetry API crate only. The SDK and
 # any exporter stay the application's choice (the `jud` binary's, later).
@@ -140,6 +147,8 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "h
 # The image parts of a multipart body, sent on every attempt without a copy.
 bytes = { version = "1.9", optional = true }
 tokio = { version = "1", features = ["time", "rt"], optional = true }
+# The compressed JSON body (feature `zstd`): libzstd, the reference encoder.
+zstd = { version = "0.13", default-features = false, optional = true }
 fastrand = { version = "2", optional = true }
 # HTTP dates in `Retry-After` (the retry loop).
 httpdate = { version = "1", optional = true }

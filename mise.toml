@@ -224,7 +224,7 @@ run = [
 ]
 
 [tasks."live:typesafe"]
-description = "The ignored live tests against the hosted TypeSafe API; needs TYPESAFE_API_KEY and spends a few model calls"
+description = "The ignored live tests against the hosted TypeSafe API, the zstd one included; needs TYPESAFE_API_KEY and spends a few model calls"
 run = '''
 set -eu
 : "${TYPESAFE_API_KEY:?set TYPESAFE_API_KEY (in .env) to run the live tests}"
@@ -233,7 +233,7 @@ JUDGMENT_LIVE_BASE_URL="$base" JUDGMENT_LIVE_API_KEY="$TYPESAFE_API_KEY" \
 JUDGMENT_LIVE_AUTH_BASE_URL="$base" JUDGMENT_LIVE_AUTH_API_KEY="$TYPESAFE_API_KEY" \
 JUDGMENT_LIVE_MODEL="${TYPESAFE_DEFAULT_MODEL:-jev-latest}" \
 JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-typesafe}" \
-  cargo test --test live -- --ignored --nocapture --test-threads=1
+  cargo test --test live --features zstd -- --ignored --nocapture --test-threads=1
 '''
 
 [tasks."live:openrouter"]

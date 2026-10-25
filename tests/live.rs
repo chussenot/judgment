@@ -1416,6 +1416,53 @@ async fn an_image_goes_as_a_multipart_part_too() {
     }
 }
 
+/// The same request sent plain and compressed with zstd (the `zstd`
+/// feature, `ClientBuilder::zstd`), its body over the 1 KiB from which it
+/// goes compressed. The hosted API documents `Content-Encoding: zstd`
+/// (<https://docs.typesafe.ai/api/errors#compression>), so on it both are
+/// answered and read as the same input: a server that took the bytes for
+/// JSON would refuse them, and one that read only part would count fewer
+/// tokens. A server that does not take it refuses by name, which is printed.
+#[cfg(feature = "zstd")]
+#[tokio::test]
+#[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
+async fn a_zstd_body_is_read_as_the_json_it_holds() {
+    let notes = "The customer wrote again this morning about the same payout. ".repeat(24);
+    let state = json!({ "message": STATE_PAYOUTS, "notes": notes });
+    let mut q = Questions::new();
+    let urgent = q
+        .noul("urgent", "Does `message` convey urgency?", None)
+        .unwrap();
+    let model = requested_model();
+    let request = Request::new(&state, &model, &q);
+    assert!(serde_json::to_vec(&request).unwrap().len() >= 1024);
+    let compressed = Client::builder()
+        .base_url(base_url())
+        .api_key(env_or("JUDGMENT_LIVE_API_KEY", "unused"))
+        .timeout(Duration::from_secs(120))
+        .zstd(true)
+        .build()
+        .unwrap();
+    let plain = client().evaluate(&request).await;
+    match (compressed.evaluate(&request).await, plain) {
+        (Ok(zstd), Ok(plain)) => {
+            eprintln!(
+                "zstd: {} answered, urgent {:.2} against {:.2} plain, {} input tokens against {}",
+                zstd.model,
+                zstd.get(&urgent).unwrap().yes,
+                plain.get(&urgent).unwrap().yes,
+                zstd.usage.input_tokens,
+                plain.usage.input_tokens
+            );
+            assert_eq!(zstd.usage.input_tokens, plain.usage.input_tokens);
+        }
+        (zstd, plain) => {
+            eprintln!("zstd: {zstd:?}; plain: {plain:?}");
+            assert!(*PROFILE != Profile::Typesafe, "{zstd:?}");
+        }
+    }
+}
+
 /// What a model's context holds on Ollaya: the options and the state share
 /// it (512 tokens on `laya:en`, about 125 options), so a Choice with more
 /// options than fit is a 422 `TOO_MANY_OPTIONS`, and a state that would not

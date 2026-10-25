@@ -174,6 +174,27 @@ async fn maps_4xx_by_remedy_without_retrying() {
         }
         other => panic!("unexpected: {other:?}"),
     }
+    server.verify().await;
+    server.reset().await;
+
+    // A 415, the hosted API's answer to a `Content-Encoding` it does not
+    // decode: a refused body, fixed by sending it plain, not by waiting.
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(415)
+                .set_body_string(r#"{"detail":"Unsupported Content-Encoding."}"#),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    match c.system_one(&"s", &q).await {
+        Err(Error::InvalidRequest {
+            status: 415,
+            detail,
+            ..
+        }) => assert_eq!(detail, "Unsupported Content-Encoding."),
+        other => panic!("unexpected: {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -3043,4 +3064,192 @@ async fn shared_images_are_never_parts() {
     let body: serde_json::Value =
         serde_json::from_slice(&server.received_requests().await.unwrap()[0].body).unwrap();
     assert_eq!(body["images"].as_array().map(Vec::len), Some(1), "{body}");
+}
+
+// Compression: a JSON body of 1 KiB or more sent with zstd, when asked.
+
+/// Requests whose JSON body weighs exactly `bytes`: the request without
+/// state weighed, then a state string of the bytes it lacks (ASCII, so one
+/// byte a character and nothing escaped).
+#[cfg(feature = "zstd")]
+fn state_for_body_of(bytes: usize, q: &Questions) -> serde_json::Value {
+    let empty = serde_json::to_vec(&Request::new(&json!(""), "jev-latest", q))
+        .unwrap()
+        .len();
+    json!("x".repeat(bytes - empty))
+}
+
+/// What the server read: the body decompressed when it says zstd, and
+/// whether it did.
+#[cfg(feature = "zstd")]
+fn read_body(sent: &wiremock::Request) -> (bool, Vec<u8>) {
+    match sent.headers.get("content-encoding") {
+        Some(encoding) => {
+            assert_eq!(encoding, "zstd");
+            (
+                true,
+                zstd::stream::decode_all(sent.body.as_slice()).unwrap(),
+            )
+        }
+        None => (false, sent.body.clone()),
+    }
+}
+
+/// From 1 KiB the body goes compressed, under its header and with the JSON
+/// type kept; at 1,023 bytes it goes as before. Either way the server reads
+/// the JSON byte for byte, and a client that did not ask, or a call that
+/// turned it off, sends what it always did.
+#[cfg(feature = "zstd")]
+#[tokio::test]
+async fn a_json_body_of_1_kib_or_more_goes_zstd_compressed_when_asked() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .mount(&server)
+        .await;
+    let q = one_noul();
+    let zstd_client = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .zstd(true)
+        .build()
+        .unwrap();
+    let plain_client = client(&server, RetryPolicy::none());
+    let off = CallOptions::new().zstd(false);
+    let on = CallOptions::new().zstd(true);
+    let cases = [
+        (&zstd_client, None, 1024, true),
+        (&zstd_client, None, 1023, false),
+        (&zstd_client, Some(&off), 4096, false),
+        (&plain_client, None, 4096, false),
+        (&plain_client, Some(&on), 1024, true),
+    ];
+    for (c, options, bytes, compressed) in cases {
+        let state = state_for_body_of(bytes, &q);
+        let request = Request::new(&state, "jev-latest", &q);
+        let json = serde_json::to_vec(&request).unwrap();
+        assert_eq!(json.len(), bytes);
+        c.evaluate_with(&request, options.unwrap_or(&CallOptions::new()))
+            .await
+            .unwrap();
+        let received = server.received_requests().await.unwrap();
+        let sent = received.last().unwrap();
+        let (was_compressed, body) = read_body(sent);
+        assert_eq!(was_compressed, compressed, "{bytes} bytes, {options:?}");
+        assert_eq!(body, json, "{bytes} bytes: the JSON as it would go plain");
+        assert_eq!(
+            sent.headers.get("content-type").unwrap(),
+            "application/json"
+        );
+        if compressed {
+            assert!(sent.body.len() < json.len(), "{bytes} bytes");
+        }
+    }
+}
+
+/// A retried call sends the same compressed body every time, and a
+/// recording made through a compressing client replays: the fingerprint is
+/// the request's, not its bytes on the wire.
+#[cfg(feature = "zstd")]
+#[tokio::test]
+async fn a_compressed_body_is_retried_and_recorded_as_any_other() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .mount(&server)
+        .await;
+    let q = one_noul();
+    let state = state_for_body_of(4096, &q);
+    let c = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(fast_retries(2))
+        .zstd(true)
+        .build()
+        .unwrap();
+    let dir = std::env::temp_dir().join(format!("judgment-zstd-{}", std::process::id()));
+    let live = Recorder::new(c, &dir)
+        .answer(&state, "jev-latest", &q)
+        .await
+        .unwrap();
+    let received = server.received_requests().await.unwrap();
+    assert_eq!(received.len(), 2, "the 503 and the retry");
+    assert_eq!(received[0].body, received[1].body);
+    assert!(read_body(&received[0]).0 && read_body(&received[1]).0);
+    let replayed = Replay::open(&dir)
+        .unwrap()
+        .answer(&state, "jev-latest", &q)
+        .await
+        .unwrap();
+    assert_eq!(replayed, live);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A multipart body is never compressed: its images are compressed already.
+#[cfg(all(feature = "zstd", feature = "multipart"))]
+#[tokio::test]
+async fn a_multipart_body_is_not_compressed() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut assets = judgment::Assets::new();
+    assets
+        .insert("door", fixture_image("square-300.png"))
+        .unwrap();
+    let state = json!({ "door": "door" });
+    let q = one_noul();
+    Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .multipart(true)
+        .zstd(true)
+        .build()
+        .unwrap()
+        .evaluate(&Request::new(&state, "jev-preview", &q).with_assets(&assets))
+        .await
+        .unwrap();
+    let received = server.received_requests().await.unwrap();
+    assert!(received[0].body.len() > 1024);
+    assert!(received[0].headers.get("content-encoding").is_none());
+    let content_type = received[0].headers.get("content-type").unwrap();
+    assert!(
+        content_type
+            .to_str()
+            .unwrap()
+            .starts_with("multipart/form-data; boundary="),
+        "{content_type:?}"
+    );
+}
+
+/// `Content-Encoding` is the client's, with or without the feature: a
+/// caller's value would label a body the client did not encode.
+#[test]
+fn content_encoding_is_the_clients_header() {
+    let err = CallOptions::new()
+        .header(name("content-encoding"), value("gzip"))
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::ReservedHeader(h) if h == "content-encoding"),
+        "{err:?}"
+    );
+    let err = Client::builder()
+        .api_key("test-key")
+        .default_header(name("content-encoding"), value("zstd"))
+        .build()
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::ReservedHeader(h) if h == "content-encoding"),
+        "{err:?}"
+    );
 }

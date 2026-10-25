@@ -750,9 +750,9 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
         .keys()
         .collect();
     // The document also takes `multipart/form-data` (a JSON `request` part
-    // and one file part per image); the crate sends JSON only, images as
-    // base64 in it, which the document allows. A multipart body path is
-    // not written yet and is pinned absent here.
+    // and one file part per image); these requests are JSON, images as
+    // base64 in it, which the document allows. The multipart body, under
+    // its feature, is held to the document by its own test.
     assert_eq!(content_types, ["application/json", "multipart/form-data"]);
     let sent_content_type = "application/json";
     assert_eq!(operation["security"], json!([{ "HTTPBearer": [] }]));
@@ -887,6 +887,56 @@ async fn every_request_the_builders_produce_is_a_system_one_request() {
             "no assets key without an image"
         );
     }
+}
+
+/// A compressed body (feature `zstd`) is a `SystemOneRequest` once
+/// decompressed, sent as JSON under `Content-Encoding: zstd`. The OpenAPI
+/// document does not name the header: the hosted API's request rules do
+/// (<https://docs.typesafe.ai/api/errors#compression>), so its absence is
+/// pinned, and a document that starts naming it fails here to be read.
+#[cfg(feature = "zstd")]
+#[tokio::test]
+async fn a_compressed_body_is_a_system_one_request() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/systemone"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(example_response()))
+        .mount(&server)
+        .await;
+    let client = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .zstd(true)
+        .build()
+        .unwrap();
+    let q = every_question_shape();
+    let state = json!({ "message": "I was charged twice. Please help. ".repeat(40) });
+    let _ = client
+        .evaluate(&Request::new(&state, "jev-1.13.0", &q))
+        .await;
+    let received = server.received_requests().await.unwrap();
+    let sent = &received[0];
+    let header = |name: &str| sent.headers.get(name).and_then(|v| v.to_str().ok());
+    assert_eq!(header("content-encoding"), Some("zstd"));
+    assert_eq!(header("content-type"), Some("application/json"));
+    let decoded = zstd::stream::decode_all(sent.body.as_slice()).unwrap();
+    let body: Value = serde_json::from_slice(&decoded).unwrap();
+    assert_conforms_strict(&request_schema(), &body, "the decompressed body");
+
+    let operation = &SPEC["paths"]["/v1/systemone"]["post"];
+    let names: Vec<&str> = operation["parameters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|p| p["name"].as_str())
+        .collect();
+    assert!(
+        !names
+            .iter()
+            .any(|n| n.eq_ignore_ascii_case("content-encoding")),
+        "the document now names Content-Encoding: hold the client to it ({names:?})"
+    );
 }
 
 #[cfg(feature = "http")]

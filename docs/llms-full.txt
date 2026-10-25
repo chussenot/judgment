@@ -2789,7 +2789,7 @@ The client's `typesafe.evaluate` span is a `client` span named `system_one {mode
 | `server.address` | the base URL's host |
 | `error.type` | on failure: an HTTP status as a number (`500`), or a short name (`rate_limited`, `transport`, `decode`, `unfit`, `too_large`, ...) |
 
-The span's `images`, `long_context`, `multipart` and `request_id` fields are as before. The retries of one call are `warn` events inside this span, not spans of their own.
+The span's `images`, `long_context`, `multipart` and `request_id` fields are as before; `zstd` says whether the body went compressed, so a trace shows which calls a server refused because of it (always `false` without the `zstd` feature, empty when the call failed before its body was built). The retries of one call are `warn` events inside this span, not spans of their own.
 
 ## The metrics
 
@@ -4065,9 +4065,10 @@ A request nobody recorded is a backend failure (status 1); a directory that does
 | Base URL | `ClientBuilder::base_url` | `https://api.typesafe.ai` |
 | Model | the `model` argument of `SystemOne::answer`, or `ClientBuilder::model` for `Client::system_one` | `jev-latest` |
 | Timeout per attempt | `ClientBuilder::timeout`, or `CallOptions::timeout` for one call | 10 s |
-| Retries | `ClientBuilder::retry_policy`, or `CallOptions` for one call | `RetryPolicy::default()`: [The crate](crate.md#defaults) |
+| Retries | `ClientBuilder::retry`, or `CallOptions` for one call | `RetryPolicy::default()`: [The crate](crate.md#defaults) |
 | Long context | `ClientBuilder::long_context`, or `CallOptions::long_context` for one call | off: the model's own limits, 64k tokens per request and 32k per question; on, 262k for both through the `TypeSafe-Danger-Zone-Long-Context` header, slower and less accurate by TypeSafe's own account ([decision 0027](../project/decisions/0027-long-context-is-a-switch-on-the-call.md)) |
 | Images as parts (feature `multipart`) | `ClientBuilder::multipart`, or `CallOptions::multipart` for one call | off: the images as base64 in the JSON body; on, a `multipart/form-data` body with a JSON `request` part and one part per image, the request keyed and checked as before ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) |
+| Compressed body (feature `zstd`) | `ClientBuilder::zstd`, or `CallOptions::zstd` for one call | off: the JSON body as it is; on, a JSON body of 1 KiB or more sent compressed with zstd under `Content-Encoding: zstd`, a smaller one and a multipart one as before, the request keyed and checked as before. The official SDKs compress by default; the crate does not, because a compatible server may not take it: a 415, or a 400 or 422 on a compressed call, means send that server's bodies plain ([decision 0029](../project/decisions/0029-request-compression-is-a-feature-and-a-switch.md)) |
 | Shared images | `ClientBuilder::shared_images`, or `CallOptions::shared_images` for one call | off: the images as the `assets` map; on, a top-level `images` array of base64 and no map, the shape Ollama's `/v1/systemone` takes, which otherwise answers with the map ignored; never parts, whatever `multipart` says; the request keyed and checked as before. `shared_images_as_data_urls` on either sends the same array as `data:` URLs, which Liquid takes and Ollama refuses |
 
 The crate's client reads no base URL from the environment; the `jud` command and the examples do, and pass it to the builder. The two timeouts differ on purpose: a library call is usually one of many on a request path and fails fast at 10 s; a command-line run has a person waiting and a local model that may be loading, so it waits 30 s.
@@ -4594,6 +4595,7 @@ Minor 4 of `jud/v1` names exactly the fields on this page. A reader refuses a fi
 | `otel` | no | `observer::otel::OtelObserver`, an `Observer` that records OpenTelemetry metrics through the API crate ([Export to OpenTelemetry](../guides/export-to-opentelemetry.md)); the SDK and exporters stay the application's | `opentelemetry` (API, metrics only) |
 | `cli` | no | The `jud` binary (`src/bin/jud/`); implies `jud` and `http` | `clap`, `clap_complete` |
 | `multipart` | no | `CallOptions::multipart` and `ClientBuilder::multipart`: a request's images sent as `multipart/form-data` parts beside a JSON `request` part instead of base64 in the JSON body, the transport TypeSafe recommends for images; implies `http` ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) | `reqwest`'s multipart encoding, `mime_guess`, `bytes` |
+| `zstd` | no | `CallOptions::zstd` and `ClientBuilder::zstd`: a JSON body of 1 KiB or more sent compressed with zstd under `Content-Encoding: zstd`, off until asked; implies `http` ([decision 0029](../project/decisions/0029-request-compression-is-a-feature-and-a-switch.md)) | `zstd` (libzstd, a C build) |
 
 Without `http` the crate is the questions, the answers, `Fake`, `Recorder`, `Replay`, `eval`, `observer` and, with `jud`, the format: everything a project with its own transport needs. CI builds and tests that configuration (`cargo check --no-default-features --all-targets`).
 
@@ -4614,7 +4616,7 @@ In the order of one call: a question is built, sent through a backend, answered,
 | `answer` | `Response` and the wire `Answer`; `Probability` and `Confidence`, which refuse a value outside `[0, 1]`; `Response::verify` holds a response against the questions; `Response::get(&handle)` reads `Noul`, `Choice<T>`, `Score` or `BoundingBox` (`BoxEdges` as fractions of the image, `PixelBox` at a size). | [docs.rs](https://docs.rs/judgment/latest/judgment/answer/index.html) |
 | `asset` | `Image` (a PNG or a JPEG, its format and size read from the bytes, the hosted API's limits checked), `ImageFormat`, and `Assets`, the request's images by reference. |  [docs.rs](https://docs.rs/judgment/latest/judgment/asset/index.html) |
 | `backend` | The `SystemOne` trait (`answer`, and `answer_with_assets` for a request with images) and three implementations beside the client: `Fake`, `Recorder`, `Replay`; with `pacer`, `Pacer` and `Paced`. | [docs.rs](https://docs.rs/judgment/latest/judgment/backend/index.html) |
-| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields, long context and, with `multipart`, the images as parts, for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
+| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields, long context, with `multipart` the images as parts and with `zstd` a compressed body, for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
 | `http` (`http`) | `RetryPolicy`, `send_with_retries` and `send_with_retries_paced` (which also shares a `Pacer` and reports to an observer of its own), the retry loop behind the client, public so another `reqwest` client can retry the same way. | [docs.rs](https://docs.rs/judgment/latest/judgment/http/index.html) |
 | `error` | `Error`, `Result`, `ValidationIssue`. | [docs.rs](https://docs.rs/judgment/latest/judgment/error/index.html) |
 | `eval` | `Recording`, `Judgment`, the metrics (`metrics`), the fingerprints (`canonical`) and the sweeps (`tuning`). | [docs.rs](https://docs.rs/judgment/latest/judgment/eval/index.html) |
@@ -5168,7 +5170,7 @@ It is the last attempt's id when the call was retried, and there is none after a
 - **No sync client.** The API documents one evaluation endpoint and a model listing, and every consumer so far is async. A caller that must block can block on the future.
 - **No batching or streaming.** The API documents one request shape, and one request already carries many questions.
 - **No metrics backend.** A library that named instruments would force its telemetry stack on every consumer. The crate emits `tracing` spans and hands token usage and failed attempts to an `Observer`; the application counts them where it counts everything else.
-- **No per-call options across the `SystemOne` trait.** `Client::evaluate_with` takes a `CallOptions` for one call's timeout, retry policy, headers and extra body fields. A recording is filed under a hash of the state and the questions, and an extra field can change the answer, so options could cross the trait only by entering that hash. Keeping them off leaves every existing recording valid. Long context is the one option with a client-wide default (`ClientBuilder::long_context`): a `Recorder` over such a client sends the header on every call, and the recordings it writes are keyed as any other, since the header changes the limits, not the request.
+- **No per-call options across the `SystemOne` trait.** `Client::evaluate_with` takes a `CallOptions` for one call's timeout, retry policy, headers and extra body fields. A recording is filed under a hash of the state and the questions, and an extra field can change the answer, so options could cross the trait only by entering that hash. Keeping them off leaves every existing recording valid. Long context has a client-wide default (`ClientBuilder::long_context`), as multipart and zstd do: a `Recorder` over such a client sends the header on every call, and the recordings it writes are keyed as any other, since the header changes the limits, not the request.
 - **No provider switch.** Any server that speaks the wire is a base URL and nothing more; `SystemOne` is already the abstraction.
 
 ## Next
@@ -5375,7 +5377,7 @@ The builder refuses before sending what the HTTP API reference page says the ser
 
 **The request id** (`x-typesafe-request-id`) is read in the client, not in the shared loop, so the loop carries no vendor's header name. It is the last attempt's, there is none after a transport failure, and a value that is empty, not printable ASCII or longer than 256 bytes is ignored, so what reaches a span or an error message is bounded. The body's `request_id` key, if a server sends one, is overwritten by the header.
 
-**Per-call options** exist because one client serves calls that want different things. Precedence, lowest first: the builder's settings and default headers, the call's options, then what the client owns, which is refused rather than overridden. Refused headers: `authorization`, `content-type`, `user-agent` and `x-typesafe-retry-count` (the client's own; the last is not sent yet, but both SDKs strip a caller's value, so reserving it now means sending it later breaks nobody), and `content-length`, `transfer-encoding`, `host`, `connection`, `te`, `upgrade`, which the HTTP stack would keep over its own. Refused body fields: `state`, `model`, `questions`, matched exactly, because a replaced `questions` sends a request the response is not verified against and a recording is not filed under. The SDKs silently keep their own headers and let `extra_body` replace `questions`. A call's timeout replaces the client's; a call's retry policy replaces the whole policy; a budget stops a retry whose wait would end past it but never cuts an attempt in flight. Without options a call sends byte for byte what it sent before options existed, which a unit test pins. Options stop at the `SystemOne` trait: a recording is filed under a hash of the state and the questions, and an extra field can change an answer.
+**Per-call options** exist because one client serves calls that want different things. Precedence, lowest first: the builder's settings and default headers, the call's options, then what the client owns, which is refused rather than overridden. Refused headers: `authorization`, `content-type`, `content-encoding`, `user-agent` and `x-typesafe-retry-count` (the client's own, `content-encoding` because the body is the client's to encode; the last is not sent yet, but both SDKs strip a caller's value, so reserving it now means sending it later breaks nobody), and `content-length`, `transfer-encoding`, `host`, `connection`, `te`, `upgrade`, which the HTTP stack would keep over its own; the two danger-zone headers are refused too, since the client sends them itself. Refused body fields: `state`, `model`, `questions` and `assets`, matched exactly, because a replaced `questions` sends a request the response is not verified against and a recording is not filed under. The SDKs silently keep their own headers and let `extra_body` replace `questions`. A call's timeout replaces the client's; a call's retry policy replaces the whole policy; a budget stops a retry whose wait would end past it but never cuts an attempt in flight. Without options a call sends byte for byte what it sent before options existed, which a unit test pins. Options stop at the `SystemOne` trait: a recording is filed under a hash of the state and the questions, and an extra field can change an answer.
 
 ## The retry loop
 
@@ -5594,7 +5596,7 @@ The unit and integration tests never leave the process: wiremock for the client,
 
 ## Does a real server speak the wire this way?
 
-`tests/live.rs` holds nineteen `#[ignore]` tests (twenty with the `multipart` feature) that run the three text primitives, an image with a Box question about it, the same image as a shared array and as a multipart part (on `jev-preview` against the hosted API, chosen while `jev-latest` was Jev 1.13; both aliases point to `jev-1.14.0` as of 2026-10-25), a state over the default budget under long context, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Seven tasks run them:
+`tests/live.rs` holds twenty-one `#[ignore]` tests (one more with the `multipart` feature, and one more with `zstd`, which `live:typesafe` turns on) that run the three text primitives, an image with a Box question about it, a body compressed with zstd against the same body plain, the same image as a shared array and as a multipart part (on `jev-preview` against the hosted API, chosen while `jev-latest` was Jev 1.13; both aliases point to `jev-1.14.0` as of 2026-10-25), a state over the default budget under long context, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Eight tasks run them:
 
 | Task | Against | Needs |
 |---|---|---|
@@ -5786,6 +5788,10 @@ Four images about a filled circle, one Noul each, sent as `jev-latest` with the 
 ## Multipart, later the same day
 
 The document's second request body, `multipart/form-data`, was then implemented behind the `multipart` feature ([decision 0028](../decisions/0028-multipart-is-a-feature-and-a-switch.md)) and sent to the hosted API with the same shapes image and the same two questions: a `request` part holding the JSON body with the asset as `{type: image, part: part-0}`, and the PNG as `part-0` under `image/png`. `jev-1.14.0` answered in 0.7 s with a box at an overlap of 0.98 with the label, at the same 1,167 input tokens as the base64 body for the same request; two raw sends of each form, through `curl`, gave the same tokens every time and boxes within 0.01 of each other, so the transport changes neither the cost nor the answer. The nineteenth live test, `an_image_goes_as_a_multipart_part_too`, runs under the feature.
+
+## Compressed bodies, 2026-10-25
+
+The client's opt-in zstd body ([decision 0029](../decisions/0029-request-compression-is-a-feature-and-a-switch.md), which cites the API's rules) was sent to the hosted API by `a_zstd_body_is_read_as_the_json_it_holds`: the same request of about 1.8 KB plain, then compressed at level 3. `jev-1.14.0` answered both, with 566 input tokens each and `urgent` at 0.94 each, so the server read the compressed bytes as the JSON they hold. `mise run live:typesafe` runs the test, since the task turns the `zstd` feature on. Not established: gzip, which the crate does not send; a window near the 8 MiB the API allows (level 3 stays under 2 MiB); the `415` path; and any compatible server, none of which has been sent a compressed body.
 
 
 <!-- source: docs/project/verification/box-calibration-study.md -->
@@ -7108,6 +7114,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0026](0026-a-box-is-graded-by-intersection-over-union.md) | A Box is graded by intersection over union | accepted |
 | [0027](0027-long-context-is-a-switch-on-the-call.md) | Long context is a switch on the call, not a request field or a default | accepted |
 | [0028](0028-multipart-is-a-feature-and-a-switch.md) | Multipart upload is a feature and a switch on the call, off by default | accepted |
+| [0029](0029-request-compression-is-a-feature-and-a-switch.md) | Request compression is a feature and a switch, off by default | accepted |
 
 ## Status notes
 
@@ -8487,3 +8494,81 @@ Chosen option 1.
 ## More information
 
 The OpenAPI document's `multipart/form-data` request body and its `Asset.part` field (`tests/fixtures/typesafe-openapi.json`); `src/client.rs` (`# Multipart`) implements it; [Ask a question about an image](../../guides/ask-about-an-image.md#send-the-images-as-parts) is the procedure; [The crate](../../reference/crate.md#features) lists the feature; the design note that preceded this record is on beads issue `judgment-7k5.4`.
+
+
+<!-- source: docs/project/decisions/0029-request-compression-is-a-feature-and-a-switch.md -->
+
+
+# 0029 Request compression is a feature and a switch, off by default
+
+## Context and problem statement
+
+The official Python SDK 0.7.5 and JavaScript SDK 0.7.0 compress every request body of 1 KiB or more with zstd unless told not to (`compression=False`, `compression: false`); the Python one only when the runtime has zstd (Python 3.14, or the `zstd` extra), the JavaScript one on Node.js 22.15 or later. The Python release says that non-official APIs may not support it yet. The hosted API documents the header in its [request rules](https://docs.typesafe.ai/api/errors#compression): `Content-Encoding: zstd` or `gzip`, one layer, a zstd window of at most 8 MiB, the 32 MiB limit on the body both compressed and decompressed, `415` for an encoding it does not take. The OpenAPI document says nothing about it. The crate is run against servers that copy the wire ([compatible servers](../research/compatible-servers-and-models.md)), none of which was probed with a compressed body. The question was whether the crate should compress, and if so, when.
+
+## Decision drivers
+
+- A body a server cannot read is a refused call, or worse, a 400 that reads like the caller's mistake; the crate's default must work against every server it is run against.
+- The request, its fingerprint and the recordings must not change: a compressed body is the same request, and a `Replay` must answer it.
+- A build that does not compress should not compile or link a compressor; libzstd is a C build.
+- The saving is bytes on the wire for a large state, not calls or tokens.
+
+## Considered options
+
+1. **A feature and a switch**: cargo feature `zstd`; `ClientBuilder::zstd(true)` for every call of a client, `CallOptions::zstd` for one; off by default; from 1 KiB, the SDKs' threshold; never a multipart body.
+2. **The SDKs' default**: compression on whenever the feature is compiled in, off per client for another server.
+3. **Always**, without a feature.
+4. **gzip as well**, or instead, through a choice of encoding.
+5. **Nothing**.
+
+## Decision outcome
+
+Chosen option 1.
+
+- The switch lives where long context and multipart do ([decision 0027](0027-long-context-is-a-switch-on-the-call.md), [decision 0028](0028-multipart-is-a-feature-and-a-switch.md)): on the call, with a client-wide default, never on the `Request`, so the request's serialisation, fingerprint and hash are untouched.
+- The JSON body is built as before, held to the 32 MiB bound as before when the request has images, then compressed once with zstd at level 3 (a window of at most 2 MiB, inside the hosted API's 8 MiB) when it weighs 1 KiB or more, and sent under `Content-Encoding: zstd` with `Content-Type: application/json` on every attempt. A smaller body goes as it always did, and so does a multipart body, whose images are already compressed.
+- `Content-Encoding` is a reserved header with or without the feature: a caller's value would label a body the client did not encode.
+- The span's `zstd` field says whether the body went compressed; the observer's report is unchanged.
+
+### Consequences
+
+- Good: a caller who sends large states to the hosted API turns it on in one place, and everyone else's build, wire and recordings are as they were.
+- Good: a feature-less build carries no C compressor.
+- Bad: the crate departs from the SDKs' default, so a reader comparing traffic sees uncompressed bodies from the crate unless it was asked.
+- Bad: a third body form to keep in step with the hosted API's rules, verified live only on the hosted API.
+- Bad: the `jud` command has no setting for it (a follow-up if a run measures the cost).
+
+### Confirmation
+
+`tests/client.rs` (under the feature) decompresses what the server received and holds it to the plain JSON byte for byte, at 1,024 bytes compressed and 1,023 not; checks that the switch is off by default and turns on and off per call and per client, that a retried attempt carries the same compressed body, that a recording made through a compressing client replays, and (with `multipart`) that a multipart body is never compressed; with or without the feature it checks that `Content-Encoding` is refused as a header; `tests/contract.rs` holds the decompressed body to `SystemOneRequest` and pins that the OpenAPI document does not name the header. `tests/live.rs` sends the same request plain and compressed to the hosted API: `jev-1.14.0` answered both with 566 input tokens on 2026-10-25 ([Jev 1.14 on the hosted API](../verification/hosted-typesafe-jev-1-14.md#compressed-bodies-2026-10-25)).
+
+## Pros and cons of the options
+
+### Option 1: a feature and a switch
+
+- Good, because the default works against every server the crate is run against.
+- Good, because the request, the recordings and the default build do not change.
+- Bad, because the caller has to know to ask.
+
+### Option 2: the SDKs' default
+
+- Good, because the crate's traffic would match the SDKs'.
+- Bad, because every client built with the feature would send bodies the compatible servers were never shown to read, and the remedy (turning it off) would be found from a refused call.
+
+### Option 3: always
+
+- Good, because one body path.
+- Bad, because every build compiles libzstd, and every server that copies the wire would have to decode it.
+
+### Option 4: gzip as well
+
+- Good, because gzip is the more widely decoded encoding, and the hosted API takes it.
+- Bad, because neither SDK sends it, so nothing would have been held against it, and a choice of encoding is an option nobody has asked for.
+
+### Option 5: nothing
+
+- Good, because no new body path and no new dependency.
+- Bad, because the saving is real for a large state, and both SDKs now send it.
+
+## More information
+
+The SDK releases: [Python 0.7.5](https://github.com/typesafe-ai/typesafe-sdk-python/releases/tag/v0.7.5) (`MIN_COMPRESSED_BODY_LENGTH = 1024` in its `_core/compression.py`) and [JavaScript 0.7.0](https://github.com/typesafe-ai/typesafe-sdk-js/releases/tag/v0.7.0) ("request bodies of 1 KiB or more"); the hosted API's [request rules](https://docs.typesafe.ai/api/errors#compression). `src/client.rs` (`# Compression`) implements it; [Configuration](../../reference/configuration.md) and [The crate](../../reference/crate.md#features) list the switch and the feature; beads issue `judgment-mwx` tracked the work.

@@ -85,17 +85,19 @@ pub enum Error {
         /// The response's request id, when it had one.
         request_id: Option<String>,
     },
-    /// The API refused the request body (HTTP 400, 413 or 422). Not
+    /// The API refused the request body (HTTP 400, 413, 415 or 422). Not
     /// retried; fix the question or the state the issues point at, or send
     /// less of it ([`Error::is_request_too_large`]). The statuses share a
     /// variant because they mean the same to the caller: the API reference
     /// documents 422 for a body that fails validation, the official SDKs
-    /// have a bad-request error for 400, and a compatible server may answer
-    /// 413 for a body past its own limits. Each issue's echoed `input` is
+    /// have a bad-request error for 400, a compatible server may answer
+    /// 413 for a body past its own limits, and 415 is the hosted API's
+    /// answer to a `Content-Encoding` it does not take, fixed by sending the
+    /// body plain (`ClientBuilder::zstd(false)`, feature `zstd`). Each issue's echoed `input` is
     /// dropped because it can be a piece of the state.
     #[error("request rejected by the API ({status}): {detail}{}", request_id_suffix(.request_id.as_deref()))]
     InvalidRequest {
-        /// HTTP status: 400, 413 or 422.
+        /// HTTP status: 400, 413, 415 or 422.
         status: u16,
         /// The server's message, the issues joined, the code, or the body
         /// truncated, in that order of preference.
@@ -197,8 +199,10 @@ pub enum Error {
         /// HTTP response that had one.
         request_id: Option<String>,
     },
-    /// A recording could not be read or written. Check the directory and its
-    /// permissions; `context` names what was being accessed.
+    /// A recording could not be read or written (check the directory and its
+    /// permissions), or, with the `zstd` feature, the request body could not
+    /// be compressed (a failed allocation; send it plain). `context` names
+    /// what was being accessed.
     #[error("cannot access {context}: {source}")]
     Io {
         /// What was being accessed.
@@ -352,7 +356,8 @@ pub enum Error {
     /// A header the client or HTTP sets itself was given as a per-call or
     /// default header; the value is its lowercase name. Refused before
     /// anything is sent. `authorization`, `content-type` and `user-agent`
-    /// are the client's own (another key means another client);
+    /// are the client's own (another key means another client), and so is
+    /// `content-encoding` (the body is the client's to encode);
     /// `x-typesafe-retry-count` is not sent yet, but both official SDKs own
     /// it, so reserving it now means sending it later breaks no caller; the
     /// framing headers (`content-length`, `transfer-encoding`, `host`,
