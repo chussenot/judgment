@@ -164,6 +164,25 @@
 //! limits allow, and the feature pulls in `reqwest`'s multipart encoding
 //! and `mime_guess`. The setting is the span's `multipart` field.
 //!
+//! # Compression
+//!
+//! With the `zstd` feature, a JSON body of 1 KiB or more can go compressed
+//! with zstd under `Content-Encoding: zstd`, as the official SDKs send it
+//! by default since Python 0.7.5 and JS 0.7.0, and from the same 1 KiB. It
+//! is asked for per call ([`CallOptions::zstd`]) or for every call of a
+//! client ([`ClientBuilder::zstd`]), and never on by default: the hosted
+//! API decodes it (<https://docs.typesafe.ai/api/errors#compression>,
+//! `415` for an encoding it does not take), but a compatible server may
+//! not, and one that does not would read the bytes as JSON and refuse
+//! them. A smaller body goes as it always did, and so does a multipart
+//! one, whose images are compressed already. The body is compressed once,
+//! after the size check, and sent the same on every attempt; nothing else
+//! moves: the request fingerprint and hash are over the request, not its
+//! bytes on the wire, so a recording answers a replay either way, and the
+//! response is read as before. `Content-Encoding` is the client's header
+//! ([`Error::ReservedHeader`]), with or without the feature. Whether the
+//! body went compressed is the span's `zstd` field.
+//!
 //! # Shared images
 //!
 //! Ollama's `/v1/systemone` takes a request's images as a top-level
@@ -203,7 +222,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use reqwest::header::{
-    AUTHORIZATION, CONNECTION, CONTENT_LENGTH, CONTENT_TYPE, HOST, HeaderMap, TE,
+    AUTHORIZATION, CONNECTION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, HOST, HeaderMap, TE,
     TRANSFER_ENCODING, UPGRADE, USER_AGENT,
 };
 use reqwest::{RequestBuilder, StatusCode, Url};
@@ -255,9 +274,12 @@ pub const DANGER_ZONE_IMAGES_HEADER: &str = "typesafe-danger-zone-images";
 /// asks for it and never otherwise (module docs, `# Long context`).
 pub const DANGER_ZONE_LONG_CONTEXT_HEADER: &str = "typesafe-danger-zone-long-context";
 /// Headers the client sets itself, refused as a per-call or default header.
-const RESERVED_HEADERS: [HeaderName; 6] = [
+/// `Content-Encoding` with them: the body is the client's to encode, with
+/// or without the `zstd` feature.
+const RESERVED_HEADERS: [HeaderName; 7] = [
     AUTHORIZATION,
     CONTENT_TYPE,
+    CONTENT_ENCODING,
     USER_AGENT,
     RETRY_COUNT_HEADER,
     HeaderName::from_static(DANGER_ZONE_IMAGES_HEADER),
@@ -273,6 +295,10 @@ const TRANSPORT_HEADERS: [HeaderName; 6] = [
     TE,
     UPGRADE,
 ];
+/// The smallest JSON body sent compressed when zstd is asked for (module
+/// docs, `# Compression`): 1 KiB, the threshold of both official SDKs.
+#[cfg(feature = "zstd")]
+const ZSTD_MIN_BYTES: usize = 1024;
 /// Body fields set from the [`Request`], refused as extra fields.
 const RESERVED_FIELDS: [&str; 4] = ["state", "model", "questions", "assets"];
 
@@ -374,6 +400,8 @@ pub struct CallOptions {
     long_context: Option<bool>,
     #[cfg(feature = "multipart")]
     multipart: Option<bool>,
+    #[cfg(feature = "zstd")]
+    zstd: Option<bool>,
     shared_images: Option<SharedImages>,
 }
 
@@ -388,6 +416,8 @@ impl fmt::Debug for CallOptions {
             .field("long_context", &self.long_context);
         #[cfg(feature = "multipart")]
         debug.field("multipart", &self.multipart);
+        #[cfg(feature = "zstd")]
+        debug.field("zstd", &self.zstd);
         debug.field("shared_images", &self.shared_images);
         debug.finish()
     }
@@ -449,6 +479,19 @@ impl CallOptions {
     #[must_use]
     pub fn multipart(mut self, on: bool) -> Self {
         self.multipart = Some(on);
+        self
+    }
+
+    /// This call's JSON body sent compressed with zstd, in place of the
+    /// client's setting (module docs, `# Compression`): a body of 1 KiB or
+    /// more goes with `Content-Encoding: zstd`, a smaller one and a
+    /// multipart one as they always did. `false` turns it off for one call
+    /// of a client built with it on.
+    #[cfg(feature = "zstd")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "zstd")))]
+    #[must_use]
+    pub fn zstd(mut self, on: bool) -> Self {
+        self.zstd = Some(on);
         self
     }
 
@@ -549,6 +592,8 @@ pub struct ClientBuilder {
     long_context: bool,
     #[cfg(feature = "multipart")]
     multipart: bool,
+    #[cfg(feature = "zstd")]
+    zstd: bool,
     shared_images: SharedImages,
 }
 
@@ -567,6 +612,8 @@ impl fmt::Debug for ClientBuilder {
             .field("long_context", &self.long_context);
         #[cfg(feature = "multipart")]
         debug.field("multipart", &self.multipart);
+        #[cfg(feature = "zstd")]
+        debug.field("zstd", &self.zstd);
         debug.field("shared_images", &self.shared_images);
         debug.finish()
     }
@@ -586,6 +633,8 @@ impl Default for ClientBuilder {
             long_context: false,
             #[cfg(feature = "multipart")]
             multipart: false,
+            #[cfg(feature = "zstd")]
+            zstd: false,
             shared_images: SharedImages::Off,
         }
     }
@@ -656,6 +705,19 @@ impl ClientBuilder {
     #[must_use]
     pub fn multipart(mut self, on: bool) -> Self {
         self.multipart = on;
+        self
+    }
+
+    /// The JSON body of every call this client makes sent compressed with
+    /// zstd (module docs, `# Compression`): a body of 1 KiB or more goes
+    /// with `Content-Encoding: zstd`. Off by default, since a compatible
+    /// server may not take a compressed body; [`CallOptions::zstd`] changes
+    /// it for one call.
+    #[cfg(feature = "zstd")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "zstd")))]
+    #[must_use]
+    pub fn zstd(mut self, on: bool) -> Self {
+        self.zstd = on;
         self
     }
 
@@ -769,6 +831,8 @@ impl ClientBuilder {
             long_context: self.long_context,
             #[cfg(feature = "multipart")]
             multipart: self.multipart,
+            #[cfg(feature = "zstd")]
+            zstd: self.zstd,
             shared_images: self.shared_images,
         })
     }
@@ -814,6 +878,8 @@ pub struct Client {
     long_context: bool,
     #[cfg(feature = "multipart")]
     multipart: bool,
+    #[cfg(feature = "zstd")]
+    zstd: bool,
     shared_images: SharedImages,
 }
 
@@ -827,6 +893,8 @@ impl fmt::Debug for Client {
             .field("long_context", &self.long_context);
         #[cfg(feature = "multipart")]
         debug.field("multipart", &self.multipart);
+        #[cfg(feature = "zstd")]
+        debug.field("zstd", &self.zstd);
         debug
             .field("api_key", &"<redacted>")
             .finish_non_exhaustive()
@@ -948,6 +1016,7 @@ impl Client {
             images = request.assets.len(),
             long_context = options.long_context.unwrap_or(self.long_context),
             multipart = self.multipart_for(request, options),
+            zstd = tracing::field::Empty,
             gen_ai.response.model = tracing::field::Empty,
             gen_ai.usage.input_tokens = tracing::field::Empty,
             gen_ai.usage.output_tokens = tracing::field::Empty,
@@ -1021,6 +1090,15 @@ impl Client {
                 request.assets.total_bytes(),
             );
         }
+        // After the size check, which bounds the body as the server reads
+        // it: the limit holds compressed and decompressed alike.
+        #[cfg(feature = "zstd")]
+        let payload = if options.zstd.unwrap_or(self.zstd) {
+            payload.zstd()?
+        } else {
+            payload
+        };
+        tracing::Span::current().record("zstd", payload.is_zstd());
         let policy = options.retry.as_ref().unwrap_or(&self.retry);
         let reply = self
             .send(policy, || {
@@ -1162,6 +1240,10 @@ enum Payload {
     Json(Vec<u8>),
     #[cfg(feature = "multipart")]
     Multipart(multipart::Parts),
+    /// The JSON body compressed, sent under `Content-Encoding: zstd`
+    /// (module docs, `# Compression`).
+    #[cfg(feature = "zstd")]
+    Zstd(Vec<u8>),
 }
 
 /// How a call's images go (module docs, `# Shared images`): the `assets`
@@ -1227,7 +1309,36 @@ impl Payload {
             Self::Json(body) => u64::try_from(body.len()).unwrap_or(u64::MAX),
             #[cfg(feature = "multipart")]
             Self::Multipart(parts) => parts.len(),
+            #[cfg(feature = "zstd")]
+            Self::Zstd(body) => u64::try_from(body.len()).unwrap_or(u64::MAX),
         }
+    }
+
+    /// The JSON body compressed when it weighs [`ZSTD_MIN_BYTES`] or more,
+    /// once for every attempt; a smaller one and a multipart one unchanged.
+    /// Level 3, zstd's default, whose window (at most 2 MiB) is inside the
+    /// 8 MiB the hosted API decodes.
+    #[cfg(feature = "zstd")]
+    fn zstd(self) -> Result<Self> {
+        match self {
+            Self::Json(body) if body.len() >= ZSTD_MIN_BYTES => zstd::bulk::compress(&body, 3)
+                .map(Self::Zstd)
+                .map_err(|source| Error::Io {
+                    context: "the request body, compressing it with zstd".into(),
+                    source,
+                }),
+            other => Ok(other),
+        }
+    }
+
+    /// Whether the body goes compressed, the span's `zstd` field.
+    #[allow(clippy::unused_self)]
+    const fn is_zstd(&self) -> bool {
+        #[cfg(feature = "zstd")]
+        if let Self::Zstd(_) = self {
+            return true;
+        }
+        false
     }
 
     /// Put the body on one attempt's request. Inside the retry loop's
@@ -1239,6 +1350,10 @@ impl Payload {
             // form's boundary, which wins over the client's default header.
             #[cfg(feature = "multipart")]
             Self::Multipart(parts) => rb.multipart(parts.form()),
+            #[cfg(feature = "zstd")]
+            Self::Zstd(body) => rb
+                .header(CONTENT_ENCODING, HeaderValue::from_static("zstd"))
+                .body(body.clone()),
         }
     }
 }

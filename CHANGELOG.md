@@ -18,6 +18,20 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- Feature `zstd`: `ClientBuilder::zstd(true)`, or `CallOptions::zstd` for
+  one call, sends a JSON body of 1 KiB or more compressed with zstd under
+  `Content-Encoding: zstd`, as the official SDKs do by default since
+  Python 0.7.5 and JS 0.7.0, from the same 1 KiB. Off by default, unlike
+  the SDKs: the hosted API documents it
+  (<https://docs.typesafe.ai/api/errors#compression>), but a compatible
+  server may not take a compressed body. A smaller body and a multipart one
+  go as before; the body is compressed once and sent the same on every
+  attempt; the request fingerprint, the recordings and the response are
+  untouched. The span's new `zstd` field says whether the body went
+  compressed. A build without the feature does not compile or link libzstd.
+  Checked live: `jev-1.14.0` answered the compressed body with the same 566
+  input tokens as the plain one, and `mise run live:typesafe` now runs that
+  test (decision 0029).
 - `JUDGMENT_LIVE_PROFILE=ollaya` and `mise run live:ollaya` run the ignored
   live tests against Ollaya's TypeSafe-compatible API (`OLLAYA_URL`,
   default `http://127.0.0.1:11435`; `OLLAYA_MODEL`, default `laya:en`).
@@ -164,6 +178,10 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Changed
 
+- `Content-Encoding` is a reserved header, with or without the `zstd`
+  feature: `CallOptions::header` and `ClientBuilder::default_header` refuse
+  it with `Error::ReservedHeader`, since a caller's value would label a body
+  the client did not encode.
 - `Error::InvalidRequest::kind` also reads a top-level string `code`,
   Ollaya's envelope (`{error, code, detail}`), where it was `None`; the
   hosted API's fields still come first. `Error::is_request_too_large` is

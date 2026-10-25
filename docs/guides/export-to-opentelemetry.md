@@ -2,7 +2,7 @@
 title: Export to OpenTelemetry
 description: How to send a client's calls to an OpenTelemetry backend: the spans the client already writes, now carrying the GenAI semantic-convention attributes, and the metrics (tokens, duration, failed attempts, cost, optionally the confidence of each answer) that OtelObserver records through the OpenTelemetry API, behind the otel feature, with an OpenTelemetry Collector snippet and what each instrument and attribute means; the conventions are at Development status.
 status: current
-last_reviewed: 2026-10-16
+last_reviewed: 2026-10-25
 tags: [judgment, opentelemetry, observability, observer, tracing, how-to, rust]
 ---
 
@@ -29,7 +29,7 @@ The client's `typesafe.evaluate` span is a `client` span named `system_one {mode
 | `server.address` | the base URL's host |
 | `error.type` | on failure: an HTTP status as a number (`500`), or a short name (`rate_limited`, `transport`, `decode`, `unfit`, `too_large`, ...) |
 
-The span's `images`, `long_context`, `multipart` and `request_id` fields are as before. The retries of one call are `warn` events inside this span, not spans of their own.
+The span's `images`, `long_context`, `multipart` and `request_id` fields are as before; `zstd` says whether the body went compressed (feature `zstd`). The retries of one call are `warn` events inside this span, not spans of their own.
 
 ## The metrics
 

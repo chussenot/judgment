@@ -2,7 +2,7 @@
 title: Configuration
 description: Every setting the jud command and the crate's client read, where each comes from, in what order of precedence, and what the defaults are; the configuration file's fields, long context as a field and a flag, the output of jud config, and which commands read JUD_REPLAY.
 status: current
-last_reviewed: 2026-10-18
+last_reviewed: 2026-10-25
 tags: [judgment, jud, cli, configuration, reference]
 ---
 
@@ -115,6 +115,7 @@ A request nobody recorded is a backend failure (status 1); a directory that does
 | Retries | `ClientBuilder::retry_policy`, or `CallOptions` for one call | `RetryPolicy::default()`: [The crate](crate.md#defaults) |
 | Long context | `ClientBuilder::long_context`, or `CallOptions::long_context` for one call | off: the model's own limits, 64k tokens per request and 32k per question; on, 262k for both through the `TypeSafe-Danger-Zone-Long-Context` header, slower and less accurate by TypeSafe's own account ([decision 0027](../project/decisions/0027-long-context-is-a-switch-on-the-call.md)) |
 | Images as parts (feature `multipart`) | `ClientBuilder::multipart`, or `CallOptions::multipart` for one call | off: the images as base64 in the JSON body; on, a `multipart/form-data` body with a JSON `request` part and one part per image, the request keyed and checked as before ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) |
+| Compressed body (feature `zstd`) | `ClientBuilder::zstd`, or `CallOptions::zstd` for one call | off: the JSON body as it is; on, a JSON body of 1 KiB or more sent compressed with zstd under `Content-Encoding: zstd`, a smaller one and a multipart one as before, the request keyed and checked as before. The official SDKs compress by default; the crate does not, because a compatible server may not take it ([decision 0029](../project/decisions/0029-request-compression-is-a-feature-and-a-switch.md)) |
 | Shared images | `ClientBuilder::shared_images`, or `CallOptions::shared_images` for one call | off: the images as the `assets` map; on, a top-level `images` array of base64 and no map, the shape Ollama's `/v1/systemone` takes, which otherwise answers with the map ignored; never parts, whatever `multipart` says; the request keyed and checked as before. `shared_images_as_data_urls` on either sends the same array as `data:` URLs, which Liquid takes and Ollama refuses |
 
 The crate's client reads no base URL from the environment; the `jud` command and the examples do, and pass it to the builder. The two timeouts differ on purpose: a library call is usually one of many on a request path and fails fast at 10 s; a command-line run has a person waiting and a local model that may be loading, so it waits 30 s.

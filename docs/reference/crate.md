@@ -2,7 +2,7 @@
 title: The crate
 description: The judgment crate as a dependency; its features and what each compiles, its modules with a link to the rustdoc of each, the error groups, the limits and the defaults.
 status: current
-last_reviewed: 2026-10-16
+last_reviewed: 2026-10-25
 tags: [judgment, crate, features, modules, errors, reference]
 ---
 
@@ -24,6 +24,7 @@ tags: [judgment, crate, features, modules, errors, reference]
 | `otel` | no | `observer::otel::OtelObserver`, an `Observer` that records OpenTelemetry metrics through the API crate ([Export to OpenTelemetry](../guides/export-to-opentelemetry.md)); the SDK and exporters stay the application's | `opentelemetry` (API, metrics only) |
 | `cli` | no | The `jud` binary (`src/bin/jud/`); implies `jud` and `http` | `clap`, `clap_complete` |
 | `multipart` | no | `CallOptions::multipart` and `ClientBuilder::multipart`: a request's images sent as `multipart/form-data` parts beside a JSON `request` part instead of base64 in the JSON body, the transport TypeSafe recommends for images; implies `http` ([decision 0028](../project/decisions/0028-multipart-is-a-feature-and-a-switch.md)) | `reqwest`'s multipart encoding, `mime_guess`, `bytes` |
+| `zstd` | no | `CallOptions::zstd` and `ClientBuilder::zstd`: a JSON body of 1 KiB or more sent compressed with zstd under `Content-Encoding: zstd`, off until asked; implies `http` ([decision 0029](../project/decisions/0029-request-compression-is-a-feature-and-a-switch.md)) | `zstd` (libzstd, a C build) |
 
 Without `http` the crate is the questions, the answers, `Fake`, `Recorder`, `Replay`, `eval`, `observer` and, with `jud`, the format: everything a project with its own transport needs. CI builds and tests that configuration (`cargo check --no-default-features --all-targets`).
 
@@ -44,7 +45,7 @@ In the order of one call: a question is built, sent through a backend, answered,
 | `answer` | `Response` and the wire `Answer`; `Probability` and `Confidence`, which refuse a value outside `[0, 1]`; `Response::verify` holds a response against the questions; `Response::get(&handle)` reads `Noul`, `Choice<T>`, `Score` or `BoundingBox` (`BoxEdges` as fractions of the image, `PixelBox` at a size). | [docs.rs](https://docs.rs/judgment/latest/judgment/answer/index.html) |
 | `asset` | `Image` (a PNG or a JPEG, its format and size read from the bytes, the hosted API's limits checked), `ImageFormat`, and `Assets`, the request's images by reference. |  [docs.rs](https://docs.rs/judgment/latest/judgment/asset/index.html) |
 | `backend` | The `SystemOne` trait (`answer`, and `answer_with_assets` for a request with images) and three implementations beside the client: `Fake`, `Recorder`, `Replay`; with `pacer`, `Pacer` and `Paced`. | [docs.rs](https://docs.rs/judgment/latest/judgment/backend/index.html) |
-| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields, long context and, with `multipart`, the images as parts, for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
+| `client` (`http`) | `Client`, `ClientBuilder`, `CallOptions` (a timeout, a retry policy, headers, extra fields, long context, with `multipart` the images as parts and with `zstd` a compressed body, for one call): the wire with the official SDKs' retries, and the two danger-zone headers, sent for images and Box questions on their own and for long context when asked. | [docs.rs](https://docs.rs/judgment/latest/judgment/client/index.html) |
 | `http` (`http`) | `RetryPolicy`, `send_with_retries` and `send_with_retries_paced` (which also shares a `Pacer` and reports to an observer of its own), the retry loop behind the client, public so another `reqwest` client can retry the same way. | [docs.rs](https://docs.rs/judgment/latest/judgment/http/index.html) |
 | `error` | `Error`, `Result`, `ValidationIssue`. | [docs.rs](https://docs.rs/judgment/latest/judgment/error/index.html) |
 | `eval` | `Recording`, `Judgment`, the metrics (`metrics`), the fingerprints (`canonical`) and the sweeps (`tuning`). | [docs.rs](https://docs.rs/judgment/latest/judgment/eval/index.html) |
