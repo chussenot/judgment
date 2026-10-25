@@ -2,7 +2,7 @@
 title: Internals
 description: The rules the code applies that the rustdoc states only once, with the reason behind each; the client's key check, status classification and error-body reading, the per-call options, the retry loop's edges, the backends, the tolerant decoder, what the response check leaves unchecked, the observer, the recordings and metrics, the .jud reader, and the bounded proofs.
 status: current
-last_reviewed: 2026-10-09
+last_reviewed: 2026-10-25
 tags: [judgment, internals, implementation, decoding, errors, retries, eval, jud, kani]
 ---
 
@@ -113,7 +113,7 @@ The level nearest to a Score value is the value rounded half away from zero and 
 ## Errors
 
 - **`is_unfit`** is true for `MissingAnswer`, `AnswerTypeMismatch`, `UnknownOption` and `InvalidAnswer`: the call went through and its answer cannot be used. An evaluation harness records such a case as failed and carries on, where any other error stops the run. It is false for `Decode`, which is not an answer at all.
-- **`is_request_too_large`** is true for a 413, or a 400 whose kind is `max_tokens_exceeded`: the one refused body a caller fixes by sending less, state first.
+- **`is_request_too_large`** is true for a 413, a 400 whose kind is `max_tokens_exceeded`, or a 422 whose kind is Ollaya's `INPUT_TOO_LONG` or `STATE_TRUNCATED`: the one refused body a caller fixes by sending less, state first. It reads codes, never a message.
 - **A `ValidationIssue`** is an entry of the OpenAPI document's `HTTPValidationError` list. Its path runs `questions.<id>.<type>.<field>` because FastAPI puts the tag of the question's discriminated union in the location; an integer segment is kept as its decimal string.
 - **The request id suffix** ` [request_id …]` is appended to a message only when there is an id; the four answer-fit errors get theirs from `Response::get`.
 - **`Transport` and `ResponseTooLarge` never carry an id**: no response came back, or the loop dropped it unread with its headers, as the SDKs do.

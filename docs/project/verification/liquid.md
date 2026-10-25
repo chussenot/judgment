@@ -2,7 +2,7 @@
 title: Against Liquid's System One API
 description: How the judgment crate was run against Liquid's hosted /decisions/v1/systemone with the d1 and d1-ultra decision models, every status and body shape the live tests observed, how each departs from the hosted TypeSafe API, and what the liquid profile pins because of it.
 status: experiment
-last_reviewed: 2026-10-18
+last_reviewed: 2026-10-25
 tags: [judgment, liquid, d1, d1-ultra, compatibility]
 ---
 
@@ -47,7 +47,7 @@ Refusals come in OpenAI's envelope, `{"error": {"message", "type", "param", "cod
 
 - **422 for every refusal** the limits probes, the empty id and the over-budget state draw. Liquid's reference says validation errors return 422, and the run agrees.
 - **A model name it does not serve is a 404**, an `Error::Http`, where the hosted API, Laya and autojev-serve answered it (Ollama 0.40.5 also answers 404). A client built for the hosted API, sending `jev-latest`, fails against Liquid until it names `d1`.
-- **An over-budget state is not recognisable as one.** `Error::is_request_too_large` reads a 413 or `kind == "max_tokens_exceeded"`, and Liquid sends neither: only the message says the state is over the limit. The over-budget test asserts the 422 on Liquid and leaves the predicate out; a caller that needs to tell this refusal from others has only the message to go on. The crate does not read the message, because the wording is Liquid's to change without notice and a predicate that silently stops matching is worse than one that never did.
+- **An over-budget state is not recognisable as one.** `Error::is_request_too_large` reads a 413 or a code that names the budget (`max_tokens_exceeded`, Ollaya's `INPUT_TOO_LONG`), and Liquid sends neither: only the message says the state is over the limit. The over-budget test asserts the 422 on Liquid and leaves the predicate out; a caller that needs to tell this refusal from others has only the message to go on. The crate does not read the message, because the wording is Liquid's to change without notice and a predicate that silently stops matching is worse than one that never did.
 - **Success bodies hold to the document**, so the profile asserts it, as `typesafe` and `autojev` do.
 - **The confidence formulas hold** within the hosted API's tolerances (over three runs on `d1`, the wire's choice confidence 0.84 to 0.85 against 0.844 to 0.846 from the formula, score confidence 0.55 to 0.57 against 0.547 to 0.570, and the score 1.70 to 1.71 against an expected level of 1.698 to 1.713), so the profile asserts them, as `typesafe` does.
 

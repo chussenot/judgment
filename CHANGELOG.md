@@ -164,6 +164,16 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Changed
 
+- `Error::InvalidRequest::kind` also reads a top-level string `code`,
+  Ollaya's envelope (`{error, code, detail}`), where it was `None`; the
+  hosted API's fields still come first. `Error::is_request_too_large` is
+  now also true for the kinds `INPUT_TOO_LONG` and `STATE_TRUNCATED`,
+  Ollaya's 422s for a request over its token limit and over the model's
+  own context, so a caller that sends less on that predicate does so
+  against Ollaya too. `TOO_MANY_OPTIONS` stays false: the fix is fewer
+  options. Liquid's over-budget 422 is still not recognised, since only
+  its message says so. Checked against Ollaya 0.17.0: `mise run
+  live:ollaya`, 21 of 21.
 - The vendored TypeSafe OpenAPI document (`contract::OPENAPI_DOCUMENT`,
   feature `openapi`) is the live one of 2026-10-25. A Choice's `criteria`
   now holds 1 to 255 entries and a Score's at most 10 levels, which the

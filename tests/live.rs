@@ -1112,7 +1112,8 @@ async fn a_state_over_the_budget_is_refused_as_too_large() {
     // API answers 400 `{"detail": {"error_type": "max_tokens_exceeded"}}`,
     // no message, which the client keeps as `kind`; laya-serve answers 413
     // `{"detail": "state too large (50600 > 50000 chars)"}` at its 50,000
-    // characters. Both are `Error::is_request_too_large`; autojev-serve
+    // characters; Ollaya answers 422 with code `INPUT_TOO_LONG` at its
+    // 65,536 tokens. All three are `Error::is_request_too_large`; autojev-serve
     // answered it, having no budget in front of its model. The request is
     // about 500 KB; nothing is billed for a refused body.
     let noise = vec!["lorem ipsum dolor sit amet consectetur adipiscing elit ".repeat(20); 450];
@@ -1137,18 +1138,18 @@ async fn a_state_over_the_budget_is_refused_as_too_large() {
                     "{err:?}"
                 );
             }
+            if profile == Profile::Ollaya {
+                assert!(
+                    matches!(&err, Error::InvalidRequest { kind: Some(kind), issues, .. }
+                        if kind == "INPUT_TOO_LONG" && issues.iter().any(|i| i.kind == "input_too_long")),
+                    "{err:?}"
+                );
+            }
             // Liquid's 422 says the state is over its budget only in the
             // message (`invalid_request_error`, no code), so the predicate
             // cannot tell it from any other invalid request.
-            // Ollaya's 422 names it in its issue, `input_too_long`, which the
-            // predicate does not read either.
             if profile == Profile::Liquid {
                 assert!(err.to_string().contains("input limit"), "{err:?}");
-            } else if profile == Profile::Ollaya {
-                assert!(
-                    matches!(&err, Error::InvalidRequest { issues, .. } if issues.iter().any(|i| i.kind == "input_too_long")),
-                    "{err:?}"
-                );
             } else {
                 assert!(err.is_request_too_large(), "{err:?}");
             }

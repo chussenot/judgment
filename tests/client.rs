@@ -1779,6 +1779,54 @@ async fn a_413_is_an_invalid_request_that_is_too_large_and_is_not_retried() {
 }
 
 #[tokio::test]
+async fn ollaya_s_size_codes_are_too_large_and_its_other_codes_are_not() {
+    // Ollaya 0.17.0's 422s (docs/project/verification/ollaya.md): a code
+    // beside the message, TypeSafe's issues in `detail`. A request over its
+    // token limit and one over the model's own context are fixed by sending
+    // less; too many options and a failed validation are not.
+    let server = MockServer::start().await;
+    let mut q = Questions::new();
+    q.noul("urgent", "Does `message` convey urgency?", None)
+        .unwrap();
+    let c = client(&server, RetryPolicy::default());
+    for (code, issue, too_large) in [
+        ("INPUT_TOO_LONG", "input_too_long", true),
+        ("STATE_TRUNCATED", "state_truncated", true),
+        ("TOO_MANY_OPTIONS", "too_long", false),
+        ("INVALID_REQUEST", "too_short", false),
+    ] {
+        server.reset().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/systemone"))
+            .respond_with(ResponseTemplate::new(422).set_body_json(json!({
+                "error": format!("state: refused as {code}"),
+                "code": code,
+                "detail": [{ "loc": ["body", "state"], "msg": "refused", "type": issue }],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = c
+            .system_one(&json!({ "message": "hi" }), &q)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                &err,
+                Error::InvalidRequest { status: 422, detail, issues, kind: Some(kind), .. }
+                    if *detail == format!("state: refused as {code}")
+                        && kind == code
+                        && issues.len() == 1
+                        && issues[0].kind == issue
+            ),
+            "{code}: {err:?}"
+        );
+        assert_eq!(err.is_request_too_large(), too_large, "{code}");
+        server.verify().await;
+    }
+}
+
+#[tokio::test]
 async fn a_403_for_a_request_without_a_key_reads_the_server_s_message() {
     // What the hosted API answers when no `Authorization` header reaches
     // it (observed 2026-10-03): a 403, not a 401, with a message that says
