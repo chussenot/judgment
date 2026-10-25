@@ -273,6 +273,25 @@ JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-generic}" JUDGMENT_LIVE_SHARED_I
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 
+[tasks."live:ollaya"]
+description = "The ignored live tests against Ollaya's TypeSafe-compatible API on OLLAYA_URL (default http://127.0.0.1:11435; Ollaya 0.17 or later, `ollaya serve` and `ollaya pull laya:en` first); OLLAYA_MODEL picks another model; docs/project/verification/ollaya.md"
+run = '''
+set -eu
+base="${OLLAYA_URL:-http://127.0.0.1:11435}"
+model="${OLLAYA_MODEL:-laya:en}"
+# A local server: keep loopback away from any exported HTTP proxy.
+export NO_PROXY="127.0.0.1,localhost,::1${NO_PROXY:+,$NO_PROXY}" no_proxy="127.0.0.1,localhost,::1${no_proxy:+,$no_proxy}"
+curl -sSf -m 5 -o /dev/null "$base/" || { echo "no Ollaya at $base; start it with 'ollaya serve'" >&2; exit 1; }
+curl -sSf -m 5 -o /dev/null -H "Authorization: Bearer ${OLLAYA_API_KEY:-unused}" "$base/api/show" -d "{\"model\":\"$model\"}" || { echo "Ollaya at $base has no $model; pull it with 'ollaya pull $model'" >&2; exit 1; }
+# A server that sets OLLAYA_API_KEY checks it: the same key runs the suite and the bearer test.
+if [ -n "${OLLAYA_API_KEY:-}" ]; then
+  export JUDGMENT_LIVE_API_KEY="$OLLAYA_API_KEY" JUDGMENT_LIVE_AUTH_BASE_URL="$base" JUDGMENT_LIVE_AUTH_API_KEY="$OLLAYA_API_KEY"
+fi
+JUDGMENT_LIVE_BASE_URL="$base" JUDGMENT_LIVE_MODEL="$model" \
+JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-ollaya}" \
+  cargo test --test live -- --ignored --nocapture --test-threads=1
+'''
+
 [tasks."live:clef"]
 description = "The ignored live tests against Cloudflare's Clef on Workers AI through tools/systemone/serve.py (CLEF_MODEL=clef-flash for the 9B); needs CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in .env and spends a few model calls"
 run = '''
