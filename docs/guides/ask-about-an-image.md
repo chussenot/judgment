@@ -100,7 +100,7 @@ A request without images is the JSON body it always was, whatever was asked. Oll
 
 | Check | Where | Error |
 |---|---|---|
-| PNG or JPEG, not animated; each side 256 to 1568 pixels; 78,400 to 2,458,624 pixels; at most 16 MiB; upright (an EXIF orientation tag is not read) | `Image::read`, `Image::from_bytes`, `Image::from_base64` | `Error::InvalidImage` |
+| PNG or JPEG, not animated; each side 280 to 1568 pixels; 78,400 to 2,458,624 pixels; at most 16 MiB; upright (an EXIF orientation tag is not read) | `Image::read`, `Image::from_bytes`, `Image::from_base64` | `Error::InvalidImage` |
 | A reference 1 to 1024 bytes, all of them at most 65,536; the same reference not two different images | `Assets::add`, `Assets::insert` | `Error::InvalidAsset` |
 | Every reference appears in the state or the questions; the body at most 32 MiB | `Client::evaluate_with`, before the upload | `Error::InvalidAsset`, `Error::RequestTooLarge` |
 

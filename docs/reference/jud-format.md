@@ -210,7 +210,7 @@ spec:
     mark: {type: image, format: png, data_base64: iVBORw0KGgo…}
 ```
 
-A reader loads the files when it builds the request, not when it reads the document, so `jud check` reads a document whose images are elsewhere; a file that is missing or is not a PNG or a JPEG fails loudly, by the entry's name, when the request is built. The image's own limits (a side from 256 to 1568 pixels, 78,400 to 2,458,624 pixels in all, 16 MiB a file, 32 MiB a request) are the API's, checked before anything is sent.
+A reader loads the files when it builds the request, not when it reads the document, so `jud check` reads a document whose images are elsewhere; a file that is missing or is not a PNG or a JPEG fails loudly, by the entry's name, when the request is built. The image's own limits (a side from 280 to 1568 pixels, 78,400 to 2,458,624 pixels in all, 16 MiB a file, 32 MiB a request) are the API's, checked before anything is sent.
 
 ### Policy
 

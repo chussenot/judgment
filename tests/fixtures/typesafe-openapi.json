@@ -279,6 +279,8 @@
                 "excited": "An enthusiastic or eager message"
               }
             ],
+            "maxProperties": 255,
+            "minProperties": 1,
             "title": "Criteria",
             "type": "object"
           },
@@ -321,6 +323,29 @@
           "criteria"
         ],
         "title": "ChoiceQuestion",
+        "type": "object"
+      },
+      "HTTPBadRequestError": {
+        "description": "Application validation failures returned with HTTP status 400.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            ],
+            "description": "Explanation of the invalid request. String details and message fields are bounded, with shortened text ending with ….",
+            "title": "Detail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "HTTPBadRequestError",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -700,6 +725,7 @@
               ],
               "x-accepts": "string | object | array"
             },
+            "maxItems": 10,
             "minItems": 1,
             "title": "Criteria",
             "type": "array"
@@ -894,7 +920,7 @@
         "description": "A request validation error at a specific field or array element.",
         "properties": {
           "ctx": {
-            "description": "Additional context used to explain the validation failure.",
+            "description": "Additional context used to explain the validation failure. Entries may be omitted or shortened.",
             "examples": [
               {
                 "min_length": 1
@@ -904,16 +930,15 @@
             "type": "object"
           },
           "input": {
-            "description": "The input value that failed validation.",
+            "description": "Text preview of the rejected input. May be shortened with ….",
             "examples": [
-              {
-                "type": "score"
-              }
+              "{\"type\":\"score\"}"
             ],
-            "title": "Input"
+            "title": "Input",
+            "type": "string"
           },
           "loc": {
-            "description": "Path to the invalid value: the request location followed by field names and array indices.",
+            "description": "Path to the invalid value: the request location followed by field names and array indices. May be empty.",
             "examples": [
               [
                 "body",
@@ -937,7 +962,7 @@
             "type": "array"
           },
           "msg": {
-            "description": "Human-readable explanation of the validation failure.",
+            "description": "Human-readable explanation of the validation failure. May be shortened with ….",
             "examples": [
               "Field required"
             ],
@@ -990,6 +1015,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPBadRequestError"
+                }
+              }
+            },
+            "description": "Bad Request"
           },
           "422": {
             "content": {
@@ -1054,7 +1089,7 @@
                         "type": "image"
                       }
                     },
-                    "model": "v14_hot_mode",
+                    "model": "jev-preview",
                     "questions": {
                       "red_rectangle": {
                         "instructions": "Locate the red rectangle.",
@@ -1169,7 +1204,7 @@
                           "type": "box"
                         }
                       },
-                      "model": "v14_hot_mode",
+                      "model": "jev-preview",
                       "usage": {
                         "input_tokens": 285,
                         "output_tokens": 20
@@ -1248,6 +1283,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPBadRequestError"
+                }
+              }
+            },
+            "description": "Bad Request"
           },
           "422": {
             "content": {

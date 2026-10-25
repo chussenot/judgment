@@ -152,6 +152,21 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Changed
 
+- The vendored TypeSafe OpenAPI document (`contract::OPENAPI_DOCUMENT`,
+  feature `openapi`) is the live one of 2026-10-25. A Choice's `criteria`
+  now holds 1 to 255 entries and a Score's at most 10 levels, which the
+  hosted API enforces with a 422 from its schema (it was a 400); a 400 is
+  documented on both paths as `HTTPBadRequestError`; a `ValidationError`'s
+  `input` is a text preview. The builder already refused 256 options and
+  11 levels, so no request the crate builds changes.
+- **Breaking:** an image's shortest side is now 280 pixels
+  (`asset::MIN_SIDE_PX`), up from 256. The hosted API refuses a side under 280 with a 400, `Invalid
+  image dimensions.`, as its Images page now says
+  (<https://docs.typesafe.ai/images>): probed on 2026-10-25, 280 by 400 was
+  answered and 279 by 400, 256 by 400 and 400 by 256 were refused. An
+  image with a side from 256 to 279 is now `Error::InvalidImage` before
+  the call instead of a paid 400 after it, whichever backend it is for:
+  scale up or pad such an image to 280, as the Images page advises.
 - A client's failed attempts (`Observer::on_failed_attempt`, the retried
   ones, `decode` and `unfit` included) go to the client's own observer when
   it has one and to the process-wide one otherwise, as its token usage

@@ -256,7 +256,7 @@ the template:
        turn;
      - with a Box or `assets`: which references the state (or the
        instructions) carry, that each must be in the `Assets` the caller
-       passes, as a PNG or a JPEG within the API's limits (each side 256
+       passes, as a PNG or a JPEG within the API's limits (each side 280
        to 1568 pixels, 78,400 to 2,458,624 pixels, 16 MiB; `Image::read`
        checks them before anything is sent) and under no other reference,
        that an image the rubric declares under `spec.assets` is loaded with

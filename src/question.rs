@@ -30,11 +30,12 @@
 //!
 //! # Limits are checked here
 //!
-//! The HTTP API reference page allows at most 255 options per Choice and
-//! 2 to 10 levels per Score; the OpenAPI document is looser. The builder
-//! follows the page and adds a minimum of 2 options, since one decides
-//! nothing. The upper bounds are the hosted server's own (a 400 past
-//! them); the lower ones are this crate's, as the server answers one
+//! The Choice and Score pages allow at most 255 options per Choice and
+//! 2 to 10 levels per Score; the OpenAPI document has the same upper
+//! bounds and a lower bound of 1. The builder follows the pages and adds a
+//! minimum of 2 options, since one decides nothing. The upper bounds are
+//! the hosted server's own (a 422 from its schema since 2026-10-25, a 400
+//! before); the lower ones are this crate's, as the server answers one
 //! option or one level with probability 1
 //! (`docs/project/verification/hosted-typesafe.md`). An empty id is refused as the
 //! server refuses it, an empty option key because the server can choose
