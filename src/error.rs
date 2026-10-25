@@ -500,14 +500,16 @@ impl Error {
     /// `max_tokens_exceeded` (the hosted API's 400 for a state, images
     /// included, over its context length) or Ollaya's `INPUT_TOO_LONG` or
     /// `STATE_TRUNCATED` (its 422 for a request over its limit or over the
-    /// model's own context, which many options also fill), or an
-    /// [`Error::RequestTooLarge`] found before sending. A refusal that only
-    /// says so in prose, as Liquid's does, is not one: the wording is the
-    /// server's to change. Too many options is not one either, on any server:
-    /// the fix is fewer options. Named because it is the one refused request
-    /// fixed by sending less, state first, then fewer or smaller images, or,
-    /// when the state is the point, by asking for long context
-    /// (`CallOptions::long_context`, 262k tokens for both limits).
+    /// model's own context), or an [`Error::RequestTooLarge`] found before
+    /// sending. A refusal that only says so in prose, as Liquid's does, is
+    /// not one: the wording is the server's to change. Ollaya's
+    /// `TOO_MANY_OPTIONS` is not one either, since the fix is fewer options;
+    /// options that leave the state no room draw `STATE_TRUNCATED` too (126
+    /// on `laya:en`), and there fewer options may be the fix. Named because it
+    /// is the one refused request fixed by sending less, state first, then
+    /// fewer or smaller images, or, when the state is the point, by asking
+    /// for long context (`CallOptions::long_context`, 262k tokens for both
+    /// of the hosted API's limits; Ollaya's do not move with it).
     pub fn is_request_too_large(&self) -> bool {
         match self {
             Self::InvalidRequest { status: 413, .. } | Self::RequestTooLarge { .. } => true,

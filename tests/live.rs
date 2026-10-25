@@ -1464,6 +1464,35 @@ async fn the_model_s_context_bounds_the_options_and_the_state() {
             assert!(codes.iter().any(|c| text.contains(c)), "{what}: {text}");
         }
     }
+    // The same two through the client: the code is `kind`, and only the
+    // state that does not fit is a request to send less of.
+    if profile == Profile::Ollaya && model == "laya:en" {
+        let mut many = Questions::new();
+        many.dynamic_choice(
+            "c",
+            "Which?",
+            (0..200).map(|i| (format!("opt_{i:03}"), Some(format!("option {i}")))),
+        )
+        .unwrap();
+        let long = json!(vec!["payout"; 2000].join(" "));
+        let mut one = Questions::new();
+        one.noul("u", "Is it urgent?", None).unwrap();
+        for (state, q, code) in [
+            (json!("Pick one."), &many, "TOO_MANY_OPTIONS"),
+            (long, &one, "STATE_TRUNCATED"),
+        ] {
+            let err = client().system_one(&state, q).await.unwrap_err();
+            assert!(
+                matches!(&err, Error::InvalidRequest { status: 422, kind: Some(k), .. } if k == code),
+                "{code}: {err:?}"
+            );
+            assert_eq!(
+                err.is_request_too_large(),
+                code == "STATE_TRUNCATED",
+                "{code}"
+            );
+        }
+    }
 }
 
 /// A Noul about an image, asked of a model without vision. Ollaya answers
