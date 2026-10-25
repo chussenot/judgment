@@ -32,8 +32,8 @@
 //!     let mut assets = judgment::Assets::new();
 //!     assets.insert("shape-01", image)?;
 //!     let state = serde_json::json!({ "image": "shape-01" });
-//!     // A Box needs Jev 1.14: `jev-preview` until `jev-latest` moves.
-//!     let decision = shapes::decide(&backend, "jev-preview", &state, &assets).await?;
+//!     // A Box needs Jev 1.14 or later: `jev-latest`, or `jev-1.14.0` pinned.
+//!     let decision = shapes::decide(&backend, "jev-latest", &state, &assets).await?;
 //!     if decision.circle_present.yes {
 //!         match decision.circle {
 //!             Located::Act { edges, .. } => {

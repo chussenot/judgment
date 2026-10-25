@@ -7,8 +7,10 @@
 //! A Box question (`Questions::r#box`) locates what its instructions
 //! describe in an image the request carries ([`crate::asset`]); it takes
 //! no criteria and its instructions cannot be null, since they are all
-//! the question is. The hosted API answers it on `jev-preview` or
-//! `jev-1.14.0`, under the images header the client sets; the answer is
+//! the question is. The hosted API answers it on Jev 1.14 or later
+//! (`jev-latest` and `jev-preview` both point to `jev-1.14.0` as of
+//! 2026-10-25; a pinned `jev-1.13.0` refuses it), under the images header
+//! the client sets; the answer is
 //! always a box, so the Box page pairs it with a Noul
 //! ([`crate::BoundingBox`]).
 //!
@@ -360,7 +362,8 @@ impl Questions {
     /// request carries, read as a [`BoundingBox`]. Name the target and the
     /// image ("the coffee mug in `photo`"); [`Error::InvalidQuestion`] for
     /// null instructions, since a Box has no criteria to carry the
-    /// question. Needs `jev-preview` or `jev-1.14.0` on the hosted API.
+    /// question. Needs Jev 1.14 or later on the hosted API (`jev-latest`,
+    /// or `jev-1.14.0` pinned).
     pub fn r#box(
         &mut self,
         id: impl Into<String>,

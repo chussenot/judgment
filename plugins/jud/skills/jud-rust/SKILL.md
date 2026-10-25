@@ -23,8 +23,8 @@ the rubric changes:
   only `when` the state has a path, bands, a strict threshold and
   `level_at_least`.
 - `references/shapes.rs`, from `references/shapes.jud`: a rubric asked about
-  an image, a Noul and a Box (Jev 1.14, `jev-preview` on the hosted API
-  until `jev-latest` moves), with `decide` taking the request's `Assets`
+  an image, a Noul and a Box (Jev 1.14 or later, `jev-latest` on the
+  hosted API), with `decide` taking the request's `Assets`
   beside the state and a `Located` verdict for the Box.
 
 Both compile against the crate and run in its test suite
@@ -144,7 +144,7 @@ the template:
    than comparing with a level, so the bar stays in the rubric. With a
    Box, the example reads the image with `Image::read`, keeps its size,
    puts it in an `Assets` under the reference the state carries, asks
-   `jev-preview`, and matches `Located::Act` to crop with
+   `jev-latest`, and matches `Located::Act` to crop with
    `edges.padded(..).to_pixels(width, height)` and `Located::Defer` to
    say the box was unsure, after the Noul beside it said there is
    something to find (as `shapes.rs` does). Every name the example
@@ -265,9 +265,10 @@ the template:
        first, that the box is in fractions and the caller's image size
        makes it pixels, that the images cost input tokens by their pixels
        (send the smallest that keeps the target legible), and that the
-       model must be Jev 1.14 (`jev-preview` on the hosted API while
-       `jev-latest` is 1.13, which refuses a Box with a bare `Invalid
-       request.`);
+       model must be Jev 1.14 or later (`jev-latest` on the hosted API,
+       or `jev-1.14.0` pinned to keep the bars on one release; a pinned
+       `jev-1.13.0` refuses a Box, observed as a 400 with a bare
+       `Invalid request.`);
      - that every `decide` is one request to the backend, as slow as the
        model (seconds on a CPU): a caller that feeds it a stream or a batch
        bounds how many are in flight and what waits (`judgment::Pacer`

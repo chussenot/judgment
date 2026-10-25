@@ -321,7 +321,7 @@
       "expectations": [
         "Follows the shapes template: `decide` takes `assets: &Assets` beside the state and calls `answer_with_assets`; the Box's verdict is `Located` with `Act { edges, confidence, band }` and `Defer { nearest, confidence, bar }`, the deferred edges read back by `edges_from_text`",
         "The header's usage example reads the image with `Image::read`, keeps its size, puts it in an `Assets` under the reference the state carries (`image`), reads the Noul before the Box and turns the box into pixels with the image's size",
-        "Says in the reply that a Box always answers with a box, found or not, so `circle_present` decides whether the box is used; that the box is in fractions and the caller's image size makes it pixels; and that a Box needs Jev 1.14 (`jev-preview` on the hosted API until `jev-latest` moves)",
+        "Says in the reply that a Box always answers with a box, found or not, so `circle_present` decides whether the box is used; that the box is in fractions and the caller's image size makes it pixels; and that a Box needs Jev 1.14 or later (`jev-latest` on the hosted API, or `jev-1.14.0` pinned; a pinned `jev-1.13.0` refuses it)",
         "Says which references the caller owes in the `Assets` and names the image limits or the token cost of an image",
         "Verifies the module with cargo before replying and leaves nothing behind in the project"
       ]

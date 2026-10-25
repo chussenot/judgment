@@ -2121,7 +2121,7 @@ A request without images is the JSON body it always was, whatever was asked. Oll
 
 The hosted API refuses the same with a 400, and a 413 for a body over its size limits; both read as `Error::is_request_too_large` when the remedy is a smaller image. The images' count and bytes reach the `Observer` (`on_assets`) once per call, and the `typesafe.evaluate` span carries the count as `images`, so an application's own metrics can price a visual judgment.
 
-An image costs input tokens in proportion to its pixels ([Visual judgments](../concepts/visual-judgments.md)): resize before sending when the target stays legible. `jev-latest` (Jev 1.13) answers a Noul, a Choice or a Score about an image; a Box needs `jev-preview` until the alias moves ([Locate something with a Box question](locate-with-a-box.md)).
+An image costs input tokens in proportion to its pixels ([Visual judgments](../concepts/visual-judgments.md)): resize before sending when the target stays legible. Jev 1.13 and later answer a Noul, a Choice or a Score about an image; a Box needs Jev 1.14 or later, which `jev-latest` points to as of 2026-10-25 ([Locate something with a Box question](locate-with-a-box.md)).
 
 ## Next
 
@@ -2135,7 +2135,7 @@ An image costs input tokens in proportion to its pixels ([Visual judgments](../c
 
 # Locate something with a Box question
 
-**You will** ask a model where something is in an image, read the answer as a box, decide whether to trust it, and grade a set of such answers against labelled boxes. **Prerequisites:** [Ask a question about an image](ask-about-an-image.md); a checkout of the repository for the replayed steps, which need no key. A Box needs Jev 1.14: `jev-preview` on the hosted API until `jev-latest` moves.
+**You will** ask a model where something is in an image, read the answer as a box, decide whether to trust it, and grade a set of such answers against labelled boxes. **Prerequisites:** [Ask a question about an image](ask-about-an-image.md); a checkout of the repository for the replayed steps, which need no key. A Box needs Jev 1.14 or later: on the hosted API `jev-latest` and `jev-preview` both point to `jev-1.14.0` as of 2026-10-25 ([Models](https://docs.typesafe.ai/models)), and a model pinned to `jev-1.13.0` refuses it ([Images](https://docs.typesafe.ai/images)). Pin `jev-1.14.0` once a Box's bars are tuned, since an alias moves with the next release; `jev-preview` can move ahead of `jev-latest` ([Models](https://docs.typesafe.ai/models)).
 
 ## Ask where, and whether
 
@@ -2255,7 +2255,7 @@ async fn run() -> judgment::Result<()> {
 
     let client = Client::from_env()?;
     let response = client
-        .answer_with_assets(&state, "jev-preview", &questions, &assets)
+        .answer_with_assets(&state, "jev-latest", &questions, &assets)
         .await?;
     let signed = response.get(&signed)?;
     let signature: BoundingBox = response.get(&signature)?;
@@ -2380,7 +2380,7 @@ spec:
       note: below it, pad the box before cropping, or ask again on a larger crop
 ```
 
-Three things to copy from it. The questions name the image by its reference and nothing else about it: no path, no size, no format. A Box has `instructions` and no `criteria`, and it is gated by `confidence` or `bands`, never by a threshold. And a Box has a Noul beside it, because a Box always answers with a box, found or not; the Noul says whether to use it (step 3). A Noul, a Choice or a Score about an image is answered by Jev 1.13 (`jev-latest`); a Box needs Jev 1.14, `jev-preview` on the hosted API until the alias moves. `minor: 4` is the format minor that reads a Box and images ([The .jud format](../reference/jud-format.md)).
+Three things to copy from it. The questions name the image by its reference and nothing else about it: no path, no size, no format. A Box has `instructions` and no `criteria`, and it is gated by `confidence` or `bands`, never by a threshold. And a Box has a Noul beside it, because a Box always answers with a box, found or not; the Noul says whether to use it (step 3). A Noul, a Choice or a Score about an image is answered by Jev 1.13 and later; a Box needs Jev 1.14 or later, which `jev-latest` points to as of 2026-10-25. `minor: 4` is the format minor that reads a Box and images ([The .jud format](../reference/jud-format.md)).
 
 ## 2. Send the image with `--asset`
 
@@ -2601,7 +2601,7 @@ API key: missing; the run would stop before the first call (a local server that 
 time: nothing to ask
 ```
 
-A run of your own goes to a fresh directory and needs a key and, for a Box, `model: jev-preview` in the configuration file ([step 7](#7-against-a-real-model)); the recordings are keyed by each image's digest as well as the state, so a photo that is re-encoded or resized is asked again, and `--refresh` asks every case again. Then `jud eval` grades the recordings against the labels, a Box by intersection over union at 0.5 unless the label says `iou_at_least` ([decision 0026](../project/decisions/0026-a-box-is-graded-by-intersection-over-union.md)), with the mean overlap where a Noul has a Brier score and each miss's overlap:
+A run of your own goes to a fresh directory and needs a key, and a Box needs Jev 1.14 or later ([step 7](#7-against-a-real-model)); the recordings are keyed by each image's digest as well as the state, so a photo that is re-encoded or resized is asked again, and `--refresh` asks every case again. Then `jud eval` grades the recordings against the labels, a Box by intersection over union at 0.5 unless the label says `iou_at_least` ([decision 0026](../project/decisions/0026-a-box-is-graded-by-intersection-over-union.md)), with the mean overlap where a Noul has a Brier score and each miss's overlap:
 
 ```sh
 jud eval examples/jud/stamps.jud examples/jud/stamps-cases.jud --replay examples/recordings/stamps
@@ -2641,12 +2641,12 @@ Read the six misses before the accuracy: every one is at an overlap of 0.45 to 0
 
 ## 7. Against a real model
 
-Drop `--replay` and the same command asks the configured backend. For the hosted API that is a key and, when the rubric has a Box, the preview alias:
+Drop `--replay` and the same command asks the configured backend. For the hosted API that is a key. A Box needs Jev 1.14 or later, which `jev-latest`, the default, points to as of 2026-10-25; a model pinned to `jev-1.13.0` refuses it. Pin the version once its bars are tuned, so that the next release does not move them ([Models](https://docs.typesafe.ai/models)):
 
 ```sh
 export TYPESAFE_API_KEY=...
-printf 'model: jev-preview\n' > ~/.config/jud/config.yaml   # a Box needs Jev 1.14 until jev-latest moves
-jud config                                                  # "api_key": "environment", "model": "jev-preview"
+printf 'model: jev-1.14.0\n' > ~/.config/jud/config.yaml    # the release the recordings name; jev-latest moves with the next one
+jud config                                                  # "model": "jev-1.14.0", "model_from": "config_file", "api_key": "environment"
 echo '{"page": "page-00"}' | jud --asset page-00=examples/jud/images/page-00.png examples/jud/stamps.jud
 ```
 
@@ -5594,7 +5594,7 @@ The unit and integration tests never leave the process: wiremock for the client,
 
 ## Does a real server speak the wire this way?
 
-`tests/live.rs` holds nineteen `#[ignore]` tests (twenty with the `multipart` feature) that run the three text primitives, an image with a Box question about it, the same image as a shared array and as a multipart part (on `jev-preview` against the hosted API, where `jev-latest` is still Jev 1.13), a state over the default budget under long context, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Seven tasks run them:
+`tests/live.rs` holds nineteen `#[ignore]` tests (twenty with the `multipart` feature) that run the three text primitives, an image with a Box question about it, the same image as a shared array and as a multipart part (on `jev-preview` against the hosted API, chosen while `jev-latest` was Jev 1.13; both aliases point to `jev-1.14.0` as of 2026-10-25), a state over the default budget under long context, the bodies themselves against the published document, a structured Score level (and print how the server echoes it), the model list, an unknown model name, an unknown extra body field, the server's own limits, the stability of repeated calls, the confidence formulas, the token budget, a bearer check and a record-then-replay against whatever `JUDGMENT_LIVE_BASE_URL` points at. `cargo test` skips them. Seven tasks run them:
 
 | Task | Against | Needs |
 |---|---|---|
