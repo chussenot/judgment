@@ -8,6 +8,12 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Security
 
+- The workflows that build, test and release the crate pass zizmor
+  (template injection, token permissions, persisted credentials): `ci.yml`
+  and `mutants.yml` start from a read-only token, no checkout keeps its
+  credentials, step outputs and the actor reach shell steps through the
+  environment, and every action is pinned to a commit SHA, which Dependabot
+  moves a week after a release. zizmor and gitleaks run as pre-commit hooks.
 - The lockfile takes `rustls-webpki` 0.103.16 and `webpki-root-certs`
   1.0.11, past RUSTSEC-2026-0382 (a certificate path through a distrusted
   intermediate could be accepted) and RUSTSEC-2026-0383 (distrusted emSign

@@ -2,7 +2,7 @@
 title: Contributing
 description: How the repository is worked on; the quality gates and the hooks, tracking work in beads, Conventional Commits, how the documentation is organised (Diátaxis) and checked, what is generated, how the container image is built locally, how a cloud session is set up, and how a decision is recorded.
 status: current
-last_reviewed: 2026-10-24
+last_reviewed: 2026-10-25
 tags: [judgment, contributing, tooling, documentation, diataxis]
 ---
 
@@ -19,7 +19,7 @@ mise tasks            # the rest
 
 ## The gates
 
-`mise run check` runs, in CI's order: `cargo fmt --check`, `cargo clippy --all-targets --all-features` with warnings denied, a build and check of every target without the `http` feature (`check:minimal`), `cargo test --all-features` (unit, wiremock, example, doc and documentation tests, no network), `cargo doc` with broken links as errors, and the documentation checks below. The pre-commit hooks (`prek`, configured in `.pre-commit-config.yaml`) run the fast file-level checks and verify the commit message; the pre-push hook runs the tests.
+`mise run check` runs, in CI's order: `cargo fmt --check`, `cargo clippy --all-targets --all-features` with warnings denied, a build and check of every target without the `http` feature (`check:minimal`), `cargo test --all-features` (unit, wiremock, example, doc and documentation tests, no network), `cargo doc` with broken links as errors, and the documentation checks below. The pre-commit hooks (`prek`, configured in `.pre-commit-config.yaml`) run the fast file-level checks and verify the commit message; the pre-push hook runs the tests. Two of them guard the repository rather than the crate: [zizmor](https://docs.zizmor.sh) audits the workflows and the Dependabot file (template injection, token permissions, persisted credentials, actions not pinned to a commit), and [gitleaks](https://github.com/gitleaks/gitleaks) refuses a commit whose staged changes hold a secret. Both run in CI's hooks job too; zizmor's findings there fail it. Every action a workflow uses is pinned to a commit SHA with its release in a comment, which Dependabot moves, a week after a release.
 
 Four more gates guard what a user of the crate depends on. Each is a CI job and a `mise run` task of the same name, and none is in `mise run check`, because the first two read the network (the baseline release, the advisory database):
 
@@ -112,4 +112,4 @@ The plugins are the three `.claude/settings.json` enables: `jud` from this check
 
 ## Secrets
 
-`.env` is gitignored and loaded by mise; a key never goes anywhere else, and the hooks refuse to commit one.
+`.env` is gitignored and loaded by mise; a key never goes anywhere else, and the hooks refuse to commit one, the file by name and a key anywhere else by gitleaks.

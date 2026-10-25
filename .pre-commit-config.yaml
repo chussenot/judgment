@@ -32,6 +32,23 @@ repos:
         args: [--maxkb=512]
       - id: detect-private-key
 
+  # GitHub Actions and Dependabot configuration, audited for template
+  # injection, broad permissions, unpinned actions and persisted credentials
+  # (https://docs.zizmor.sh/audits/); offline, so no token is needed.
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.31.1
+    hooks:
+      - id: zizmor
+        args: [--no-progress, --offline]
+
+  # A secret in the staged changes stops the commit: the keys in .env are live,
+  # and agents commit here. CI runs the hooks on all files, where nothing is
+  # staged; the history was scanned whole once (259 commits, clean, 2026-10-25).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
   - repo: local
     hooks:
       - id: cargo-fmt

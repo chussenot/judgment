@@ -2,7 +2,8 @@ name: CI
 
 # The crate's gate: the steps of `mise run check`, then what a publish would
 # ship, and the commit convention on a pull request. Only GitHub-owned actions
-# are used (actions/checkout, actions/cache); the toolchain comes from
+# are used (actions/checkout, actions/cache), each pinned to a commit SHA
+# with its release in a comment for Dependabot; the toolchain comes from
 # rust-toolchain.toml via rustup, prek is installed with pipx and cocogitto
 # from crates.io, so the workflow runs under a repository policy that forbids
 # third-party actions. The release workflow calls this one on a tag
@@ -22,6 +23,10 @@ on:
   pull_request:
   workflow_call:
 
+# Read-only by default (zizmor's excessive-permissions): no job here writes.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
@@ -31,7 +36,9 @@ jobs:
     name: fmt, clippy, test, doc, docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install toolchain from rust-toolchain.toml
         run: |
@@ -40,7 +47,7 @@ jobs:
           cargo --version
           rustc --version
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
@@ -81,7 +88,7 @@ jobs:
       - run: scripts/gen-plugin-format.sh --check
       - run: scripts/gen-plugin-rust.sh --check
       - run: cargo run -q --features cli --bin jud -- check examples/jud/*.jud examples/recordings/jud_calibration/*.jud
-      - uses: lycheeverse/lychee-action@v2
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           args: --config lychee.toml --offline README.md docs plugins
           fail: true
@@ -92,12 +99,14 @@ jobs:
     name: public API against the last release (cargo-semver-checks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tool-cache
         with:
           path: ~/.cargo/bin/cargo-semver-checks
@@ -107,7 +116,7 @@ jobs:
         if: steps.tool-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-semver-checks --locked --version 0.51.0
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
@@ -126,12 +135,14 @@ jobs:
     name: licences, advisories, bans, sources (cargo-deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tool-cache
         with:
           path: ~/.cargo/bin/cargo-deny
@@ -147,12 +158,14 @@ jobs:
     name: minimum supported Rust version (1.91)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install the minimum supported toolchain
         run: rustup toolchain install 1.91 --profile minimal
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
@@ -170,12 +183,14 @@ jobs:
     name: every feature on its own (cargo-hack)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install toolchain from rust-toolchain.toml
         run: rustup toolchain install
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: tool-cache
         with:
           path: ~/.cargo/bin/cargo-hack
@@ -185,7 +200,7 @@ jobs:
         if: steps.tool-cache.outputs.cache-hit != 'true'
         run: cargo install cargo-hack --locked --version 0.6.45
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
@@ -204,7 +219,9 @@ jobs:
     name: pre-commit hooks (prek)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install prek
         run: |
@@ -225,8 +242,9 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Install toolchain from rust-toolchain.toml
@@ -235,7 +253,7 @@ jobs:
       # cocogitto is built from crates.io, pinned to the version mise.toml
       # names, and cached by that version: no third-party action, no binary
       # fetched from a release page.
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: cog-cache
         with:
           path: ~/.cargo/bin/cog
@@ -256,8 +274,10 @@ jobs:
     name: mkdocs build --strict
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - run: pip install mkdocs mkdocs-techdocs-core
