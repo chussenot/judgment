@@ -37,8 +37,9 @@
 //!
 //! The constants below are the Images page's, checked on construction and
 //! on insertion: a side between [`MIN_SIDE_PX`] and [`MAX_SIDE_PX`], a
-//! pixel count between [`MIN_PIXELS`] and [`MAX_PIXELS`] (a 256 by 256
-//! image is too small), a file of at most [`MAX_IMAGE_BYTES`], all the
+//! pixel count between [`MIN_PIXELS`] and [`MAX_PIXELS`] (both implied by
+//! the sides today, kept because the page states them apart), a file of
+//! at most [`MAX_IMAGE_BYTES`], all the
 //! images of one request at most [`MAX_REQUEST_BYTES`] together, a
 //! reference of at most [`MAX_REFERENCE_BYTES`] and all references at most
 //! [`MAX_REFERENCES_BYTES`]. What is not checked here, because it needs the
@@ -61,8 +62,9 @@ use sha2::{Digest, Sha256};
 
 use crate::error::{Error, Result};
 
-/// The shortest side the API accepts, in pixels.
-pub const MIN_SIDE_PX: u32 = 256;
+/// The shortest side the API accepts, in pixels: 280 on the Images page
+/// and on the hosted API as of 2026-10-25, which refuses a 279 or a 256.
+pub const MIN_SIDE_PX: u32 = 280;
 /// The longest side the API accepts, in pixels.
 pub const MAX_SIDE_PX: u32 = 1568;
 /// The fewest pixels (width times height) the API accepts: a 280 by 280 square.
@@ -704,21 +706,21 @@ mod tests {
     }
 
     /// The limits at their edges, on headers written for the purpose: the
-    /// smallest and largest side, the smallest pixel count, the largest
-    /// file, and the largest request. The largest pixel count is 1568 by
-    /// 1568, which the side limit already bounds.
+    /// smallest and largest side, the largest file, and the largest
+    /// request. The pixel counts, 280 by 280 to 1568 by 1568, are what the
+    /// side limits already bound.
     #[test]
     fn the_size_limits_hold_at_their_edges() {
-        for (width, height) in [(256, 400), (400, 256), (1568, 1568), (280, 280)] {
+        for (width, height) in [(280, 400), (400, 280), (1568, 1568), (280, 280)] {
             let image = Image::from_bytes(png_header(width, height)).unwrap();
             assert_eq!((image.width(), image.height()), (width, height));
         }
         for (width, height, needle) in [
-            (255, 400, "255 pixels wide"),
-            (400, 255, "255 pixels high"),
+            (279, 400, "279 pixels wide"),
+            (400, 279, "279 pixels high"),
+            (256, 400, "256 pixels wide"),
             (1569, 400, "1569 pixels wide"),
             (400, 1569, "1569 pixels high"),
-            (280, 279, "78120 pixels"),
         ] {
             let err = Image::from_bytes(png_header(width, height)).unwrap_err();
             assert!(
@@ -800,7 +802,7 @@ mod tests {
     fn what_the_api_refuses_is_refused_before_the_wire() {
         for (name, needle) in [
             ("small-128.png", "128 pixels wide"),
-            ("narrow-256x300.png", "76800 pixels"),
+            ("narrow-256x300.png", "256 pixels wide"),
             ("wide-1600x300.png", "1600 pixels wide"),
             ("animated-300.png", "animated"),
             ("not-an-image.txt", "not a PNG or a JPEG"),

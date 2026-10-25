@@ -37,6 +37,13 @@ tags: [judgment, typesafe, jev, images, box, compatibility, verification]
 
 Nothing in the wire shape, which the OpenAPI refresh of the same day had already settled. Two things in words: the format page no longer says a reader must refuse a Box in a rubric without an image, and the Box's documentation names which alias answers it. The two live tests are the seventeenth and eighteenth in `tests/live.rs`; `mise run live:typesafe` runs them with the others, asking `jev-preview` for the Box part until `jev-latest` is 1.14.
 
+## Re-checked on 2026-10-25
+
+Four images about a filled circle, one Noul each, sent as `jev-latest` with the images header. The aliases have moved and the smallest side has risen:
+
+- **`jev-latest` is Jev 1.14.** Every answer named `jev-1.14.0`, the model this page had to request as `jev-preview` on 2026-10-15.
+- **The smallest side is now 280, as the [Images](https://docs.typesafe.ai/images) page says.** 280 by 280 and 280 by 400 were answered (0.98 and 0.97); 279 by 400, 256 by 400 and 400 by 256 were refused with the same 400 as above, `api_usage_error`, "Invalid image dimensions.". The 256 recorded above was the limit on 2026-10-15; `asset::MIN_SIDE_PX` follows it to 280, so the crate refuses those images before the wire again.
+
 ## Multipart, later the same day
 
 The document's second request body, `multipart/form-data`, was then implemented behind the `multipart` feature ([decision 0028](../decisions/0028-multipart-is-a-feature-and-a-switch.md)) and sent to the hosted API with the same shapes image and the same two questions: a `request` part holding the JSON body with the asset as `{type: image, part: part-0}`, and the PNG as `part-0` under `image/png`. `jev-1.14.0` answered in 0.7 s with a box at an overlap of 0.98 with the label, at the same 1,167 input tokens as the base64 body for the same request; two raw sends of each form, through `curl`, gave the same tokens every time and boxes within 0.01 of each other, so the transport changes neither the cost nor the answer. The nineteenth live test, `an_image_goes_as_a_multipart_part_too`, runs under the feature.

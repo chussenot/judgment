@@ -2115,7 +2115,7 @@ A request without images is the JSON body it always was, whatever was asked. Oll
 
 | Check | Where | Error |
 |---|---|---|
-| PNG or JPEG, not animated; each side 256 to 1568 pixels; 78,400 to 2,458,624 pixels; at most 16 MiB; upright (an EXIF orientation tag is not read) | `Image::read`, `Image::from_bytes`, `Image::from_base64` | `Error::InvalidImage` |
+| PNG or JPEG, not animated; each side 280 to 1568 pixels; 78,400 to 2,458,624 pixels; at most 16 MiB; upright (an EXIF orientation tag is not read) | `Image::read`, `Image::from_bytes`, `Image::from_base64` | `Error::InvalidImage` |
 | A reference 1 to 1024 bytes, all of them at most 65,536; the same reference not two different images | `Assets::add`, `Assets::insert` | `Error::InvalidAsset` |
 | Every reference appears in the state or the questions; the body at most 32 MiB | `Client::evaluate_with`, before the upload | `Error::InvalidAsset`, `Error::RequestTooLarge` |
 
@@ -2533,11 +2533,11 @@ Every refusal below is status 2, on stderr, before a backend is opened, so a wro
 |---|---|
 | `--asset page-00`, no `=` | `--asset takes REF=PATH, the reference the state uses and the image's file: `page-00`` |
 | A file that is not there | `--asset page-00: cannot access image scans/nowhere.png: No such file or directory (os error 2)` |
-| A file outside the limits (here 128 by 128) | `--asset p: invalid image: tests/fixtures/images/small-128.png: 128 by 128 pixels is 128 pixels wide; each side must be 256 to 1568` |
+| A file outside the limits (here 128 by 128) | `--asset p: invalid image: tests/fixtures/images/small-128.png: 128 by 128 pixels is 128 pixels wide; each side must be 280 to 1568` |
 | A reference the state does not carry | `--asset scan is referenced nowhere in the state or the questions; write the reference where the image belongs, or pass the reference the state carries` |
 | `--pixels 300`, not `WxH` | `--pixels takes the image's size as WIDTHxHEIGHT, in pixels: `300`` |
 
-The limits are the hosted API's, checked when the file is read: a PNG or a JPEG, not animated, each side 256 to 1568 pixels, 78,400 to 2,458,624 pixels in all, at most 16 MiB a file and 32 MiB a request ([Visual judgments](../concepts/visual-judgments.md#what-is-checked-before-anything-is-sent) has the list). The last two rows are the two the API would answer with a 400 after the upload; `jud` answers them first. A reference typed one way in the state and another on the flag is the common one.
+The limits are the hosted API's, checked when the file is read: a PNG or a JPEG, not animated, each side 280 to 1568 pixels, 78,400 to 2,458,624 pixels in all, at most 16 MiB a file and 32 MiB a request ([Visual judgments](../concepts/visual-judgments.md#what-is-checked-before-anything-is-sent) has the list). The last two rows are the two the API would answer with a 400 after the upload; `jud` answers them first. A reference typed one way in the state and another on the flag is the common one.
 
 ## 5. Images the rubric always sends
 
@@ -4282,7 +4282,7 @@ spec:
     mark: {type: image, format: png, data_base64: iVBORw0KGgo…}
 ```
 
-A reader loads the files when it builds the request, not when it reads the document, so `jud check` reads a document whose images are elsewhere; a file that is missing or is not a PNG or a JPEG fails loudly, by the entry's name, when the request is built. The image's own limits (a side from 256 to 1568 pixels, 78,400 to 2,458,624 pixels in all, 16 MiB a file, 32 MiB a request) are the API's, checked before anything is sent.
+A reader loads the files when it builds the request, not when it reads the document, so `jud check` reads a document whose images are elsewhere; a file that is missing or is not a PNG or a JPEG fails loudly, by the entry's name, when the request is built. The image's own limits (a side from 280 to 1568 pixels, 78,400 to 2,458,624 pixels in all, 16 MiB a file, 32 MiB a request) are the API's, checked before anything is sent.
 
 ### Policy
 
@@ -4656,7 +4656,7 @@ Checked by the builder before a request is sent, and by the `.jud` reader:
 | Question ids | non-empty, unique | |
 | Option keys | non-empty | |
 | Response body | 8 MiB by default | `RetryPolicy::max_body_bytes` |
-| An image's side | 256 to 1568 pixels | `asset::MIN_SIDE_PX`, `asset::MAX_SIDE_PX` |
+| An image's side | 280 to 1568 pixels | `asset::MIN_SIDE_PX`, `asset::MAX_SIDE_PX` |
 | An image's pixels | 78,400 to 2,458,624 | `asset::MIN_PIXELS`, `asset::MAX_PIXELS` |
 | An image's bytes | 16 MiB | `asset::MAX_IMAGE_BYTES` |
 | A request's images, and its body | 32 MiB | `asset::MAX_REQUEST_BYTES` |
@@ -5216,7 +5216,7 @@ Two boxes are compared by intersection over union, the overlap divided by the ar
 
 ## What is checked before anything is sent
 
-An image is a PNG or a JPEG, not animated, each side from 256 to 1568 pixels, 78,400 to 2,458,624 pixels in all, at most 16 MiB, and sent as it is, so upright: an EXIF orientation tag is not read, and a photo a camera stored sideways is rotated before it is given to the crate; a request's images weigh at most 32 MiB together; a reference is 1 to 1024 bytes and all of a request's at most 65,536. The crate checks every one when the image is built or added, as `Error::InvalidImage`, `Error::InvalidAsset` or `Error::RequestTooLarge`, so the refusal names the limit and costs no upload; the hosted API refuses the same with a 400 ([Jev 1.14 on the hosted API](../project/verification/hosted-typesafe-jev-1-14.md)). The header the API keeps the feature behind is the client's to send, and it sends it on every request that carries an image or asks a Box.
+An image is a PNG or a JPEG, not animated, each side from 280 to 1568 pixels, 78,400 to 2,458,624 pixels in all, at most 16 MiB, and sent as it is, so upright: an EXIF orientation tag is not read, and a photo a camera stored sideways is rotated before it is given to the crate; a request's images weigh at most 32 MiB together; a reference is 1 to 1024 bytes and all of a request's at most 65,536. The crate checks every one when the image is built or added, as `Error::InvalidImage`, `Error::InvalidAsset` or `Error::RequestTooLarge`, so the refusal names the limit and costs no upload; the hosted API refuses the same with a 400 ([Jev 1.14 on the hosted API](../project/verification/hosted-typesafe-jev-1-14.md)). The header the API keeps the feature behind is the client's to send, and it sends it on every request that carries an image or asks a Box.
 
 ## Next
 
@@ -5772,6 +5772,13 @@ JUDGMENT_LIVE_MODEL=jev-latest JUDGMENT_LIVE_PROFILE=typesafe \
 ## What the crate changed for it
 
 Nothing in the wire shape, which the OpenAPI refresh of the same day had already settled. Two things in words: the format page no longer says a reader must refuse a Box in a rubric without an image, and the Box's documentation names which alias answers it. The two live tests are the seventeenth and eighteenth in `tests/live.rs`; `mise run live:typesafe` runs them with the others, asking `jev-preview` for the Box part until `jev-latest` is 1.14.
+
+## Re-checked on 2026-10-25
+
+Four images about a filled circle, one Noul each, sent as `jev-latest` with the images header. The aliases have moved and the smallest side has risen:
+
+- **`jev-latest` is Jev 1.14.** Every answer named `jev-1.14.0`, the model this page had to request as `jev-preview` on 2026-10-15.
+- **The smallest side is now 280, as the [Images](https://docs.typesafe.ai/images) page says.** 280 by 280 and 280 by 400 were answered (0.98 and 0.97); 279 by 400, 256 by 400 and 400 by 256 were refused with the same 400 as above, `api_usage_error`, "Invalid image dimensions.". The 256 recorded above was the limit on 2026-10-15; `asset::MIN_SIDE_PX` follows it to 280, so the crate refuses those images before the wire again.
 
 ## Multipart, later the same day
 

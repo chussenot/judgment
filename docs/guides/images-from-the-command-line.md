@@ -209,11 +209,11 @@ Every refusal below is status 2, on stderr, before a backend is opened, so a wro
 |---|---|
 | `--asset page-00`, no `=` | `--asset takes REF=PATH, the reference the state uses and the image's file: `page-00`` |
 | A file that is not there | `--asset page-00: cannot access image scans/nowhere.png: No such file or directory (os error 2)` |
-| A file outside the limits (here 128 by 128) | `--asset p: invalid image: tests/fixtures/images/small-128.png: 128 by 128 pixels is 128 pixels wide; each side must be 256 to 1568` |
+| A file outside the limits (here 128 by 128) | `--asset p: invalid image: tests/fixtures/images/small-128.png: 128 by 128 pixels is 128 pixels wide; each side must be 280 to 1568` |
 | A reference the state does not carry | `--asset scan is referenced nowhere in the state or the questions; write the reference where the image belongs, or pass the reference the state carries` |
 | `--pixels 300`, not `WxH` | `--pixels takes the image's size as WIDTHxHEIGHT, in pixels: `300`` |
 
-The limits are the hosted API's, checked when the file is read: a PNG or a JPEG, not animated, each side 256 to 1568 pixels, 78,400 to 2,458,624 pixels in all, at most 16 MiB a file and 32 MiB a request ([Visual judgments](../concepts/visual-judgments.md#what-is-checked-before-anything-is-sent) has the list). The last two rows are the two the API would answer with a 400 after the upload; `jud` answers them first. A reference typed one way in the state and another on the flag is the common one.
+The limits are the hosted API's, checked when the file is read: a PNG or a JPEG, not animated, each side 280 to 1568 pixels, 78,400 to 2,458,624 pixels in all, at most 16 MiB a file and 32 MiB a request ([Visual judgments](../concepts/visual-judgments.md#what-is-checked-before-anything-is-sent) has the list). The last two rows are the two the API would answer with a 400 after the upload; `jud` answers them first. A reference typed one way in the state and another on the flag is the common one.
 
 ## 5. Images the rubric always sends
 

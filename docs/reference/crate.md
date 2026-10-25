@@ -86,7 +86,7 @@ Checked by the builder before a request is sent, and by the `.jud` reader:
 | Question ids | non-empty, unique | |
 | Option keys | non-empty | |
 | Response body | 8 MiB by default | `RetryPolicy::max_body_bytes` |
-| An image's side | 256 to 1568 pixels | `asset::MIN_SIDE_PX`, `asset::MAX_SIDE_PX` |
+| An image's side | 280 to 1568 pixels | `asset::MIN_SIDE_PX`, `asset::MAX_SIDE_PX` |
 | An image's pixels | 78,400 to 2,458,624 | `asset::MIN_PIXELS`, `asset::MAX_PIXELS` |
 | An image's bytes | 16 MiB | `asset::MAX_IMAGE_BYTES` |
 | A request's images, and its body | 32 MiB | `asset::MAX_REQUEST_BYTES` |
