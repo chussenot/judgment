@@ -1475,7 +1475,9 @@ impl ErrorBody {
 /// `errors.py`); the issues are parsed whatever supplies the message, so
 /// code gets them even when the server also sent prose. The code comes
 /// first from `detail.error_type`, the hosted API's 400 shape, which may
-/// come with no message at all. Deliberate differences from the SDK: an
+/// come with no message at all, and last from a top-level string `code`,
+/// Ollaya's `{error, code, detail}` envelope
+/// (docs/project/verification/ollaya.md). Deliberate differences from the SDK: an
 /// empty string does not win over the next field; only a leading `body`
 /// location segment is dropped ([`ValidationIssue::path`]), since dropping
 /// every one hides a question whose id is `body`; a raw body is truncated
@@ -1504,6 +1506,7 @@ fn error_detail(body: &str) -> ErrorBody {
         .or_else(|| non_empty_str(nested("error", "type")))
         .or_else(|| non_empty_str(object.get("error_type")))
         .or_else(|| non_empty_str(object.get("type")))
+        .or_else(|| non_empty_str(object.get("code")))
         .map(str::to_owned);
     let message = non_empty_str(object.get("error"))
         .or_else(|| non_empty_str(nested("error", "message")))
@@ -1881,6 +1884,30 @@ mod tests {
                 .starts_with("questions.s.score.criteria.1.str: Input should be a valid string; ")
         );
         assert_eq!(kind_of(body), None);
+    }
+
+    #[test]
+    fn error_detail_reads_ollaya_s_code() {
+        // Ollaya 0.17.0's envelope (docs/project/verification/ollaya.md):
+        // the message in `error`, the code beside it, TypeSafe's issues in
+        // `detail`.
+        let body = r#"{"error":"state: part of state was dropped to fit the context of laya:en","code":"STATE_TRUNCATED","detail":[{"loc":["body","state"],"msg":"part of state was dropped to fit the context of laya:en","type":"state_truncated"}]}"#;
+        let read = error_detail(body);
+        assert_eq!(
+            read.detail,
+            "state: part of state was dropped to fit the context of laya:en"
+        );
+        assert_eq!(read.kind.as_deref(), Some("STATE_TRUNCATED"));
+        assert_eq!(read.issues[0].kind, "state_truncated");
+        // A code with no message stands for it, as `error_type` does.
+        assert_eq!(only_detail(r#"{"code":"QUEUE_FULL"}"#), "QUEUE_FULL");
+        // A number is not a code: it is a status, and the status is kept.
+        assert_eq!(kind_of(r#"{"error":"x","code":404}"#), None);
+        // The hosted API's own field wins over a top-level code.
+        assert_eq!(
+            kind_of(r#"{"detail":{"error_type":"max_tokens_exceeded"},"code":"OTHER"}"#).as_deref(),
+            Some("max_tokens_exceeded")
+        );
     }
 
     #[test]

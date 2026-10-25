@@ -102,8 +102,10 @@ pub enum Error {
         detail: String,
         /// The validation issues the body listed; empty when it listed none.
         issues: Vec<ValidationIssue>,
-        /// The server's machine-readable code, when the body carried one;
-        /// `None` for a 422, whose issues carry their own `kind` each.
+        /// The server's machine-readable code, when the body carried one:
+        /// the hosted API's `error_type` on a 400, a compatible server's
+        /// top-level `code` (Ollaya's `STATE_TRUNCATED`); `None` for the
+        /// hosted API's 422, whose issues carry their own `kind` each.
         kind: Option<String>,
         /// TypeSafe's `x-typesafe-request-id`, when the response had one.
         request_id: Option<String>,
@@ -496,17 +498,27 @@ impl Error {
     /// a body, an image, the images together or the expanded request over
     /// its limits, or a compatible server's own limits), one whose `kind` is
     /// `max_tokens_exceeded` (the hosted API's 400 for a state, images
-    /// included, over its context length), or an [`Error::RequestTooLarge`]
-    /// found before sending. Named because it is the one refused request
-    /// fixed by sending less, state first, then fewer or smaller images, or,
-    /// when the state is the point, by asking for long context
-    /// (`CallOptions::long_context`, 262k tokens for both limits).
+    /// included, over its context length) or Ollaya's `INPUT_TOO_LONG` or
+    /// `STATE_TRUNCATED` (its 422 for a request over its limit or over the
+    /// model's own context), or an [`Error::RequestTooLarge`] found before
+    /// sending. A refusal that only says so in prose, as Liquid's does, is
+    /// not one: the wording is the server's to change. Ollaya's
+    /// `TOO_MANY_OPTIONS` is not one either, since the fix is fewer options;
+    /// options that leave the state no room draw `STATE_TRUNCATED` too (126
+    /// on `laya:en`), and there fewer options may be the fix. Named because it
+    /// is the one refused request fixed by sending less, state first, then
+    /// fewer or smaller images, or, when the state is the point, by asking
+    /// for long context (`CallOptions::long_context`, 262k tokens for both
+    /// of the hosted API's limits; Ollaya's do not move with it).
     pub fn is_request_too_large(&self) -> bool {
         match self {
             Self::InvalidRequest { status: 413, .. } | Self::RequestTooLarge { .. } => true,
             Self::InvalidRequest {
                 kind: Some(kind), ..
-            } => kind == "max_tokens_exceeded",
+            } => matches!(
+                kind.as_str(),
+                "max_tokens_exceeded" | "INPUT_TOO_LONG" | "STATE_TRUNCATED"
+            ),
             _ => false,
         }
     }

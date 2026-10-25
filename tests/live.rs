@@ -1112,7 +1112,8 @@ async fn a_state_over_the_budget_is_refused_as_too_large() {
     // API answers 400 `{"detail": {"error_type": "max_tokens_exceeded"}}`,
     // no message, which the client keeps as `kind`; laya-serve answers 413
     // `{"detail": "state too large (50600 > 50000 chars)"}` at its 50,000
-    // characters. Both are `Error::is_request_too_large`; autojev-serve
+    // characters; Ollaya answers 422 with code `INPUT_TOO_LONG` at its
+    // 65,536 tokens. All three are `Error::is_request_too_large`; autojev-serve
     // answered it, having no budget in front of its model. The request is
     // about 500 KB; nothing is billed for a refused body.
     let noise = vec!["lorem ipsum dolor sit amet consectetur adipiscing elit ".repeat(20); 450];
@@ -1137,18 +1138,18 @@ async fn a_state_over_the_budget_is_refused_as_too_large() {
                     "{err:?}"
                 );
             }
+            if profile == Profile::Ollaya {
+                assert!(
+                    matches!(&err, Error::InvalidRequest { kind: Some(kind), issues, .. }
+                        if kind == "INPUT_TOO_LONG" && issues.iter().any(|i| i.kind == "input_too_long")),
+                    "{err:?}"
+                );
+            }
             // Liquid's 422 says the state is over its budget only in the
             // message (`invalid_request_error`, no code), so the predicate
             // cannot tell it from any other invalid request.
-            // Ollaya's 422 names it in its issue, `input_too_long`, which the
-            // predicate does not read either.
             if profile == Profile::Liquid {
                 assert!(err.to_string().contains("input limit"), "{err:?}");
-            } else if profile == Profile::Ollaya {
-                assert!(
-                    matches!(&err, Error::InvalidRequest { issues, .. } if issues.iter().any(|i| i.kind == "input_too_long")),
-                    "{err:?}"
-                );
             } else {
                 assert!(err.is_request_too_large(), "{err:?}");
             }
@@ -1461,6 +1462,35 @@ async fn the_model_s_context_bounds_the_options_and_the_state() {
                 vec!["TOO_MANY_OPTIONS", "STATE_TRUNCATED"]
             };
             assert!(codes.iter().any(|c| text.contains(c)), "{what}: {text}");
+        }
+    }
+    // The same two through the client: the code is `kind`, and only the
+    // state that does not fit is a request to send less of.
+    if profile == Profile::Ollaya && model == "laya:en" {
+        let mut many = Questions::new();
+        many.dynamic_choice(
+            "c",
+            "Which?",
+            (0..200).map(|i| (format!("opt_{i:03}"), Some(format!("option {i}")))),
+        )
+        .unwrap();
+        let long = json!(vec!["payout"; 2000].join(" "));
+        let mut one = Questions::new();
+        one.noul("u", "Is it urgent?", None).unwrap();
+        for (state, q, code) in [
+            (json!("Pick one."), &many, "TOO_MANY_OPTIONS"),
+            (long, &one, "STATE_TRUNCATED"),
+        ] {
+            let err = client().system_one(&state, q).await.unwrap_err();
+            assert!(
+                matches!(&err, Error::InvalidRequest { status: 422, kind: Some(k), .. } if k == code),
+                "{code}: {err:?}"
+            );
+            assert_eq!(
+                err.is_request_too_large(),
+                code == "STATE_TRUNCATED",
+                "{code}"
+            );
         }
     }
 }
