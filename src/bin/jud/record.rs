@@ -15,8 +15,6 @@
 //! disk.
 
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
@@ -28,7 +26,7 @@ use judgment::{Assets, Error, Questions, Replay, SystemOne};
 
 use crate::backend::{Backend, Failure};
 use crate::batch::{self, Unit};
-use crate::fsutil::same_file;
+use crate::fsutil::{self, same_file};
 use crate::out::note;
 use crate::recordings;
 
@@ -509,12 +507,9 @@ impl Session<'_> {
         recording.server = self.backend.server();
         recording.recorded_at = Some(now_rfc3339());
         let text = render(&recording, &planned.questions)?;
-        write_atomically(self.out, &planned.name, &text).map_err(|e| {
-            Failure::Backend(format!(
-                "cannot write {}: {e}",
-                recording_path(self.out, &planned.name).display()
-            ))
-        })?;
+        let path = recording_path(self.out, &planned.name);
+        fsutil::write_atomically(&path, &text)
+            .map_err(|e| Failure::Backend(format!("cannot write {}: {e}", path.display())))?;
         self.known.add(recording);
         self.tally.recorded += 1;
         Ok(elapsed_ms)
@@ -647,27 +642,6 @@ fn recording_path(dir: &Path, name: &str) -> PathBuf {
     dir.join(format!("{name}.{}", jud::EXTENSION))
 }
 
-/// Write `DIR/NAME.jud` so that no reader ever sees half of it: the text goes
-/// to a temporary file in the same directory (so the rename stays on one
-/// file system), is flushed to disk, and only then takes the recording's
-/// name. The temporary name ends in `.tmp`, never `.jud` or `.json`, so a
-/// [`Replay`] opened over the directory meanwhile skips it, and carries the
-/// process id so two runs over one directory do not interleave their bytes.
-/// A failed write removes its temporary file.
-fn write_atomically(dir: &Path, name: &str, text: &str) -> std::io::Result<()> {
-    let temporary = dir.join(format!(".{name}.{}.tmp", std::process::id()));
-    let written = File::create(&temporary).and_then(|mut file| {
-        file.write_all(text.as_bytes())?;
-        file.sync_all()
-    });
-    let renamed = written.and_then(|()| std::fs::rename(&temporary, recording_path(dir, name)));
-    if renamed.is_err() {
-        // Best effort: the error being returned is the one that matters.
-        let _ = std::fs::remove_file(&temporary);
-    }
-    renamed
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -749,42 +723,5 @@ mod tests {
             "{}",
             failure.message()
         );
-    }
-
-    #[test]
-    fn a_write_that_fails_leaves_no_temporary_file_behind() {
-        // A directory where the recording should go: the rename onto it
-        // fails, after the text was written to the temporary file.
-        let dir = std::env::temp_dir().join(format!("jud-record-unit-{}", std::process::id()));
-        std::fs::create_dir_all(dir.join("taken.jud")).unwrap();
-        assert!(write_atomically(&dir, "taken", "text").is_err());
-        let left: Vec<_> = std::fs::read_dir(&dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name())
-            .collect();
-        assert_eq!(
-            left,
-            ["taken.jud"],
-            "only the directory that was in the way"
-        );
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn a_write_that_succeeds_leaves_only_the_recording() {
-        let dir = std::env::temp_dir().join(format!("jud-record-unit-ok-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        write_atomically(&dir, "fresh", "text").unwrap();
-        write_atomically(&dir, "fresh", "again").unwrap();
-        let left: Vec<_> = std::fs::read_dir(&dir)
-            .unwrap()
-            .map(|e| e.unwrap().file_name())
-            .collect();
-        assert_eq!(left, ["fresh.jud"]);
-        assert_eq!(
-            std::fs::read_to_string(dir.join("fresh.jud")).unwrap(),
-            "again"
-        );
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

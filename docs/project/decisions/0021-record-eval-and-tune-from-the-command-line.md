@@ -125,7 +125,7 @@ The subcommands are `src/bin/jud/record.rs`, `eval.rs` and `tune.rs`, with `batc
 - **A Score's table reads the most probable level; the policy reads the nearest.** The confidence table is the library's `gate_table`, which takes the most probable level as the answer. The policy acts on the level nearest the weighted score. They agree on an answer with one peak and part on a spread one. `jud tune` says so on stderr for every Score whose `confidence` bar it proposes.
 - **A strict gate's sweep counts an answer at the bar as acting.** A strict gate acts above its bar. `jud tune` counts the answers sitting exactly at the proposed bar and says what a strict gate does with them when there are any, and otherwise says that one can sit there.
 - **A lowest bar of 0.0 is proposed when every labelled answer is already right.** The gate would then defer nothing. `jud tune` proposes it and says so, as it does for `tone` on the triage documents.
-- **`jud tune --out` is a plain write.** It truncates and writes the path, not a temporary file renamed over it.
+- **`jud tune --out` was a plain write at first.** It truncated and wrote the path, so a failed write lost the file that was there. It now writes as `jud record` does: a temporary file in the same directory, flushed, then renamed over the path.
 - **A base URL with userinfo sends Basic auth.** With `https://user:pass@host` as the base URL the client sends those credentials as Basic auth instead of the API key. Every recording and message drops the userinfo, but the request still carries it.
 
 ## Pros and cons of the options

@@ -418,6 +418,35 @@ fn out_writes_a_rubric_jud_check_accepts_and_leaves_the_input_alone() {
     assert_eq!(doc["spec"]["tuning"]["model"], json!("jev-1.13.0"));
 }
 
+/// `--out` takes its name only once the whole rubric is written, so a failed
+/// write leaves the file that was there: a symlink is replaced, never written
+/// through, and no temporary file is left beside it.
+#[cfg(unix)]
+#[test]
+fn out_replaces_a_symlink_rather_than_writing_through_it() {
+    let dir = scratch("tune");
+    let target = write(&dir, "elsewhere.jud", "kept\n");
+    let link = dir.join("tuned.jud");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let out = tune(
+        TRIAGE,
+        TRIAGE_CASES,
+        RECORDINGS,
+        &["--out", path_str(&link)],
+    );
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "kept\n");
+    assert!(link.symlink_metadata().unwrap().file_type().is_file());
+    let check = jud(&["check", path_str(&link)], "", &[]);
+    assert_eq!(code(&check), 0, "{}{}", stdout(&check), stderr(&check));
+    let mut left: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    left.sort();
+    assert_eq!(left, ["elsewhere.jud", "tuned.jud"]);
+}
+
 #[test]
 fn the_blocks_pasted_under_spec_are_the_policy_out_writes() {
     let (dir, rubric, cases) = workspace(GUESSES);

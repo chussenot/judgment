@@ -135,7 +135,7 @@ fn tune(args: &Tune) -> Result<(), Failure> {
         .map_err(|e| Failure::Usage(format!("the tuned rubric cannot be written: {e}")))?;
     match &args.out {
         Some(path) => {
-            std::fs::write(path, &yaml)
+            crate::fsutil::write_atomically(path, &yaml)
                 .map_err(|e| Failure::Usage(format!("cannot write {}: {e}", path.display())))?;
             note!("jud: wrote the tuned rubric to {}", path.display());
             Ok(())

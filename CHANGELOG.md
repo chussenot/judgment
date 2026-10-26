@@ -291,6 +291,17 @@ All notable changes to the `judgment` crate. The format follows
   fingerprint dropped digits other RFC 8785 tools keep. Only a
   dev-dependency enabled the feature, so the tests could not see it; CI and
   `mise run check:minimal` now check that a normal build has it.
+- `Recorder` and `eval::write_recording` write each recording whole: to a
+  temporary file in the same directory, flushed, then renamed onto its
+  name, as `jud record` already did. A `Replay` opened over a directory a
+  `Recorder` was writing into failed on most attempts (`EOF while
+  parsing`), and a process stopped mid-write left a truncated file that
+  made every later `Replay::open` of the directory fail.
+- `jud tune --out PATH` writes the same way, so a failed write (a full
+  disk, a file size limit) leaves the file that was at `PATH`, where it
+  left half a rubric; a symlink at `PATH` is replaced, not written through.
+  `jud record`'s temporary names also carry a counter beside the process
+  id, so two writers of one name in one process never share one.
 
 ## [0.14.0] - 2026-10-15
 

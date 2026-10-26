@@ -180,11 +180,43 @@ pub fn write_recording(dir: &Path, recording: &Recording) -> Result<PathBuf> {
         path: path.display().to_string(),
         source,
     })?;
-    std::fs::write(&path, text + "\n").map_err(|source| Error::Io {
+    write_atomically(&path, &(text + "\n")).map_err(|source| Error::Io {
         path: path.display().to_string(),
         source,
     })?;
     Ok(path)
+}
+
+/// Write `path` so that no reader ever sees half of it: a [`Replay`] opened
+/// over the directory while a [`Recorder`] writes into it, or after a crash
+/// mid-write. The text goes to a temporary file beside it (one file system,
+/// so the rename is atomic), is flushed, then takes the name. The temporary
+/// name ends in `.tmp`, which a replay skips, and carries the process id and
+/// a counter, so two writers of one request never share it. A failed write
+/// removes its temporary file.
+///
+/// [`Replay`]: crate::backend::Replay
+/// [`Recorder`]: crate::backend::Recorder
+fn write_atomically(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write as _;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let temporary = path.with_file_name(format!(
+        ".{name}.{}.{}.tmp",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let written = std::fs::File::create(&temporary).and_then(|mut file| {
+        file.write_all(text.as_bytes())?;
+        file.sync_all()
+    });
+    let renamed = written.and_then(|()| std::fs::rename(&temporary, path));
+    if renamed.is_err() {
+        // Best effort: the error being returned is the one that matters.
+        let _ = std::fs::remove_file(&temporary);
+    }
+    renamed
 }
 
 /// Read the recording for `case` under `dir`.
@@ -569,6 +601,48 @@ mod tests {
             request_hash(&one, &q),
             fingerprint(&json!({ "questions": questions, "state": one }))
         );
+    }
+
+    /// A replay opened while recordings are being written reads each one
+    /// whole: before the write or after it, never half of it.
+    #[test]
+    fn write_recording_never_exposes_a_partial_file() {
+        let dir = std::env::temp_dir().join(format!("judgment-atomic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // A model name long enough that a write takes more than one syscall.
+        let response = Response {
+            model: "m".repeat(256 * 1024),
+            answers: BTreeMap::new(),
+            usage: Usage::default(),
+            request_id: None,
+            extra: BTreeMap::new(),
+        };
+        let mut recording = Recording::new("case", response, 1);
+        recording.request_hash = Some("0123456789abcdef".to_owned());
+        write_recording(&dir, &recording).unwrap();
+        let done = std::sync::atomic::AtomicBool::new(false);
+        let failures = std::thread::scope(|scope| {
+            let reader = scope.spawn(|| {
+                let mut failures = 0;
+                while !done.load(std::sync::atomic::Ordering::Relaxed) {
+                    failures += usize::from(crate::backend::Replay::open(&dir).is_err());
+                }
+                failures
+            });
+            for elapsed_ms in 0..100 {
+                recording.elapsed_ms = elapsed_ms;
+                write_recording(&dir, &recording).unwrap();
+            }
+            done.store(true, std::sync::atomic::Ordering::Relaxed);
+            reader.join().unwrap()
+        });
+        let left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(failures, 0, "a replay read half a recording");
+        assert_eq!(left, ["case.json"], "no temporary file is left behind");
     }
 
     #[test]
