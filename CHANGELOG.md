@@ -309,11 +309,18 @@ All notable changes to the `judgment` crate. The format follows
   a model pinned to `jev-1.13.0`, and advise pinning `jev-1.14.0` once a
   rubric's bars are tuned, since an alias moves with the next release.
   The verification records keep what was true when they were written.
-- `serde_json` is built with `float_roundtrip`. Without it, a normal build
-  (the released `jud`, and any crate built on this one without it) read
-  about one double in ten one unit in the last place off, so a replayed
-  recording no longer equalled the response it recorded and a state's
-  fingerprint dropped digits other RFC 8785 tools keep. Only a
+- **Breaking** for a recording of a request whose state was read from JSON
+  by an earlier release: `serde_json` is built with `float_roundtrip`.
+  Without it, a normal build (the released `jud`, and any crate built on
+  this one) read about one JSON double in six to ten one unit in the last
+  place off, so it sent and fingerprinted a value one ulp from the one
+  given, a replayed recording no longer equalled the response it recorded,
+  and a state's fingerprint lost digits other RFC 8785 tools keep. The
+  request fingerprint and `request_hash` of such a state move, so a
+  `Replay` answers `NoRecording` for it: record those requests again
+  (`jud record --refresh`, or a fresh `Recorder` run). A state read from
+  `.jud` or YAML was read exactly and does not move. Cargo unifies features,
+  so a crate depending on this one parses its own JSON exactly too. Only a
   dev-dependency enabled the feature, so the tests could not see it; CI and
   `mise run check:minimal` now check that a normal build has it.
 - `Recorder` and `eval::write_recording` write each recording whole: to a
@@ -324,7 +331,9 @@ All notable changes to the `judgment` crate. The format follows
   made every later `Replay::open` of the directory fail.
 - `jud tune --out PATH` writes the same way, so a failed write (a full
   disk, a file size limit) leaves the file that was at `PATH`, where it
-  left half a rubric; a symlink at `PATH` is replaced, not written through.
+  left half a rubric. Through a symlink, the file it names is replaced
+  whole; a pipe or a device (`--out /dev/stdout`, a FIFO) is written to as
+  a stream, as before, since renaming over one would lose the rubric.
   `jud record`'s temporary names also carry a counter beside the process
   id, so two writers of one name in one process never share one.
 - A failed status whose body is cut short or over `max_body_bytes` is that

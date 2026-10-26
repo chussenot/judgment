@@ -45,11 +45,37 @@ pub(crate) fn parent_dir(path: &Path) -> std::path::PathBuf {
         .unwrap_or_else(|_| parent.to_path_buf())
 }
 
+/// Write a file the user named (`jud tune --out`) as a write to it would:
+/// through a symlink to the file it names, and into a pipe or a device
+/// (`/dev/stdout`, a FIFO) as a stream. A regular file, or none yet, is
+/// replaced whole by [`write_atomically`], so a failed write leaves it as it
+/// was; renaming over a pipe or a device would delete it and lose the text,
+/// and a stream has no half-written file to leave behind.
+pub(crate) fn write_out(path: &Path, text: &str) -> std::io::Result<()> {
+    // A link to a file that is there resolves to it; a dangling link, or one
+    // to a pipe (`/dev/stdout` is `/proc/self/fd/1`), does not.
+    let target = match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => std::fs::canonicalize(path).ok(),
+        _ => Some(path.to_path_buf()),
+    };
+    match target {
+        Some(file) if std::fs::metadata(&file).map_or(true, |meta| meta.is_file()) => {
+            write_atomically(&file, text)
+        }
+        _ => std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)?
+            .write_all(text.as_bytes()),
+    }
+}
+
 /// Write `path` so that no reader ever sees half of it, and a failed write
 /// leaves the file that was there: the text goes to a temporary file in the
 /// same directory (so the rename stays on one file system), is flushed to
 /// disk, and only then takes the name, replacing a symlink rather than
-/// writing through it. The temporary name ends in `.tmp`, never `.jud` or
+/// writing through it (a recording is never written outside its directory). The temporary name ends in `.tmp`, never `.jud` or
 /// `.json`, so a [`judgment::Replay`] opened over the directory meanwhile
 /// skips it, and carries the process id and a counter, so two writers never
 /// share it. A failed write removes its temporary file.
@@ -78,6 +104,60 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    /// A FIFO is written to, not renamed over: the reader gets the text and
+    /// the FIFO is still one.
+    #[cfg(unix)]
+    #[test]
+    fn write_out_streams_into_a_fifo_and_leaves_it_one() {
+        use std::os::unix::fs::FileTypeExt;
+        let dir = std::env::temp_dir().join(format!("jud-fsutil-fifo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let fifo = dir.join("out.jud");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap();
+        assert!(made.success());
+        let reading = fifo.clone();
+        let reader = std::thread::spawn(move || std::fs::read_to_string(reading).unwrap());
+        write_out(&fifo, "text").unwrap();
+        // Checked before the join: a FIFO renamed over leaves the reader
+        // waiting for a writer that never comes.
+        let kind = std::fs::symlink_metadata(&fifo).unwrap().file_type();
+        assert!(kind.is_fifo(), "the FIFO was replaced");
+        assert_eq!(reader.join().unwrap(), "text");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Through a link, the file it names is replaced whole and the link is
+    /// kept; a regular file or a new one is replaced whole.
+    #[cfg(unix)]
+    #[test]
+    fn write_out_replaces_the_file_a_link_names_and_keeps_the_link() {
+        let dir = std::env::temp_dir().join(format!("jud-fsutil-link-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("target.jud");
+        std::fs::write(&target, "old").unwrap();
+        let link = dir.join("link.jud");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        write_out(&link, "new").unwrap();
+        write_out(&dir.join("fresh.jud"), "fresh").unwrap();
+        let link_kept = std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink();
+        let target_text = std::fs::read_to_string(&target).unwrap();
+        let mut left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        left.sort();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(link_kept);
+        assert_eq!(target_text, "new");
+        assert_eq!(left, ["fresh.jud", "link.jud", "target.jud"]);
+    }
 
     #[test]
     fn a_write_that_fails_leaves_no_temporary_file_behind() {

@@ -418,14 +418,14 @@ fn out_writes_a_rubric_jud_check_accepts_and_leaves_the_input_alone() {
     assert_eq!(doc["spec"]["tuning"]["model"], json!("jev-1.13.0"));
 }
 
-/// `--out` takes its name only once the whole rubric is written, so a failed
-/// write leaves the file that was there: a symlink is replaced, never written
-/// through, and no temporary file is left beside it.
+/// `--out` writes what the path names, as a write to it would: through a
+/// symlink, the file it names is replaced only once the whole rubric is
+/// written, the link is kept, and no temporary file is left beside either.
 #[cfg(unix)]
 #[test]
-fn out_replaces_a_symlink_rather_than_writing_through_it() {
+fn out_through_a_symlink_replaces_the_file_it_names_whole() {
     let dir = scratch("tune");
-    let target = write(&dir, "elsewhere.jud", "kept\n");
+    let target = write(&dir, "elsewhere.jud", "old\n");
     let link = dir.join("tuned.jud");
     std::os::unix::fs::symlink(&target, &link).unwrap();
     let out = tune(
@@ -435,9 +435,8 @@ fn out_replaces_a_symlink_rather_than_writing_through_it() {
         &["--out", path_str(&link)],
     );
     assert_eq!(code(&out), 0, "{}", stderr(&out));
-    assert_eq!(std::fs::read_to_string(&target).unwrap(), "kept\n");
-    assert!(link.symlink_metadata().unwrap().file_type().is_file());
-    let check = jud(&["check", path_str(&link)], "", &[]);
+    assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    let check = jud(&["check", path_str(&target)], "", &[]);
     assert_eq!(code(&check), 0, "{}{}", stdout(&check), stderr(&check));
     let mut left: Vec<_> = std::fs::read_dir(&dir)
         .unwrap()
@@ -445,6 +444,31 @@ fn out_replaces_a_symlink_rather_than_writing_through_it() {
         .collect();
     left.sort();
     assert_eq!(left, ["elsewhere.jud", "tuned.jud"]);
+}
+
+/// `--out /dev/stdout` writes the rubric to stdout, as it did before the
+/// write became atomic, and leaves `/dev/stdout` the link it was: renaming
+/// over it would lose the rubric and, as root, replace the system's link.
+#[cfg(target_os = "linux")]
+#[test]
+fn out_to_dev_stdout_writes_the_rubric_to_stdout() {
+    let stdout_link = std::path::Path::new("/dev/stdout");
+    let was_link = stdout_link
+        .symlink_metadata()
+        .is_ok_and(|m| m.file_type().is_symlink());
+    let out = tune(TRIAGE, TRIAGE_CASES, RECORDINGS, &["--out", "/dev/stdout"]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(stdout(&out).contains("kind: Rubric"), "{}", stdout(&out));
+    if was_link {
+        assert!(
+            stdout_link
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "/dev/stdout was replaced"
+        );
+    }
 }
 
 #[test]

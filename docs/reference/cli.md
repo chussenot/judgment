@@ -806,12 +806,12 @@ When nothing is proposed, there is no block and no file: a line on stderr says s
 
 ### With `--out`
 
-`--out PATH` writes the whole rubric with the proposal and the `tuning` block applied. Stdout stays empty and stderr says `jud: wrote the tuned rubric to PATH`. A file already at `PATH` is replaced only once the whole rubric is written, as `jud record` writes a recording, so a failed write leaves it as it was, and a symlink at `PATH` is replaced, not written through. The rubric is serialised again, so its comments and layout are lost and `version` is written as text. `jud check` reads the result.
+`--out PATH` writes the whole rubric with the proposal and the `tuning` block applied. Stdout stays empty and stderr says `jud: wrote the tuned rubric to PATH`. `PATH` is written as a write to it would be: a regular file at `PATH`, or the one a symlink at `PATH` names, is replaced only once the whole rubric is written, as `jud record` writes a recording, so a failed write leaves it as it was; a pipe or a device (`--out /dev/stdout`, a FIFO) is written to as a stream. The rubric is serialised again, so its comments and layout are lost and `version` is written as text. `jud check` reads the result.
 
 `--out` is refused with status 2, before the documents are read, when `PATH`:
 
 - **Is an input.** It is the rubric or the cases, however spelled: a `./` path, a symbolic link or a hard link.
-- **Is among the recordings.** It is in `DIR`, is one of its recordings under another name, or is a link to a file there, existing or not: the write replaces a link rather than writing through it, but a link into `DIR` says the rubric was meant to go there. A replay reads every `.jud` and `.json` in `DIR` as a recording.
+- **Is among the recordings.** It is in `DIR`, is one of its recordings under another name, or is a link whose write would land there. A replay reads every `.jud` and `.json` in `DIR` as a recording.
 
 Without `--out`, `jud tune` writes nothing.
 

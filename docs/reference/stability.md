@@ -28,7 +28,7 @@ A rubric's questions, a rubric's policy, a cases document's cases and a request 
 
 - **The envelope contributes nothing.** `apiVersion`, `kind` and the whole of `metadata` are outside every fingerprint. Renaming a document, labelling it, annotating it, or moving it to a later `apiVersion` leaves each fingerprint as it was.
 - **A document's `spec` has one fingerprint, for good.** The value fingerprinted and the canonicalisation are fixed for `v1`. A minor may add a field to `spec`; a document that does not use it fingerprints as it did. A change to what is fingerprinted or how would be a change of meaning, so it is `v2`.
-- **A fingerprint is RFC 8785's.** The canonicalisation is the one the specification has always named. Where the crate's departed from it (it printed an integer beyond ±2^53 digit for digit where RFC 8785 prints the nearest double), a release that corrects it lists the fingerprints that move as breaking; that is a correction to `v1`, not a change of it, and nothing else about what is fingerprinted or how changes inside `v1`.
+- **A fingerprint is RFC 8785's.** The canonicalisation is the one the specification has always named. Where the crate departed from it (it printed an integer beyond ±2^53 digit for digit where RFC 8785 prints the nearest double; a build without `serde_json`'s `float_roundtrip` read one JSON double in several one unit off before printing it), a release that corrects it lists the fingerprints that move as breaking, with what to record again; that is a correction to `v1`, not a change of it, and nothing else about what is fingerprinted or how changes inside `v1`.
 - **The known vector holds.** The specification carries a worked fingerprint; `tests/jud.rs` checks the crate against it, and another implementation can check itself the same way.
 
 ## The wire
@@ -55,7 +55,7 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 | A `jud/v1` document | Valid today, valid under every later `v1` minor | minor 3 (`jud/v1.3`), crate 0.8.0 |
 | A `v1` minor | Adds only; never removes, renames, narrows or changes meaning | this page |
 | Readers of an earlier `v1` minor | Accepted for at least twelve months after a later minor is published | this page |
-| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good. A request's includes each image by the digest of its bytes, and is unchanged for a request without one | minor 3, decision 0018; the images, minor 4, decision 0025 |
+| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good, short of a correction to RFC 8785 ([above](#fingerprints-exclude-the-envelope-and-never-change)). A request's includes each image by the digest of its bytes, and is unchanged for a request without one | minor 3, decision 0018; the images, minor 4, decision 0025 |
 | The wire | The vendored OpenAPI document; a change moves the contract test, the CHANGELOG and the README together | crate 0.3.0 |
 | The crate | 0.x: a minor may break and says so; a patch does not | crate 0.3.0 |
 | The `jud` command | Exit status (0 to 3), the verdict JSON, `jud eval`'s `--json` keys, the places that write files (`jud record --out`, `jud tune --out`, `jud split`) and the configuration: a change to what one means, or removing one, only in a minor, listed as breaking; an addition is listed under Added | crate 0.9.0; status 3, `eval --json` and the file writes from the release that ships `record`, `eval` and `tune` |

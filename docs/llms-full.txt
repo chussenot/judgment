@@ -3862,12 +3862,12 @@ When nothing is proposed, there is no block and no file: a line on stderr says s
 
 ### With `--out`
 
-`--out PATH` writes the whole rubric with the proposal and the `tuning` block applied. Stdout stays empty and stderr says `jud: wrote the tuned rubric to PATH`. A file already at `PATH` is replaced only once the whole rubric is written, as `jud record` writes a recording, so a failed write leaves it as it was, and a symlink at `PATH` is replaced, not written through. The rubric is serialised again, so its comments and layout are lost and `version` is written as text. `jud check` reads the result.
+`--out PATH` writes the whole rubric with the proposal and the `tuning` block applied. Stdout stays empty and stderr says `jud: wrote the tuned rubric to PATH`. `PATH` is written as a write to it would be: a regular file at `PATH`, or the one a symlink at `PATH` names, is replaced only once the whole rubric is written, as `jud record` writes a recording, so a failed write leaves it as it was; a pipe or a device (`--out /dev/stdout`, a FIFO) is written to as a stream. The rubric is serialised again, so its comments and layout are lost and `version` is written as text. `jud check` reads the result.
 
 `--out` is refused with status 2, before the documents are read, when `PATH`:
 
 - **Is an input.** It is the rubric or the cases, however spelled: a `./` path, a symbolic link or a hard link.
-- **Is among the recordings.** It is in `DIR`, is one of its recordings under another name, or is a link to a file there, existing or not: the write replaces a link rather than writing through it, but a link into `DIR` says the rubric was meant to go there. A replay reads every `.jud` and `.json` in `DIR` as a recording.
+- **Is among the recordings.** It is in `DIR`, is one of its recordings under another name, or is a link whose write would land there. A replay reads every `.jud` and `.json` in `DIR` as a recording.
 
 Without `--out`, `jud tune` writes nothing.
 
@@ -4802,7 +4802,7 @@ A rubric's questions, a rubric's policy, a cases document's cases and a request 
 
 - **The envelope contributes nothing.** `apiVersion`, `kind` and the whole of `metadata` are outside every fingerprint. Renaming a document, labelling it, annotating it, or moving it to a later `apiVersion` leaves each fingerprint as it was.
 - **A document's `spec` has one fingerprint, for good.** The value fingerprinted and the canonicalisation are fixed for `v1`. A minor may add a field to `spec`; a document that does not use it fingerprints as it did. A change to what is fingerprinted or how would be a change of meaning, so it is `v2`.
-- **A fingerprint is RFC 8785's.** The canonicalisation is the one the specification has always named. Where the crate's departed from it (it printed an integer beyond ±2^53 digit for digit where RFC 8785 prints the nearest double), a release that corrects it lists the fingerprints that move as breaking; that is a correction to `v1`, not a change of it, and nothing else about what is fingerprinted or how changes inside `v1`.
+- **A fingerprint is RFC 8785's.** The canonicalisation is the one the specification has always named. Where the crate departed from it (it printed an integer beyond ±2^53 digit for digit where RFC 8785 prints the nearest double; a build without `serde_json`'s `float_roundtrip` read one JSON double in several one unit off before printing it), a release that corrects it lists the fingerprints that move as breaking, with what to record again; that is a correction to `v1`, not a change of it, and nothing else about what is fingerprinted or how changes inside `v1`.
 - **The known vector holds.** The specification carries a worked fingerprint; `tests/jud.rs` checks the crate against it, and another implementation can check itself the same way.
 
 ## The wire
@@ -4829,7 +4829,7 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 | A `jud/v1` document | Valid today, valid under every later `v1` minor | minor 3 (`jud/v1.3`), crate 0.8.0 |
 | A `v1` minor | Adds only; never removes, renames, narrows or changes meaning | this page |
 | Readers of an earlier `v1` minor | Accepted for at least twelve months after a later minor is published | this page |
-| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good. A request's includes each image by the digest of its bytes, and is unchanged for a request without one | minor 3, decision 0018; the images, minor 4, decision 0025 |
+| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good, short of a correction to RFC 8785 ([above](#fingerprints-exclude-the-envelope-and-never-change)). A request's includes each image by the digest of its bytes, and is unchanged for a request without one | minor 3, decision 0018; the images, minor 4, decision 0025 |
 | The wire | The vendored OpenAPI document; a change moves the contract test, the CHANGELOG and the README together | crate 0.3.0 |
 | The crate | 0.x: a minor may break and says so; a patch does not | crate 0.3.0 |
 | The `jud` command | Exit status (0 to 3), the verdict JSON, `jud eval`'s `--json` keys, the places that write files (`jud record --out`, `jud tune --out`, `jud split`) and the configuration: a change to what one means, or removing one, only in a minor, listed as breaking; an addition is listed under Added | crate 0.9.0; status 3, `eval --json` and the file writes from the release that ships `record`, `eval` and `tune` |
@@ -8024,7 +8024,7 @@ The subcommands are `src/bin/jud/record.rs`, `eval.rs` and `tune.rs`, with `batc
     - `jud record` refuses to write a recording over the rubric or the cases. The path may be spelled another way (`./`, a symlinked directory, a hard link), and `--refresh` makes no difference.
     - `jud record` refuses a stale twin: a recording of a request this run asks, in a file this run would not write, that no longer fits the questions. The file is not the run's to remove, and a new recording beside it would leave two for one request, so the run stops and names it, unless `--refresh` is given, which does not read the directory: the new recording is written, the stale file stays and the run warns that two files record one request. A stale recording in the case's own file is replaced and reported.
     - `jud record` also refuses a case without an id, two requests that share a file name, a request that asks nothing, a label that a turn of a conversation cannot carry, and a directory that holds a file the reader refuses (`--refresh` skips reading the directory).
-    - `jud tune --out` refuses the rubric, the cases and anything in the recordings directory: a recording under another name, a link into the directory, a link to a file there that does not exist yet.
+    - `jud tune --out` refuses the rubric, the cases and anything in the recordings directory: a recording under another name, a link into the directory, a link whose write would create a file there.
     - `jud tune` refuses recordings from more than one model and a rubric with no gates.
 - **`--replay`.** `jud eval` takes it, or `JUD_REPLAY`, optionally. `jud tune` requires one of them. `jud record` has neither and never reads `JUD_REPLAY`, so a variable set for a CI job does not turn a record into a replay. A CI check that must not spend a call passes `--replay`, since an `eval` without one asks the backend.
 
@@ -8034,7 +8034,7 @@ The subcommands are `src/bin/jud/record.rs`, `eval.rs` and `tune.rs`, with `batc
 - **Credentials.** The server written into a recording and into a `tuning` block is `scheme://host/path`, without userinfo, query or fragment, and so is the one a failure names. `jud tune` strips a recording's server the same way before it writes it into the `tuning` block, whatever the recording holds.
 - **One runtime per run.** The backend holds one async runtime for the life of the run, so the client's connection pool survives a loop of calls.
 - **Planning before any call.** Every request is lowered and every conversation label checked before any call is made or any answer is taken from a recording, so a document problem is status 2 found before case 1 is paid for, never status 1 after case 4. A failed call stops `jud record` at that case and names how many were recorded and kept; what was written stays. Under a replay `jud eval` and `jud tune` try every case before they fail, and one message names every case with no recording.
-- **Writes are atomic in `jud record` and `jud tune --out`.** Each recording, and the tuned rubric, goes to a temporary file in the same directory, is flushed, and then takes its name, so a replay never reads half a file and a failed write leaves the file that was there. `jud tune --out` was a plain write, a known limit, until the second-pass review (judgment-y7a.18). Two cases that lower to one request share a recording: the second is kept.
+- **Writes are atomic in `jud record` and `jud tune --out`.** Each recording, and the tuned rubric, goes to a temporary file in the same directory, is flushed, and then takes its name, so a replay never reads half a file and a failed write leaves the file that was there. `jud tune --out` was a plain write, a known limit, until the second-pass review (judgment-y7a.18); it follows a symlink to the file it names, and writes to a pipe or a device (`/dev/stdout`) as a stream, since renaming over one loses the rubric (judgment-qvu). Two cases that lower to one request share a recording: the second is kept.
 - **Replay order.** `Replay::open` reads files in name order, so which of two files recording one request answers does not depend on the file system: the one that sorts last. A `.json` recording that does not parse is `Error::InvalidRecording`, naming the file, where it was `Error::Decode`. `jud record` and `jud tune` warn when two files record one request.
 
 ### What differs from the proposal
