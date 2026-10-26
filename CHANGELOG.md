@@ -361,8 +361,8 @@ All notable changes to the `judgment` crate. The format follows
   which no replay finds by its request, and the writer dropped it.
 - **Breaking** for a document that relied on it: an image's `path` is
   checked as text, the same on every platform and as
-  the schema's pattern: a leading `/` or `\`, a drive (`C:`) or a `..`
-  segment on either separator is refused. The check went through
+  the schema's pattern: a leading `/` or `\`, a drive (`C:`), a `..`
+  segment on either separator or a line break is refused. The check went through
   `std::path`, so on Unix the reader took `..\secret.png` and
   `\\server\share\logo.png`, which the schema refuses, and on Windows a
   path starting with `\` or `/` is not absolute and would have been joined
@@ -374,13 +374,11 @@ All notable changes to the `judgment` crate. The format follows
   `fallback: 1` as text, and `threshold: null`, `policy: null` or a case's
   `expect: null` as absent, so `jud check` passed documents another reader
   holding to the schemas refuses, and a `null` bar silently became the
-  default one. A key YAML reads as a number (a supplied option `4521:`, a
-  label's question) is refused the same way, as a rubric's static options
-  already were; a Noul's bare `true:` and `false:` are still read. The
-  remedy is to quote the value or the key, or to leave the field out. The
-  refusal of a number names its line and column without quoting it, that of
-  a `null` its field; `metadata.version`, `level_at_least` and a Score label
-  still take a number. The spec's reading rules say so, and
+  default one. The remedy is to quote the value or to leave the field out.
+  The refusal names the field and quotes nothing; a key is text whatever
+  YAML reads it as (`state: {2024: revenue}` is read), and
+  `metadata.version`, `level_at_least` and a Score label still take a
+  number. The spec's reading rules say so, and
   `docs/reference/stability.md` says why this is a correction inside
   `jud/v1`.
 - `docs/reference/jud-format.md` states the form a fingerprint is computed

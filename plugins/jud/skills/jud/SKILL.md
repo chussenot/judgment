@@ -122,9 +122,9 @@ round trip.
 - Only `true` and `false` are booleans. `yes` and `no` are strings: fine as
   option keys, refused as Noul labels.
 - What takes text takes a string: quote an all-digit name, case `id`, tag
-  or note (`id: "123"`), and a key YAML reads as a number (`"4521": ...`),
-  or the reader refuses it. Leave a field out rather than write `null`;
-  `null` is read only in instructions, descriptions and a state.
+  or note (`id: "123"`), or the reader refuses it. Leave a field out rather
+  than write `null`; `null` is read only in instructions, descriptions and a
+  state.
 - A **Choice** offers 2 to 255 options, each key non-empty, in the order the
   model sees them. Give it a `none_of_these` (or `other`) option when the state
   might fit none, so the model has somewhere to put its doubt.

@@ -651,6 +651,38 @@ mod tests {
             reason(err),
             "Score level 1 must be text, an object or an array"
         );
+        let err = q
+            .noul("b", Value::Null, Some(NoulCriteria::new("yes", 0)))
+            .unwrap_err();
+        assert_eq!(
+            reason(err),
+            "criteria `false` must be text, an object, an array or null"
+        );
+        for err in [
+            q.score("c", true, ["low", "high"]).map(|_| ()),
+            q.r#box("d", 7).map(|_| ()),
+            q.dynamic_choice("e", 1.5, [("a".to_owned(), None), ("b".to_owned(), None)])
+                .map(|_| ()),
+        ] {
+            assert!(reason(err.unwrap_err()).starts_with("instructions must be text"));
+        }
+        let mut described = Questions::new();
+        let err = described
+            .add(
+                "f",
+                Question::Choice {
+                    instructions: json!("pick"),
+                    criteria: IndexMap::from([
+                        ("a".to_owned(), json!(1)),
+                        ("b".to_owned(), json!("B")),
+                    ]),
+                },
+            )
+            .unwrap_err();
+        assert_eq!(
+            reason(err),
+            "option \"a\"'s description must be text, an object, an array or null"
+        );
         assert!(q.is_empty(), "a refused question is not added");
     }
 

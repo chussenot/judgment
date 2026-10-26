@@ -9,7 +9,7 @@ use std::path::Path;
 use super::rubric::level_index;
 use super::{
     API_VERSION, AssetSource, Envelope, Error, MINOR, Metadata, Result, Rubric, Supplied,
-    check_assets, check_name, from_text, load_assets, refuse_extra, refuse_null, some, to_yaml,
+    check_assets, check_name, check_scalars, from_text, load_assets, refuse_extra, some, to_yaml,
 };
 use crate::answer::{Answer, BoxEdges, Confidence, Response};
 use crate::asset::Assets;
@@ -262,7 +262,7 @@ impl Cases {
     /// [`Cases::bind`], since the document need not name its rubric.
     pub fn parse(text: &str) -> Result<Self> {
         from_text::<Envelope>(text)?.expect_kind("Cases")?;
-        refuse_null(text, "Cases")?;
+        check_scalars(text, "Cases")?;
         let raw: RawCases = from_text(text)?;
         refuse_extra(&raw.rest)?;
         raw.metadata.refuse("version", "Cases")?;

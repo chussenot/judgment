@@ -9,7 +9,7 @@ use std::path::Path;
 
 use super::{
     API_VERSION, AssetSource, Envelope, Error, MINOR, Metadata, Result, check_assets, check_name,
-    check_path, from_text, load_assets, present, refuse_extra, refuse_null, some, to_yaml,
+    check_path, check_scalars, from_text, load_assets, present, refuse_extra, some, to_yaml,
 };
 use crate::answer::{
     BoundingBox, BoxEdges, Choice, Confidence, FromAnswer, Noul, PixelBox, Probability, Response,
@@ -648,7 +648,7 @@ impl Rubric {
     /// ([`Error::Question`]), each gate against its question ([`Error::Policy`]).
     pub fn parse(text: &str) -> Result<Self> {
         from_text::<Envelope>(text)?.expect_kind("Rubric")?;
-        refuse_null(text, "Rubric")?;
+        check_scalars(text, "Rubric")?;
         let raw: RawRubric = from_text(text)?;
         refuse_extra(&raw.rest)?;
         check_name("metadata.name", &raw.metadata.name)?;

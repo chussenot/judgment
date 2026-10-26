@@ -262,7 +262,9 @@ impl AssetSource {
             // Windows, where joining it leaves the directory, and `..\x.png`
             // as one name on Unix.
             let bytes = path.as_bytes();
+            // A line break is refused too: the schema's `.*` stops at one.
             let leaves = path.starts_with(['/', '\\'])
+                || path.contains(['\n', '\r', '\u{2028}', '\u{2029}'])
                 || (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
                 || path.split(['/', '\\']).any(|segment| segment == "..");
             if path.is_empty() || leaves {
@@ -556,7 +558,7 @@ pub fn parse_recording(text: &str) -> Result<Recording> {
         rest: IndexMap<String, Value>,
     }
     from_text::<Envelope>(text)?.expect_kind("Recording")?;
-    refuse_null(text, "Recording")?;
+    check_scalars(text, "Recording")?;
     let doc: Doc = from_text(text)?;
     refuse_extra(&doc.rest)?;
     doc.metadata.refuse("version", "Recording")?;
@@ -618,84 +620,110 @@ pub fn recording_to_yaml(recording: &Recording) -> Result<String> {
 /// error names its line and column and quotes nothing, because a document's
 /// state can be someone's data and the message lands in a log.
 pub(crate) fn from_text<T: DeserializeOwned>(text: &str) -> Result<T> {
-    read_yaml(text, true)
-}
-
-/// [`from_text`], with `no_schema` off where a document is read as a plain
-/// tree: a Noul's `true:` key is a boolean to YAML and a map key to JSON.
-fn read_yaml<T: DeserializeOwned>(text: &str, no_schema: bool) -> Result<T> {
     let mut options = serde_saphyr::Options::default();
     options.strict_booleans = true;
     options.merge_keys = serde_saphyr::MergeKeyPolicy::Error;
     options.reject_unsupported_tags = true;
     options.ignore_binary_tag_for_string = true;
     options.with_snippet = false;
-    // A field of text takes text: `name: 2026` or `tags: [1, true]` is
-    // refused, not read as "2026", which the schemas refuse too.
-    options.no_schema = no_schema;
-    serde_saphyr::from_str_with_options(text, options).map_err(|e| {
-        Error::Syntax(match &e {
-            // Its own message quotes the value, which this reader never does.
-            serde_saphyr::Error::QuotingRequired { location, .. } => format!(
-                "a number or a boolean where the format takes text: quote it, at line {}, column {}",
-                location.line(),
-                location.column()
-            ),
-            _ => e.to_string(),
-        })
-    })
+    serde_saphyr::from_str_with_options(text, options).map_err(|e| Error::Syntax(e.to_string()))
 }
 
-/// Refuse `null` wherever the format gives it no meaning, naming the field.
-/// The schemas take it only in instructions, an option's or a Noul
-/// criterion's description and a turn label's `from_turn`, and inside what
-/// is free: a case's state, a recording's answers and the fields its
-/// `response` or a tuning block keeps beyond the ones the format defines.
-/// Read as absent, it would make `threshold: null` the default bar and
-/// `expect: null` no labels.
-pub(crate) fn refuse_null(text: &str, kind: &str) -> Result<()> {
-    fn allowed(kind: &str, path: &[&str]) -> bool {
-        match (kind, path) {
-            (
-                "Rubric",
-                ["spec", "questions", _, "instructions", ..]
-                | ["spec", "questions", _, "criteria", _, ..],
-            )
-            | (
-                "Cases",
-                ["spec", "cases", _, "state", ..]
-                | ["spec", "cases", _, "options", _, _, ..]
-                | ["spec", "cases", _, "expect", _, "from_turn"],
-            ) => true,
-            ("Rubric", ["spec", "tuning", key, ..]) => {
-                !matches!(*key, "cases" | "model" | "server" | "tuned_at")
-            }
-            ("Recording", ["spec", "response", "answers", _, key, ..]) => *key != "type",
-            ("Recording", ["spec", "response", key, ..]) => {
-                !matches!(*key, "model" | "answers" | "usage" | "request_id")
-            }
-            _ => false,
+/// Where `null` is a value ([`check_scalars`]).
+fn null_allowed(kind: &str, path: &[&str]) -> bool {
+    match (kind, path) {
+        (
+            "Rubric",
+            ["spec", "questions", _, "instructions", ..]
+            | ["spec", "questions", _, "criteria", _, ..],
+        )
+        | (
+            "Cases",
+            ["spec", "cases", _, "state", ..]
+            | ["spec", "cases", _, "options", _, _, ..]
+            | ["spec", "cases", _, "expect", _, "from_turn"],
+        ) => true,
+        ("Rubric", ["spec", "tuning", key, ..]) => {
+            !matches!(*key, "cases" | "model" | "server" | "tuned_at")
         }
+        ("Recording", ["spec", "response", "answers", _, key, ..]) => *key != "type",
+        ("Recording", ["spec", "response", "usage", key, ..]) => {
+            !matches!(*key, "input_tokens" | "output_tokens")
+        }
+        ("Recording", ["spec", "response", key, ..]) => {
+            !matches!(*key, "model" | "answers" | "usage" | "request_id")
+        }
+        _ => false,
     }
+}
+/// The fields `schemas/jud/` types as a string and nothing else.
+fn text_only(kind: &str, path: &[&str]) -> bool {
+    matches!(
+        path,
+        ["metadata", "name" | "description"] | ["metadata", "labels" | "annotations", _]
+    ) || matches!(
+        (kind, path),
+        (
+            "Rubric",
+            ["spec", "questions", _, "type" | "when" | "options_from"]
+                | ["spec", "questions", _, "part_when", _]
+                | ["spec", "assets", _, _]
+                | ["spec", "policy", _, "fallback" | "note"]
+                | ["spec", "policy", _, "bands", _, "verdict"]
+                | ["spec", "tuning", "cases" | "model" | "server" | "tuned_at"],
+        ) | (
+            "Cases",
+            ["spec", "rubric"]
+                | ["spec", "cases", _, "id" | "note"]
+                | ["spec", "cases", _, "tags", _]
+                | ["spec", "cases", _, "assets", _, _],
+        ) | (
+            "Recording",
+            [
+                "spec",
+                "fingerprint" | "request_hash" | "rubric" | "server" | "recorded_at",
+            ] | ["spec", "response", "model" | "request_id"]
+                | ["spec", "response", "answers", _, "type"],
+        )
+    )
+}
+
+/// Refuse, naming the field, what the schemas refuse and a typed read would
+/// take anyway: a number or a boolean in a field that takes only text
+/// (`name: 2026` would read as "2026"), and `null` wherever the format gives
+/// it no meaning (`threshold: null` would read as absent, the default bar).
+/// `null` is a value only of instructions, an option's or a Noul
+/// criterion's description and a turn label's `from_turn`, and inside what
+/// is free: a case's state, a recording's answers, and the fields a
+/// recording's `response` or `usage`, or a tuning block, keeps beyond the
+/// ones the format defines. Read over the document as a plain tree, where a
+/// key is always text, as it is in JSON.
+pub(crate) fn check_scalars(text: &str, kind: &str) -> Result<()> {
     fn walk(kind: &str, value: &Value, path: &mut Vec<String>) -> Result<()> {
-        match value {
-            Value::Null => {
-                let segments: Vec<&str> = path.iter().map(String::as_str).collect();
-                if allowed(kind, &segments) {
-                    return Ok(());
+        let segments = || path.iter().map(String::as_str).collect::<Vec<&str>>();
+        let refuse = |reason: &str| {
+            let field = path.iter().fold(String::new(), |mut field, segment| {
+                if !field.is_empty() && !segment.starts_with('[') {
+                    field.push('.');
                 }
-                let field = path.iter().fold(String::new(), |mut field, segment| {
-                    if !field.is_empty() && !segment.starts_with('[') {
-                        field.push('.');
-                    }
-                    field.push_str(segment);
-                    field
-                });
-                Err(Error::Invalid {
-                    field,
-                    reason: "null is not a value of this field; leave the field out instead"
-                        .to_owned(),
-                })
+                field.push_str(segment);
+                field
+            });
+            Err(Error::Invalid {
+                field,
+                reason: reason.to_owned(),
+            })
+        };
+        match value {
+            Value::Null if !null_allowed(kind, &segments()) => {
+                refuse("null is not a value of this field; leave the field out instead")
+            }
+            Value::Bool(_) | Value::Number(_) if text_only(kind, &segments()) => {
+                refuse("a number or a boolean where the format takes text; quote it")
+            }
+            // `metadata.version` takes text or a number, read as its text.
+            Value::Bool(_) if segments() == ["metadata", "version"] => {
+                refuse("a boolean where the format takes text or a number")
             }
             Value::Array(items) => items.iter().enumerate().try_for_each(|(i, item)| {
                 path.push(format!("[{i}]"));
@@ -712,7 +740,7 @@ pub(crate) fn refuse_null(text: &str, kind: &str) -> Result<()> {
             _ => Ok(()),
         }
     }
-    walk(kind, &read_yaml::<Value>(text, false)?, &mut Vec::new())
+    walk(kind, &from_text::<Value>(text)?, &mut Vec::new())
 }
 
 /// Refuse an id that is not a name (`docs/reference/jud-format.md`, Names): every
@@ -971,16 +999,43 @@ mod tests {
         }
     }
 
-    /// A number where the format takes text is refused at its line, and the
-    /// refusal quotes nothing, as every refusal of this reader.
+    /// A number where the format takes only text is refused by field, and the
+    /// refusal quotes nothing; a key is text whatever YAML reads it as, as in
+    /// JSON, so a number as a key is read wherever the schemas take it.
     #[test]
-    fn a_number_where_text_goes_is_refused_without_quoting_it() {
-        let err = parse("apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: 20261026\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n")
-            .unwrap_err();
-        assert!(
-            matches!(&err, Error::Syntax(m) if m.contains("quote it, at line 4") && !m.contains("20261026")),
-            "{err}"
-        );
+    fn a_number_where_only_text_goes_is_refused_and_a_number_key_is_read() {
+        let rubric = |metadata: &str, extra: &str| {
+            format!(
+                "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\n{metadata}spec:\n  questions:\n    n: {{type: noul, instructions: ok?, when: x}}\n{extra}"
+            )
+        };
+        for (text, field) in [
+            (
+                "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: 20261026\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n".to_owned(),
+                "metadata.name",
+            ),
+            (rubric("  version: true\n", ""), "metadata.version"),
+            (
+                rubric("", "  policy:\n    n: {threshold: 0.5, note: 3}\n"),
+                "spec.policy.n.note",
+            ),
+            (
+                "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?, when: 5}\n".to_owned(),
+                "spec.questions.n.when",
+            ),
+        ] {
+            let err = parse(&text).unwrap_err();
+            assert!(
+                matches!(&err, Error::Invalid { field: f, .. } if f == field),
+                "{err}"
+            );
+            assert!(!err.to_string().contains("20261026"), "{err}");
+        }
+        // A number key in labels, a state, a recording's legend; a number
+        // version; a usage field the format does not define, null.
+        parse(&rubric("  version: 3\n  labels: {2024: one}\n", "")).unwrap();
+        parse("apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: c\nspec:\n  cases:\n    - state: {2024: revenue, true: yes}\n").unwrap();
+        parse("apiVersion: jud/v1.3\nkind: Recording\nmetadata:\n  name: c\nspec:\n  elapsed_ms: 1\n  response:\n    model: m\n    answers:\n      s: {type: score, score: 0.2, confidence: 0.9, legend: {0: low, 1: high}, probabilities: {0: 0.8, 1: 0.2}}\n    usage: {input_tokens: 1, output_tokens: 2, cached_tokens: null}\n").unwrap();
     }
 
     /// An image's path is read as text, so a path is refused or read the same
@@ -1007,6 +1062,7 @@ mod tests {
             "a/../../x.png",
             "a\\..\\x.png",
             "..",
+            "\n/x.png",
         ] {
             assert!(check(refused).is_err(), "{refused}");
         }
