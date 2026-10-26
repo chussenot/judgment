@@ -310,6 +310,11 @@ All notable changes to the `judgment` crate. The format follows
   `RetryPolicy::conservative()` it was not retried at all. An error body
   over the cap was `ResponseTooLarge`, reported as the status and
   `too_large`. Each attempt is now reported once.
+- `Questions::choice` and `Questions::dynamic_choice` refuse an option key
+  given twice (`Error::InvalidQuestion`, "option key \"a\" appears twice")
+  before anything is sent. They merged the two into one entry, keeping one
+  description: the other option could never be chosen, and an enum with
+  only two variants sharing a key failed as "needs at least 2 options".
 
 ## [0.14.0] - 2026-10-15
 

@@ -298,23 +298,22 @@ impl Questions {
         )
     }
 
-    /// Add a Choice over a Rust enum implementing [`Options`].
+    /// Add a Choice over a Rust enum implementing [`Options`];
+    /// [`Error::InvalidQuestion`] when two variants share a key.
     pub fn choice<O: Options>(
         &mut self,
         id: impl Into<String>,
         instructions: impl Into<Value>,
     ) -> Result<Handle<Choice<O>>> {
-        let criteria: IndexMap<String, Value> = O::ALL
-            .iter()
-            .map(|o| {
-                (
-                    o.key().to_owned(),
-                    o.describe().map_or(Value::Null, Value::from),
-                )
-            })
-            .collect();
+        let id = id.into();
+        let criteria = option_map(
+            &id,
+            O::ALL
+                .iter()
+                .map(|o| (o.key().to_owned(), o.describe().map(str::to_owned))),
+        )?;
         self.push(
-            id.into(),
+            id,
             Question::Choice {
                 instructions: instructions.into(),
                 criteria,
@@ -322,7 +321,8 @@ impl Questions {
         )
     }
 
-    /// Add a Choice from runtime `(key, description)` pairs. The answer is a
+    /// Add a Choice from runtime `(key, description)` pairs, in their order;
+    /// [`Error::InvalidQuestion`] when a key is given twice. The answer is a
     /// [`Choice<String>`]: checking that the returned key is known is the caller's.
     pub fn dynamic_choice(
         &mut self,
@@ -330,12 +330,10 @@ impl Questions {
         instructions: impl Into<Value>,
         options: impl IntoIterator<Item = (String, Option<String>)>,
     ) -> Result<Handle<Choice<String>>> {
-        let criteria: IndexMap<String, Value> = options
-            .into_iter()
-            .map(|(k, d)| (k, d.map_or(Value::Null, Value::from)))
-            .collect();
+        let id = id.into();
+        let criteria = option_map(&id, options)?;
         self.push(
-            id.into(),
+            id,
             Question::Choice {
                 instructions: instructions.into(),
                 criteria,
@@ -429,6 +427,26 @@ impl IntoIterator for Questions {
 }
 
 /// The checks every question gets (module docs, `# Limits are checked here`).
+/// A Choice's options in the order given, refusing a key given twice: a
+/// map would keep one description and the model would never be offered the
+/// other, so the option could never be chosen.
+fn option_map(
+    id: &str,
+    options: impl IntoIterator<Item = (String, Option<String>)>,
+) -> Result<IndexMap<String, Value>> {
+    let mut criteria = IndexMap::new();
+    for (key, description) in options {
+        if criteria.contains_key(&key) {
+            return Err(Error::InvalidQuestion {
+                id: id.to_owned(),
+                reason: format!("option key {key:?} appears twice"),
+            });
+        }
+        criteria.insert(key, description.map_or(Value::Null, Value::from));
+    }
+    Ok(criteria)
+}
+
 pub(crate) fn validate(id: &str, question: &Question) -> Result<()> {
     validate_with(id, question, 2)
 }
@@ -533,6 +551,39 @@ mod tests {
             Red = "red" => "Warm",
             Blue = "blue" => None,
         }
+    }
+
+    options! {
+        enum Twice {
+            A = "x" => "First",
+            B = "x" => "Second",
+            C = "y" => None,
+        }
+    }
+
+    /// A key given twice is refused, not merged: the map would keep one
+    /// description and the other option could never be chosen.
+    #[test]
+    fn a_repeated_option_key_is_refused() {
+        let mut q = Questions::new();
+        let err = q
+            .dynamic_choice(
+                "d",
+                "Which?",
+                [("a", "first"), ("b", "b"), ("a", "again")]
+                    .map(|(k, d)| (k.to_owned(), Some(d.to_owned()))),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::InvalidQuestion { id, reason } if id == "d" && reason == "option key \"a\" appears twice"),
+            "{err:?}"
+        );
+        let err = q.choice::<Twice>("e", "Which?").unwrap_err();
+        assert!(
+            matches!(&err, Error::InvalidQuestion { id, reason } if id == "e" && reason.contains("\"x\" appears twice")),
+            "{err:?}"
+        );
+        assert!(q.is_empty(), "a refused question is not added");
     }
 
     #[test]
