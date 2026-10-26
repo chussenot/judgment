@@ -294,6 +294,18 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
             "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: ../photo.png}\n",
         ),
         (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: '..\\photo.png'}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: '\\\\server\\share\\photo.png'}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: C:/photo.png}\n",
+        ),
+        (
             &*CASES,
             "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: cases\n  minor: 4\nspec:\n  cases:\n    - state: {photo: photo}\n      assets:\n        photo: {type: image, path: photo.webp, format: webp}\n",
         ),

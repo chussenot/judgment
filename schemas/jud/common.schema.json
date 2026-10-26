@@ -291,8 +291,8 @@
         "path": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?![/\\\\])(?!.*(^|[/\\\\])\\.\\.([/\\\\]|$)).*$",
-          "description": "Relative to the document's directory, never absolute and never leaving it."
+          "pattern": "^(?![/\\\\])(?![A-Za-z]:)(?!.*(^|[/\\\\])\\.\\.([/\\\\]|$)).*$",
+          "description": "Relative to the document's directory, never absolute (a leading slash or backslash, or a drive such as C:) and never leaving it (a .. segment on either separator)."
         },
         "format": {
           "enum": [

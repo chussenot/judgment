@@ -256,14 +256,15 @@ impl AssetSource {
             ));
         }
         if let Some(path) = &self.path {
-            let p = Path::new(path);
-            let leaves = p.is_absolute()
-                || p.components().any(|c| {
-                    matches!(
-                        c,
-                        std::path::Component::ParentDir | std::path::Component::Prefix(_)
-                    )
-                });
+            // Read as text, the same on every platform and as the schema's
+            // pattern: a leading `/` or `\`, a drive (`C:`) or a `..` segment
+            // on either separator. `Path` would see `\x.png` as relative on
+            // Windows, where joining it leaves the directory, and `..\x.png`
+            // as one name on Unix.
+            let bytes = path.as_bytes();
+            let leaves = path.starts_with(['/', '\\'])
+                || (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
+                || path.split(['/', '\\']).any(|segment| segment == "..");
             if path.is_empty() || leaves {
                 return refuse(format!(
                     "`path: {path}` must be relative to the document and stay under its directory"
@@ -878,6 +879,44 @@ mod tests {
         assert!(check_path("f", "customer.account").is_ok());
         for bad in ["", "customer.", ".customer", "customer..x", "customer. x"] {
             assert!(check_path("f", bad).is_err(), "{bad:?}");
+        }
+    }
+
+    /// An image's path is read as text, so a path is refused or read the same
+    /// on every platform and as the schema's pattern has it.
+    #[test]
+    fn an_asset_path_is_checked_the_same_on_every_platform() {
+        let check = |path: &str| {
+            AssetSource {
+                kind: "image".to_owned(),
+                path: Some(path.to_owned()),
+                format: None,
+                data_base64: None,
+            }
+            .check("assets.photo")
+        };
+        for refused in [
+            "",
+            "/x.png",
+            "\\x.png",
+            "..\\secret.png",
+            "\\\\server\\share\\logo.png",
+            "C:/Windows/logo.png",
+            "c:logo.png",
+            "a/../../x.png",
+            "a\\..\\x.png",
+            "..",
+        ] {
+            assert!(check(refused).is_err(), "{refused}");
+        }
+        for read in [
+            "photo.png",
+            "images/a.png",
+            "./a.png",
+            "a..b.png",
+            "..a.png",
+        ] {
+            assert!(check(read).is_ok(), "{read}");
         }
     }
 

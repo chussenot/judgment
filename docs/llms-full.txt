@@ -4273,7 +4273,7 @@ The images a request carries (minor 4). `assets` is a map of reference to image,
 | Field | Required | Meaning |
 |---|---|---|
 | `type` | no | `image`, the one kind; written always, read optionally. |
-| `path` | one of the two | The file, relative to the document's directory. An absolute path, or one that leaves the directory (`..`), MUST be refused. The format is read from the bytes. |
+| `path` | one of the two | The file, relative to the document's directory. A path that is absolute or leaves the directory MUST be refused, judged as text so that every platform judges it alike: one that starts with `/` or `\`, starts with a drive (`C:`), or has a `..` segment between either separator. The format is read from the bytes. |
 | `data_base64` | one of the two | The bytes inline, base64 as the wire carries them, with `format` required: for a small image a document keeps to itself. |
 | `format` | with `data_base64` | `png`, `jpg` or `jpeg`. With a `path`, optional, and the file MUST match it. |
 

@@ -341,6 +341,13 @@ All notable changes to the `judgment` crate. The format follows
   naming it (`spec.fingreprint`), as the format and the schema require. It
   was ignored, so a misspelt `fingerprint` read as a recording with none,
   which no replay finds by its request, and the writer dropped it.
+- An image's `path` is checked as text, the same on every platform and as
+  the schema's pattern: a leading `/` or `\`, a drive (`C:`) or a `..`
+  segment on either separator is refused. The check went through
+  `std::path`, so on Unix the reader took `..\secret.png` and
+  `\\server\share\logo.png`, which the schema refuses, and on Windows a
+  path starting with `\` or `/` is not absolute and would have been joined
+  out of the document's directory. The schema now also refuses a drive.
 
 ## [0.14.0] - 2026-10-15
 
