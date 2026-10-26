@@ -2976,7 +2976,7 @@ async fn an_images_extra_field_is_refused_only_under_shared_images() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
-        .expect(1)
+        .expect(2)
         .mount(&server)
         .await;
     let mut assets = judgment::Assets::new();
@@ -2997,10 +2997,19 @@ async fn an_images_extra_field_is_refused_only_under_shared_images() {
         "{err:?}"
     );
     c.evaluate_with(&request, &extra).await.unwrap();
+    // A request with no images sends no shared array, so the field is the
+    // caller's again.
+    let plain = Request::new(&state, "m", &q);
+    c.evaluate_with(&plain, &extra.shared_images(true))
+        .await
+        .unwrap();
     let received = server.received_requests().await.unwrap();
     let body: serde_json::Value = serde_json::from_slice(&received[0].body).unwrap();
     assert_eq!(body["images"], json!(["mine"]));
     assert!(body["assets"].is_object());
+    let body: serde_json::Value = serde_json::from_slice(&received[1].body).unwrap();
+    assert_eq!(body["images"], json!(["mine"]));
+    assert!(body.get("assets").is_none(), "{body}");
 }
 
 /// With shared images as data URLs, Liquid's spelling: the same array, each

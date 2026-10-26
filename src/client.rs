@@ -377,7 +377,9 @@ struct ModelsResponse {
 /// What one call to [`Client::evaluate_with`] changes from the client's own
 /// settings (module docs, `# Per-call options`). Empty by default; anything
 /// the client or HTTP sets itself is refused when it is added, so a set that
-/// was built can always be sent as it reads.
+/// was built can always be sent as it reads. The one exception is an
+/// `images` extra field, refused at the call, and only when the call sends
+/// shared images, the one place the client writes that field itself.
 ///
 /// ```
 /// use std::time::Duration;
@@ -543,7 +545,8 @@ impl CallOptions {
     /// A top-level body field for a server parameter this crate does not
     /// model; the server may use, ignore or refuse it. `null` is sent as
     /// `null`. `state`, `model`, `questions` and `assets` are
-    /// [`Error::ReservedField`], matched exactly.
+    /// [`Error::ReservedField`], matched exactly; so is `images`, at the call
+    /// and only when the call sends shared images, since only the call knows.
     pub fn extra(mut self, name: impl Into<String>, value: impl Into<Value>) -> Result<Self> {
         let name = name.into();
         if RESERVED_FIELDS.contains(&name.as_str()) {

@@ -149,15 +149,22 @@ impl Tone {
         }
     }
 
-    /// A level by its index, as a verdict names it, or by its text, as a
-    /// policy's `fallback` may: the index first, as the rubric reads it.
-    fn from_level(level: &str) -> Result<Self, Error> {
-        level
+    /// A level by its index, as a verdict names it.
+    fn from_index(index: &str) -> Result<Self, Error> {
+        index
             .parse::<usize>()
             .ok()
             .and_then(|i| Self::ALL.get(i).copied())
-            .or_else(|| Self::ALL.into_iter().find(|l| l.label() == level))
-            .ok_or_else(|| Error::unexpected("tone", level))
+            .ok_or_else(|| Error::unexpected("tone", index))
+    }
+
+    /// A level as a policy's `fallback` names it: by its text, else by its
+    /// index, as the rubric reads it (a level `"2"` is that text, not index 2).
+    fn from_level(level: &str) -> Result<Self, Error> {
+        Self::ALL
+            .into_iter()
+            .find(|l| l.label() == level)
+            .map_or_else(|| Self::from_index(level), Ok)
     }
 }
 
@@ -315,11 +322,23 @@ pub fn read(asked: &Questions, response: &Response) -> Result<Decision, Error> {
     let verdicts = rubric()?.apply(asked, response)?;
     let verdict = |id: &'static str| verdicts.get(id).ok_or(Error::Missing(id));
     Ok(Decision {
-        desk: gated("desk", verdict("desk")?, |key| Ok(Desk::from_key(key)))?,
-        tone: gated("tone", verdict("tone")?, Tone::from_level)?,
+        desk: gated(
+            "desk",
+            verdict("desk")?,
+            |key| Ok(Desk::from_key(key)),
+            |key| Ok(Desk::from_key(key)),
+        )?,
+        tone: gated("tone", verdict("tone")?, Tone::from_index, Tone::from_level)?,
         duplicate_of: verdicts
             .get("duplicate_of")
-            .map(|v| gated("duplicate_of", v, |key| Ok(DuplicateOf::from_key(key))))
+            .map(|v| {
+                gated(
+                    "duplicate_of",
+                    v,
+                    |key| Ok(DuplicateOf::from_key(key)),
+                    |key| Ok(DuplicateOf::from_key(key)),
+                )
+            })
             .transpose()?,
         refund_request: verdicts
             .get("refund_request")
@@ -361,13 +380,14 @@ fn yes_no(id: &'static str, verdict: &Verdict) -> Result<YesNo, Error> {
     }
 }
 
-/// A Choice's verdict names an option key, a Score's a level index (its
-/// fallback may name the level's text); `parse` turns either into this
-/// module's type.
+/// A Choice's verdict names an option key, a Score's a level index; `parse`
+/// turns either into this module's type, and `fallback` reads the gate's
+/// fallback as the rubric names it (a Score's level by its text first).
 fn gated<T>(
     id: &'static str,
     verdict: &Verdict,
     parse: impl Fn(&str) -> Result<T, Error>,
+    fallback: impl Fn(&str) -> Result<T, Error>,
 ) -> Result<Gated<T>, Error> {
     match verdict {
         Verdict::Option {
@@ -395,7 +415,7 @@ fn gated<T>(
         }),
         Verdict::Deferred(deferred) => Ok(Gated::Defer {
             nearest: parse(&deferred.nearest)?,
-            fallback: deferred.fallback.as_deref().map(&parse).transpose()?,
+            fallback: deferred.fallback.as_deref().map(fallback).transpose()?,
             confidence: deferred.confidence.value(),
             bar: deferred.bar,
         }),
@@ -508,12 +528,12 @@ mod tests {
         Ok(())
     }
 
-    /// A Score's fallback may name a level by its text, a verdict by its
-    /// index: both read.
+    /// A verdict names a level by its index, a Score's fallback by its text:
+    /// both read.
     #[test]
     fn levels_read_by_index_and_by_text() -> Result<(), Error> {
         for (index, level) in Tone::ALL.into_iter().enumerate() {
-            assert_eq!(Tone::from_level(&index.to_string())?, level);
+            assert_eq!(Tone::from_index(&index.to_string())?, level);
             assert_eq!(Tone::from_level(level.label())?, level);
         }
         Ok(())

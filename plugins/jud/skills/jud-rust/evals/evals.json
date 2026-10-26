@@ -34,7 +34,7 @@
         "Runs the module's test and clippy in a throwaway crate before replying, says they passed, and says that `cargo test` in the crate runs the drift test once the mod line is in",
         "Replies with the Cargo.toml lines, the `mod triage;` line and a usage example with the real names (Desk, Tone, decide), without editing Cargo.toml or main.rs",
         "The module's header carries a complete usage example and quotes no threshold or band bar",
-        "Reads Tone with from_level, which takes an index or a level's text, and keeps the levels_read_by_index_and_by_text test"
+        "Reads Tone's verdict with from_index and its fallback with from_level (the level's text, else its index), and keeps the levels_read_by_index_and_by_text test"
       ]
     },
     {

@@ -264,13 +264,17 @@ All notable changes to the `judgment` crate. The format follows
   An extra field named `images` is `Error::ReservedField` under shared
   images, where it was overwritten; CI runs the client's tests with the
   default features too, since `--all-features` hid this.
-- A Score label or a gate's `level_at_least` written as a string names the
-  level with that text before it is read as an index. On a scale whose
-  levels are numbers (`["1", "2", "3", "4", "5"]`), the label `"3"` was the
-  fourth level, so a right answer graded wrong and `level_at_least: "4"`
-  gated at `"5"`. A string no level has as its text is still an index.
-  `jud tune` writes a level it cannot name by text as a number, which no
-  text can shadow. `docs/reference/jud-format.md` states the rule.
+- A Score label, a gate's `level_at_least` or a Score's `fallback` written
+  as a string names the level with that text before it is read as an index.
+  On a scale whose levels are numbers (`["1", "2", "3", "4", "5"]`), the
+  label `"3"` was the fourth level, so a right answer graded wrong and
+  `level_at_least: "4"` gated at `"5"`. A string no level has as its text is
+  still an index. `jud tune` writes a level it cannot name by text as a
+  number, which no text can shadow; `jud eval`'s deferral warning names the
+  fallback's level by the same rule; and the jud plugin's `jud-rust`
+  templates read a verdict's level by its index (`from_index`) and a
+  fallback by its text first (`from_level`), where one reader took both
+  index first. `docs/reference/jud-format.md` states the rule.
 - The Box guidance no longer says `jev-latest` refuses a Box. On the
   hosted API `jev-latest` and `jev-preview` both point to `jev-1.14.0`
   (<https://docs.typesafe.ai/models>, read 2026-10-25), and a Box needs

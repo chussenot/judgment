@@ -221,7 +221,7 @@ A gate says where one question's answer becomes an action. Every field is OPTION
 | `threshold` | Noul | Yes at this probability of yes and above. | 0.5 |
 | `confidence` | Choice, Score, Box | Acted on at this confidence and above; deferred below it. A Box that gave no confidence is read at 0. | 0, nothing deferred |
 | `bands` | Choice, Score, Box | Confidence bands, highest bar first, each `{at_least, verdict}`: the first band the answer's confidence meets names the verdict; below the last, the answer is deferred. The generalisation of `confidence`, which is one unnamed band; a gate has one or the other. Bars strictly decrease, names are distinct, and the list is not empty. | |
-| `fallback` | Choice, Score | What a deferred answer falls back to: an offered option key (a static one, for a Choice whose options come from the request), or a level by its text or its index as a string. | none |
+| `fallback` | Choice, Score | What a deferred answer falls back to: an offered option key (a static one, for a Choice whose options come from the request), or a level by its text or its index as a string. A string is the level with that text when there is one, else an index (see [Cases](#cases)). | none |
 | `level_at_least` | Score | A level, by index or text: the verdict says whether the nearest level reached it. A string is the level with that text when there is one, else an index (see [Cases](#cases)). | |
 | `strict` | every bar | `true`: a bar is met above it, not at it (`>` for `≥`), for the threshold, the confidence and every band. A Choice, Score or Box gate with neither `confidence` nor `bands` has no bar, and defers nothing, strict or not. | `false` |
 | `note` | any | Why the bar is where it is. | |
