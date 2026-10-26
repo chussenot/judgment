@@ -2072,13 +2072,16 @@ mod tests {
                 "{echo}"
             );
         }
-        // An array level, both ways; a number level as text is the same
-        // number only when it is written the same way.
+        // An array level, both ways; a number inside a level, as text, is the
+        // same number only when it is written the same way.
         let mut q = Questions::new();
         q.score(
             "s",
             "?",
-            vec![json!(["degraded", "some users cannot pay"]), json!(1)],
+            vec![
+                json!(["degraded", "some users cannot pay"]),
+                json!({ "n": 1 }),
+            ],
         )
         .unwrap();
         let answer = |first: Value, second: Value| {
@@ -2088,18 +2091,21 @@ mod tests {
                 &json!({ "0": 0.6, "1": 0.4 }),
             ) }))
         };
-        answer(json!(["degraded", "some users cannot pay"]), json!(1))
-            .verify(&q)
-            .unwrap();
+        answer(
+            json!(["degraded", "some users cannot pay"]),
+            json!({ "n": 1 }),
+        )
+        .verify(&q)
+        .unwrap();
         answer(
             json!(r#"["degraded", "some users cannot pay"]"#),
-            json!("1"),
+            json!(r#"{"n": 1}"#),
         )
         .verify(&q)
         .unwrap();
         let err = answer(
             json!(r#"["degraded", "some users cannot pay"]"#),
-            json!("1.0"),
+            json!(r#"{"n": 1.0}"#),
         )
         .verify(&q)
         .unwrap_err();
