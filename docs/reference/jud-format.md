@@ -454,7 +454,7 @@ spec:
 
 ## Fingerprints
 
-A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 ([FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/upd1/final)) of the canonical JSON of a value. Canonical JSON is [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JSON Canonicalization Scheme): object members sorted by key, comparing keys as sequences of UTF-16 code units; no whitespace; strings escaped minimally (`"`, `\`, and control characters, as JSON requires, with the two-character escapes where they exist); numbers formatted as ECMAScript's `Number.prototype.toString` formats them (`1` not `1.0`, `0.1`, `1e+21`, `1e-7`).
+A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 ([FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/upd1/final)) of the canonical JSON of a value. Canonical JSON is [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JSON Canonicalization Scheme): object members sorted by key, comparing keys as sequences of UTF-16 code units; no whitespace; strings escaped minimally (`"`, `\`, and control characters, as JSON requires, with the two-character escapes where they exist); numbers formatted as ECMAScript's `Number.prototype.toString` formats them (`1` not `1.0`, `0.1`, `1e+21`, `1e-7`). An integer beyond ±2^53 is the nearest double, as ECMAScript reads it (`1234567890123456789` is `1234567890123456800`), so two such integers that round to one double give one fingerprint: an id that large belongs in a string, as [RFC 7493](https://www.rfc-editor.org/rfc/rfc7493#section-2.2) advises.
 
 | Fingerprint of | Over |
 |---|---|

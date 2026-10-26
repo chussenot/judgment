@@ -109,10 +109,15 @@ fn write(out: &mut String, value: &Value) {
     }
 }
 
+/// An integer a double holds exactly prints as its digits; beyond 2^53 an
+/// RFC 8785 reader (ECMAScript's `Number`) holds the nearest double, so it
+/// prints as that double does, and integers that round to one double share
+/// a fingerprint.
 fn write_number(out: &mut String, n: &serde_json::Number) {
-    if let Some(i) = n.as_i64() {
+    const EXACT: u64 = 1 << 53;
+    if let Some(i) = n.as_i64().filter(|i| i.unsigned_abs() <= EXACT) {
         out.push_str(&i.to_string());
-    } else if let Some(u) = n.as_u64() {
+    } else if let Some(u) = n.as_u64().filter(|u| *u <= EXACT) {
         out.push_str(&u.to_string());
     } else if let Some(f) = n.as_f64() {
         out.push_str(&ecmascript(f));
@@ -205,7 +210,14 @@ mod tests {
             (json!(0.000_001), "0.000001"),
             (json!(1.5e-9), "1.5e-9"),
             (json!(-2.5), "-2.5"),
-            (json!(u64::MAX), "18446744073709551615"),
+            // An integer is exact up to 2^53, then the nearest double, as
+            // node and every RFC 8785 implementation print it.
+            (json!(9_007_199_254_740_992_u64), "9007199254740992"),
+            (json!(-9_007_199_254_740_992_i64), "-9007199254740992"),
+            (json!(9_007_199_254_740_993_u64), "9007199254740992"),
+            (json!(1_234_567_890_123_456_789_u64), "1234567890123456800"),
+            (json!(u64::MAX), "18446744073709552000"),
+            (json!(i64::MIN), "-9223372036854776000"),
         ] {
             assert_eq!(to_string(&input), want, "{input}");
         }

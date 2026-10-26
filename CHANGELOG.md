@@ -263,6 +263,14 @@ All notable changes to the `judgment` crate. The format follows
   is `gen_ai.usage.input_tokens`. A `tracing` subscriber or an
   `tracing-opentelemetry` view that reads the old names must read the new
   ones. `images`, `long_context`, `multipart` and `request_id` are unchanged.
+- Canonical JSON (`eval::canonical`, every `sha256:` fingerprint) prints an
+  integer beyond ±2^53 as the nearest double, as ECMAScript and every RFC
+  8785 implementation do: `1234567890123456789` is `1234567890123456800`.
+  It printed every `u64` and `i64` digit for digit, so a state holding such
+  an integer had a request fingerprint no other tool computes, and a replay
+  by another tool missed. The fingerprint of such a request changes (no
+  shipped document or recording holds one); two integers that round to one
+  double now share a fingerprint, so keep an id that large in a string.
 
 ### Fixed
 
