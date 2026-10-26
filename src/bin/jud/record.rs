@@ -287,7 +287,7 @@ fn describe_plan(p: &PlanSummary<'_>) -> String {
     }
     lines.push(format!(
         "backend {}, model {} (from {})",
-        crate::out::plain(p.base_url),
+        crate::out::plain(&crate::backend::public_url(p.base_url)),
         crate::out::plain(p.model),
         p.model_from
     ));

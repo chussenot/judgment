@@ -748,6 +748,31 @@ fn a_malformed_configuration_file_is_refused_by_name() {
 
 /// A configuration file holds a key, and the line next to a typo can be it:
 /// a refusal names the file, the line and the column, and quotes nothing.
+/// A base URL can carry a credential (`user:pass@`, a `?token=`): `jud
+/// config` shows the URL without it, as every other message does.
+#[test]
+fn config_never_prints_a_base_url_s_credentials() {
+    let home = config_home();
+    let out = jud(
+        &["config"],
+        "",
+        &[(
+            "TYPESAFE_BASE_URL",
+            "http://user:s3cret@127.0.0.1:9/v1?token=abc#frag",
+        )],
+        &home,
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        !text.contains("s3cret") && !text.contains("token="),
+        "{text}"
+    );
+    let config: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(config["base_url"], "http://127.0.0.1:9/v1");
+    assert_eq!(config["base_url_from"], "environment");
+}
+
 #[test]
 fn a_malformed_configuration_file_never_prints_its_api_key() {
     for typo in ["timeout_secs: 3O\n", "modle: jev-latest\n"] {

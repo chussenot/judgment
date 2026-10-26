@@ -4017,7 +4017,7 @@ shared_images: false  # true: images as Ollama's shared `images` array, not the 
 
 ### `jud config`
 
-Prints the resolved backend and where each value came from, as JSON on stdout. The key is reported as `environment`, `config_file` or `missing` and never printed. With no variables set and no file:
+Prints the resolved backend and where each value came from, as JSON on stdout. The key is reported as `environment`, `config_file` or `missing` and never printed, and the base URL is shown without its userinfo, query or fragment, which can carry a credential, as in every other message (`jud record --dry-run` included); the client still sends to the whole URL. With no variables set and no file:
 
 <!-- transcript: env -u TYPESAFE_API_KEY -u TYPESAFE_BASE_URL XDG_CONFIG_HOME=/nonexistent jud config -->
 ```json

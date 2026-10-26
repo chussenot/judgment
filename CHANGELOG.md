@@ -34,6 +34,11 @@ All notable changes to the `judgment` crate. The format follows
   verifier, so the `jud` binaries built from this lockfile verify the
   server they call against the corrected roots. A library consumer's own
   lockfile resolves these on its next `cargo update`.
+- `jud config` and `jud record --dry-run` show the base URL without its
+  userinfo, query or fragment, as every other message already did. They
+  printed `TYPESAFE_BASE_URL` whole, so a `user:pass@` or a `?token=` in it
+  reached the terminal, and the transcripts of the agent sessions the jud
+  plugin runs both commands in.
 
 ### Added
 
