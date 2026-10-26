@@ -302,6 +302,14 @@ All notable changes to the `judgment` crate. The format follows
   left half a rubric; a symlink at `PATH` is replaced, not written through.
   `jud record`'s temporary names also carry a counter beside the process
   id, so two writers of one name in one process never share one.
+- A failed status whose body is cut short or over `max_body_bytes` is that
+  status with an empty body. A 429 that closed before its body was whole
+  was reported twice to the observer (`429`, then `transport`), retried
+  after the backoff instead of its `Retry-After`, never paused the pacer,
+  and ended as `Error::Transport` rather than `RateLimited`; under
+  `RetryPolicy::conservative()` it was not retried at all. An error body
+  over the cap was `ResponseTooLarge`, reported as the status and
+  `too_large`. Each attempt is now reported once.
 
 ## [0.14.0] - 2026-10-15
 
