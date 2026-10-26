@@ -129,10 +129,12 @@ impl Backend {
             Kind::Server { client, resolved } => self
                 .runtime
                 .block_on(client.answer_with_assets(state, self.model(), questions, assets))
+                // The error carries what the server sent: shown, never obeyed.
                 .map_err(|e| {
                     Failure::Backend(format!(
-                        "the backend at {} failed: {e}",
-                        public_url(resolved.base_url())
+                        "the backend at {} failed: {}",
+                        public_url(resolved.base_url()),
+                        crate::out::plain(&e.to_string())
                     ))
                 }),
             Kind::Recordings { replay, dir } => self
@@ -142,13 +144,15 @@ impl Backend {
                     // The wording `jud RUBRIC --replay` has always used for a
                     // state nobody recorded.
                     Error::NoRecording(_) => Failure::Missing(format!(
-                        "no recording under {dir} answers this state and rubric: {e}"
+                        "no recording under {dir} answers this state and rubric: {}",
+                        crate::out::plain(&e.to_string())
                     )),
                     // A recording is there and cannot answer: the request
                     // matched and the response no longer fits the questions,
                     // which is a different thing to fix than a missing one.
                     other => Failure::Backend(format!(
-                        "a recording under {dir} matches this state and rubric but cannot answer it: {other}"
+                        "a recording under {dir} matches this state and rubric but cannot answer it: {}",
+                        crate::out::plain(&other.to_string())
                     )),
                 }),
         }

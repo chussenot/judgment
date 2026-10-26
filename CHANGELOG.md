@@ -39,6 +39,12 @@ All notable changes to the `judgment` crate. The format follows
   printed `TYPESAFE_BASE_URL` whole, so a `user:pass@` or a `?token=` in it
   reached the terminal, and the transcripts of the agent sessions the jud
   plugin runs both commands in.
+- `jud` shows what a server or a recording put in an error as text, every
+  control character escaped (`\u{1b}`), as it already did for a model's
+  name. A compatible server, a proxy or anything on a plain-http path
+  could answer an error whose body held escape sequences, and `jud
+  RUBRIC`, `record`, `eval` and `mcp` wrote them raw to stderr, where they
+  could clear the screen, retitle the terminal or hide earlier output.
 
 ### Added
 

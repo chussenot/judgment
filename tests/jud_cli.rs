@@ -103,6 +103,34 @@ async fn backend(status: u16, body: Value, expected_calls: u64) -> MockServer {
 
 const STATE: &str = r#"{"message": "Charged twice. Fix it today."}"#;
 
+/// What a server sends in an error body is shown as text: an escape sequence
+/// in it would clear the screen or retitle the terminal.
+#[tokio::test]
+async fn a_server_error_body_is_shown_as_text() {
+    let body = json!({ "detail": "\u{1b}[2Jcleared\u{1b}]0;PWN\u{7}" });
+    let server = backend(400, body, 1).await;
+    let out = jud(
+        &[RUBRIC],
+        STATE,
+        &[
+            ("TYPESAFE_API_KEY", "test-key"),
+            ("TYPESAFE_BASE_URL", &server.uri()),
+        ],
+        &config_home(),
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(
+        !out.stderr.contains(&0x1b) && !out.stderr.contains(&0x07),
+        "{:?}",
+        stderr(&out)
+    );
+    assert!(
+        stderr(&out).contains("\\u{1b}[2Jcleared"),
+        "{}",
+        stderr(&out)
+    );
+}
+
 #[tokio::test]
 async fn a_valid_rubric_and_state_print_one_verdict_per_question() {
     let server = backend(200, answers(), 1).await;
