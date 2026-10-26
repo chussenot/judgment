@@ -315,6 +315,12 @@ All notable changes to the `judgment` crate. The format follows
   before anything is sent. They merged the two into one entry, keeping one
   description: the other option could never be chosen, and an enum with
   only two variants sharing a key failed as "needs at least 2 options".
+- `eval::metrics::percentile` leaves NaN out, and is `None` when nothing
+  else is left. Its comparator was not a total order: past 20 values with a
+  NaN among them the sort could panic ("user-provided comparison function
+  does not correctly implement a total order"), and a shorter input
+  mis-sorted, so `[3, NaN, 1, 2]` had a median of NaN. The crate's own
+  callers pass whole milliseconds and were not affected.
 
 ## [0.14.0] - 2026-10-15
 

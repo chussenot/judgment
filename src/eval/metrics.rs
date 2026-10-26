@@ -86,13 +86,14 @@ pub fn mean(values: &[f64]) -> Option<f64> {
     }
 }
 
-/// Nearest-rank percentile (`0.0..=1.0`) of unsorted values; `None` when empty.
+/// Nearest-rank percentile (`0.0..=1.0`) of unsorted values, NaN left out
+/// (it has no rank); `None` when no other value is left.
 pub fn percentile(values: &[f64], q: f64) -> Option<f64> {
-    if values.is_empty() {
+    let mut v: Vec<f64> = values.iter().copied().filter(|x| !x.is_nan()).collect();
+    if v.is_empty() {
         return None;
     }
-    let mut v = values.to_vec();
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    v.sort_by(f64::total_cmp);
     Some(v[nearest_rank(q, v.len())])
 }
 
@@ -147,6 +148,26 @@ mod tests {
         assert_eq!(percentile(&v, 0.0), Some(1.0));
         assert_eq!(percentile(&[], 0.5), None);
         assert_eq!(mean(&v), Some(3.0));
+    }
+
+    /// NaN has no rank: it is left out, so the sort is a total order (a
+    /// partial one panics past 20 values) and no percentile is NaN.
+    #[test]
+    fn percentile_with_nan_neither_panics_nor_returns_nan() {
+        let v: Vec<f64> = (0..64_u32)
+            .map(|i| {
+                if i % 3 == 0 {
+                    f64::NAN
+                } else {
+                    f64::from(64 - i)
+                }
+            })
+            .collect();
+        for q in [0.0, 0.5, 0.95, 1.0] {
+            assert!(!percentile(&v, q).unwrap().is_nan(), "{q}");
+        }
+        assert_eq!(percentile(&[3.0, f64::NAN, 1.0, 2.0], 0.5), Some(2.0));
+        assert_eq!(percentile(&[f64::NAN], 0.5), None);
     }
 
     #[test]
