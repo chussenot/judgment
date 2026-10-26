@@ -68,6 +68,10 @@ jobs:
       - run: cargo test --all-features
         env:
           INSTA_UPDATE: "no"
+      # The client's tests again with the default features: `mcp` turns on
+      # serde_json's `preserve_order`, which would hide a body that passes
+      # through a sorted map and reaches the model in the alphabet's order.
+      - run: cargo test --test client
       # The benchmarks compile; their numbers are for a person on a quiet
       # machine (docs/reference/performance.md), not for a shared runner.
       - run: cargo bench --no-run

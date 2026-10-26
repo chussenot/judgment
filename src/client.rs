@@ -199,7 +199,10 @@
 //! ([`ClientBuilder::shared_images`]), the images go as that array, in
 //! reference order, and no `assets` key is sent; the references stay in the
 //! state and the questions as the text they are, since the server has
-//! nothing to put in their place. A request without images is unchanged,
+//! nothing to put in their place. The body keeps the JSON body's order, the
+//! questions and options as written, and an extra field named `images` is
+//! [`Error::ReservedField`] under it, since the client writes that array. A
+//! request without images is unchanged,
 //! and so is everything else: the checks before the wire, the images
 //! header, the request fingerprint and hash, the observer's report and the
 //! recordings, so a recording made against Ollama replays like any other.
@@ -580,6 +583,21 @@ fn header_names(headers: &HeaderMap) -> Vec<&str> {
 struct Body<'r, 'a, S: Serialize> {
     #[serde(flatten)]
     request: &'r Request<'a, S>,
+    #[serde(flatten)]
+    extra: &'r Map<String, Value>,
+}
+
+/// The body under shared images: the JSON body's fields in its order, the
+/// `assets` map replaced by the `images` array. Written from a struct, never
+/// through a `serde_json::Value`, whose map is sorted unless a feature says
+/// otherwise and would hand the model the questions and options in the
+/// alphabet's order.
+#[derive(Serialize)]
+struct SharedBody<'r, 'a, S: Serialize> {
+    state: &'a S,
+    model: &'a str,
+    questions: &'a Questions,
+    images: Vec<String>,
     #[serde(flatten)]
     extra: &'r Map<String, Value>,
 }
@@ -1279,24 +1297,30 @@ impl Payload {
         shared_images: SharedImages,
     ) -> Result<Self> {
         if shared_images != SharedImages::Off {
-            // The body as it would go, the map swapped for the array.
-            let mut body = serde_json::to_value(Body { request, extra })?;
-            if let Value::Object(fields) = &mut body {
-                fields.remove("assets");
-                let images: Vec<Value> = request
-                    .assets
-                    .iter()
-                    .map(|(_, image)| {
-                        let base64 = crate::asset::encode_base64(image.bytes());
-                        Value::String(if shared_images == SharedImages::DataUrls {
-                            format!("data:{};base64,{base64}", image.format().content_type())
-                        } else {
-                            base64
-                        })
-                    })
-                    .collect();
-                fields.insert("images".to_owned(), Value::Array(images));
+            // The client writes the array, so a caller's field of that name
+            // is refused rather than overwritten (module docs, `# Shared images`).
+            if extra.contains_key("images") {
+                return Err(Error::ReservedField("images".to_owned()));
             }
+            let images = request
+                .assets
+                .iter()
+                .map(|(_, image)| {
+                    let base64 = crate::asset::encode_base64(image.bytes());
+                    if shared_images == SharedImages::DataUrls {
+                        format!("data:{};base64,{base64}", image.format().content_type())
+                    } else {
+                        base64
+                    }
+                })
+                .collect();
+            let body = SharedBody {
+                state: request.state,
+                model: request.model,
+                questions: request.questions,
+                images,
+                extra,
+            };
             return Ok(Self::Json(serde_json::to_vec(&body)?));
         }
         #[cfg(feature = "multipart")]

@@ -501,7 +501,7 @@ fn strict_at_bar(question: &Question, n: usize, bar: f64) -> String {
 /// The level `level` named the way the gate named its own: an index stays an
 /// index, a text becomes the level's text. The text is only used when it
 /// reads back as that level (two levels with one text would not), else the
-/// index as a string, which the format also accepts.
+/// index as a number: an index as a string could be another level's text.
 fn level_like(written: &LevelRef, level: usize, levels: &[Value]) -> LevelRef {
     match written {
         LevelRef::Index(_) => LevelRef::Index(level),
@@ -510,7 +510,7 @@ fn level_like(written: &LevelRef, level: usize, levels: &[Value]) -> LevelRef {
             if named.resolve(levels) == Some(level) {
                 named
             } else {
-                LevelRef::Text(level.to_string())
+                LevelRef::Index(level)
             }
         }
     }
@@ -798,19 +798,20 @@ mod tests {
             level_like(&LevelRef::Index(2), 1, &calm),
             LevelRef::Index(1)
         );
-        // Levels whose texts are numbers: the text "3" reads as the index 3,
-        // which is another level, so the index is what names this one.
+        // Levels whose texts are numbers: a text names its own level, so the
+        // level whose text is 2 is written "2".
         let numbers = [json!(1), json!(2), json!(3)];
         assert_eq!(
             level_like(&LevelRef::Text("3".into()), 1, &numbers),
-            LevelRef::Text("1".into()),
-            "the level whose text is 2 is the index 1"
+            LevelRef::Text("2".into()),
+            "the level whose text is 2"
         );
-        // The same text on two levels names only the first.
+        // The same text on two levels names only the first, so the second
+        // is written as its index, a number no level's text can shadow.
         let twins = [json!("low"), json!("high"), json!("high")];
         assert_eq!(
             level_like(&LevelRef::Text("high".into()), 2, &twins),
-            LevelRef::Text("2".into())
+            LevelRef::Index(2)
         );
     }
 

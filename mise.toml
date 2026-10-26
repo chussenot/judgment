@@ -67,8 +67,8 @@ env = { RUSTFLAGS = "-D warnings" }
 run = "cargo clippy --all-targets --all-features"
 
 [tasks.test]
-description = "Unit, integration (wiremock), example and doc tests with every feature; no network"
-run = "cargo test --all-features"
+description = "Unit, integration (wiremock), example and doc tests with every feature, then the client's with the default ones (preserve_order off, as shipped); no network"
+run = ["cargo test --all-features", "cargo test --test client"]
 
 [tasks."check:minimal"]
 description = "The crate and its tests build without the http feature (the no-transport configuration)"

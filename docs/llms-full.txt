@@ -3939,7 +3939,7 @@ Options:
 | `TYPESAFE_API_KEY` | `jud config`, `jud record`, and `jud RUBRIC` and `jud eval` when they have no replay | The key sent as the bearer; overrides `api_key` in the file |
 | `TYPESAFE_BASE_URL` | the same commands | The server; overrides `base_url` in the file |
 | `JUD_REPLAY` | the commands that take `--replay` ([which ones](configuration.md#replay)) | A directory of recordings to answer from instead of a server; `--replay` overrides it |
-| `XDG_CONFIG_HOME` | the same commands | Moves the configuration file's directory |
+| `XDG_CONFIG_HOME` | the same commands | Moves the configuration file's directory; only an absolute path counts, as for `HOME` |
 
 [Configuration](configuration.md) has the precedence, the file and what an empty value means. Any other `TYPESAFE_*` or `JUD_*` variable that is set is named on stderr before a command asks a server, since a misspelt one would otherwise send the run to the hosted API ([Variables jud does not read](configuration.md#variables-jud-does-not-read)).
 
@@ -4002,7 +4002,7 @@ jud: JUD_BASE_URL is set but jud does not read it (it reads TYPESAFE_BASE_URL, T
 
 ### The file
 
-`$XDG_CONFIG_HOME/jud/config.yaml` when `XDG_CONFIG_HOME` is set and not empty, else `$HOME/.config/jud/config.yaml`. Every field is optional; a field the file does not define is refused, and a file that is not valid YAML is a usage error (status 2). An empty file is the same as no file.
+`$XDG_CONFIG_HOME/jud/config.yaml` when `XDG_CONFIG_HOME` is an absolute path, else `$HOME/.config/jud/config.yaml` when `HOME` is one. A relative or empty value is ignored, as the XDG specification says, and with neither there is no file (`jud config` shows `config_file` as `null`): a relative path would be read from the working directory, where a checkout could name the server the environment's key is sent to. A refusal of the file names its line and column and quotes none of it, since the line next to a typo can be the key. Every field is optional; a field the file does not define is refused, and a file that is not valid YAML is a usage error (status 2). An empty file is the same as no file.
 
 <!-- file: examples/jud/config-reference.yaml -->
 ```yaml
@@ -4296,7 +4296,7 @@ A gate says where one question's answer becomes an action. Every field is OPTION
 | `confidence` | Choice, Score, Box | Acted on at this confidence and above; deferred below it. A Box that gave no confidence is read at 0. | 0, nothing deferred |
 | `bands` | Choice, Score, Box | Confidence bands, highest bar first, each `{at_least, verdict}`: the first band the answer's confidence meets names the verdict; below the last, the answer is deferred. The generalisation of `confidence`, which is one unnamed band; a gate has one or the other. Bars strictly decrease, names are distinct, and the list is not empty. | |
 | `fallback` | Choice, Score | What a deferred answer falls back to: an offered option key (a static one, for a Choice whose options come from the request), or a level by its text or its index as a string. | none |
-| `level_at_least` | Score | A level, by index or text: the verdict says whether the nearest level reached it. | |
+| `level_at_least` | Score | A level, by index or text: the verdict says whether the nearest level reached it. A string is the level with that text when there is one, else an index (see [Cases](#cases)). | |
 | `strict` | every bar | `true`: a bar is met above it, not at it (`>` for `≥`), for the threshold, the confidence and every band. A Choice, Score or Box gate with neither `confidence` nor `bands` has no bar, and defers nothing, strict or not. | `false` |
 | `note` | any | Why the bar is where it is. | |
 
@@ -4377,7 +4377,7 @@ Binding cases to a rubric lowers each case's request (its state and its `options
 | Noul | `true` or `false` | `yes` or `no` |
 | Noul, over a conversation | `{from_turn: n}`: true from turn `n` (zero-based) on; `{from_turn: null}`: never | `yes` when the conversation has a turn `n`, else `no`; per turn, [Conversations](#conversations) |
 | Choice | an option the case's request offers, static or supplied | the key |
-| Score | a level's index (a number) or a level's text | the index, as a string |
+| Score | a level's index (a number) or a level's text; a string that is no level's text is read as an index, so on a scale whose levels are numbers `"3"` is the level `"3"`, never the fourth level | the index, as a string |
 | Box | `{box: {top, bottom, left, right}}`, the edges as fractions of the image, `top` below `bottom` and `left` below `right`; `iou_at_least` beside it, 0 to 1, the overlap that counts as right (0.5 when left out) | `box`; right when the intersection over union of the answer and the label reaches the bar ([decision 0026](../project/decisions/0026-a-box-is-graded-by-intersection-over-union.md)) |
 
 The "grades as" column is the vocabulary the API's own answers are graded in: a Noul answer is `yes` at 0.5 and above, a Choice answer is its option key, a Score answer's distribution is keyed by level index, a Box answer is `box` with the overlap as the number a report keeps (the mean overlap stands where a Brier score would).

@@ -2,7 +2,7 @@
 title: Configuration
 description: Every setting the jud command and the crate's client read, where each comes from, in what order of precedence, and what the defaults are; the configuration file's fields, long context as a field and a flag, the output of jud config, and which commands read JUD_REPLAY.
 status: current
-last_reviewed: 2026-10-25
+last_reviewed: 2026-10-26
 tags: [judgment, jud, cli, configuration, reference]
 ---
 
@@ -48,7 +48,7 @@ jud: JUD_BASE_URL is set but jud does not read it (it reads TYPESAFE_BASE_URL, T
 
 ### The file
 
-`$XDG_CONFIG_HOME/jud/config.yaml` when `XDG_CONFIG_HOME` is set and not empty, else `$HOME/.config/jud/config.yaml`. Every field is optional; a field the file does not define is refused, and a file that is not valid YAML is a usage error (status 2). An empty file is the same as no file.
+`$XDG_CONFIG_HOME/jud/config.yaml` when `XDG_CONFIG_HOME` is an absolute path, else `$HOME/.config/jud/config.yaml` when `HOME` is one. A relative or empty value is ignored, as the XDG specification says, and with neither there is no file (`jud config` shows `config_file` as `null`): a relative path would be read from the working directory, where a checkout could name the server the environment's key is sent to. A refusal of the file names its line and column and quotes none of it, since the line next to a typo can be the key. Every field is optional; a field the file does not define is refused, and a file that is not valid YAML is a usage error (status 2). An empty file is the same as no file.
 
 <!-- file: examples/jud/config-reference.yaml -->
 ```yaml

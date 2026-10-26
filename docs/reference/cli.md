@@ -2,7 +2,7 @@
 title: The jud command line
 description: Every command, flag, argument and environment variable of the jud binary, with each command's help text as the binary prints it, the verdict JSON a run writes, the report jud eval prints and its JSON keys, what jud record, jud tune and jud split write, and the exit status.
 status: current
-last_reviewed: 2026-10-24
+last_reviewed: 2026-10-26
 tags: [judgment, jud, cli, record, eval, tune, split, reference]
 ---
 
@@ -883,7 +883,7 @@ Options:
 | `TYPESAFE_API_KEY` | `jud config`, `jud record`, and `jud RUBRIC` and `jud eval` when they have no replay | The key sent as the bearer; overrides `api_key` in the file |
 | `TYPESAFE_BASE_URL` | the same commands | The server; overrides `base_url` in the file |
 | `JUD_REPLAY` | the commands that take `--replay` ([which ones](configuration.md#replay)) | A directory of recordings to answer from instead of a server; `--replay` overrides it |
-| `XDG_CONFIG_HOME` | the same commands | Moves the configuration file's directory |
+| `XDG_CONFIG_HOME` | the same commands | Moves the configuration file's directory; only an absolute path counts, as for `HOME` |
 
 [Configuration](configuration.md) has the precedence, the file and what an empty value means. Any other `TYPESAFE_*` or `JUD_*` variable that is set is named on stderr before a command asks a server, since a misspelt one would otherwise send the run to the hosted API ([Variables jud does not read](configuration.md#variables-jud-does-not-read)).
 

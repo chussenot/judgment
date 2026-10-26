@@ -149,7 +149,7 @@ fn read_rewrites(path: &std::path::Path) -> Result<Rewrites, Failure> {
             path.display()
         ))
     })?;
-    serde_saphyr::from_str::<Rewrites>(&text).map_err(|e| {
+    crate::config::from_yaml::<Rewrites>(&text).map_err(|e| {
         Failure::Usage(format!(
             "--tone-perturb {}: not a map of case id to question id to rewrite: {e}",
             path.display()
