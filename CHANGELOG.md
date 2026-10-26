@@ -337,6 +337,10 @@ All notable changes to the `judgment` crate. The format follows
   the builders and the `.jud` reader alike, as the API refuses it. The
   reader read `instructions: 42` or `criteria: [1, 2, 3]` and `to_yaml`
   wrote them back, so a document `jud check` passed failed the schemas.
+- The `.jud` reader refuses a field a Recording's `spec` does not define,
+  naming it (`spec.fingreprint`), as the format and the schema require. It
+  was ignored, so a misspelt `fingerprint` read as a recording with none,
+  which no replay finds by its request, and the writer dropped it.
 
 ## [0.14.0] - 2026-10-15
 

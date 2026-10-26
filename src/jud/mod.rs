@@ -534,6 +534,15 @@ pub(crate) fn refuse_extra(rest: &IndexMap<String, Value>) -> Result<()> {
 /// Parse a `Recording` document: `metadata.name` is the case it answers, the
 /// fields of [`Recording`] sit under `spec`.
 pub fn parse_recording(text: &str) -> Result<Recording> {
+    const FIELDS: [&str; 7] = [
+        "response",
+        "elapsed_ms",
+        "request_hash",
+        "fingerprint",
+        "server",
+        "recorded_at",
+        "rubric",
+    ];
     #[derive(Deserialize)]
     struct Doc {
         #[serde(rename = "apiVersion")]
@@ -556,6 +565,14 @@ pub fn parse_recording(text: &str) -> Result<Recording> {
         return Err(Error::Invalid {
             field: "spec.case".to_owned(),
             reason: "the case a recording answers is `metadata.name`".to_owned(),
+        });
+    }
+    // `Recording` ignores a key it does not know; the format refuses one, so
+    // a misspelt `fingerprint` is not read as a recording with none.
+    if let Some(key) = spec.keys().find(|k| !FIELDS.contains(&k.as_str())) {
+        return Err(Error::Invalid {
+            field: format!("spec.{key}"),
+            reason: format!("not a field of a Recording: {}", FIELDS.join(", ")),
         });
     }
     spec.insert("case".to_owned(), Value::String(doc.metadata.name));
@@ -898,6 +915,14 @@ mod tests {
         let err = parse_recording(&format!("{base}metadata: {{name: c}}\nspec:\n  case: c\n  response: {{model: m, answers: {{}}}}\n  elapsed_ms: 1\n")).unwrap_err();
         assert!(
             matches!(&err, Error::Invalid { field, .. } if field == "spec.case"),
+            "{err}"
+        );
+        let err = parse_recording(&format!(
+            "{base}metadata: {{name: c}}\n{spec}  fingreprint: sha256:00\n"
+        ))
+        .unwrap_err();
+        assert!(
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.fingreprint"),
             "{err}"
         );
         let err = parse_recording(&format!("{base}metadata: {{name: ../c}}\n{spec}")).unwrap_err();

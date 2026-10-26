@@ -392,6 +392,12 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
             &*RECORDING,
             "apiVersion: jud/v1.3\nkind: Recording\nmetadata:\n  name: c\nspec:\n  elapsed_ms: 1\n",
         ),
+        // A recording's field misspelt: read, it would be a recording with no
+        // fingerprint, which no replay finds by its request.
+        (
+            &*RECORDING,
+            "apiVersion: jud/v1.3\nkind: Recording\nmetadata:\n  name: c\nspec:\n  elapsed_ms: 1\n  fingreprint: sha256:00\n  response: {model: m, answers: {}, usage: {input_tokens: 1, output_tokens: 1}}\n",
+        ),
         // A number or a boolean where the API takes text, an object, an array or
         // null: instructions, a level, an option's description, a Noul's side.
         (
