@@ -9,7 +9,7 @@ use std::path::Path;
 
 use super::{
     API_VERSION, AssetSource, Envelope, Error, MINOR, Metadata, Result, check_assets, check_name,
-    check_path, from_text, load_assets, present, refuse_extra, some, to_yaml,
+    check_path, from_text, load_assets, present, refuse_extra, refuse_null, some, to_yaml,
 };
 use crate::answer::{
     BoundingBox, BoxEdges, Choice, Confidence, FromAnswer, Noul, PixelBox, Probability, Response,
@@ -648,6 +648,7 @@ impl Rubric {
     /// ([`Error::Question`]), each gate against its question ([`Error::Policy`]).
     pub fn parse(text: &str) -> Result<Self> {
         from_text::<Envelope>(text)?.expect_kind("Rubric")?;
+        refuse_null(text, "Rubric")?;
         let raw: RawRubric = from_text(text)?;
         refuse_extra(&raw.rest)?;
         check_name("metadata.name", &raw.metadata.name)?;
@@ -2019,18 +2020,35 @@ spec:
             under_spec("    part_when: {}\npolicy:\n  n: {threshold: 0.5, strict: false}\n")
         ))
         .unwrap();
-        for addition in [
-            "    when: null\n",
-            "    options_from: null\n",
-            "    part_when: null\n",
-            "policy:\n  n: {threshold: 0.5, strict: null}\n",
+        for (addition, named) in [
+            ("    when: null\n", "spec.questions.n.when"),
+            ("    options_from: null\n", "spec.questions.n.options_from"),
+            ("    part_when: null\n", "spec.questions.n.part_when"),
+            (
+                "policy:\n  n: {threshold: 0.5, strict: null}\n",
+                "spec.policy.n.strict",
+            ),
+            (
+                "policy:\n  n: {threshold: null}\n",
+                "spec.policy.n.threshold",
+            ),
+            ("policy: null\n", "spec.policy"),
+            ("tuning: {model: null}\n", "spec.tuning.model"),
         ] {
             let text = format!("{base}{}", under_spec(addition));
+            let err = Rubric::parse(&text).unwrap_err();
             assert!(
-                matches!(Rubric::parse(&text).unwrap_err(), Error::Syntax(_)),
-                "{addition}"
+                matches!(&err, Error::Invalid { field, .. } if field == named),
+                "{addition}: {err}"
             );
         }
+        // Where the format gives null a meaning, it is read: instructions,
+        // a description, a tuning block's own key.
+        Rubric::parse(&format!(
+            "{base}{}",
+            under_spec("tuning: {accuracy: null}\n")
+        ))
+        .unwrap();
         let score = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    s:\n      type: score\n      instructions: rate\n      criteria: [low, high]\n";
         let err = Rubric::parse(&format!(
             "{score}{}",
@@ -2046,7 +2064,10 @@ spec:
             under_spec("policy:\n  s: {level_at_least: null}\n")
         ))
         .unwrap_err();
-        assert!(matches!(err, Error::Syntax(_)), "{err}");
+        assert!(
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.policy.s.level_at_least"),
+            "{err}"
+        );
     }
 
     #[tokio::test]

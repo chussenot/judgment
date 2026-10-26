@@ -404,6 +404,53 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
             &*RECORDING,
             "apiVersion: jud/v1.3\nkind: Recording\nmetadata:\n  name: c\nspec:\n  elapsed_ms: 1\n",
         ),
+        // A number or a boolean where the format takes text, and null where it
+        // gives null no meaning: read as text or as absent, each would be a
+        // document the schemas refuse.
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: 2026\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\n  labels: {run: 3}\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    s: {type: score, instructions: rate, criteria: [low, high]}\n  policy:\n    s: {fallback: 1}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n  policy:\n    n: {threshold: null}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n  policy: null\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - id: 123\n      state: s\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: s\n      tags: [1, true]\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: s\n      note: 4.5\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  rubric: 7\n  cases:\n    - state: s\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  rubric: null\n  cases:\n    - state: s\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: s\n      expect: null\n",
+        ),
         // A recording's field misspelt: read, it would be a recording with no
         // fingerprint, which no replay finds by its request.
         (

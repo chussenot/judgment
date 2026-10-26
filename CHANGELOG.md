@@ -348,6 +348,15 @@ All notable changes to the `judgment` crate. The format follows
   `\\server\share\logo.png`, which the schema refuses, and on Windows a
   path starting with `\` or `/` is not absolute and would have been joined
   out of the document's directory. The schema now also refuses a drive.
+- The `.jud` reader refuses a number or a boolean where the format takes
+  text, and `null` wherever the format gives it no meaning, as the schemas
+  do. It read `metadata.name: 2026`, `tags: [1, true]`, a case's `id: 123`
+  or a Score's `fallback: 1` as text, and `threshold: null`, `policy: null`
+  or a case's `expect: null` as absent, so `jud check` passed documents
+  another reader holding to the schemas refuses, and a `null` bar silently
+  became the default one. The refusal names the line (for a number) or the
+  field (for `null`) and quotes nothing; `metadata.version` still takes a
+  number. The spec's reading rules say so.
 
 ## [0.14.0] - 2026-10-15
 

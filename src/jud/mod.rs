@@ -556,6 +556,7 @@ pub fn parse_recording(text: &str) -> Result<Recording> {
         rest: IndexMap<String, Value>,
     }
     from_text::<Envelope>(text)?.expect_kind("Recording")?;
+    refuse_null(text, "Recording")?;
     let doc: Doc = from_text(text)?;
     refuse_extra(&doc.rest)?;
     doc.metadata.refuse("version", "Recording")?;
@@ -617,13 +618,99 @@ pub fn recording_to_yaml(recording: &Recording) -> Result<String> {
 /// error names its line and column and quotes nothing, because a document's
 /// state can be someone's data and the message lands in a log.
 pub(crate) fn from_text<T: DeserializeOwned>(text: &str) -> Result<T> {
+    read_yaml(text, true)
+}
+
+/// [`from_text`], with `no_schema` off where a document is read as a plain
+/// tree: a Noul's `true:` key is a boolean to YAML and a map key to JSON.
+fn read_yaml<T: DeserializeOwned>(text: &str, no_schema: bool) -> Result<T> {
     let mut options = serde_saphyr::Options::default();
     options.strict_booleans = true;
     options.merge_keys = serde_saphyr::MergeKeyPolicy::Error;
     options.reject_unsupported_tags = true;
     options.ignore_binary_tag_for_string = true;
     options.with_snippet = false;
-    serde_saphyr::from_str_with_options(text, options).map_err(|e| Error::Syntax(e.to_string()))
+    // A field of text takes text: `name: 2026` or `tags: [1, true]` is
+    // refused, not read as "2026", which the schemas refuse too.
+    options.no_schema = no_schema;
+    serde_saphyr::from_str_with_options(text, options).map_err(|e| {
+        Error::Syntax(match &e {
+            // Its own message quotes the value, which this reader never does.
+            serde_saphyr::Error::QuotingRequired { location, .. } => format!(
+                "a number or a boolean where the format takes text: quote it, at line {}, column {}",
+                location.line(),
+                location.column()
+            ),
+            _ => e.to_string(),
+        })
+    })
+}
+
+/// Refuse `null` wherever the format gives it no meaning, naming the field.
+/// The schemas take it only in instructions and descriptions, as a turn
+/// label's `from_turn`, and inside what is free: a case's state, a
+/// recording's answers, a tuning block's own keys. Read as absent, it would
+/// make `threshold: null` the default bar and `expect: null` no labels.
+pub(crate) fn refuse_null(text: &str, kind: &str) -> Result<()> {
+    fn allowed(kind: &str, path: &[&str]) -> bool {
+        match (kind, path) {
+            (
+                "Rubric",
+                ["spec", "questions", _, "instructions", ..]
+                | ["spec", "questions", _, "criteria", _, ..],
+            )
+            | (
+                "Cases",
+                ["spec", "cases", _, "state", ..]
+                | ["spec", "cases", _, "options", _, _, ..]
+                | ["spec", "cases", _, "expect", _, "from_turn"],
+            ) => true,
+            ("Rubric", ["spec", "tuning", key, ..]) => {
+                !matches!(*key, "cases" | "model" | "server" | "tuned_at")
+            }
+            ("Recording", ["spec", "response", "answers", _, key, ..]) => *key != "type",
+            ("Recording", ["spec", "response", key, ..]) => {
+                !matches!(*key, "model" | "answers" | "usage" | "request_id")
+            }
+            _ => false,
+        }
+    }
+    fn walk(kind: &str, value: &Value, path: &mut Vec<String>) -> Result<()> {
+        match value {
+            Value::Null => {
+                let segments: Vec<&str> = path.iter().map(String::as_str).collect();
+                if allowed(kind, &segments) {
+                    return Ok(());
+                }
+                let field = path.iter().fold(String::new(), |mut field, segment| {
+                    if !field.is_empty() && !segment.starts_with('[') {
+                        field.push('.');
+                    }
+                    field.push_str(segment);
+                    field
+                });
+                Err(Error::Invalid {
+                    field,
+                    reason: "null is not a value of this field; leave the field out instead"
+                        .to_owned(),
+                })
+            }
+            Value::Array(items) => items.iter().enumerate().try_for_each(|(i, item)| {
+                path.push(format!("[{i}]"));
+                let checked = walk(kind, item, path);
+                path.pop();
+                checked
+            }),
+            Value::Object(map) => map.iter().try_for_each(|(key, item)| {
+                path.push(key.clone());
+                let checked = walk(kind, item, path);
+                path.pop();
+                checked
+            }),
+            _ => Ok(()),
+        }
+    }
+    walk(kind, &read_yaml::<Value>(text, false)?, &mut Vec::new())
 }
 
 /// Refuse an id that is not a name (`docs/reference/jud-format.md`, Names): every
@@ -880,6 +967,18 @@ mod tests {
         for bad in ["", "customer.", ".customer", "customer..x", "customer. x"] {
             assert!(check_path("f", bad).is_err(), "{bad:?}");
         }
+    }
+
+    /// A number where the format takes text is refused at its line, and the
+    /// refusal quotes nothing, as every refusal of this reader.
+    #[test]
+    fn a_number_where_text_goes_is_refused_without_quoting_it() {
+        let err = parse("apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: 20261026\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n")
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::Syntax(m) if m.contains("quote it, at line 4") && !m.contains("20261026")),
+            "{err}"
+        );
     }
 
     /// An image's path is read as text, so a path is refused or read the same
