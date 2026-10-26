@@ -746,6 +746,71 @@ fn a_malformed_configuration_file_is_refused_by_name() {
     );
 }
 
+/// A configuration file holds a key, and the line next to a typo can be it:
+/// a refusal names the file, the line and the column, and quotes nothing.
+#[test]
+fn a_malformed_configuration_file_never_prints_its_api_key() {
+    for typo in ["timeout_secs: 3O\n", "modle: jev-latest\n"] {
+        let home = config_home();
+        std::fs::write(
+            home.join("jud/config.yaml"),
+            format!("base_url: http://x\napi_key: sk-never-printed\nmodel: jev-latest\n{typo}"),
+        )
+        .unwrap();
+        let out = jud(&["config"], "", &[], &home);
+        assert_eq!(out.status.code(), Some(2), "{typo}");
+        let err = stderr(&out);
+        assert!(err.contains("is not a jud configuration"), "{err}");
+        assert!(err.contains("line 4"), "{err}");
+        assert!(!err.contains("sk-never-printed"), "{typo}: {err}");
+    }
+}
+
+/// With no absolute `XDG_CONFIG_HOME` or `HOME` there is no configuration
+/// file: one in the working directory is never read, since a checkout could
+/// then name the server while the environment supplies the key.
+#[test]
+fn no_absolute_home_reads_no_configuration_from_the_working_directory() {
+    let dir = config_home();
+    std::fs::create_dir_all(dir.join(".config/jud")).unwrap();
+    std::fs::write(
+        dir.join(".config/jud/config.yaml"),
+        "base_url: http://127.0.0.1:9/elsewhere\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("jud/config.yaml"),
+        "base_url: http://127.0.0.1:9/relative\n",
+    )
+    .unwrap();
+    let cases: [&[(&str, &str)]; 4] = [
+        &[],
+        &[("HOME", "")],
+        &[("HOME", ".")],
+        &[("XDG_CONFIG_HOME", ".")],
+    ];
+    for env in cases {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_jud"));
+        command
+            .arg("config")
+            .current_dir(&dir)
+            .env_remove("HOME")
+            .env_remove("XDG_CONFIG_HOME");
+        for name in own_variables() {
+            command.env_remove(name);
+        }
+        for (k, v) in env {
+            command.env(k, v);
+        }
+        let out = command.output().unwrap();
+        assert_eq!(out.status.code(), Some(0), "{env:?}: {}", stderr(&out));
+        let shown: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(shown["base_url_from"], "default", "{env:?}: {shown}");
+        assert_eq!(shown["config_file"], Value::Null, "{env:?}: {shown}");
+        assert_eq!(shown["config_file_present"], false, "{env:?}: {shown}");
+    }
+}
+
 /// The command tree as the binary itself describes it: every subcommand
 /// named by `jud --help`, and for each (the root included) every long flag
 /// its `--help` lists. Read from the help rather than written out, so a

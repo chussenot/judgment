@@ -365,9 +365,10 @@ pub enum Error {
     /// send the key to another virtual host than the base URL names.
     #[error("header {0:?} is set by the client and cannot be overridden")]
     ReservedHeader(String),
-    /// A body field the client sets itself (`state`, `model` or `questions`)
-    /// was given as a per-call extra field; the value is the name. Refused
-    /// before anything is sent: a replaced `questions` or `state` is a
+    /// A body field the client sets itself (`state`, `model`, `questions`,
+    /// `assets`, or `images` on a call that sends shared images) was given as
+    /// a per-call extra field; the value is the name. Refused before anything
+    /// is sent: a replaced `questions` or `state` is a
     /// request the response is not read against and a recording is not
     /// keyed by, and a replaced `model` would mislabel the span.
     #[error("body field {0:?} is set by the client and cannot be an extra field")]

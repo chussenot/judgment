@@ -232,7 +232,7 @@ def run_one(ev, out_dir, model, reference):
         else:
             check("rubric read with include_str!", "include_str!" in source)
         if re.search(r"fn label\(self\)", source):
-            check("a Score reads its level by index or text", "fn from_level(" in source and "levels_read_by_index_and_by_text" in source)
+            check("a Score reads its verdict by index and its fallback by text", "fn from_index(" in source and "fn from_level(" in source and "levels_read_by_index_and_by_text" in source)
         crate = check_crate(base, ws, ev, env)
         code, out = cargo(["test", "--quiet"], crate, env)
         check("module test and hidden scenario test pass", code == 0, out if code else "")

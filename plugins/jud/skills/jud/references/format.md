@@ -216,8 +216,8 @@ A gate says where one question's answer becomes an action. Every field is OPTION
 | `threshold` | Noul | Yes at this probability of yes and above. | 0.5 |
 | `confidence` | Choice, Score, Box | Acted on at this confidence and above; deferred below it. A Box that gave no confidence is read at 0. | 0, nothing deferred |
 | `bands` | Choice, Score, Box | Confidence bands, highest bar first, each `{at_least, verdict}`: the first band the answer's confidence meets names the verdict; below the last, the answer is deferred. The generalisation of `confidence`, which is one unnamed band; a gate has one or the other. Bars strictly decrease, names are distinct, and the list is not empty. | |
-| `fallback` | Choice, Score | What a deferred answer falls back to: an offered option key (a static one, for a Choice whose options come from the request), or a level by its text or its index as a string. | none |
-| `level_at_least` | Score | A level, by index or text: the verdict says whether the nearest level reached it. | |
+| `fallback` | Choice, Score | What a deferred answer falls back to: an offered option key (a static one, for a Choice whose options come from the request), or a level by its text or its index as a string. A string is the level with that text when there is one, else an index (see [Cases](#cases)). | none |
+| `level_at_least` | Score | A level, by index or text: the verdict says whether the nearest level reached it. A string is the level with that text when there is one, else an index (see [Cases](#cases)). | |
 | `strict` | every bar | `true`: a bar is met above it, not at it (`>` for `≥`), for the threshold, the confidence and every band. A Choice, Score or Box gate with neither `confidence` nor `bands` has no bar, and defers nothing, strict or not. | `false` |
 | `note` | any | Why the bar is where it is. | |
 
@@ -298,7 +298,7 @@ Binding cases to a rubric lowers each case's request (its state and its `options
 | Noul | `true` or `false` | `yes` or `no` |
 | Noul, over a conversation | `{from_turn: n}`: true from turn `n` (zero-based) on; `{from_turn: null}`: never | `yes` when the conversation has a turn `n`, else `no`; per turn, [Conversations](#conversations) |
 | Choice | an option the case's request offers, static or supplied | the key |
-| Score | a level's index (a number) or a level's text | the index, as a string |
+| Score | a level's index (a number) or a level's text; a string that is no level's text is read as an index, so on a scale whose levels are numbers `"3"` is the level `"3"`, never the fourth level | the index, as a string |
 | Box | `{box: {top, bottom, left, right}}`, the edges as fractions of the image, `top` below `bottom` and `left` below `right`; `iou_at_least` beside it, 0 to 1, the overlap that counts as right (0.5 when left out) | `box`; right when the intersection over union of the answer and the label reaches the bar ([decision 0026](https://github.com/chussenot/judgment/blob/main/docs/project/decisions/0026-a-box-is-graded-by-intersection-over-union.md)) |
 
 The "grades as" column is the vocabulary the API's own answers are graded in: a Noul answer is `yes` at 0.5 and above, a Choice answer is its option key, a Score answer's distribution is keyed by level index, a Box answer is `box` with the overlap as the number a report keeps (the mean overlap stands where a Brier score would).

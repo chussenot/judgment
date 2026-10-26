@@ -2899,6 +2899,119 @@ async fn images_go_as_a_shared_array_when_asked() {
     }
 }
 
+/// Under shared images the body keeps the order the model sees: questions,
+/// a Choice's options and a struct state's fields go out as written, as on
+/// the `assets` path. Run without the `mcp` feature too (CI's default-features
+/// step), since that feature's `serde_json/preserve_order` would hide a body
+/// that passes through a sorted map.
+#[tokio::test]
+async fn shared_images_keep_the_order_the_model_sees() {
+    #[derive(serde::Serialize)]
+    struct Ticket {
+        zebra: &'static str,
+        apple: &'static str,
+        photo: &'static str,
+    }
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "m",
+            "answers": {
+                "zeta": { "type": "noul", "noul": 0.5 },
+                "alpha": { "type": "choice", "choice": "zz",
+                           "probabilities": { "zz": 0.6, "aa": 0.4 }, "confidence": 0.2 }
+            },
+            "usage": { "input_tokens": 1, "output_tokens": 1 }
+        })))
+        .mount(&server)
+        .await;
+    let mut assets = judgment::Assets::new();
+    assets
+        .insert("photo", fixture_image("square-300.png"))
+        .unwrap();
+    let state = Ticket {
+        zebra: "z",
+        apple: "a",
+        photo: "photo",
+    };
+    let mut q = Questions::new();
+    q.noul("zeta", "Is `photo` dark?", None).unwrap();
+    q.dynamic_choice(
+        "alpha",
+        "Which?",
+        [("zz".to_owned(), None), ("aa".to_owned(), None)],
+    )
+    .unwrap();
+    for data_urls in [false, true] {
+        let c = Client::builder()
+            .api_key("test-key")
+            .base_url(server.uri())
+            .retry(RetryPolicy::none())
+            .shared_images(!data_urls)
+            .shared_images_as_data_urls(data_urls)
+            .build()
+            .unwrap();
+        c.evaluate(&Request::new(&state, "m", &q).with_assets(&assets))
+            .await
+            .unwrap();
+    }
+    for sent in server.received_requests().await.unwrap() {
+        let body = String::from_utf8(sent.body.clone()).unwrap();
+        let at = |needle: &str| {
+            body.find(needle)
+                .unwrap_or_else(|| panic!("{needle} not in {body}"))
+        };
+        assert!(at(r#""zeta""#) < at(r#""alpha""#), "questions: {body}");
+        assert!(at(r#""zz""#) < at(r#""aa""#), "options: {body}");
+        assert!(at(r#""zebra""#) < at(r#""apple""#), "state: {body}");
+        assert!(at(r#""state""#) < at(r#""model""#), "fields: {body}");
+    }
+}
+
+/// The client writes the shared `images` array, so an extra field of that
+/// name is refused under shared images rather than overwritten; without them
+/// it is the caller's own field, sent as given.
+#[tokio::test]
+async fn an_images_extra_field_is_refused_only_under_shared_images() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let mut assets = judgment::Assets::new();
+    assets
+        .insert("door", fixture_image("square-300.png"))
+        .unwrap();
+    let state = json!({ "door": "door" });
+    let q = one_noul();
+    let request = Request::new(&state, "m", &q).with_assets(&assets);
+    let c = client(&server, RetryPolicy::none());
+    let extra = CallOptions::new().extra("images", json!(["mine"])).unwrap();
+    let err = c
+        .evaluate_with(&request, &extra.clone().shared_images(true))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::ReservedField(name) if name == "images"),
+        "{err:?}"
+    );
+    c.evaluate_with(&request, &extra).await.unwrap();
+    // A request with no images sends no shared array, so the field is the
+    // caller's again.
+    let plain = Request::new(&state, "m", &q);
+    c.evaluate_with(&plain, &extra.shared_images(true))
+        .await
+        .unwrap();
+    let received = server.received_requests().await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&received[0].body).unwrap();
+    assert_eq!(body["images"], json!(["mine"]));
+    assert!(body["assets"].is_object());
+    let body: serde_json::Value = serde_json::from_slice(&received[1].body).unwrap();
+    assert_eq!(body["images"], json!(["mine"]));
+    assert!(body.get("assets").is_none(), "{body}");
+}
+
 /// With shared images as data URLs, Liquid's spelling: the same array, each
 /// image a `data:` URL of its own type; asked for on the client or on the
 /// call, and `shared_images(false)` on the call still sends the map.

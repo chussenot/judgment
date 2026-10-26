@@ -166,7 +166,8 @@ pub struct Band {
 pub enum LevelRef {
     /// The level's index, lowest first.
     Index(usize),
-    /// The level's text, or its index as a string.
+    /// The level's text, or, when no level has that text, its index as a
+    /// string.
     Text(String),
 }
 
@@ -981,16 +982,19 @@ pub(crate) fn level_text(level: Option<&Value>) -> String {
     }
 }
 
-/// The level a label names, by its index as a string or by its text.
+/// The level a label names: the level whose text it is, else its index as a
+/// string. The text comes first, so on a scale whose levels are numbers the
+/// label `"3"` is the level `"3"`, not the fourth level the index 3 names.
 pub(crate) fn level_index(levels: &[Value], label: &str) -> Option<usize> {
-    if let Ok(index) = label.parse::<usize>()
-        && index < levels.len()
-    {
-        return Some(index);
-    }
     levels
         .iter()
         .position(|level| level_text(Some(level)) == label)
+        .or_else(|| {
+            label
+                .parse::<usize>()
+                .ok()
+                .filter(|&index| index < levels.len())
+        })
 }
 
 fn validate_gate(
@@ -1719,6 +1723,23 @@ spec:
         let mut unconditional = rubric.clone();
         unconditional.questions["refund_request"].when = None;
         assert_ne!(unconditional.fingerprint(), rubric.fingerprint());
+    }
+
+    #[test]
+    fn a_level_string_is_a_level_s_text_before_its_index() {
+        // A scale whose levels are numbers: "3" is the level "3", the third,
+        // not the fourth level that the index 3 would name.
+        let numbers: Vec<Value> = ["1", "2", "3", "4", "5"].map(Value::from).into();
+        assert_eq!(level_index(&numbers, "3"), Some(2));
+        assert_eq!(level_index(&numbers, "5"), Some(4));
+        assert_eq!(LevelRef::Text("4".into()).resolve(&numbers), Some(3));
+        let json_numbers: Vec<Value> = [1, 2, 3].map(Value::from).into();
+        assert_eq!(level_index(&json_numbers, "2"), Some(1));
+        // No level has that text: the string is an index.
+        let words: Vec<Value> = ["low", "mid", "high"].map(Value::from).into();
+        assert_eq!(level_index(&words, "2"), Some(2));
+        assert_eq!(level_index(&words, "high"), Some(2));
+        assert_eq!(level_index(&words, "3"), None);
     }
 
     #[test]

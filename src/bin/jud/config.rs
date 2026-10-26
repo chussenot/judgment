@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use judgment::client::{API_KEY_ENV, DEFAULT_BASE_URL, DEFAULT_MODEL};
 use judgment::{Client, Error};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::Fallible;
@@ -86,7 +87,8 @@ impl Source {
 /// The backend a run uses, with where each value came from.
 #[derive(Debug, Serialize)]
 pub(crate) struct Resolved {
-    config_file: String,
+    /// `None` when neither `XDG_CONFIG_HOME` nor `HOME` is an absolute path.
+    config_file: Option<String>,
     config_file_present: bool,
     base_url: String,
     base_url_from: Source,
@@ -114,14 +116,27 @@ pub(crate) struct Resolved {
     ignored_environment: Vec<String>,
 }
 
-/// `$XDG_CONFIG_HOME/jud/config.yaml`, else `$HOME/.config/jud/config.yaml`.
-pub(crate) fn path() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        .unwrap_or_else(|| PathBuf::from(".config"));
-    base.join("jud").join("config.yaml")
+/// `$XDG_CONFIG_HOME/jud/config.yaml`, else `$HOME/.config/jud/config.yaml`,
+/// each only when it is an absolute path (as the XDG specification says of
+/// the first); else no file. A relative one would be read from the working
+/// directory, where a checkout could name the server the key is sent to.
+pub(crate) fn path() -> Option<PathBuf> {
+    let absolute = |name| {
+        std::env::var_os(name)
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+    };
+    absolute("XDG_CONFIG_HOME")
+        .or_else(|| absolute("HOME").map(|home| home.join(".config")))
+        .map(|base| base.join("jud").join("config.yaml"))
+}
+
+/// YAML with no source snippet in an error, as the `.jud` reader reads it:
+/// the line next to a typo in a configuration file can be its key.
+pub(crate) fn from_yaml<T: DeserializeOwned>(text: &str) -> Result<T, serde_saphyr::Error> {
+    let mut options = serde_saphyr::Options::default();
+    options.with_snippet = false;
+    serde_saphyr::from_str_with_options(text, options)
 }
 
 fn read_file(path: &PathBuf) -> Fallible<Option<File>> {
@@ -133,7 +148,7 @@ fn read_file(path: &PathBuf) -> Fallible<Option<File>> {
     if text.trim().is_empty() {
         return Ok(Some(File::default()));
     }
-    serde_saphyr::from_str(&text)
+    from_yaml(&text)
         .map(Some)
         .map_err(|e| format!("{} is not a jud configuration: {e}", path.display()).into())
 }
@@ -165,7 +180,10 @@ pub(crate) fn resolve() -> Fallible<Resolved> {
 /// and the default.
 pub(crate) fn resolve_with(long_context: Option<bool>) -> Fallible<Resolved> {
     let config_file = path();
-    let file = read_file(&config_file)?;
+    let file = match &config_file {
+        Some(path) => read_file(path)?,
+        None => None,
+    };
     let present = file.is_some();
     let file = file.unwrap_or_default();
     let (base_url, base_url_from) = match (env_var(BASE_URL_ENV), file.base_url) {
@@ -188,7 +206,7 @@ pub(crate) fn resolve_with(long_context: Option<bool>) -> Fallible<Resolved> {
         (None, None) => (false, Source::Default),
     };
     Ok(Resolved {
-        config_file: config_file.display().to_string(),
+        config_file: config_file.map(|path| path.display().to_string()),
         config_file_present: present,
         base_url,
         base_url_from,
@@ -253,12 +271,19 @@ impl Resolved {
                 "jud: {name} is set but jud does not read it (it reads {BASE_URL_ENV}, \
                  {API_KEY_ENV} and {REPLAY_ENV}, and the model from `model` in {}); \
                  asking {} at {}, the base URL from {}",
-                self.config_file,
+                self.config_file_name(),
                 self.model,
                 crate::backend::public_url(&self.base_url),
                 self.base_url_from().replace('_', " ")
             );
         }
+    }
+
+    /// The configuration file as a message names it.
+    fn config_file_name(&self) -> &str {
+        self.config_file
+            .as_deref()
+            .unwrap_or("a configuration file (none read: neither XDG_CONFIG_HOME nor HOME is an absolute path)")
     }
 
     /// Where the key came from: `environment`, `config_file` or `missing`;
@@ -286,7 +311,7 @@ impl Resolved {
         builder.build().map_err(|e| match e {
             Error::MissingApiKey => format!(
                 "no API key: set {API_KEY_ENV}, or `api_key` in {}",
-                self.config_file
+                self.config_file_name()
             )
             .into(),
             other => format!("backend configuration: {other}").into(),

@@ -1052,23 +1052,30 @@ impl QuestionReport {
                     .map_or((0, 0), |g| (g.deferred, g.acted + g.deferred));
                 let to = self.fallback.as_deref().map_or_else(
                     || "nothing acts on them".to_owned(),
-                    |fallback| format!("they fall back to {}", self.fallback_shown(fallback)),
+                    |fallback| {
+                        format!(
+                            "they fall back to {}",
+                            fallback_shown(&self.outcomes, fallback)
+                        )
+                    },
                 );
                 format!("the gate defers {deferred} of {seen}: {to}")
             }
         }
     }
+}
 
-    /// A fallback as the reader knows it: a Score's level by its text.
-    fn fallback_shown(&self, fallback: &str) -> String {
-        self.outcomes
-            .iter()
-            .find(|o| o.outcome == fallback || o.level.as_deref() == Some(fallback))
-            .map_or_else(
-                || out::plain(fallback),
-                |o| shown(&o.outcome, o.level.as_deref()),
-            )
-    }
+/// A fallback as the reader knows it: a Score's level by its text, else by
+/// its index, as the rubric reads it.
+fn fallback_shown(outcomes: &[OutcomeCount], fallback: &str) -> String {
+    outcomes
+        .iter()
+        .find(|o| o.level.as_deref() == Some(fallback))
+        .or_else(|| outcomes.iter().find(|o| o.outcome == fallback))
+        .map_or_else(
+            || out::plain(fallback),
+            |o| shown(&o.outcome, o.level.as_deref()),
+        )
 }
 
 /// An outcome for a person: a Score level by its text, anything else by the
@@ -1194,6 +1201,34 @@ mod tests {
             deferred,
             accuracy_when_acted: None,
         }
+    }
+
+    #[test]
+    fn a_score_s_fallback_is_shown_by_its_text_before_its_index() {
+        // Levels "5" to "1", highest first: `fallback: "1"` is the level
+        // whose text is "1", index 4, not index 1.
+        let outcomes: Vec<_> = ["5", "4", "3", "2", "1"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, text)| OutcomeCount {
+                level: Some(text.to_owned()),
+                ..count(&index.to_string(), 0, 0)
+            })
+            .collect();
+        assert_eq!(fallback_shown(&outcomes, "1"), "1");
+        let words: Vec<_> = ["low", "high"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, text)| OutcomeCount {
+                level: Some(text.to_owned()),
+                ..count(&index.to_string(), 0, 0)
+            })
+            .collect();
+        assert_eq!(fallback_shown(&words, "1"), "high");
+        assert_eq!(
+            fallback_shown(&[count("none_of_these", 0, 0)], "none_of_these"),
+            "none_of_these"
+        );
     }
 
     #[test]

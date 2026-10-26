@@ -8,6 +8,19 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Security
 
+- `jud` no longer prints its configuration file when it refuses one. A
+  typo in `~/.config/jud/config.yaml` made the refusal quote the lines
+  around it, the `api_key` line included, onto stderr, where CI logs and
+  agent transcripts keep it. The refusal (and that of a `--tone-perturb`
+  file) now names the file, the line and the column, as the `.jud` reader
+  already did.
+- `jud` reads its configuration file only from an absolute
+  `XDG_CONFIG_HOME` or `HOME`. With `HOME` unset or empty (a service,
+  `env -i`, some containers) or a relative `XDG_CONFIG_HOME`, it read
+  `.config/jud/config.yaml` from the working directory, so a checkout could
+  name the server that the environment's `TYPESAFE_API_KEY` was sent to.
+  With neither, there is no file, and `jud config` shows `config_file` as
+  `null`.
 - The workflows that build, test and release the crate pass zizmor
   (template injection, token permissions, persisted credentials): `ci.yml`
   and `mutants.yml` start from a read-only token, no checkout keeps its
@@ -242,6 +255,26 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Fixed
 
+- Under shared images (`ClientBuilder::shared_images`, Ollama's and
+  Liquid's shape), the body sent the questions, a Choice's options and a
+  struct state's fields in the alphabet's order, not as written: it was
+  built through a `serde_json::Value`, whose map is sorted unless the `mcp`
+  feature's `preserve_order` is on, and the released `jud` binary is built
+  without it. It is now written from a struct, in the order the model sees.
+  An extra field named `images` is `Error::ReservedField` under shared
+  images, where it was overwritten; CI runs the client's tests with the
+  default features too, since `--all-features` hid this.
+- A Score label, a gate's `level_at_least` or a Score's `fallback` written
+  as a string names the level with that text before it is read as an index.
+  On a scale whose levels are numbers (`["1", "2", "3", "4", "5"]`), the
+  label `"3"` was the fourth level, so a right answer graded wrong and
+  `level_at_least: "4"` gated at `"5"`. A string no level has as its text is
+  still an index. `jud tune` writes a level it cannot name by text as a
+  number, which no text can shadow; `jud eval`'s deferral warning names the
+  fallback's level by the same rule; and the jud plugin's `jud-rust`
+  templates read a verdict's level by its index (`from_index`) and a
+  fallback by its text first (`from_level`), where one reader took both
+  index first. `docs/reference/jud-format.md` states the rule.
 - The Box guidance no longer says `jev-latest` refuses a Box. On the
   hosted API `jev-latest` and `jev-preview` both point to `jev-1.14.0`
   (<https://docs.typesafe.ai/models>, read 2026-10-25), and a Box needs
