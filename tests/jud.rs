@@ -392,6 +392,24 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
             &*RECORDING,
             "apiVersion: jud/v1.3\nkind: Recording\nmetadata:\n  name: c\nspec:\n  elapsed_ms: 1\n",
         ),
+        // A number or a boolean where the API takes text, an object, an array or
+        // null: instructions, a level, an option's description, a Noul's side.
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: 42}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    s: {type: score, instructions: how bad?, criteria: [1, 2, 3]}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    c: {type: choice, instructions: pick, criteria: {a: 1, b: true}}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, criteria: {true: 1, false: false}}\n",
+        ),
     ]
 }
 

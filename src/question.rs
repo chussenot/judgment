@@ -460,6 +460,20 @@ pub(crate) fn validate_with(id: &str, question: &Question, min_options: usize) -
             reason,
         })
     };
+    // The API takes text, an object or an array (or null where a value may
+    // be left out); a number or a boolean is refused there, so here.
+    let scalar = |value: &Value| matches!(value, Value::Bool(_) | Value::Number(_));
+    let instructions = match question {
+        Question::Noul { instructions, .. }
+        | Question::Choice { instructions, .. }
+        | Question::Score { instructions, .. }
+        | Question::Box { instructions } => instructions,
+    };
+    if scalar(instructions) {
+        return refuse(format!(
+            "instructions must be text, an object, an array or null, not {instructions}"
+        ));
+    }
     match question {
         Question::Noul {
             instructions,
@@ -475,6 +489,15 @@ pub(crate) fn validate_with(id: &str, question: &Question, min_options: usize) -
                         .to_owned(),
                 );
             }
+            if let Some(criteria) = criteria {
+                for (side, value) in [("true", &criteria.yes), ("false", &criteria.no)] {
+                    if value.as_ref().is_some_and(scalar) {
+                        return refuse(format!(
+                            "criteria `{side}` must be text, an object, an array or null"
+                        ));
+                    }
+                }
+            }
         }
         Question::Choice { criteria, .. } => {
             if criteria.len() < min_options {
@@ -488,12 +511,22 @@ pub(crate) fn validate_with(id: &str, question: &Question, min_options: usize) -
             if criteria.contains_key("") {
                 return refuse("a Choice option key cannot be empty".to_owned());
             }
+            if let Some(key) = criteria.iter().find_map(|(k, d)| scalar(d).then_some(k)) {
+                return refuse(format!(
+                    "option {key:?}'s description must be text, an object, an array or null"
+                ));
+            }
         }
         Question::Score { criteria, .. } => {
             // The API gives a null level no meaning; a lenient backend echoes it into the legend.
             if let Some(index) = criteria.iter().position(Value::is_null) {
                 return refuse(format!(
                     "Score level {index} is null; every level needs a description"
+                ));
+            }
+            if let Some(index) = criteria.iter().position(scalar) {
+                return refuse(format!(
+                    "Score level {index} must be text, an object or an array"
                 ));
             }
             if criteria.len() < 2 || criteria.len() > MAX_SCORE_LEVELS {
@@ -582,6 +615,34 @@ mod tests {
         assert!(
             matches!(&err, Error::InvalidQuestion { id, reason } if id == "e" && reason.contains("\"x\" appears twice")),
             "{err:?}"
+        );
+        assert!(q.is_empty(), "a refused question is not added");
+    }
+
+    /// What the API refuses is refused here: a number or a boolean where it
+    /// takes text, an object, an array or null.
+    #[test]
+    fn a_number_or_a_boolean_the_api_refuses_is_refused() {
+        let mut q = Questions::new();
+        let reason = |err: Error| match err {
+            Error::InvalidQuestion { reason, .. } => reason,
+            other => panic!("{other:?}"),
+        };
+        let err = q.noul("a", 42, None).unwrap_err();
+        assert!(reason(err).starts_with("instructions must be text"));
+        let err = q
+            .noul("b", Value::Null, Some(NoulCriteria::new(true, "no")))
+            .unwrap_err();
+        assert_eq!(
+            reason(err),
+            "criteria `true` must be text, an object, an array or null"
+        );
+        let err = q
+            .score("c", "How bad?", vec![json!("low"), json!(2)])
+            .unwrap_err();
+        assert_eq!(
+            reason(err),
+            "Score level 1 must be text, an object or an array"
         );
         assert!(q.is_empty(), "a refused question is not added");
     }

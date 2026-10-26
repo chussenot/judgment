@@ -332,6 +332,11 @@ All notable changes to the `judgment` crate. The format follows
   does not correctly implement a total order"), and a shorter input
   mis-sorted, so `[3, NaN, 1, 2]` had a median of NaN. The crate's own
   callers pass whole milliseconds and were not affected.
+- A question whose instructions, Noul criteria, Choice option description
+  or Score level is a number or a boolean is `Error::InvalidQuestion`, from
+  the builders and the `.jud` reader alike, as the API refuses it. The
+  reader read `instructions: 42` or `criteria: [1, 2, 3]` and `to_yaml`
+  wrote them back, so a document `jud check` passed failed the schemas.
 
 ## [0.14.0] - 2026-10-15
 

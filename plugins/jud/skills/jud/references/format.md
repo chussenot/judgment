@@ -108,7 +108,7 @@ Labels and annotations are the only open maps outside `spec.tuning`, `spec.respo
 
 ### Questions
 
-A question is exactly what the API receives. The reader MUST apply the checks a request builder applies before sending, and refuse a question that would be refused: a Choice needs 2 to 255 options with non-empty keys, a Score needs 2 to 10 levels none of which is null, a Noul needs instructions or criteria that describe at least one outcome, a Box needs instructions that are not `null`, and no id is empty.
+A question is exactly what the API receives. The reader MUST apply the checks a request builder applies before sending, and refuse a question that would be refused: a Choice needs 2 to 255 options with non-empty keys, a Score needs 2 to 10 levels none of which is null, a Noul needs instructions or criteria that describe at least one outcome, a Box needs instructions that are not `null`, no id is empty, and instructions, a Noul's criteria, a Choice option's description and a Score level are each text, an object or an array (or `null` where the field may be left out), never a number or a boolean, which the API refuses.
 
 ```yaml
 questions:
