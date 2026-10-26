@@ -647,10 +647,12 @@ fn read_yaml<T: DeserializeOwned>(text: &str, no_schema: bool) -> Result<T> {
 }
 
 /// Refuse `null` wherever the format gives it no meaning, naming the field.
-/// The schemas take it only in instructions and descriptions, as a turn
-/// label's `from_turn`, and inside what is free: a case's state, a
-/// recording's answers, a tuning block's own keys. Read as absent, it would
-/// make `threshold: null` the default bar and `expect: null` no labels.
+/// The schemas take it only in instructions, an option's or a Noul
+/// criterion's description and a turn label's `from_turn`, and inside what
+/// is free: a case's state, a recording's answers and the fields its
+/// `response` or a tuning block keeps beyond the ones the format defines.
+/// Read as absent, it would make `threshold: null` the default bar and
+/// `expect: null` no labels.
 pub(crate) fn refuse_null(text: &str, kind: &str) -> Result<()> {
     fn allowed(kind: &str, path: &[&str]) -> bool {
         match (kind, path) {

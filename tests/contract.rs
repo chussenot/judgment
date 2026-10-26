@@ -48,8 +48,8 @@
 //! both directions, each case at its own instance path, so a schema refresh
 //! that closes a gap fails the case that pinned it:
 //!
-//! * `what_the_crate_sends_and_the_schema_refuses`: the builders accept any
-//!   JSON for state, so a null or numeric state goes out although the schema
+//! * `what_the_crate_sends_and_the_schema_refuses`: the client takes any
+//!   `Serialize` state, so a null or numeric state goes out although the schema
 //!   refuses it, as does a request with no questions. Numeric instructions,
 //!   a boolean Noul criterion and a numeric Score level are refused by the
 //!   builder as by the schema, which the same test pins.

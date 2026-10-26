@@ -193,7 +193,9 @@ fn check_out(args: &Tune) -> Result<(), Failure> {
 
 /// Whether a file at `out` would be in the recordings directory `dir`, or
 /// is one of its recordings under another name (a symlink, a hard link), or
-/// is a link whose write would create one there.
+/// is a link to a file there, existing or not. The write replaces a link
+/// rather than writing through it, but a link into the directory says the
+/// rubric was meant to go there, so it is refused as the directory is.
 fn among_recordings(out: &Path, dir: &Path) -> bool {
     let in_dir = |path: &Path| fsutil::same_file(&fsutil::parent_dir(path), dir);
     in_dir(out)
@@ -203,8 +205,8 @@ fn among_recordings(out: &Path, dir: &Path) -> bool {
             .any(|found| fsutil::same_file(out, &found.path))
 }
 
-/// Where a write to `path` ends up: `path`, or where the symlinks it is lead,
-/// including a link to a file that is not there yet, which a write creates.
+/// Where the symlinks `path` is lead: `path` itself when it is none,
+/// including a link to a file that is not there yet.
 /// Followed as many times as the system does before it gives up.
 fn landing(path: &Path) -> PathBuf {
     const MAX_LINKS: usize = 40;

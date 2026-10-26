@@ -6,7 +6,7 @@ date: 2026-10-08
 decision-makers: [platform engineering]
 consulted: []
 informed: []
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-26
 tags: [decisions, jud, cli, evaluation, tuning, recordings, ci]
 ---
 
@@ -102,7 +102,7 @@ The subcommands are `src/bin/jud/record.rs`, `eval.rs` and `tune.rs`, with `batc
     - `jud record` refuses to write a recording over the rubric or the cases. The path may be spelled another way (`./`, a symlinked directory, a hard link), and `--refresh` makes no difference.
     - `jud record` refuses a stale twin: a recording of a request this run asks, in a file this run would not write, that no longer fits the questions. The file is not the run's to remove, and a new recording beside it would leave two for one request, so the run stops and names it, unless `--refresh` is given, which does not read the directory: the new recording is written, the stale file stays and the run warns that two files record one request. A stale recording in the case's own file is replaced and reported.
     - `jud record` also refuses a case without an id, two requests that share a file name, a request that asks nothing, a label that a turn of a conversation cannot carry, and a directory that holds a file the reader refuses (`--refresh` skips reading the directory).
-    - `jud tune --out` refuses the rubric, the cases and anything in the recordings directory: a recording under another name, a link into the directory, a link whose write would create a file there.
+    - `jud tune --out` refuses the rubric, the cases and anything in the recordings directory: a recording under another name, a link into the directory, a link to a file there that does not exist yet.
     - `jud tune` refuses recordings from more than one model and a rubric with no gates.
 - **`--replay`.** `jud eval` takes it, or `JUD_REPLAY`, optionally. `jud tune` requires one of them. `jud record` has neither and never reads `JUD_REPLAY`, so a variable set for a CI job does not turn a record into a replay. A CI check that must not spend a call passes `--replay`, since an `eval` without one asks the backend.
 
@@ -112,7 +112,7 @@ The subcommands are `src/bin/jud/record.rs`, `eval.rs` and `tune.rs`, with `batc
 - **Credentials.** The server written into a recording and into a `tuning` block is `scheme://host/path`, without userinfo, query or fragment, and so is the one a failure names. `jud tune` strips a recording's server the same way before it writes it into the `tuning` block, whatever the recording holds.
 - **One runtime per run.** The backend holds one async runtime for the life of the run, so the client's connection pool survives a loop of calls.
 - **Planning before any call.** Every request is lowered and every conversation label checked before any call is made or any answer is taken from a recording, so a document problem is status 2 found before case 1 is paid for, never status 1 after case 4. A failed call stops `jud record` at that case and names how many were recorded and kept; what was written stays. Under a replay `jud eval` and `jud tune` try every case before they fail, and one message names every case with no recording.
-- **Writes are atomic in `jud record`.** Each recording goes to a temporary file in the same directory, is flushed, and then takes its name, so a replay never reads half a file. Two cases that lower to one request share a recording: the second is kept.
+- **Writes are atomic in `jud record` and `jud tune --out`.** Each recording, and the tuned rubric, goes to a temporary file in the same directory, is flushed, and then takes its name, so a replay never reads half a file and a failed write leaves the file that was there. `jud tune --out` was a plain write, a known limit, until the second-pass review (judgment-y7a.18). Two cases that lower to one request share a recording: the second is kept.
 - **Replay order.** `Replay::open` reads files in name order, so which of two files recording one request answers does not depend on the file system: the one that sorts last. A `.json` recording that does not parse is `Error::InvalidRecording`, naming the file, where it was `Error::Decode`. `jud record` and `jud tune` warn when two files record one request.
 
 ### What differs from the proposal
@@ -125,7 +125,6 @@ The subcommands are `src/bin/jud/record.rs`, `eval.rs` and `tune.rs`, with `batc
 - **A Score's table reads the most probable level; the policy reads the nearest.** The confidence table is the library's `gate_table`, which takes the most probable level as the answer. The policy acts on the level nearest the weighted score. They agree on an answer with one peak and part on a spread one. `jud tune` says so on stderr for every Score whose `confidence` bar it proposes.
 - **A strict gate's sweep counts an answer at the bar as acting.** A strict gate acts above its bar. `jud tune` counts the answers sitting exactly at the proposed bar and says what a strict gate does with them when there are any, and otherwise says that one can sit there.
 - **A lowest bar of 0.0 is proposed when every labelled answer is already right.** The gate would then defer nothing. `jud tune` proposes it and says so, as it does for `tone` on the triage documents.
-- **`jud tune --out` was a plain write at first.** It truncated and wrote the path, so a failed write lost the file that was there. It now writes as `jud record` does: a temporary file in the same directory, flushed, then renamed over the path.
 - **A base URL with userinfo sends Basic auth.** With `https://user:pass@host` as the base URL the client sends those credentials as Basic auth instead of the API key. Every recording and message drops the userinfo, but the request still carries it.
 
 ## Pros and cons of the options

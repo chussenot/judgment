@@ -25,14 +25,14 @@ const RETRY_AFTER_MS: HeaderName = HeaderName::from_static("retry-after-ms");
 ///
 /// The levels split on whether the request left the process, because a
 /// System One call is billed: a connection never made sent nothing, while a
-/// timeout, a reset or a body cut short may have been processed. The SDKs'
+/// timeout, a reset or a 2xx body cut short may have been processed. The SDKs'
 /// two flags (connection error, timeout) do not answer that question.
 /// [`BeforeSend`](Self::BeforeSend) relies on
 /// [`reqwest::Error::is_connect`], so a misclassification only retries less.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum TransportRetry {
-    /// Every transport failure, a body cut short included; the SDKs' default.
+    /// Every transport failure, a 2xx body cut short included; the SDKs' default.
     #[default]
     Any,
     /// Only a failure to connect, when nothing was sent.
@@ -47,9 +47,11 @@ pub enum TransportRetry {
 /// The defaults are the official SDKs': two retries; 0.5 s doubling to 5 s,
 /// each wait `backoff × (1 − U·j)` for a uniform `U` in `[0, 1)` and jitter
 /// `j` 0.25, so the nominal backoff is also the longest; 408, 429, every 5xx
-/// (TypeSafe's 529 included) and every transport failure retried. A 2xx is
-/// never retried, even when listed: a System One call is billed, and
-/// re-sending a success would pay for it again.
+/// (TypeSafe's 529 included) and every transport failure retried. A 2xx
+/// whose body arrived whole is never retried, even when listed: a System
+/// One call is billed, and re-sending a success would pay for it again. One
+/// whose body was cut short is a transport failure, retried only under
+/// [`TransportRetry::Any`].
 ///
 /// # The server's wait
 ///
@@ -294,7 +296,7 @@ pub enum Exhausted {
         /// The last error.
         source: reqwest::Error,
     },
-    /// The last response's body was over
+    /// The last response was a success whose body was over
     /// [`max_body_bytes`](RetryPolicy::max_body_bytes).
     TooLarge {
         /// Total attempts made, including the first.

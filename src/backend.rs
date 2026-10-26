@@ -459,7 +459,9 @@ impl SystemOne for Fake {
 /// The response is written as received, [`Response::request_id`] included,
 /// so a recording still names the call TypeSafe can look up, and only when
 /// it fits the questions ([`Response::verify`]): a recording is only ever a
-/// response a replay can return.
+/// response a replay can return. Each is written whole, to a temporary file
+/// beside it and then renamed onto its name, so a [`Replay`] opened over the
+/// directory meanwhile never reads half of one.
 #[derive(Debug)]
 pub struct Recorder<B> {
     inner: B,

@@ -39,8 +39,12 @@
 //! option or one level with probability 1
 //! (`docs/project/verification/hosted-typesafe.md`). An empty id is refused as the
 //! server refuses it, an empty option key because the server can choose
-//! it, an answer the caller cannot name. Refusing before sending costs no
-//! round trip; `tests/contract.rs` pins the limits against the schema.
+//! it, an answer the caller cannot name. An option key given twice is
+//! refused, since one option would be lost to the other; so is a number or
+//! a boolean as instructions, a Noul criterion, an option's description or
+//! a Score level, which the API refuses (it takes text, an object, an array
+//! or null). Refusing before sending costs no round trip and no 422;
+//! `tests/contract.rs` pins the limits against the schema.
 
 use indexmap::IndexMap;
 use indexmap::map::Entry;
@@ -282,7 +286,8 @@ impl Questions {
     }
 
     /// Add a yes/no question; [`Error::InvalidQuestion`] when neither
-    /// `instructions` nor `criteria` say anything (module docs).
+    /// `instructions` nor `criteria` say anything, or either holds a number
+    /// or a boolean (module docs).
     pub fn noul(
         &mut self,
         id: impl Into<String>,
@@ -342,6 +347,8 @@ impl Questions {
     }
 
     /// Add a Score over ordered levels, lowest first; the order is the meaning of the [`Score`].
+    /// [`Error::InvalidQuestion`] outside 2 to 10 levels, for a null level, or
+    /// for instructions or a level that is a number or a boolean (module docs).
     pub fn score(
         &mut self,
         id: impl Into<String>,
@@ -361,7 +368,7 @@ impl Questions {
     /// request carries, read as a [`BoundingBox`]. Name the target and the
     /// image ("the coffee mug in `photo`"); [`Error::InvalidQuestion`] for
     /// null instructions, since a Box has no criteria to carry the
-    /// question. Needs Jev 1.14 or later on the hosted API (`jev-latest`,
+    /// question, and for a number or a boolean. Needs Jev 1.14 or later on the hosted API (`jev-latest`,
     /// or `jev-1.14.0` pinned).
     pub fn r#box(
         &mut self,
@@ -426,7 +433,6 @@ impl IntoIterator for Questions {
     }
 }
 
-/// The checks every question gets (module docs, `# Limits are checked here`).
 /// A Choice's options in the order given, refusing a key given twice: a
 /// map would keep one description and the model would never be offered the
 /// other, so the option could never be chosen.
@@ -447,6 +453,7 @@ fn option_map(
     Ok(criteria)
 }
 
+/// The checks every question gets (module docs, `# Limits are checked here`).
 pub(crate) fn validate(id: &str, question: &Question) -> Result<()> {
     validate_with(id, question, 2)
 }

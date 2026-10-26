@@ -155,13 +155,13 @@ pub enum Error {
         /// Total attempts made, including the first.
         attempts: u32,
         /// Response body, truncated, as it came (empty when the response
-        /// had none).
+        /// had none, or its body could not be read whole).
         body: String,
         /// The last response's `x-typesafe-request-id`, when it had one.
         request_id: Option<String>,
     },
-    /// Network failure, TLS failure, timeout or a body that could not be
-    /// read, once the retry policy stopped. Check connectivity, the base URL
+    /// Network failure, TLS failure, timeout or a success's body that could
+    /// not be read, once the retry policy stopped. Check connectivity, the base URL
     /// and the per-attempt timeout. No request id: no response came back,
     /// or its headers were dropped with its unreadable body, as the SDKs do.
     #[cfg(feature = "http")]
@@ -174,9 +174,9 @@ pub enum Error {
         #[source]
         source: reqwest::Error,
     },
-    /// The body was over the policy's
+    /// A success's body was over the policy's
     /// [`max_body_bytes`](crate::RetryPolicy::max_body_bytes) and was not
-    /// read: the API answered with far more than it documents, or something
+    /// read (a failed status's is read as empty and keeps its status): the API answered with far more than it documents, or something
     /// else answered in its place. Check the base URL before raising the
     /// cap. Never retried; no request id, the response was dropped unread.
     #[error("response body over {limit} bytes; not read")]

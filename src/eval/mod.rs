@@ -166,7 +166,8 @@ fn not_a_name(dir: &Path, case: &str) -> Error {
     }
 }
 
-/// Write `recording` under `dir` (created if needed), pretty-printed and newline-terminated.
+/// Write `recording` under `dir` (created if needed), pretty-printed and newline-terminated,
+/// whole: a temporary file beside it, renamed onto the name once written.
 pub fn write_recording(dir: &Path, recording: &Recording) -> Result<PathBuf> {
     if !is_name(&recording.case) {
         return Err(not_a_name(dir, &recording.case));

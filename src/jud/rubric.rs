@@ -737,7 +737,7 @@ impl Rubric {
         canonical::fingerprint(&serde_json::to_value(&self.questions).unwrap_or(Value::Null))
     }
 
-    /// The fingerprint of the `policy` map alone, the gates as written
+    /// The fingerprint of the `policy` map alone, the gates as a writer writes them
     /// (`docs/reference/jud-format.md`, Fingerprints): the identity of how the answers are
     /// read, which [`Rubric::fingerprint`] leaves out on purpose. An
     /// application that pins a rubric pins both, so a moved bar is as

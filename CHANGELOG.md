@@ -36,7 +36,8 @@ All notable changes to the `judgment` crate. The format follows
   lockfile resolves these on its next `cargo update`.
 - `jud config` and `jud record --dry-run` show the base URL without its
   userinfo, query or fragment, as every other message already did. They
-  printed `TYPESAFE_BASE_URL` whole, so a `user:pass@` or a `?token=` in it
+  printed the base URL whole, from `TYPESAFE_BASE_URL` or the configuration
+  file, so a `user:pass@` or a `?token=` in it
   reached the terminal, and the transcripts of the agent sessions the jud
   plugin runs both commands in.
 - `jud` shows what a server or a recording put in an error as text, every
@@ -263,14 +264,19 @@ All notable changes to the `judgment` crate. The format follows
   is `gen_ai.usage.input_tokens`. A `tracing` subscriber or an
   `tracing-opentelemetry` view that reads the old names must read the new
   ones. `images`, `long_context`, `multipart` and `request_id` are unchanged.
-- Canonical JSON (`eval::canonical`, every `sha256:` fingerprint) prints an
-  integer beyond ±2^53 as the nearest double, as ECMAScript and every RFC
-  8785 implementation do: `1234567890123456789` is `1234567890123456800`.
-  It printed every `u64` and `i64` digit for digit, so a state holding such
-  an integer had a request fingerprint no other tool computes, and a replay
-  by another tool missed. The fingerprint of such a request changes (no
-  shipped document or recording holds one); two integers that round to one
-  double now share a fingerprint, so keep an id that large in a string.
+- **Breaking** for a value holding an integer beyond ±2^53: canonical JSON
+  (`eval::canonical`, every `sha256:` fingerprint) prints such an integer as
+  the nearest double, as ECMAScript and every RFC 8785 implementation do:
+  `1234567890123456789` is `1234567890123456800`. It printed every `u64` and
+  `i64` digit for digit, so a state or a document holding one had a
+  fingerprint no other tool computes, and a replay by another tool missed.
+  Every fingerprint of such a value moves, a request's, a rubric's and a
+  cases document's, so a `.jud` recording of such a request is recorded
+  again (a `.json` one still answers by its `request_hash`); no shipped
+  document or recording holds one. Two integers that round to one double
+  now share a fingerprint: keep an id that large in a string.
+  `docs/reference/stability.md` says why this is a correction inside
+  `jud/v1` rather than a `v2`.
 
 ### Fixed
 
@@ -329,7 +335,8 @@ All notable changes to the `judgment` crate. The format follows
   `RetryPolicy::conservative()` it was not retried at all. An error body
   over the cap was `ResponseTooLarge`, reported as the status and
   `too_large`. Each attempt is now reported once.
-- `Questions::choice` and `Questions::dynamic_choice` refuse an option key
+- **Breaking** for a caller that repeated a key:
+  `Questions::choice` and `Questions::dynamic_choice` refuse an option key
   given twice (`Error::InvalidQuestion`, "option key \"a\" appears twice")
   before anything is sent. They merged the two into one entry, keeping one
   description: the other option could never be chosen, and an enum with
@@ -340,31 +347,42 @@ All notable changes to the `judgment` crate. The format follows
   does not correctly implement a total order"), and a shorter input
   mis-sorted, so `[3, NaN, 1, 2]` had a median of NaN. The crate's own
   callers pass whole milliseconds and were not affected.
-- A question whose instructions, Noul criteria, Choice option description
-  or Score level is a number or a boolean is `Error::InvalidQuestion`, from
-  the builders and the `.jud` reader alike, as the API refuses it. The
-  reader read `instructions: 42` or `criteria: [1, 2, 3]` and `to_yaml`
-  wrote them back, so a document `jud check` passed failed the schemas.
-- The `.jud` reader refuses a field a Recording's `spec` does not define,
+- **Breaking** for a caller or a document that held one: a question whose
+  instructions, Noul criteria, Choice option description or Score level is
+  a number or a boolean is `Error::InvalidQuestion` from the builders, and
+  `jud::Error::Question` around it from the `.jud` reader, as the API
+  refuses it with a 422; write it as text. The reader read `instructions:
+  42` or `criteria: [1, 2, 3]` and `to_yaml` wrote them back, so a document
+  `jud check` passed failed the schemas.
+- **Breaking** for a document that relied on it: the `.jud` reader refuses
+  a field a Recording's `spec` does not define,
   naming it (`spec.fingreprint`), as the format and the schema require. It
   was ignored, so a misspelt `fingerprint` read as a recording with none,
   which no replay finds by its request, and the writer dropped it.
-- An image's `path` is checked as text, the same on every platform and as
+- **Breaking** for a document that relied on it: an image's `path` is
+  checked as text, the same on every platform and as
   the schema's pattern: a leading `/` or `\`, a drive (`C:`) or a `..`
   segment on either separator is refused. The check went through
   `std::path`, so on Unix the reader took `..\secret.png` and
   `\\server\share\logo.png`, which the schema refuses, and on Windows a
   path starting with `\` or `/` is not absolute and would have been joined
   out of the document's directory. The schema now also refuses a drive.
-- The `.jud` reader refuses a number or a boolean where the format takes
-  text, and `null` wherever the format gives it no meaning, as the schemas
-  do. It read `metadata.name: 2026`, `tags: [1, true]`, a case's `id: 123`
-  or a Score's `fallback: 1` as text, and `threshold: null`, `policy: null`
-  or a case's `expect: null` as absent, so `jud check` passed documents
-  another reader holding to the schemas refuses, and a `null` bar silently
-  became the default one. The refusal names the line (for a number) or the
-  field (for `null`) and quotes nothing; `metadata.version` still takes a
-  number. The spec's reading rules say so.
+- **Breaking** for a document that relied on it: the `.jud` reader refuses
+  a number or a boolean where the format takes only text, and `null`
+  wherever the format gives it no meaning, as the schemas do. It read
+  `metadata.name: 2026`, `tags: [1, true]`, a case's `id: 123` or a Score's
+  `fallback: 1` as text, and `threshold: null`, `policy: null` or a case's
+  `expect: null` as absent, so `jud check` passed documents another reader
+  holding to the schemas refuses, and a `null` bar silently became the
+  default one. A key YAML reads as a number (a supplied option `4521:`, a
+  label's question) is refused the same way, as a rubric's static options
+  already were; a Noul's bare `true:` and `false:` are still read. The
+  remedy is to quote the value or the key, or to leave the field out. The
+  refusal of a number names its line and column without quoting it, that of
+  a `null` its field; `metadata.version`, `level_at_least` and a Score label
+  still take a number. The spec's reading rules say so, and
+  `docs/reference/stability.md` says why this is a correction inside
+  `jud/v1`.
 - `docs/reference/jud-format.md` states the form a fingerprint is computed
   over, the one the writer writes: `instructions: null` when a question has
   none, `criteria: {}` for a Choice whose options all come with the

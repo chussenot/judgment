@@ -2,7 +2,7 @@
 title: Stability
 description: What stays the same across versions and for how long, so a document, a recording or a dependency written today keeps working; the jud/v1 format is stable, a minor version (metadata.minor) only adds, a reader accepts every v1 document for at least twelve months after a later minor is published, fingerprints exclude the envelope and never change for a document's spec, the jud command's exit status, JSON output and file writes are a contract, and the crate's 0.x releases say what they break.
 status: current
-last_reviewed: 2026-10-18
+last_reviewed: 2026-10-26
 tags: [judgment, jud, stability, versioning, compatibility, fingerprint, reference]
 ---
 
@@ -15,6 +15,7 @@ What is promised, what is not, and for how long, for the format, its fingerprint
 The `.jud` format is at `apiVersion: jud/v1`, minor 4 ([The .jud format](jud-format.md)), and the `v1` line is stable:
 
 - **A valid document stays valid.** A document that a `jud/v1` reader accepts today is accepted by every later `jud/v1` reader. Nothing is removed, renamed or given a new meaning inside the `v1` line: not a field of the envelope, not a field of `spec`, not a kind, not a rule of reading.
+- **Valid means what the specification states.** A reader of this repository that accepted a document the specification or the schemas refuse (a number where only text goes, `null` where it has no meaning, a field the kind does not define) was wrong, and the document was never a valid `v1` document. A release that corrects such a reader lists the correction as breaking, with what to change in the document (quote the value, leave the field out), and reads every document the specification accepts as before. The second-pass review's fixes were the first such corrections ([CHANGELOG](../../CHANGELOG.md)).
 - **A minor version only adds.** A later minor (`1.4`, `1.5`) may add an optional field, a value a field may take, or a kind. It may not make an optional field required, narrow what a field accepts, or change what an existing field means. A document that uses nothing a later minor added is, byte for byte, a document of the earlier minor.
 - **Readers accept every `v1` document for at least twelve months.** When a later minor is published, every reader of the format that this repository ships (the crate's `judgment::jud`, the `jud` command, the plugin's checks) accepts documents of each earlier `v1` minor for at least twelve months from that publication. The date is the release date of the crate version that first reads the new minor, recorded in the `CHANGELOG`.
 - **A change of meaning is `jud/v2`.** Anything a minor may not do takes a new major version, with its own `apiVersion`, its own schemas and a page that maps `v1` onto it. A `v2` reader is not required to read `v1`; a `v1` document is moved by rewriting it.
@@ -27,6 +28,7 @@ A rubric's questions, a rubric's policy, a cases document's cases and a request 
 
 - **The envelope contributes nothing.** `apiVersion`, `kind` and the whole of `metadata` are outside every fingerprint. Renaming a document, labelling it, annotating it, or moving it to a later `apiVersion` leaves each fingerprint as it was.
 - **A document's `spec` has one fingerprint, for good.** The value fingerprinted and the canonicalisation are fixed for `v1`. A minor may add a field to `spec`; a document that does not use it fingerprints as it did. A change to what is fingerprinted or how would be a change of meaning, so it is `v2`.
+- **A fingerprint is RFC 8785's.** The canonicalisation is the one the specification has always named. Where the crate's departed from it (it printed an integer beyond ±2^53 digit for digit where RFC 8785 prints the nearest double), a release that corrects it lists the fingerprints that move as breaking; that is a correction to `v1`, not a change of it, and nothing else about what is fingerprinted or how changes inside `v1`.
 - **The known vector holds.** The specification carries a worked fingerprint; `tests/jud.rs` checks the crate against it, and another implementation can check itself the same way.
 
 ## The wire

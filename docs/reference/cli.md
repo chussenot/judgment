@@ -811,7 +811,7 @@ When nothing is proposed, there is no block and no file: a line on stderr says s
 `--out` is refused with status 2, before the documents are read, when `PATH`:
 
 - **Is an input.** It is the rubric or the cases, however spelled: a `./` path, a symbolic link or a hard link.
-- **Is among the recordings.** It is in `DIR`, is one of its recordings under another name, or is a link whose write would land there. A replay reads every `.jud` and `.json` in `DIR` as a recording.
+- **Is among the recordings.** It is in `DIR`, is one of its recordings under another name, or is a link to a file there, existing or not: the write replaces a link rather than writing through it, but a link into `DIR` says the rubric was meant to go there. A replay reads every `.jud` and `.json` in `DIR` as a recording.
 
 Without `--out`, `jud tune` writes nothing.
 
