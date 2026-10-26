@@ -71,8 +71,12 @@ description = "Unit, integration (wiremock), example and doc tests with every fe
 run = ["cargo test --all-features", "cargo test --test client"]
 
 [tasks."check:minimal"]
-description = "The crate and its tests build without the http feature (the no-transport configuration)"
-run = "cargo check --no-default-features --all-targets"
+description = "The crate and its tests build without the http feature (the no-transport configuration), and a normal build reads doubles exactly"
+run = [
+  "cargo check --no-default-features --all-targets",
+  # A dev-dependency also enables it, so no test can see it missing.
+  "cargo tree -e normal,features -i serde_json | grep -q 'serde_json feature \"float_roundtrip\"'",
+]
 
 [tasks.kani]
 description = "The bounded Kani proofs (docs/guides/record-replay-and-test.md, \"Bounded proofs\"); needs `cargo install --locked kani-verifier && cargo kani setup` once"

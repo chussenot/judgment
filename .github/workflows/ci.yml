@@ -63,6 +63,9 @@ jobs:
       # The crate must build without its `http` feature, for a project that
       # brings its own transport; its tests are checked too.
       - run: cargo check --no-default-features --all-targets
+      # A normal build reads a double back to the same bits; a dev-dependency
+      # also enables `float_roundtrip`, so no test can see it missing.
+      - run: cargo tree -e normal,features -i serde_json | grep -q 'serde_json feature "float_roundtrip"'
       # Snapshots (tests/snapshots/): a changed one fails and a pending one
       # is refused, never written; `cargo insta review` accepts a change.
       - run: cargo test --all-features

@@ -284,6 +284,13 @@ All notable changes to the `judgment` crate. The format follows
   a model pinned to `jev-1.13.0`, and advise pinning `jev-1.14.0` once a
   rubric's bars are tuned, since an alias moves with the next release.
   The verification records keep what was true when they were written.
+- `serde_json` is built with `float_roundtrip`. Without it, a normal build
+  (the released `jud`, and any crate built on this one without it) read
+  about one double in ten one unit in the last place off, so a replayed
+  recording no longer equalled the response it recorded and a state's
+  fingerprint dropped digits other RFC 8785 tools keep. Only a
+  dev-dependency enabled the feature, so the tests could not see it; CI and
+  `mise run check:minimal` now check that a normal build has it.
 
 ## [0.14.0] - 2026-10-15
 
