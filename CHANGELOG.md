@@ -365,6 +365,15 @@ All notable changes to the `judgment` crate. The format follows
   became the default one. The refusal names the line (for a number) or the
   field (for `null`) and quotes nothing; `metadata.version` still takes a
   number. The spec's reading rules say so.
+- `docs/reference/jud-format.md` states the form a fingerprint is computed
+  over, the one the writer writes: `instructions: null` when a question has
+  none, `criteria: {}` for a Choice whose options all come with the
+  request, `strict: false` and an empty `part_when`, `tags`, `expect`,
+  `options` or `assets` left out. It said "the `spec.questions` map" and
+  "the gates as written", so another tool hashing the document as written
+  computed another fingerprint for such a document, and a `spec.rubric` it
+  wrote did not bind. No fingerprint moves; a known vector for a question
+  without instructions is added and tested.
 
 ## [0.14.0] - 2026-10-15
 

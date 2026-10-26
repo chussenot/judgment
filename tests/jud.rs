@@ -848,6 +848,67 @@ async fn the_shapes_cases_load_their_images_and_grade_a_box_by_iou() {
     assert_eq!(graded["circle"].iou, Some(0.0));
 }
 
+/// A fingerprint is over the value as read, in the form the writer writes:
+/// spelling a default another way moves none, and the format page's vector
+/// for a question without instructions holds.
+#[test]
+fn fingerprints_are_over_the_normal_form() {
+    let rubric = |questions: &str, policy: &str| {
+        Rubric::parse(&format!(
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    {questions}\n{policy}"
+        ))
+        .unwrap()
+    };
+    for (one, other) in [
+        // Instructions absent or null; a strict gate's default.
+        (
+            rubric(
+                "c: {type: choice, criteria: {a: A, b: B}}",
+                "  policy:\n    c: {confidence: 0.5}\n",
+            ),
+            rubric(
+                "c: {type: choice, instructions: null, criteria: {a: A, b: B}}",
+                "  policy:\n    c: {confidence: 0.5, strict: false}\n",
+            ),
+        ),
+        // An empty part_when.
+        (
+            rubric("n: {type: noul, instructions: {q: ok?}}", ""),
+            rubric("n: {type: noul, instructions: {q: ok?}, part_when: {}}", ""),
+        ),
+    ] {
+        assert_eq!(one.fingerprint(), other.fingerprint());
+        assert_eq!(one.policy_fingerprint(), other.policy_fingerprint());
+    }
+    let without = rubric("c: {type: choice, criteria: {a: A, b: B}}", "");
+    assert_eq!(
+        without.fingerprint(),
+        "sha256:d10bb58f36f7e4cd6be5887cefaddad376348591fad70bf73fec962fcabf910b"
+    );
+    // Every option from the request: the Choice's criteria are `{}`.
+    let supplied = rubric(
+        "c: {type: choice, instructions: pick, options_from: request}",
+        "",
+    );
+    assert_eq!(
+        supplied.fingerprint(),
+        judgment::eval::canonical::fingerprint(&json!({
+            "c": { "type": "choice", "instructions": "pick", "criteria": {}, "options_from": "request" }
+        }))
+    );
+    let cases = |case: &str| {
+        Cases::parse(&format!(
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cs\nspec:\n  cases:\n    - {case}\n"
+        ))
+        .unwrap()
+        .fingerprint()
+    };
+    assert_eq!(
+        cases("{id: k, state: s, tags: [], expect: {}, options: {}, assets: {}}"),
+        cases("{id: k, state: s}")
+    );
+}
+
 /// The format page's second known vector: a request with one image
 /// fingerprints over the image's digest under its reference, so another
 /// implementation can check itself against the same bytes.

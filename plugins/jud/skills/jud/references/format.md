@@ -460,6 +460,8 @@ A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 ([FIPS 
 
 Every fingerprint is over a value inside `spec`, never over the envelope: `apiVersion`, `kind` and `metadata` are part of none.
 
+A fingerprint is over the value as read, in the one form a writer writes it, so a document that spells a default another way has the same fingerprints: a question always has `instructions` (`null` when the document has none, as the wire sends it), and a Choice always has `criteria` (`{}` when every option comes with the request); a gate leaves out `strict: false`; an empty `part_when`, and a case's empty `tags`, `expect`, `options` and `assets`, are left out; a rubric with no `policy` has the policy `{}`. Everything else is as written: a level named by its text or by its index stays named so. Known vector: the questions `{c: {type: choice, criteria: {a: A, b: B}}}`, a Choice without instructions, canonicalise to `{"c":{"criteria":{"a":"A","b":"B"},"instructions":null,"type":"choice"}}` and fingerprint as `sha256:d10bb58f36f7e4cd6be5887cefaddad376348591fad70bf73fec962fcabf910b`.
+
 A fingerprint identifies content, not the order of object keys: canonical JSON sorts them. Two rubrics that differ only in the order of a Choice's options have the same fingerprint although the model sees the options in another order. Order is significant to the request ([Reading rules](#reading-rules)) and kept in the file; the fingerprint does not witness it.
 
 The request fingerprint leaves the model out: the same request answered by two models has the same fingerprint, and each recording says in `response.model`, `server` and `recorded_at` who answered it.
