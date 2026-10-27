@@ -556,6 +556,28 @@ where
     Option::<T>::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
+/// A token count: absent or `null` is zero, a whole-number float (`12.0`,
+/// as a JSON encoder that writes every number as a float sends it) is that
+/// integer; a negative, fractional or string count is an error.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn token_count<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    match Option::<Value>::deserialize(deserializer)? {
+        None | Some(Value::Null) => Ok(0),
+        Some(Value::Number(n)) => n
+            .as_u64()
+            .or_else(|| {
+                n.as_f64()
+                    .filter(|f| f.fract() == 0.0 && (0.0..18_446_744_073_709_551_616.0).contains(f))
+                    .map(|f| f as u64)
+            })
+            .ok_or_else(|| de::Error::custom(format!("token count {n} is not a whole number"))),
+        Some(other) => Err(de::Error::invalid_type(
+            unexpected(&other),
+            &"a token count",
+        )),
+    }
+}
+
 /// A string as itself, anything else as `None`: for a body `request_id`,
 /// which the documented body does not have, so it may be of any type.
 fn string_or_none<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
@@ -576,15 +598,16 @@ fn number_or_none<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f
 ///
 /// A count the server did not report reads as zero, which leaves a counter
 /// or a sum right; more tolerant than the OpenAPI document (both counts
-/// required) and the Python SDK (`usage` has no default). A negative,
-/// fractional or string count is still [`Error::Decode`].
+/// required) and the Python SDK (`usage` has no default). A whole-number
+/// float (`12.0`) reads as its integer; a negative, fractional or string
+/// count is still [`Error::Decode`].
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub struct Usage {
     /// Tokens in `state` plus all questions.
-    #[serde(default, deserialize_with = "null_as_default")]
+    #[serde(default, deserialize_with = "token_count")]
     pub input_tokens: u64,
     /// Tokens in the answers.
-    #[serde(default, deserialize_with = "null_as_default")]
+    #[serde(default, deserialize_with = "token_count")]
     pub output_tokens: u64,
     /// What the call cost in US dollars, when the server says: `OpenRouter`
     /// sends `usage.cost` on every System One response; TypeSafe's own API
@@ -1666,6 +1689,14 @@ mod tests {
     }
 
     #[test]
+    fn a_whole_number_float_count_is_its_integer() {
+        let r: Response = decode(&json!({ "model": "m", "answers": {},
+            "usage": { "input_tokens": 12.0, "output_tokens": 3e2 } }))
+        .unwrap();
+        assert_eq!((r.usage.input_tokens, r.usage.output_tokens), (12, 300));
+    }
+
+    #[test]
     fn a_typed_choice_counts_the_options_the_server_left_out() {
         let q = |q: &mut Questions| q.choice::<Dept>("d", "?").unwrap();
         let mut questions = Questions::new();
@@ -1689,6 +1720,9 @@ mod tests {
             json!({ "input_tokens": -1 }),
             json!({ "input_tokens": "3" }),
             json!({ "output_tokens": 1.5 }),
+            json!({ "output_tokens": -2.0 }),
+            json!({ "input_tokens": 1e30 }),
+            json!({ "input_tokens": true }),
         ] {
             let body = json!({ "model": "m", "answers": {}, "usage": usage });
             assert!(decode::<Response>(&body).is_err(), "{body}");
