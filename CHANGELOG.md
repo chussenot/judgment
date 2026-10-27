@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-27
+
 ### Security
 
 - `jud` no longer prints its configuration file when it refuses one. A
