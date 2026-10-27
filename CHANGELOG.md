@@ -7,7 +7,10 @@ All notable changes to the `judgment` crate. The format follows
 ## [Unreleased]
 
 The thirty-five findings of the second review pass, fixed. Three of them
-move the public API (0.x: a minor bump may break).
+move the public API (0.x: a minor bump may break), and the `.jud` reader
+corrections under Fixed are breaking for a document the specification
+already refused — it was never a valid v1 document — each naming what to
+change in the document.
 
 ### Changed
 
@@ -93,8 +96,9 @@ move the public API (0.x: a minor bump may break).
   - `Rubric::apply` validates a gate before applying it instead of
     trusting `policy.gates`.
   - A box label's edges are checked when the document is read, not only
-    at bind, and `Cases::bind` checks each turn of a conversation, so a
-    document per-turn grading would refuse is refused at bind.
+    at bind, and `Cases::bind` checks each turn a `from_turn` label
+    grades, so a document per-turn grading would refuse is refused at
+    bind; a case labelled only as a whole is asked only as a whole.
   - The writers refuse what their readers refuse (a rubric's name and
     non-empty questions; a cases document's duplicate ids and names), so
     `to_yaml` cannot emit a document `parse` throws back.

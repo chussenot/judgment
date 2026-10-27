@@ -2,7 +2,7 @@
 title: Internals
 description: The rules the code applies that the rustdoc states only once, with the reason behind each; the client's key check, status classification and error-body reading, the per-call options, the retry loop's edges, the backends, the tolerant decoder, what the response check leaves unchecked, the observer, the recordings and metrics, the .jud reader, and the bounded proofs.
 status: current
-last_reviewed: 2026-10-26
+last_reviewed: 2026-10-27
 tags: [judgment, internals, implementation, decoding, errors, retries, eval, jud, kani]
 ---
 
@@ -80,7 +80,7 @@ flowchart LR
 
 ## Decoding tolerantly
 
-A response is decoded whole, so one answer of a kind this release does not know, or a server that reports no `usage`, would lose every answer in the response, and each addition by a server would be an outage until the crate was upgraded. The decoder therefore tolerates exactly three things and nothing else: an answer whose `type` is a string the crate does not know becomes `Answer::Unknown`, logged once at `warn` by the client; an absent or `null` `usage`, or count inside it, reads as zero; top-level fields other than `model`, `answers`, `usage` and `request_id` go to `Response::extra` and come back out on write.
+A response is decoded whole, so one answer of a kind this release does not know, or a server that reports no `usage`, would lose every answer in the response, and each addition by a server would be an outage until the crate was upgraded. The decoder therefore tolerates exactly four things and nothing else: an answer whose `type` is a string the crate does not know becomes `Answer::Unknown`, logged once at `warn` by the client; an absent or `null` `usage`, or count inside it, reads as zero, and a whole-number float count reads as its integer; fields inside a known answer that the crate does not model stay in that answer's `extra` and come back out on write; top-level fields other than `model`, `answers`, `usage` and `request_id` go to `Response::extra` and come back out on write.
 
 A known kind that breaks its own shape (a Noul of 1.2, a Choice without `probabilities`), a `type` that is missing or not a string, a negative or fractional count, a missing `model` or `answers`: all `Decode`. `Answer`'s `Deserialize` is written by hand, buffering into a `serde_json::Value` and dispatching on `type`, because a derived `#[serde(untagged)]` fallback would catch every answer the tagged variants refuse, so a Noul of 1.2 would decode as `Unknown` and the remedy that suggests, upgrade the crate, would be wrong. `KnownAnswer` mirrors `Answer` field for field and the conversion names every field, so a field added to one and not the other does not compile. Duplicate keys in an answer object: the last wins, as every JSON object read into a map behaves; [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259#section-4) leaves the case undefined.
 

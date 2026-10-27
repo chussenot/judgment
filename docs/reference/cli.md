@@ -2,7 +2,7 @@
 title: The jud command line
 description: Every command, flag, argument and environment variable of the jud binary, with each command's help text as the binary prints it, the verdict JSON a run writes, the report jud eval prints and its JSON keys, what jud record, jud tune and jud split write, and the exit status.
 status: current
-last_reviewed: 2026-10-26
+last_reviewed: 2026-10-27
 tags: [judgment, jud, cli, record, eval, tune, split, reference]
 ---
 
@@ -892,7 +892,7 @@ Options:
 | Status | Meaning |
 |---|---|
 | 0 | Success. Verdicts printed; recordings written or kept; the report printed with every `--min-accuracy` bar met, or none given; a proposal printed, written, or none to make. |
-| 1 | The backend was asked and the call failed: a transport error after the retries, an HTTP error, a response that does not fit the rubric. Under a replay, no recording for a request, or a recording that no longer fits its questions. For `jud record`, a recording that could not be written. |
+| 1 | The backend was asked and the call failed: a transport error after the retries, an HTTP error, a response that does not fit the rubric. Under a replay, no recording for a request, or a recording that no longer fits its questions. For `jud record`, a recording that could not be written. For `check`, `lower` and `config`, a stdout that could not be written — a real write error, not a reader that closed the pipe. |
 | 2 | Wrong before any call, and fixable: no rubric argument, a file that cannot be read, a document that is not valid, cases that do not fit their rubric, stdin that is empty or not one JSON value, a missing API key, a malformed configuration file, an unknown flag or a flag with a bad value, an `--out` that would overwrite an input, a `--min-accuracy` that names no question; for `check`, any document refused. |
 | 3 | `jud eval` only. The evaluation ran, the report is on stdout, and a `--min-accuracy` bar was not met. |
 
