@@ -216,12 +216,23 @@ fn write_new(half: &Half, source: &str, every: usize) -> Result<(), Failure> {
         "# The {} half of {source}, written by `jud split --every {every}`.\n{yaml}",
         half.role
     );
-    OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&half.path)
-        .and_then(|mut file| file.write_all(text.as_bytes()))
+    create_new_with(&half.path, |file| file.write_all(text.as_bytes()))
         .map_err(|e| Failure::Usage(format!("cannot write {}: {e}", half.path.display())))
+}
+
+/// Create `path` (which must not exist) and write it; a write that fails removes
+/// the file this call created, so a retry is not refused by a partial half.
+fn create_new_with(
+    path: &Path,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    let written = write(&mut file);
+    if written.is_err() {
+        // Best effort: the error being returned is the one that matters.
+        let _ = std::fs::remove_file(path);
+    }
+    written
 }
 
 /// How labels are read: by their own words, or, given the rubric, as the
@@ -354,4 +365,39 @@ fn report(halves: &[Half; 2], reading: Reading<'_>) -> String {
         }
     }
     lines.join("\n") + "\n"
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use super::*;
+
+    #[test]
+    fn a_fill_that_fails_removes_the_partial_half() {
+        let dir = std::env::temp_dir().join(format!("jud-split-unit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("half.jud");
+        let failed = create_new_with(&path, |file| {
+            file.write_all(b"partial")?;
+            Err(std::io::Error::other("disk full"))
+        });
+        assert!(failed.is_err());
+        assert!(!path.exists(), "the partial half was left behind");
+        // The retry is not refused by it.
+        create_new_with(&path, |file| file.write_all(b"whole")).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "whole");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_file_that_is_already_there_is_refused_and_kept() {
+        let dir = std::env::temp_dir().join(format!("jud-split-unit-kept-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("half.jud");
+        std::fs::write(&path, "mine").unwrap();
+        assert!(create_new_with(&path, |file| file.write_all(b"x")).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "mine");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
