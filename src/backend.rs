@@ -226,7 +226,7 @@ pub struct Call {
 /// cannot pass on an answer the client would have refused; a refused call
 /// is not in [`Fake::calls`]. A test that needs a malformed response builds
 /// the [`Response`] directly.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Fake {
     model: String,
     answers: BTreeMap<String, Scripted>,
@@ -283,12 +283,21 @@ impl Scripted {
     }
 }
 
+impl Default for Fake {
+    /// The same as [`Fake::new`].
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Fake {
     /// An empty fake reporting model `fake`.
     pub fn new() -> Self {
         Self {
             model: "fake".to_owned(),
-            ..Self::default()
+            answers: BTreeMap::new(),
+            usage: Usage::default(),
+            calls: Mutex::new(Vec::new()),
         }
     }
 

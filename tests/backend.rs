@@ -146,6 +146,20 @@ async fn a_replay_prefers_the_fingerprint_to_the_hash() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[tokio::test]
+async fn a_default_fake_reports_the_model_a_new_one_does() {
+    let (q, _, _) = questions();
+    let state = json!({ "message": "charged twice" });
+    for fake in [Fake::new(), Fake::default()] {
+        let fake = fake
+            .choice("department", [("billing", 0.9), ("technical", 0.1)], 0.8)
+            .unwrap()
+            .noul("urgent", 0.2)
+            .unwrap();
+        assert_eq!(fake.answer(&state, "m", &q).await.unwrap().model, "fake");
+    }
+}
+
 /// A directory of its own for one test, empty: `judgment-<test>-<pid>`.
 fn test_dir(test: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("judgment-{test}-{}", std::process::id()));
