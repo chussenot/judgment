@@ -1175,6 +1175,41 @@ fn a_closed_stdout_never_panics_the_reader_commands() {
     }
 }
 
+/// A stdout that cannot be written (a full disk, `/dev/full`) is not a reader
+/// that went away: the output is incomplete, so the status is never 0, and it
+/// is an I/O failure (1), not a usage error (2).
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stdout_that_cannot_be_written_is_never_exit_0() {
+    let state = r#"{"message": "x"}"#;
+    for args in [
+        vec!["check", RUBRIC, CASES],
+        vec!["lower", RUBRIC, "--state", state],
+        vec!["config"],
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_jud"))
+            .args(&args)
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .env("XDG_CONFIG_HOME", config_home())
+            .stdin(Stdio::null())
+            .stdout(
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .open("/dev/full")
+                    .unwrap(),
+            )
+            .stderr(Stdio::piped())
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(1), "jud {args:?}: {}", stderr(&out));
+        assert!(
+            stderr(&out).contains("cannot write to stdout"),
+            "jud {args:?}: {}",
+            stderr(&out)
+        );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Options supplied per request (`options_from: request`)
 // ---------------------------------------------------------------------------
