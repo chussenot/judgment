@@ -2,7 +2,7 @@
 title: StartLux-Decision v1.1 27B AutoThink
 description: A study, as of 2026-10-18, of StartLux Labs' 27B decision model that thinks only when its first read-out is unsure, from its model card, its server's documentation, its technical report and its benchmark; what its published numbers can and cannot be compared with, what its server sends that the crate keeps, drops or cannot decode (none_probability, a null choice, sampled thoughts), what a sampled thought does to recordings and thresholds, and what its non-commercial licence allows.
 status: current
-last_reviewed: 2026-10-18
+last_reviewed: 2026-10-27
 tags: [research, judgment, compatibility, startlux, autothink, decision-index, calibration, licence]
 ---
 
@@ -57,9 +57,9 @@ The server answers `POST /v1/systemone`, and `POST /v1/decisions` under OpenRout
 |---|---|
 | Ignores the request's `model` and answers with its own name | The response's `model` is the server's, as with any server; recordings record it. |
 | Takes images as base64 strings or data URIs, at most 8 | Both of the crate's shared-image spellings fit: `shared_images(true)` and `shared_images_as_data_urls(true)`. The `assets` map is not documented, so set one of them. |
-| Adds `none_probability` to every Choice answer (`none_check`, on by default) | **Dropped.** `Response::extra` keeps unknown top-level fields, but an answer's own fields are fixed, so the value cannot be read through the crate. |
+| Adds `none_probability` to every Choice answer (`none_check`, on by default) | **Kept** since judgment 0.16: an answer's unknown fields stay in that answer's `extra`, so the value reads through the crate (dropped when this page was written). |
 | With `"allow_none": true`, returns `"choice": null` when "None of the above" is most likely | **Fails to decode.** The crate reads `choice` as a string, so the whole response is an `Error::Decode`, never retried, and its usage, thought tokens included, never reaches the `Observer`. Off by default, but on for every request of a server started with `--allow-none`, and settable per question, so a caller who never sets it can still meet it. Sending `"allow_none": false` with `CallOptions::extra` guards against a server's default. |
-| Takes `think_mode`, `gate`, `think_budget`, `mix`, `return_details` as top-level fields | Sent with `CallOptions::extra`. `details` per answer is dropped like `none_probability`; `timing_ms` at the top level is kept in `Response::extra`. |
+| Takes `think_mode`, `gate`, `think_budget`, `mix`, `return_details` as top-level fields | Sent with `CallOptions::extra`. `details` per answer is kept in the answer's `extra` since judgment 0.16 (dropped when this page was written); `timing_ms` at the top level is kept in `Response::extra`. |
 | Counts thought tokens in `usage.output_tokens` | Reported to the `Observer` as output tokens. A thought is the only cost besides the prompt, so it is the number to watch. |
 | Follows TypeSafe's confidence formulas; a Noul answer has no `confidence` | As the crate expects. |
 | Refuses with 422 and `{"error", "detail": [{"loc", "msg", "type"}]}`; 401 without a key; 429 with `Retry-After: 1` at its in-flight limit; 502 when its engine fails | The top-level `error` string becomes the `Error::InvalidRequest` message and the located `detail` list its issues; 429 and 502 are retried and `Retry-After` honoured. The server has already tried its engine four times before a 502. |
@@ -86,4 +86,4 @@ For this repository: no weights or code of theirs would enter it. Whether record
 
 - A run of `tests/live.rs` against `startlux-decide serve` on a GPU, under the `generic` profile, with the 27B AutoThink and with a small Instant model, and a profile for what it pins. The 27B needs about 55 GB at BF16, the Q8_0 GGUF on llama.cpp less. That run would test every row of the wire table above, the image spellings first, and could share one recording directory per run with the repeat test below.
 - Recording the same cases two or three times, to measure how often a thinking question's answer changes.
-- A decision on whether the crate should keep an answer's unknown fields, as `Response::extra` does at the top level, which would make `none_probability` and `details` readable, and whether a null `choice` should decode.
+- ~~A decision on whether the crate should keep an answer's unknown fields~~ — decided since judgment 0.16: they are kept in the answer's `extra`, so `none_probability` and `details` are readable. Still open: whether a null `choice` should decode.

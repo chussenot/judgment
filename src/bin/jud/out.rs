@@ -9,6 +9,7 @@
 //! subcommands print goes through here.
 
 use std::io::{ErrorKind, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::backend::Failure;
 
@@ -55,13 +56,19 @@ pub(crate) fn plain(text: &str) -> String {
     shown
 }
 
+/// Set once a line could not be written to stdout for any reason but a
+/// reader that went away: the output is incomplete, and the exit status must
+/// say so ([`stream_failed`]).
+static STREAM_FAILED: AtomicBool = AtomicBool::new(false);
+/// Set once any write to stdout failed, so the lines that follow are not tried.
+static BROKEN: AtomicBool = AtomicBool::new(false);
+
 /// Write one line to stdout for a command whose output is a stream of lines
 /// (`jud check`, `jud lower`, `jud config`). A reader that closes early is not
 /// an error, as in [`result`]; any other failure is said once on stderr and
 /// the output stops, because the lines that follow would be lost the same way.
+/// The caller reads [`stream_failed`] for the exit status.
 pub(crate) fn stream(text: &str) {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    static BROKEN: AtomicBool = AtomicBool::new(false);
     if BROKEN.load(Ordering::Relaxed) {
         return;
     }
@@ -69,9 +76,16 @@ pub(crate) fn stream(text: &str) {
     if let Err(e) = writeln!(out, "{text}") {
         BROKEN.store(true, Ordering::Relaxed);
         if e.kind() != ErrorKind::BrokenPipe {
+            STREAM_FAILED.store(true, Ordering::Relaxed);
             line(&format!("jud: cannot write to stdout: {e}"));
         }
     }
+}
+
+/// True when [`stream`] lost output to a stdout that could not be written
+/// (a full disk, a closed descriptor), not to a reader that went away.
+pub(crate) fn stream_failed() -> bool {
+    STREAM_FAILED.load(Ordering::Relaxed)
 }
 
 /// `say!("...", args)`: [`stream`] with `format!` arguments.

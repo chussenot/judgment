@@ -4,7 +4,8 @@
 //! [`Error::InvalidApiKey`], [`Error::Unauthorized`],
 //! [`Error::PermissionDenied`]), billing ([`Error::PaymentRequired`]),
 //! request ([`Error::InvalidRequest`],
-//! [`Error::InvalidQuestion`], [`Error::DuplicateQuestionId`],
+//! [`Error::InvalidQuestion`], [`Error::InvalidState`],
+//! [`Error::DuplicateQuestionId`],
 //! [`Error::InvalidImage`], [`Error::InvalidAsset`],
 //! [`Error::RequestTooLarge`], [`Error::ReservedHeader`],
 //! [`Error::ReservedField`], [`Error::Url`]),
@@ -199,6 +200,12 @@ pub enum Error {
         /// HTTP response that had one.
         request_id: Option<String>,
     },
+    /// The state (or the questions) could not be serialised to JSON, so
+    /// nothing was sent: a map with non-string keys, a `Serialize` impl that
+    /// fails. The caller's input is the problem, not a response; change the
+    /// state. Never retried.
+    #[error("could not serialise the request: {0}")]
+    InvalidState(#[source] serde_json::Error),
     /// A recording could not be read or written (check the directory and its
     /// permissions), or, with the `zstd` feature, the request body could not
     /// be compressed (a failed allocation; send it plain). `context` names
@@ -380,12 +387,11 @@ pub enum Error {
 }
 
 impl From<serde_json::Error> for Error {
-    /// A serde failure with no response behind it: no request id.
+    /// A serde failure with no response behind it is the request failing to
+    /// serialise ([`Error::InvalidState`]); response decoding builds
+    /// [`Error::Decode`] itself.
     fn from(source: serde_json::Error) -> Self {
-        Self::Decode {
-            source,
-            request_id: None,
-        }
+        Self::InvalidState(source)
     }
 }
 
@@ -418,6 +424,7 @@ impl Error {
             | Self::InvalidRecording { .. }
             | Self::DuplicateQuestionId(_)
             | Self::InvalidQuestion { .. }
+            | Self::InvalidState(_)
             | Self::InvalidImage { .. }
             | Self::InvalidAsset { .. }
             | Self::RequestTooLarge { .. }
@@ -470,6 +477,7 @@ impl Error {
             Self::InvalidRecording { .. } => Borrowed("invalid_recording"),
             Self::DuplicateQuestionId(_) => Borrowed("duplicate_question_id"),
             Self::InvalidQuestion { .. } => Borrowed("invalid_question"),
+            Self::InvalidState(_) => Borrowed("invalid_state"),
             Self::InvalidImage { .. } => Borrowed("invalid_image"),
             Self::InvalidAsset { .. } => Borrowed("invalid_asset"),
             Self::RequestTooLarge { .. } => Borrowed("request_too_large"),
@@ -712,17 +720,13 @@ mod tests {
             assert_eq!(err.to_string(), format!("{message} [request_id req_1]"));
         }
 
-        // `?` on a serde error: a Decode with no response behind it.
-        let decode = Error::from(serde_json::from_str::<u8>("x").unwrap_err());
-        assert!(matches!(
-            decode,
-            Error::Decode {
-                request_id: None,
-                ..
-            }
-        ));
-        assert_eq!(decode.request_id(), None);
-        assert!(!decode.to_string().contains("request_id"), "{decode}");
+        // `?` on a serde error: the request failing to serialise, not a
+        // response failing to decode.
+        let unserialisable = Error::from(serde_json::from_str::<u8>("x").unwrap_err());
+        assert!(matches!(unserialisable, Error::InvalidState(_)));
+        assert_eq!(unserialisable.request_id(), None);
+        assert!(!unserialisable.to_string().contains("request_id"));
+        assert!(!unserialisable.to_string().contains("decode"));
         let decode = Error::Decode {
             source: serde_json::from_str::<u8>("x").unwrap_err(),
             request_id: Some("req_2".into()),

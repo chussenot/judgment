@@ -1,10 +1,16 @@
 {
   "enabledPlugins": {
-    "typesafe@typesafe-ai": true,
     "jud@judgment": true,
-    "ponytail@ponytail": true
+    "ponytail@ponytail": true,
+    "typesafe@typesafe-ai": true
   },
   "extraKnownMarketplaces": {
+    "judgment": {
+      "source": {
+        "repo": "chussenot/judgment",
+        "source": "github"
+      }
+    },
     "ponytail": {
       "source": {
         "ref": "v5.2.0",
@@ -16,12 +22,6 @@
       "source": {
         "repo": "typesafe-ai/skills",
         "source": "github"
-      }
-    },
-    "judgment": {
-      "source": {
-        "source": "github",
-        "repo": "chussenot/judgment"
       }
     }
   },

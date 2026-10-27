@@ -226,9 +226,15 @@ pub fn read_recording(dir: &Path, case: &str) -> Result<Recording> {
         return Err(not_a_name(dir, case));
     }
     let path = recording_path(dir, case);
-    let text = std::fs::read_to_string(&path).map_err(|_| Error::MissingRecording {
-        case: case.to_owned(),
-        path: path.display().to_string(),
+    let text = std::fs::read_to_string(&path).map_err(|source| match source.kind() {
+        std::io::ErrorKind::NotFound => Error::MissingRecording {
+            case: case.to_owned(),
+            path: path.display().to_string(),
+        },
+        _ => Error::Io {
+            path: path.display().to_string(),
+            source,
+        },
     })?;
     serde_json::from_str(&text).map_err(|source| Error::Json {
         path: path.display().to_string(),
@@ -419,7 +425,9 @@ impl Judgment {
                 asked: true,
                 iou: None,
             },
-            Answer::Box { edges, confidence } => {
+            Answer::Box {
+                edges, confidence, ..
+            } => {
                 let mut graded = Self::located(
                     edges,
                     None,
@@ -429,11 +437,14 @@ impl Judgment {
                 graded.expected = expected.map(str::to_owned);
                 graded
             }
-            Answer::Noul { noul } => Self::noul(noul.value(), expected.map(|e| e == "yes"), true),
+            Answer::Noul { noul, .. } => {
+                Self::noul(noul.value(), expected.map(|e| e == "yes"), true)
+            }
             Answer::Choice {
                 choice,
                 probabilities,
                 confidence,
+                ..
             } => Self::new(
                 choice.clone(),
                 expected.map(str::to_owned),
@@ -686,6 +697,7 @@ mod tests {
                     "a".to_owned(),
                     Answer::Noul {
                         noul: Probability::new(0.7).unwrap(),
+                        extra: BTreeMap::new(),
                     },
                 ),
                 // An unknown kind and an undocumented field both survive.
@@ -713,6 +725,25 @@ mod tests {
         assert!(matches!(
             read_recording(&dir, "ghost"),
             Err(Error::MissingRecording { case, .. }) if case == "ghost"
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Only a file that is not there is a missing recording; a path that
+    /// cannot be read is an I/O error naming it.
+    #[test]
+    fn an_unreadable_recording_is_an_io_error_not_a_missing_one() {
+        let dir = std::env::temp_dir().join(format!("judgment-unreadable-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(recording_path(&dir, "case-1")).unwrap();
+        let err = read_recording(&dir, "case-1").unwrap_err();
+        assert!(
+            matches!(&err, Error::Io { path, .. } if path.contains("case-1")),
+            "{err:?}"
+        );
+        assert!(matches!(
+            read_recording(&dir, "ghost"),
+            Err(Error::MissingRecording { .. })
         ));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -777,6 +808,7 @@ mod tests {
                 ("technical".to_owned(), Probability::new(0.2).unwrap()),
             ]),
             confidence: Confidence::new(0.7).unwrap(),
+            extra: BTreeMap::new(),
         };
         let right = Judgment::of_answer(&choice, Some("billing"));
         assert_eq!(right.correct, Some(true));
@@ -796,10 +828,12 @@ mod tests {
                 ("2".to_owned(), Probability::new(0.7).unwrap()),
             ]),
             confidence: Confidence::new(0.6).unwrap(),
+            extra: BTreeMap::new(),
         };
         assert_eq!(Judgment::of_answer(&score, Some("2")).predicted, "2");
         let noul = Answer::Noul {
             noul: Probability::new(0.3).unwrap(),
+            extra: BTreeMap::new(),
         };
         let n = Judgment::of_answer(&noul, Some("no"));
         assert_eq!(n.predicted, "no");
@@ -865,6 +899,7 @@ mod tests {
         let answer = Answer::Box {
             edges: close,
             confidence: Some(Confidence::new(0.7).unwrap()),
+            extra: BTreeMap::new(),
         };
         let graded = Judgment::of_answer(&answer, Some("box"));
         assert_eq!(

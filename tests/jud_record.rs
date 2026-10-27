@@ -462,10 +462,10 @@ spec:
 #[tokio::test]
 async fn a_turn_that_does_not_lower_is_refused_before_the_first_call() {
     // The question's only instruction part is sent from the second turn on.
-    // The whole conversation lowers, so the cases bind; its first turn, one
-    // request on its own, would send a Noul that asks nothing. The case
-    // before it is fine: asking it first would spend a call on a run that
-    // cannot finish.
+    // The whole conversation lowers, but `talk`'s first turn, one request
+    // on its own, would send a Noul that asks nothing, so binding refuses
+    // the document before anything is asked. The `whole` case is fine: no
+    // `from_turn` label grades its turns, so they are not lowered.
     let dir = scratch("late");
     let rubric = dir.join("rubric.jud");
     std::fs::write(
@@ -511,11 +511,9 @@ spec:
     let out = dir.join("recordings");
     let run = record(&server, rubric.to_str().unwrap(), &cases, &out, &[]);
     assert_eq!(code(&run), 2, "{}", stderr(&run));
-    assert!(
-        stderr(&run).contains("does not lower for case talk-turn-0"),
-        "{}",
-        stderr(&run)
-    );
+    let err = stderr(&run);
+    assert!(err.contains("case talk-turn-0"), "{err}");
+    assert!(err.contains("does not lower"), "{err}");
     assert!(!out.exists());
 }
 
@@ -1031,6 +1029,75 @@ async fn a_stale_recording_in_the_file_the_case_takes_is_replaced_in_place() {
     assert_answers_every_case(&dir, TRIAGE_CASES);
 }
 
+/// `TRIAGE_CASES` and a second case, `receipt-again`, that lowers to the
+/// request `receipt` does, as a file.
+fn cases_with_a_twin_of_receipt() -> String {
+    let mut cases =
+        judgment::jud::Cases::parse(&std::fs::read_to_string(TRIAGE_CASES).unwrap()).unwrap();
+    let mut twin = cases
+        .cases
+        .iter()
+        .find(|c| c.id.as_deref() == Some("receipt"))
+        .unwrap()
+        .clone();
+    twin.id = Some("receipt-again".to_owned());
+    cases.cases.push(twin);
+    let path = support::scratch("stale-twins").join("twins.jud");
+    std::fs::write(&path, cases.to_yaml().unwrap()).unwrap();
+    path.to_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn a_stale_recording_two_identical_cases_share_is_replaced_as_the_dry_run_says() {
+    // The stale file is the first case's own; the second is kept from the
+    // first's new recording, so the file is not "elsewhere" for it.
+    let cases = cases_with_a_twin_of_receipt();
+    let dir = with_stale("receipt", None, None);
+    let dry = jud(
+        &[
+            "record",
+            TRIAGE,
+            &cases,
+            "--out",
+            dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    assert_eq!(code(&dry), 0, "{}", stderr(&dry));
+    assert!(
+        stdout(&dry).contains("1 to ask (1 replacing a stale recording)"),
+        "{}",
+        stdout(&dry)
+    );
+    let server = server(triage_answers(), 1).await;
+    let run = record(&server, TRIAGE, &cases, &dir, &[]);
+    let err = stderr(&run);
+    assert_eq!(code(&run), 0, "{err}");
+    assert!(err.contains("replaced receipt (stale)"), "{err}");
+    assert!(err.contains("kept receipt-again"), "{err}");
+    assert_answers_every_case(&dir, &cases);
+}
+
+#[tokio::test]
+async fn a_stale_recording_in_a_file_no_twin_writes_is_still_refused() {
+    // The dedupe does not hide a stale file elsewhere: with the twins in play,
+    // the stale copy under another name is refused before any call.
+    let cases = cases_with_a_twin_of_receipt();
+    let dir = with_stale("receipt", Some("zz-stale-copy"), None);
+    let before = contents(&dir);
+    let server = server(triage_answers(), 0).await;
+    let run = record(&server, TRIAGE, &cases, &dir, &[]);
+    let err = stderr(&run);
+    assert_eq!(code(&run), 2, "{err}");
+    assert!(
+        err.contains("zz-stale-copy.jud records this request"),
+        "{err}"
+    );
+    assert_eq!(contents(&dir), before, "nothing was written");
+}
+
 #[tokio::test]
 async fn a_stale_file_of_its_own_beside_a_valid_twin_is_replaced_and_the_twin_reported() {
     // `aa-twin.jud` still answers the request; `receipt.jud` (read later,
@@ -1319,11 +1386,11 @@ spec:
 #[tokio::test]
 async fn a_label_on_a_turn_that_does_not_ask_its_question_is_refused_before_any_call() {
     // `wants_human` is asked only once the conversation has a second turn,
-    // yet the case labels it from turn 1 and `greeted` from turn 0. Binding
-    // reads the whole conversation, where the question is asked, and
-    // accepts it; the first turn alone does not ask the question, so the
-    // label can never be graded there. The whole conversation before it is
-    // fine, and is not asked either.
+    // yet the case labels it from turn 1 and `greeted` from turn 0. The
+    // first turn alone does not ask the question, so the label can never
+    // be graded there: binding refuses the document, `jud check` and
+    // `jud record` alike, before any call is spent. The `whole` case has
+    // no `from_turn` label and stays fine.
     let dir = scratch("conv");
     let rubric = dir.join("conv.jud");
     std::fs::write(
@@ -1367,9 +1434,10 @@ spec:
         greeted: {from_turn: 0}
 ",
     );
-    // The documents bind: `jud check` accepts them.
+    // Binding refuses the label, so `jud check` refuses the documents.
     let check = jud(&["check", rubric.to_str().unwrap(), &cases], "", &[]);
-    assert_eq!(code(&check), 0, "{}{}", stdout(&check), stderr(&check));
+    assert_eq!(code(&check), 2, "{}{}", stdout(&check), stderr(&check));
+    assert!(stdout(&check).contains("not asked"), "{}", stdout(&check));
 
     let server = server(handoff_answers(), 0).await;
     let out = dir.join("recordings");

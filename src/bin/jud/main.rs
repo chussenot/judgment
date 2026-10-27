@@ -343,14 +343,20 @@ fn completion(shell: clap_complete::Shell) -> ExitCode {
 }
 
 /// `Ok(true)` succeeds, `Ok(false)` is a refusal already printed, an error
-/// goes to stderr with `code`.
+/// goes to stderr with `code`. A success whose output could not be written
+/// is an I/O failure (status 1, already said on stderr), never 0.
 fn report(result: Fallible<bool>, code: u8) -> ExitCode {
-    match result {
+    let status = match result {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::from(code),
         Err(e) => {
             out::note!("jud: {e}");
             ExitCode::from(code)
         }
+    };
+    if out::stream_failed() && status == ExitCode::SUCCESS {
+        ExitCode::from(EXIT_BACKEND)
+    } else {
+        status
     }
 }

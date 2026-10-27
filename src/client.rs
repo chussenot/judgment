@@ -22,7 +22,7 @@
 //!
 //! Every HTTP call goes through [`crate::http::send_with_retries_paced`] under the
 //! client's [`RetryPolicy`] or the call's. The final response is classified
-//! by status into [`Error`], grouped by what fixes it: 400, 413 and 422 are
+//! by status into [`Error`], grouped by what fixes it: 400, 413, 415 and 422 are
 //! [`Error::InvalidRequest`], with the server's message, the fields a
 //! validation body names as [`ValidationIssue`]s and the code a hosted-API
 //! 400 carries as `detail.error_type`; 401 is [`Error::Unauthorized`] and
@@ -1616,7 +1616,7 @@ impl ErrorBody {
     }
 }
 
-/// The message, the validation issues and the code of a 400, 402, 403 or 422
+/// The message, the validation issues and the code of a 400, 402, 403, 413, 415 or 422
 /// body, for [`Error::InvalidRequest`], [`Error::PermissionDenied`] and
 /// [`Error::PaymentRequired`].
 ///
@@ -1767,13 +1767,22 @@ fn read_request_id(headers: &HeaderMap) -> Option<String> {
     )
 }
 
+/// A control character (C0, DEL, C1) or an invisible format one that can
+/// reorder or hide text in a log: line and paragraph separators, zero-width
+/// and bidi marks, embeddings, overrides and isolates, the BOM.
+fn is_unfit_in_id(c: char) -> bool {
+    c.is_control()
+        || matches!(c, '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}'
+            | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}' | '\u{FEFF}')
+}
+
 /// `id` trimmed, when it is fit to log, record and quote: not empty, no
 /// control character, at most [`REQUEST_ID_MAX_LEN`] bytes. The header and
 /// a body's `id` pass the same checks, since both end up on the span, in
 /// the response and in a recording. `source` names it in the debug line.
 fn usable_request_id(id: &str, source: &str) -> Option<String> {
     let v = id.trim();
-    if v.is_empty() || v.bytes().any(|b| b.is_ascii_control()) {
+    if v.is_empty() || v.chars().any(is_unfit_in_id) {
         return None;
     }
     if v.len() > REQUEST_ID_MAX_LEN {
@@ -1857,6 +1866,23 @@ mod tests {
             Some("req 1"),
             "inner space kept"
         );
+        assert_eq!(usable_request_id("gen-1", "t").as_deref(), Some("gen-1"));
+        // Non-ASCII that is plain text stays usable.
+        assert_eq!(usable_request_id("gén-1", "t").as_deref(), Some("gén-1"));
+        for bad in [
+            "gen\u{85}1",     // C1 next line
+            "gen\u{9b}[31m1", // C1 CSI
+            "gen\u{202E}1",   // right-to-left override
+            "gen\u{2066}1",   // isolate
+            "gen\u{200F}1",   // right-to-left mark
+            "gen\u{200B}1",   // zero-width space
+            "gen\u{2028}1",   // line separator
+            "gen\u{FEFF}1",   // BOM
+            "gen\u{7f}1",     // DEL
+            "gen\n1",
+        ] {
+            assert_eq!(usable_request_id(bad, "t"), None, "{bad:?}");
+        }
     }
 
     /// An environment that must not be read.

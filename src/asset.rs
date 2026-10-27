@@ -194,7 +194,7 @@ impl Image {
     /// `format` written beside it, when there is one; it must name the
     /// format the bytes have.
     pub fn from_base64(text: &str, declared: Option<&str>) -> Result<Self> {
-        let bytes = decode_base64(text).map_err(|reason| Error::InvalidImage {
+        let bytes = decode_base64(text, MAX_IMAGE_BYTES).map_err(|reason| Error::InvalidImage {
             reason: format!("data_base64 {reason}"),
         })?;
         let image = Self::from_bytes(bytes)?;
@@ -489,13 +489,13 @@ fn sniff(bytes: &[u8]) -> std::result::Result<(ImageFormat, u32, u32), String> {
 
 fn be_u32(bytes: &[u8], at: usize) -> Option<u32> {
     bytes
-        .get(at..at + 4)
+        .get(at..at.checked_add(4)?)
         .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
 }
 
 fn be_u16(bytes: &[u8], at: usize) -> Option<u16> {
     bytes
-        .get(at..at + 2)
+        .get(at..at.checked_add(2)?)
         .map(|b| u16::from_be_bytes([b[0], b[1]]))
 }
 
@@ -509,7 +509,11 @@ fn png_size(bytes: &[u8]) -> std::result::Result<(u32, u32), String> {
     let width = be_u32(bytes, 16).ok_or_else(damaged)?;
     let height = be_u32(bytes, 20).ok_or_else(damaged)?;
     let mut at = 8;
-    while let (Some(length), Some(kind)) = (be_u32(bytes, at), bytes.get(at + 4..at + 8)) {
+    while let (Some(length), Some(kind)) = (
+        be_u32(bytes, at),
+        at.checked_add(4)
+            .and_then(|from| bytes.get(from..from.checked_add(4)?)),
+    ) {
         match kind {
             b"IDAT" | b"IEND" => break,
             b"acTL" => return Err("an animated PNG; the API takes still images only".to_owned()),
@@ -572,9 +576,23 @@ pub(crate) fn encode_base64(bytes: &[u8]) -> String {
     out
 }
 
+/// Each byte's sextet, or `INVALID` for a byte outside the alphabet.
+const INVALID: u8 = 0xFF;
+const BASE64_VALUE: [u8; 256] = {
+    let mut table = [INVALID; 256];
+    let mut i = 0u8;
+    while i < 64 {
+        table[BASE64[i as usize] as usize] = i;
+        i += 1;
+    }
+    table
+};
+
 /// Strict base64: the standard alphabet, correct `=` padding, nothing else,
-/// so what a document holds is exactly what the API accepts.
-pub(crate) fn decode_base64(text: &str) -> std::result::Result<Vec<u8>, String> {
+/// so what a document holds is exactly what the API accepts. The decoded
+/// size is known from the length and the padding, so one over `max_bytes`
+/// is refused before anything is decoded.
+pub(crate) fn decode_base64(text: &str, max_bytes: u64) -> std::result::Result<Vec<u8>, String> {
     let bytes = text.as_bytes();
     if bytes.is_empty() {
         return Err("is empty".to_owned());
@@ -582,11 +600,22 @@ pub(crate) fn decode_base64(text: &str) -> std::result::Result<Vec<u8>, String> 
     if !bytes.len().is_multiple_of(4) {
         return Err("is not a multiple of four characters; use standard base64 with `=` padding and no line breaks".to_owned());
     }
+    let padding = bytes
+        .iter()
+        .rev()
+        .take(2)
+        .take_while(|b| **b == b'=')
+        .count();
+    let decoded = u64::try_from(bytes.len() / 4 * 3 - padding).unwrap_or(u64::MAX);
+    if decoded > max_bytes {
+        return Err(format!(
+            "decodes to {decoded} bytes, over the {max_bytes} byte limit for one image"
+        ));
+    }
     let value = |b: u8| -> std::result::Result<u32, String> {
-        BASE64
-            .iter()
-            .position(|c| *c == b)
-            .map(|p| u32::try_from(p).unwrap_or(0))
+        Some(BASE64_VALUE[usize::from(b)])
+            .filter(|v| *v != INVALID)
+            .map(u32::from)
             .ok_or_else(|| match b {
                 b'\n' | b'\r' | b' ' | b'\t' => {
                     "holds whitespace; use one line with no breaks".to_owned()
@@ -641,7 +670,7 @@ mod tests {
         ] {
             assert_eq!(encode_base64(bytes), text);
             if !text.is_empty() {
-                assert_eq!(decode_base64(text).unwrap(), bytes);
+                assert_eq!(decode_base64(text, 64).unwrap(), bytes);
             }
         }
         for (bad, needle) in [
@@ -654,11 +683,50 @@ mod tests {
             ("Z===", "padding"),
             ("Zm9v*mFy", "outside"),
         ] {
-            let err = decode_base64(bad).unwrap_err();
+            let err = decode_base64(bad, 64).unwrap_err();
             assert!(err.contains(needle), "{bad:?}: {err}");
         }
         let bytes: Vec<u8> = (0..=255).collect();
-        assert_eq!(decode_base64(&encode_base64(&bytes)).unwrap(), bytes);
+        assert_eq!(decode_base64(&encode_base64(&bytes), 256).unwrap(), bytes);
+    }
+
+    /// The cap is applied from the length and the padding, before decoding:
+    /// the exact size passes, one byte over is refused, and so is text that
+    /// is not even valid base64 (the size is checked first).
+    #[test]
+    fn base64_is_capped_before_it_is_decoded() {
+        for (text, size) in [("Zm9v", 3), ("Zm8=", 2), ("Zg==", 1)] {
+            assert_eq!(
+                decode_base64(text, size).unwrap().len(),
+                usize::try_from(size).unwrap()
+            );
+            let err = decode_base64(text, size - 1).unwrap_err();
+            assert!(err.contains("byte limit"), "{text}: {err}");
+        }
+        let err = decode_base64(&"*".repeat(4096), 16).unwrap_err();
+        assert!(err.contains("decodes to 3072 bytes"), "{err}");
+        let err = Image::from_base64(&"A".repeat(22_369_624), None).unwrap_err();
+        assert!(
+            matches!(&err, Error::InvalidImage { reason } if reason.contains("over the 16777216 byte limit")),
+            "{err}"
+        );
+    }
+
+    /// An offset near `usize::MAX` is a miss, not an overflow (a panic in a
+    /// debug build, a wrap in a release one), whatever the pointer width.
+    #[test]
+    fn header_reads_past_the_end_of_the_address_space_are_misses() {
+        let bytes = png_header(280, 280);
+        assert_eq!(be_u32(&bytes, 16), Some(280));
+        assert_eq!(be_u16(&bytes, 18), Some(280));
+        for at in [usize::MAX, usize::MAX - 1, usize::MAX - 3] {
+            assert_eq!(be_u32(&bytes, at), None);
+            assert_eq!(be_u16(&bytes, at), None);
+        }
+        // A chunk whose length runs past the end ends the walk, not the process.
+        let mut bytes = png_header(280, 280);
+        bytes[33..37].copy_from_slice(&u32::MAX.to_be_bytes());
+        assert_eq!(png_size(&bytes), Ok((280, 280)));
     }
 
     #[test]

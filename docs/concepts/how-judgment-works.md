@@ -2,7 +2,7 @@
 title: How judgment works
 description: The mechanisms behind the crate's guarantees, typed handles from a question to its answer, the response check every backend applies, the path of one call through the modules, the retry loop with the official SDKs' defaults, the error grouping and the request id, and what the crate deliberately does not do.
 status: current
-last_reviewed: 2026-10-26
+last_reviewed: 2026-10-27
 tags: [judgment, design, typesafe, retries, concepts]
 ---
 
@@ -73,7 +73,7 @@ flowchart LR
 
 Behind the `SystemOne` trait the same path runs with a `Fake` (a scripted table), a `Recorder` (another backend, with every response written to a directory) or a `Replay` (a directory of recordings) in place of the client, which is how a decision is tested with no key ([Record, replay and test](../guides/record-replay-and-test.md)).
 
-The decoder is tolerant on purpose: an answer kind this release does not know becomes `Answer::Unknown` (the client logs it at `warn`), a missing `usage` reads as zero, and undocumented top-level fields a compatible server adds are kept in `Response::extra`. A known answer that breaks its shape is still an error. The rules behind each choice are in [Internals](../project/internals.md).
+The decoder is tolerant on purpose: an answer kind this release does not know becomes `Answer::Unknown` (the client logs it at `warn`), a missing `usage` reads as zero, and undocumented fields a compatible server adds are kept — top-level ones in `Response::extra`, those inside a known answer in that answer's `extra`. A known answer that breaks its shape is still an error. The rules behind each choice are in [Internals](../project/internals.md).
 
 ## Retries
 

@@ -28,3 +28,10 @@ mise.local.toml
 *.snap.new
 mutants.out
 mutants.out.old
+
+# Everything pact or an agent writes under .pact/ is local runtime state,
+# EXCEPT the files below, which are history or graph and belong in git.
+.pact/*
+!.pact/events.jsonl
+!.pact/messages.jsonl
+!.pact/plan.json

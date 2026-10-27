@@ -105,8 +105,8 @@ pub mod question;
 pub mod semconv;
 
 pub use answer::{
-    Answer, BoundingBox, BoxEdges, Choice, Confidence, FromAnswer, Noul, PixelBox, Probability,
-    Response, Score, Usage,
+    Answer, BoundingBox, BoxEdges, BoxEdgesError, Choice, Confidence, FromAnswer, Noul, PixelBox,
+    Probability, Response, Score, Usage,
 };
 pub use asset::{Assets, Image, ImageFormat};
 pub use backend::{Fake, Recorder, Replay, SystemOne};

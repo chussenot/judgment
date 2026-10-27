@@ -109,6 +109,7 @@ fn load(paths: &[String]) -> (Vec<Loaded>, usize) {
 /// True when every document was read; a refusal is printed as it happens.
 pub(crate) fn check(paths: &[String]) -> bool {
     let (loaded, mut errors) = load(paths);
+    let unloaded = errors;
     let rubrics: Vec<(&str, &Rubric)> = loaded
         .iter()
         .filter_map(|l| match &l.document {
@@ -146,7 +147,9 @@ pub(crate) fn check(paths: &[String]) -> bool {
             errors += usize::from(!print_recording(l, recording, &bound));
         }
     }
-    let documents = loaded.len() + errors;
+    // `errors` already counts a cases document refused at binding, which is
+    // in `loaded`; only the files that never loaded are added.
+    let documents = loaded.len() + unloaded;
     crate::out::say!("{documents} documents, {errors} refused");
     errors == 0
 }
@@ -180,7 +183,7 @@ fn print_rubric(l: &Loaded, rubric: &Rubric) {
     crate::out::say!(
         "rubric    {}: name {}, {}, {} questions, {gates} gates ({tuned}){images}",
         l.path,
-        rubric.name,
+        crate::out::plain(&rubric.name),
         l.declared,
         rubric.questions.len()
     );
@@ -192,20 +195,23 @@ fn print_rubric(l: &Loaded, rubric: &Rubric) {
         .as_ref()
         .and_then(|t| t.cases.as_deref())
     {
-        crate::out::say!("          tuned on  {cases}");
+        crate::out::say!("          tuned on  {}", crate::out::plain(cases));
     }
 }
 
 fn print_cases(l: &Loaded, cases: &Cases, rubric_path: Option<&str>) {
     let bound_to = match (rubric_path, cases.rubric.as_deref()) {
         (Some(path), _) => format!("bound to {path}"),
-        (None, Some(name)) => format!("rubric `{name}` not among the files, labels unchecked"),
+        (None, Some(name)) => format!(
+            "rubric `{}` not among the files, labels unchecked",
+            crate::out::plain(name)
+        ),
         (None, None) => "no rubric given, labels unchecked".to_owned(),
     };
     crate::out::say!(
         "cases     {}: name {}, {}, {} cases, {bound_to}",
         l.path,
-        cases.name,
+        crate::out::plain(&cases.name),
         l.declared,
         cases.cases.len()
     );
@@ -245,7 +251,10 @@ fn request_of(case: &Case, b: &Bound<'_>) -> Fallible<(Value, Questions, Assets)
 fn print_recording(l: &Loaded, recording: &Recording, bound: &[Bound<'_>]) -> bool {
     let mut line = format!(
         "recording {}: case {}, {}, model {}",
-        l.path, recording.case, l.declared, recording.response.model
+        l.path,
+        crate::out::plain(&recording.case),
+        l.declared,
+        crate::out::plain(&recording.response.model)
     );
     let Some(found) = find_request(bound, &recording.case) else {
         crate::out::say!("{line}, no bound case of that name, answers unchecked");
@@ -332,10 +341,21 @@ pub(crate) fn lower(args: &Lower) -> Fallible<bool> {
     };
     match (cases, state) {
         (Some(cases), _) => {
-            for (i, case) in cases.cases.iter().enumerate() {
-                let questions = case.request(&rubric)?;
-                crate::out::say!("# {}", case.name(i));
-                crate::out::say!("{}", serde_json::to_string_pretty(&questions)?);
+            // Every request is lowered before any is printed, so a case
+            // that does not lower leaves no partial output; a conversation
+            // labelled with `from_turn` is one request per turn, as `record`
+            // sends it.
+            let mut shown = Vec::new();
+            for unit in crate::batch::units(&cases) {
+                let questions = unit
+                    .case
+                    .request(&rubric)
+                    .map_err(|e| format!("case {}: {e}", crate::out::plain(&unit.name)))?;
+                shown.push((unit.name, serde_json::to_string_pretty(&questions)?));
+            }
+            for (name, questions) in shown {
+                crate::out::say!("# {}", crate::out::plain(&name));
+                crate::out::say!("{questions}");
             }
         }
         (None, Some(state)) => {

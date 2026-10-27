@@ -1461,6 +1461,38 @@ fn what_the_crate_decodes_differently_from_the_schema() {
         assert_eq!(legend["0"], level, "{what} is kept as it came");
     }
 
+    // Both accept a whole-number float count: JSON Schema 2020-12's
+    // `integer` is satisfied by 12.0, and the crate reads it as 12. A
+    // fractional count both refuse.
+    let whole = with("/usage/input_tokens", json!(12.0));
+    assert_conforms(&schema, &whole, "input_tokens 12.0");
+    let read: Response = serde_json::from_value(whole).unwrap();
+    assert_eq!(read.usage.input_tokens, 12, "12.0 reads as its integer");
+    let fractional = with("/usage/input_tokens", json!(1.5));
+    assert_refused_at(
+        &schema,
+        &fractional,
+        "/usage/input_tokens",
+        "input_tokens 1.5",
+    );
+    assert!(serde_json::from_value::<Response>(fractional).is_err());
+
+    // Both accept a field inside an answer the crate does not model: the
+    // answer schemas are open, and the crate keeps it in that answer's
+    // `extra` and writes it back, so the recording still conforms.
+    let mut inside = base.clone();
+    inside["answers"] = json!({ "n": example_answer("noul") });
+    inside["answers"]["n"]["action"] = json!({ "p": 0.4 });
+    assert_conforms(&schema, &inside, "an answer-level extra");
+    let read: Response = serde_json::from_value(inside.clone()).unwrap();
+    let judgment::Answer::Noul { extra, .. } = &read.answers["n"] else {
+        panic!("{:?}", read.answers["n"]);
+    };
+    assert_eq!(extra["action"], json!({ "p": 0.4 }));
+    let written = serde_json::to_value(&read).unwrap();
+    assert_conforms(&schema, &written, "the written-back answer extra");
+    assert_eq!(written["answers"]["n"]["action"], json!({ "p": 0.4 }));
+
     // Both accept these: the response schema is open, so an extra top-level
     // key is valid, and the crate keeps it in `extra`; a body `request_id`
     // decodes into the field the client overwrites from the header.

@@ -2,7 +2,7 @@
 title: Decision-model papers, September and October 2026
 description: A reading, as of 2026-10-26, of the twenty papers paperswithcode lists under "Decision Model" (typed decisions from System One models such as Jev), grouped by what they study; the findings that recur across them (item accuracy does not predict use, in-sample bars, binary probabilities placed off 0.5, option order, mass on an unstated "unknown", decomposition, label leakage); and what each means for this crate, what it already does and the follow-up beads.
 status: current
-last_reviewed: 2026-10-26
+last_reviewed: 2026-10-27
 tags: [research, judgment, jev, calibration, evaluation, thresholds, position-bias, literature]
 ---
 
@@ -91,7 +91,7 @@ All twenty papers were read on 2026-10-26, from their arXiv abstract pages, or f
 - **Option order.** `jud eval --swap` asks every Choice again with its options reversed. On Jev 1.13 and 1.14 it moved 1 verdict in 50 ([pairwise judge, position and tone](../verification/pairwise-judge-position-and-tone.md)), which agrees with Deußer et al.
 - **One bar per question.** A rubric's gates and `jud tune`'s sweep are the bars Deußer et al. and JevAgentHarness argue for. A bar fixed at 0.5 is what fails.
 - **Narrow questions.** The crate's rule that the model answers narrow, single questions is PremiseCheck's result.
-- **A way to answer "none of these".** Noul exists, and the [StartLux page](startlux-decision-27b-autothink.md) records that `none_probability` is dropped and a null `choice` cannot be decoded.
+- **A way to answer "none of these".** Noul exists, and the [StartLux page](startlux-decision-27b-autothink.md) records that `none_probability` reads from the answer's `extra` since judgment 0.16 and a null `choice` still cannot be decoded.
 
 ### What it lacks
 

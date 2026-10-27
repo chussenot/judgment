@@ -795,6 +795,7 @@ mod tests {
             choice: pick.to_owned(),
             probabilities: BTreeMap::new(),
             confidence: judgment::Confidence::new(0.5).unwrap(),
+            extra: BTreeMap::new(),
         };
         let mut response: Response =
             serde_json::from_value(json!({"model": "m", "answers": {}})).unwrap();
@@ -813,6 +814,7 @@ mod tests {
     fn a_pair_reads_a_noul_and_a_score_as_eval_grades_them_and_skips_a_box() {
         let noul = |p: f64| Answer::Noul {
             noul: judgment::Probability::new(p).unwrap(),
+            extra: BTreeMap::new(),
         };
         let p = pair("c", Some(&noul(0.93)), Some(&noul(0.2)), 0.5).unwrap();
         assert_eq!((p.original.as_str(), p.perturbed.as_str()), ("yes", "no"));
@@ -845,6 +847,7 @@ mod tests {
         let boxed = Answer::Box {
             edges: judgment::BoxEdges::new(0.1, 0.5, 0.1, 0.5),
             confidence: None,
+            extra: BTreeMap::new(),
         };
         assert!(
             pair("c", Some(&boxed), Some(&boxed), 0.5).is_none(),

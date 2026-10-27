@@ -106,7 +106,7 @@
       ]
     },
     "question": {
-      "description": "One question, exactly as the wire sends it.",
+      "description": "One question, exactly as the wire sends it. A part_when needs instructions that are an object.",
       "oneOf": [
         {
           "type": "object",
@@ -279,7 +279,22 @@
           ],
           "additionalProperties": false
         }
-      ]
+      ],
+      "if": {
+        "required": [
+          "part_when"
+        ]
+      },
+      "then": {
+        "required": [
+          "instructions"
+        ],
+        "properties": {
+          "instructions": {
+            "type": "object"
+          }
+        }
+      }
     },
     "asset": {
       "type": "object",
@@ -337,7 +352,9 @@
       "description": "Reference to asset. A reference is text a state or a question carries where the image belongs.",
       "propertyNames": {
         "minLength": 1,
-        "maxLength": 1024
+        "maxLength": 1024,
+        "pattern": "\\S",
+        "description": "A reference is not blank: at least one character that is not whitespace."
       },
       "additionalProperties": {
         "$ref": "#/$defs/asset"
@@ -384,7 +401,7 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 4,
-          "description": "The minor of jud/v1 the document needs: required under apiVersion jud/v1, refused under the earlier spelling. A reader reads every minor up to its own and refuses a higher one by number."
+          "description": "The minor of jud/v1 the document needs: required under apiVersion jud/v1, refused under the earlier spelling. A reader reads every minor up to its own and refuses a higher one by number. An integer as the reader sees it: `4.0` is a float to a YAML or JSON reader and is refused, though JSON Schema's integer takes it."
         },
         "version": {
           "type": [

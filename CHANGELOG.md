@@ -6,6 +6,114 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+The thirty-five findings of the second review pass, fixed. Three of them
+move the public API (0.x: a minor bump may break), and the `.jud` reader
+corrections under Fixed are breaking for a document the specification
+already refused — it was never a valid v1 document — each naming what to
+change in the document.
+
+### Changed
+
+- Every `Answer` variant keeps the fields it does not model in a flattened
+  `extra` map and writes them back, so a recording round trip keeps what a
+  server put in an answer (Laya's `action`, an answer-level confidence),
+  as the `.jud` page always said it did. Constructing or exhaustively
+  matching an `Answer` now names `extra`. A response without `usage` is
+  still written back with zeros, which the field documents: the OpenAPI
+  document requires `usage`, so only a non-conforming server omits it.
+- `Questions::handle::<Choice<O>>` refuses a handle whose enum does not
+  offer exactly the options sent, so `Response::get` after a passed
+  `verify` can no longer fail for a typed Choice — the guarantee the
+  rustdoc already claimed. `FromAnswer` gains a defaulted `fits` check
+  that `handle` consults.
+- `BoxEdges::check` returns a typed `BoxEdgesError` (same message text)
+  instead of `Result<(), String>`.
+
+### Added
+
+- `Error::InvalidState`: a state that cannot be serialised is reported as
+  the caller's input problem and nothing is sent. It was reported as
+  `Error::Decode`, "could not decode API response", which pointed at the
+  wrong side of the wire.
+- The public `http::Exhausted` implements `Display` and
+  `std::error::Error`.
+
+### Fixed
+
+- The wire and the library:
+  - An instructions object is sent with sorted keys in every build. With
+    the `mcp` feature (which turns on serde_json's `preserve_order`), the
+    `jud` binary sent them in insertion order while the documentation
+    promised them sorted; questions and options keep insertion order as
+    documented.
+  - A whole-number float token count (`12.0`) reads as its integer
+    instead of failing the whole billed response.
+  - `Choice::confidence_from_probabilities` counts the options that were
+    offered, treating the ones the server left out as probability zero,
+    instead of taking n from the answer.
+  - The request id taken from a response body may no longer carry C1
+    control, bidi, zero-width or BOM characters into logs.
+  - The status documentation lists 413 and 415 everywhere it lists the
+    invalid-request statuses.
+- The backends:
+  - `Pacer::new` clamps to the semaphore's ceiling instead of panicking
+    on absurd values.
+  - A recording that declares a fingerprint is served by that fingerprint
+    only — the FNV-hash fallback can no longer answer for it — and
+    `Replay::len` counts recordings that can answer, not replaced
+    duplicates.
+  - `Fake::default()` reports model `"fake"`, as `Fake::new()` does.
+  - `read_recording` reports an unreadable file as the I/O error it is,
+    naming the path; only a file that is not there is `MissingRecording`.
+  - `wilson_interval` returns `None` for `correct > n`.
+- The assets:
+  - `Image::from_base64` refuses an oversized image before decoding it,
+    and decodes through a lookup table instead of a linear alphabet
+    search.
+  - The PNG header reader checks every offset addition, so a hostile
+    header cannot overflow on 32-bit targets.
+- The `jud` command line:
+  - `check`, `lower` and `config` exit 1 when stdout cannot be written; a
+    closed pipe still exits 0.
+  - `jud check` counts a document refused after loading once, and shows a
+    recording's case, model, file names, the eval misses and every other
+    document-chosen text as escaped text.
+  - `lower --cases` names the failing case, leaves stdout empty on a
+    failure, and lowers a `from_turn` conversation one request per turn,
+    as `record` sends it.
+  - `jud mcp` names the subdirectory it cannot read instead of the top
+    directory.
+  - `jud split` removes a half it failed to write, so the retry is not
+    refused over a partial file.
+  - `jud record` replaces a stale recording that two identical cases
+    share, as its `--dry-run` said it would.
+  - A blank `api_key` in the configuration file counts as unset, the rule
+    the environment variable always had, and `timeout_secs: 0` is refused
+    naming the field.
+  - The dry run's time estimate saturates instead of overflowing.
+- The `.jud` reader, writers and schemas:
+  - Refusal messages carry the `spec.` prefix everywhere.
+  - `Rubric::apply` validates a gate before applying it instead of
+    trusting `policy.gates`.
+  - A box label's edges are checked when the document is read, not only
+    at bind, and `Cases::bind` checks each turn a `from_turn` label
+    grades, so a document per-turn grading would refuse is refused at
+    bind; a case labelled only as a whole is asked only as a whole.
+  - The writers refuse what their readers refuse (a rubric's name and
+    non-empty questions; a cases document's duplicate ids and names), so
+    `to_yaml` cannot emit a document `parse` throws back.
+  - An asset reference counts as used only when a string value of the
+    questions or the state names it, not when it happens to be a
+    substring of the JSON syntax.
+  - `metadata.version: 1.10` is read and written back as `1.10` — the
+    reader takes a number's source text, as the format page says.
+  - `part_when: {}` beside string instructions is refused when read
+    (nothing it declares can apply), the schemas encode that a gate takes
+    `confidence` or `bands` but not both, a blank asset reference is
+    refused by schema as by reader, and a minor too large for the format
+    is refused by number. The one stated residue: JSON Schema's `integer`
+    accepts `minor: 4.0`, which the reader refuses; the page says so.
+
 ## [0.15.0] - 2026-10-27
 
 ### Security

@@ -67,7 +67,7 @@ The crate root re-exports `Questions`, `Handle`, `Question`, `Options`, `NoulCri
 | Group | Variants | Remedy |
 |---|---|---|
 | Configuration | `MissingApiKey`, `InvalidApiKey`, `Url`, `ReservedHeader`, `ReservedField` | fix the builder's input; refused before anything is sent |
-| Request refused | `Unauthorized`, `PermissionDenied`, `InvalidRequest`, `InvalidQuestion`, `DuplicateQuestionId`, `InvalidImage`, `InvalidAsset`, `RequestTooLarge` | fix the key, the permission, the question or the image; an image outside the limits is refused before any call |
+| Request refused | `Unauthorized`, `PermissionDenied`, `InvalidRequest`, `InvalidQuestion`, `InvalidState`, `DuplicateQuestionId`, `InvalidImage`, `InvalidAsset`, `RequestTooLarge` | fix the key, the permission, the question, the state (one that cannot be serialised) or the image; an image outside the limits is refused before any call |
 | Account out of credit | `PaymentRequired` (a 402, OpenRouter's "Insufficient credits") | add credit; a retry or a new key does not help |
 | Transient, after the retries | `RateLimited`, `Overloaded`, `Http` | retry later, fall back, or raise the policy |
 | Transport | `Transport`, `ResponseTooLarge` | the network, the server, or the body cap |

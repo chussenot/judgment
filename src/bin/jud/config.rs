@@ -155,9 +155,17 @@ fn read_file(path: &PathBuf) -> Fallible<Option<File>> {
     if text.trim().is_empty() {
         return Ok(Some(File::default()));
     }
-    from_yaml(&text)
-        .map(Some)
-        .map_err(|e| format!("{} is not a jud configuration: {e}", path.display()).into())
+    let file: File = from_yaml(&text)
+        .map_err(|e| format!("{} is not a jud configuration: {e}", path.display()))?;
+    // A zero timeout would fail every request at once, far from its cause.
+    if file.timeout_secs == Some(0) {
+        return Err(format!(
+            "{} is not a jud configuration: timeout_secs must be at least 1",
+            path.display()
+        )
+        .into());
+    }
+    Ok(Some(file))
 }
 
 /// The names of the `TYPESAFE_*` and `JUD_*` variables set in this process
@@ -202,7 +210,9 @@ pub(crate) fn resolve_with(long_context: Option<bool>) -> Fallible<Resolved> {
         Some(model) => (model, Source::ConfigFile),
         None => (DEFAULT_MODEL.to_owned(), Source::Default),
     };
-    let (api_key, api_key_value) = match (env_var(API_KEY_ENV), file.api_key) {
+    // A blank key in the file is unset, as a blank variable is.
+    let file_key = file.api_key.filter(|key| !key.trim().is_empty());
+    let (api_key, api_key_value) = match (env_var(API_KEY_ENV), file_key) {
         (Some(key), _) => ("environment", Some(key)),
         (None, Some(key)) => ("config_file", Some(key)),
         (None, None) => ("missing", None),

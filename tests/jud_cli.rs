@@ -6,6 +6,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::missing_panics_doc)]
 
+mod support;
+
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -819,6 +821,41 @@ fn a_malformed_configuration_file_never_prints_its_api_key() {
     }
 }
 
+#[test]
+fn a_zero_timeout_is_a_configuration_error() {
+    let home = config_home();
+    std::fs::write(home.join("jud/config.yaml"), "timeout_secs: 0\n").unwrap();
+    let out = jud(&["config"], "", &[], &home);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(err.contains("timeout_secs"), "{err}");
+    assert!(err.contains("at least 1"), "{err}");
+    // One second is the smallest timeout there is, and is accepted.
+    std::fs::write(home.join("jud/config.yaml"), "timeout_secs: 1\n").unwrap();
+    let out = jud(&["config"], "", &[], &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+}
+
+#[test]
+fn a_blank_api_key_in_the_configuration_file_is_not_set() {
+    let home = config_home();
+    for blank in ["\"\"", "\"   \""] {
+        std::fs::write(home.join("jud/config.yaml"), format!("api_key: {blank}\n")).unwrap();
+        let out = jud(&["config"], "", &[], &home);
+        let config: Value = serde_json::from_str(&stdout(&out)).unwrap();
+        assert_eq!(config["api_key"], "missing", "{blank}");
+    }
+    // A blank file key does not hide the environment's, and a real one counts.
+    std::fs::write(home.join("jud/config.yaml"), "api_key: \" \"\n").unwrap();
+    let out = jud(&["config"], "", &[("TYPESAFE_API_KEY", "sk-env")], &home);
+    let config: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(config["api_key"], "environment");
+    std::fs::write(home.join("jud/config.yaml"), "api_key: sk-file\n").unwrap();
+    let out = jud(&["config"], "", &[], &home);
+    let config: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(config["api_key"], "config_file");
+}
+
 /// With no absolute `XDG_CONFIG_HOME` or `HOME` there is no configuration
 /// file: one in the working directory is never read, since a checkout could
 /// then name the server while the environment supplies the key.
@@ -1173,6 +1210,184 @@ fn a_closed_stdout_never_panics_the_reader_commands() {
         assert_eq!(code, Some(status), "jud {args:?}: {err}");
         assert!(!err.contains("panicked"), "jud {args:?}: {err}");
     }
+}
+
+/// A stdout that cannot be written (a full disk, `/dev/full`) is not a reader
+/// that went away: the output is incomplete, so the status is never 0, and it
+/// is an I/O failure (1), not a usage error (2).
+#[cfg(target_os = "linux")]
+#[test]
+fn a_stdout_that_cannot_be_written_is_never_exit_0() {
+    let state = r#"{"message": "x"}"#;
+    for args in [
+        vec!["check", RUBRIC, CASES],
+        vec!["lower", RUBRIC, "--state", state],
+        vec!["config"],
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_jud"))
+            .args(&args)
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .env("XDG_CONFIG_HOME", config_home())
+            .stdin(Stdio::null())
+            .stdout(
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .open("/dev/full")
+                    .unwrap(),
+            )
+            .stderr(Stdio::piped())
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(1), "jud {args:?}: {}", stderr(&out));
+        assert!(
+            stderr(&out).contains("cannot write to stdout"),
+            "jud {args:?}: {}",
+            stderr(&out)
+        );
+    }
+}
+
+/// A cases document refused at binding is one document, loaded and refused,
+/// not two.
+#[test]
+fn check_counts_a_document_refused_after_loading_once() {
+    let bad = support::scratch("check").join("bad-cases.jud");
+    std::fs::write(
+        &bad,
+        std::fs::read_to_string(CASES)
+            .unwrap()
+            .replacen("desk: billing", "desk: refunds", 1),
+    )
+    .unwrap();
+    let out = jud(
+        &["check", RUBRIC, bad.to_str().unwrap()],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(
+        stdout(&out).contains("2 documents, 1 refused"),
+        "{}",
+        stdout(&out)
+    );
+    // A file that never loads is still one document, and refused.
+    let out = jud(
+        &["check", RUBRIC, "/nonexistent/x.jud"],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert!(
+        stdout(&out).contains("2 documents, 1 refused"),
+        "{}",
+        stdout(&out)
+    );
+}
+
+/// What a recording or a cases document names is shown as text.
+#[test]
+fn check_shows_a_recording_s_model_and_a_cases_name_as_text() {
+    let dir = support::copy_dir(support::RECORDINGS);
+    let file = dir.join("close-account.jud");
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("    model: jev-1.13.0\n"));
+    std::fs::write(
+        &file,
+        text.replacen("model: jev-1.13.0", "model: \"jev\\e[31mRED\"", 1),
+    )
+    .unwrap();
+    let out = jud(
+        &["check", RUBRIC, CASES, file.to_str().unwrap()],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert!(out.status.success(), "{}", stdout(&out));
+    assert!(!out.stdout.contains(&0x1b), "{:?}", stdout(&out));
+    assert!(
+        stdout(&out).contains("model jev\\u{1b}[31mRED"),
+        "{}",
+        stdout(&out)
+    );
+    // Plain text is untouched.
+    assert!(
+        stdout(&out).contains("name inbox-triage,"),
+        "{}",
+        stdout(&out)
+    );
+}
+
+/// `lower --cases` names the case that does not lower and prints nothing
+/// before it, and a conversation labelled `from_turn` is one request per turn,
+/// as `record` sends it.
+#[test]
+fn lower_cases_names_the_failing_case_and_lowers_per_turn() {
+    let routing = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/jud/routing.jud");
+    let routing_cases = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/examples/jud/routing-cases.jud"
+    );
+    let out = jud(
+        &["lower", routing, "--cases", routing_cases],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    // The second case loses its desk options: the first would print, the second fails.
+    let broken = support::scratch("lower").join("routing-cases.jud");
+    let text = std::fs::read_to_string(routing_cases).unwrap();
+    let cut = text.replacen(
+        "      options:\n        desk:\n          billing: Invoices, payments, refunds\n          technical: Errors and how-to questions\n      expect:\n        desk: technical",
+        "      expect:\n        desk: technical",
+        1,
+    );
+    assert_ne!(cut, text, "fixture lost the options of export-question");
+    std::fs::write(&broken, cut).unwrap();
+    let out = jud(
+        &["lower", routing, "--cases", broken.to_str().unwrap()],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", stdout(&out));
+    assert!(
+        stderr(&out).contains("case export-question:"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(stdout(&out).is_empty(), "{}", stdout(&out));
+
+    let handoff = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/jud/handoff.jud");
+    let handoff_cases = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/examples/jud/handoff-cases.jud"
+    );
+    let out = jud(
+        &["lower", handoff, "--cases", handoff_cases],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let headers: Vec<String> = stdout(&out)
+        .lines()
+        .filter(|l| l.starts_with("# "))
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(
+        headers,
+        [
+            "# escalates-turn-0",
+            "# escalates-turn-1",
+            "# escalates-turn-2",
+            "# patient-turn-0",
+            "# patient-turn-1",
+            "# patient-turn-2",
+        ]
+    );
 }
 
 // ---------------------------------------------------------------------------

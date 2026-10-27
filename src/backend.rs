@@ -226,7 +226,7 @@ pub struct Call {
 /// cannot pass on an answer the client would have refused; a refused call
 /// is not in [`Fake::calls`]. A test that needs a malformed response builds
 /// the [`Response`] directly.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Fake {
     model: String,
     answers: BTreeMap<String, Scripted>,
@@ -277,9 +277,17 @@ impl Scripted {
                         .map(|(i, p)| (i.to_string(), *p))
                         .collect(),
                     confidence: *confidence,
+                    extra: BTreeMap::new(),
                 }
             }
         }
+    }
+}
+
+impl Default for Fake {
+    /// The same as [`Fake::new`].
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -288,7 +296,9 @@ impl Fake {
     pub fn new() -> Self {
         Self {
             model: "fake".to_owned(),
-            ..Self::default()
+            answers: BTreeMap::new(),
+            usage: Usage::default(),
+            calls: Mutex::new(Vec::new()),
         }
     }
 
@@ -318,7 +328,13 @@ impl Fake {
     /// A Noul answer: the probability of yes, checked as on the wire.
     pub fn noul(self, id: impl Into<String>, p_yes: f64) -> Result<Self> {
         let noul = Probability::new(p_yes)?;
-        Ok(self.with_answer(id, Answer::Noul { noul }))
+        Ok(self.with_answer(
+            id,
+            Answer::Noul {
+                noul,
+                extra: BTreeMap::new(),
+            },
+        ))
     }
 
     /// A Choice answer from `(option, probability)` pairs; the chosen option
@@ -346,6 +362,7 @@ impl Fake {
                 choice,
                 probabilities: probs,
                 confidence: Confidence::new(confidence)?,
+                extra: BTreeMap::new(),
             },
         ))
     }
@@ -387,7 +404,14 @@ impl Fake {
         confidence: Option<f64>,
     ) -> Result<Self> {
         let confidence = confidence.map(Confidence::new).transpose()?;
-        Ok(self.with_answer(id, Answer::Box { edges, confidence }))
+        Ok(self.with_answer(
+            id,
+            Answer::Box {
+                edges,
+                confidence,
+                extra: BTreeMap::new(),
+            },
+        ))
     }
 
     /// Every request received so far, oldest first.
@@ -609,8 +633,11 @@ impl Replay {
         Ok(replay)
     }
 
-    /// Add one recording under its request hash and its fingerprint (neither:
-    /// skipped); a later recording of the same request replaces an earlier.
+    /// Add one recording under its fingerprint, or, when it declares none,
+    /// under its request hash (neither: skipped); a later recording of the
+    /// same key replaces an earlier. A recording with a fingerprint is never
+    /// found by hash: the hash is FNV, and one that names another request
+    /// than its fingerprint does must not answer for it.
     pub fn add(&mut self, recording: Recording) {
         let Recording {
             response,
@@ -625,15 +652,15 @@ impl Replay {
         self.responses.push(response);
         if let Some(fingerprint) = fingerprint {
             self.by_fingerprint.insert(fingerprint, index);
-        }
-        if let Some(hash) = request_hash {
+        } else if let Some(hash) = request_hash {
             self.by_hash.insert(hash, index);
         }
     }
 
-    /// Number of recordings this replay can answer from.
+    /// Number of recordings this replay can answer from: one that a later
+    /// recording of the same request replaced is not counted.
     pub fn len(&self) -> usize {
-        self.responses.len()
+        self.by_fingerprint.len() + self.by_hash.len()
     }
 
     /// True when no recording carries a hash or a fingerprint.

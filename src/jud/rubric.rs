@@ -450,7 +450,7 @@ fn noul_criteria(id: &str, raw: RawNoulCriteria) -> Result<NoulCriteria> {
                 "false" => criteria.no = Some(value),
                 other => {
                     return Err(Error::Invalid {
-                        field: format!("questions.{id}.criteria"),
+                        field: format!("spec.questions.{id}.criteria"),
                         reason: format!("a Noul's criteria are `true` and `false`, not `{other}`"),
                     });
                 }
@@ -525,13 +525,20 @@ impl RawQuestion {
             Some("request") => Some(OptionsFrom::Request),
             Some(other) => {
                 return Err(Error::Invalid {
-                    field: format!("questions.{id}.options_from"),
+                    field: format!("spec.questions.{id}.options_from"),
                     reason: format!(
                         "`{other}` is not a source of options; the one source is `request`"
                     ),
                 });
             }
         };
+        // `part_when: {}` is a declaration, and a writer leaves an empty one
+        // out, so it is refused where the instructions cannot take parts.
+        if part_when.as_ref().is_some_and(IndexMap::is_empty)
+            && !question.instructions().is_object()
+        {
+            return Err(part_when_needs_parts(id));
+        }
         let rubric_question = RubricQuestion {
             question,
             when,
@@ -540,6 +547,13 @@ impl RawQuestion {
         };
         check_question(id, &rubric_question)?;
         Ok(rubric_question)
+    }
+}
+
+fn part_when_needs_parts(id: &str) -> Error {
+    Error::Invalid {
+        field: format!("spec.questions.{id}.part_when"),
+        reason: "names parts of the instructions, which must then be an object".to_owned(),
     }
 }
 
@@ -558,34 +572,59 @@ fn check_question(id: &str, rq: &RubricQuestion) -> Result<()> {
     }
     if rq.options_from.is_some() && !matches!(rq.question, Question::Choice { .. }) {
         return Err(Error::Invalid {
-            field: format!("questions.{id}.options_from"),
+            field: format!("spec.questions.{id}.options_from"),
             reason: "only a Choice has options to supply".to_owned(),
         });
     }
     let min_options = if rq.options_from.is_some() { 0 } else { 2 };
     validate_with(id, &rq.question, min_options).map_err(question_error)?;
     if let Some(when) = &rq.when {
-        check_path(&format!("questions.{id}.when"), when)?;
+        check_path(&format!("spec.questions.{id}.when"), when)?;
     }
     if !rq.part_when.is_empty() {
         let instructions = rq.question.instructions();
         let Some(parts) = instructions.as_object() else {
-            return Err(Error::Invalid {
-                field: format!("questions.{id}.part_when"),
-                reason: "names parts of the instructions, which must then be an object".to_owned(),
-            });
+            return Err(part_when_needs_parts(id));
         };
         for (part, path) in &rq.part_when {
             if !parts.contains_key(part) {
                 return Err(Error::Invalid {
-                    field: format!("questions.{id}.part_when.{part}"),
+                    field: format!("spec.questions.{id}.part_when.{part}"),
                     reason: format!("the instructions have no `{part}` part"),
                 });
             }
-            check_path(&format!("questions.{id}.part_when.{part}"), path)?;
+            check_path(&format!("spec.questions.{id}.part_when.{part}"), path)?;
         }
     }
     Ok(())
+}
+
+fn check_nonempty<T>(questions: &IndexMap<String, T>) -> Result<()> {
+    if questions.is_empty() {
+        return Err(Error::Invalid {
+            field: "spec.questions".to_owned(),
+            reason: "a rubric needs at least one question".to_owned(),
+        });
+    }
+    Ok(())
+}
+
+/// What the questions say, for [`check_assets`]: each question as the wire
+/// has it, its `type` aside, since a declaration is no part of what a
+/// reference stands for.
+fn asked_text(questions: &IndexMap<String, RubricQuestion>) -> Value {
+    Value::Array(
+        questions
+            .values()
+            .map(|rq| {
+                let mut wire = serde_json::to_value(&rq.question).unwrap_or(Value::Null);
+                if let Some(map) = wire.as_object_mut() {
+                    map.remove("type");
+                }
+                wire
+            })
+            .collect(),
+    )
 }
 
 #[derive(Serialize)]
@@ -652,12 +691,7 @@ impl Rubric {
         let raw: RawRubric = from_text(text)?;
         refuse_extra(&raw.rest)?;
         check_name("metadata.name", &raw.metadata.name)?;
-        if raw.spec.questions.is_empty() {
-            return Err(Error::Invalid {
-                field: "spec.questions".to_owned(),
-                reason: "a rubric needs at least one question".to_owned(),
-            });
-        }
+        check_nonempty(&raw.spec.questions)?;
         let mut questions = IndexMap::with_capacity(raw.spec.questions.len());
         for (id, question) in raw.spec.questions {
             questions.insert(id.clone(), question.lower(&id)?);
@@ -665,11 +699,7 @@ impl Rubric {
         // Every declared image is referenced in some question, as the server
         // requires, and is declared well; the file itself is read when the
         // request is built.
-        check_assets(
-            "spec.assets",
-            &raw.spec.assets,
-            &serde_json::to_string(&questions).unwrap_or_default(),
-        )?;
+        check_assets("spec.assets", &raw.spec.assets, &asked_text(&questions))?;
         let mut gates = IndexMap::with_capacity(raw.spec.policy.len());
         for (id, raw_gate) in raw.spec.policy {
             let gate = raw_gate.into_gate(&id)?;
@@ -678,10 +708,7 @@ impl Rubric {
         }
         let rubric = Self {
             name: raw.metadata.name,
-            version: raw.metadata.version.map(|v| match v {
-                Value::String(s) => s,
-                other => other.to_string(),
-            }),
+            version: raw.metadata.version,
             description: raw.metadata.description,
             labels: raw.metadata.labels,
             annotations: raw.metadata.annotations,
@@ -698,24 +725,22 @@ impl Rubric {
     /// The rubric as a YAML document. A rubric edited in code is checked as
     /// a parsed one first, so what is written reads back.
     pub fn to_yaml(&self) -> Result<String> {
+        check_name("metadata.name", &self.name)?;
+        check_nonempty(&self.questions)?;
         for (id, question) in &self.questions {
             check_question(id, question)?;
         }
         for (id, gate) in &self.policy.gates {
             validate_gate(id, gate, &self.questions)?;
         }
-        check_assets(
-            "spec.assets",
-            &self.assets,
-            &serde_json::to_string(&self.questions).unwrap_or_default(),
-        )?;
+        check_assets("spec.assets", &self.assets, &asked_text(&self.questions))?;
         to_yaml(&RubricDoc {
             api_version: API_VERSION,
             kind: "Rubric",
             metadata: Metadata {
                 name: self.name.clone(),
                 minor: Some(MINOR),
-                version: self.version.clone().map(Value::String),
+                version: self.version.clone(),
                 description: self.description.clone(),
                 labels: self.labels.clone(),
                 annotations: self.annotations.clone(),
@@ -781,7 +806,7 @@ impl Rubric {
             }
             if rq.options_from.is_some() && !matches!(rq.question, Question::Choice { .. }) {
                 return Err(Error::Invalid {
-                    field: format!("questions.{id}.options_from"),
+                    field: format!("spec.questions.{id}.options_from"),
                     reason: "only a Choice has options to supply".to_owned(),
                 });
             }
@@ -818,7 +843,8 @@ impl Rubric {
 
     /// Read a response to `asked`, a request [`Rubric::lower`] built, through
     /// the policy (`docs/reference/jud-format.md`, Policy): one [`Verdict`] per question asked,
-    /// in wire order, after [`Response::verify`] ([`Error::Response`]).
+    /// in wire order, after [`Response::verify`] ([`Error::Response`]); a
+    /// gate of a question asked that does not fit it is [`Error::Policy`].
     /// Without a gate a Noul's threshold is 0.5 and nothing is deferred.
     pub fn apply(
         &self,
@@ -833,6 +859,10 @@ impl Rubric {
         for (id, question) in asked.iter() {
             self.check_asked(id, question)?;
             let default = Gate::default();
+            // `policy.gates` is public: a gate set past `Rubric::gate` is held to the same checks.
+            if let Some(gate) = self.policy.gates.get(id) {
+                validate_gate(id, gate, &self.questions)?;
+            }
             let gate = self.policy.gates.get(id).unwrap_or(&default);
             let answer = response.answers.get(id).ok_or_else(|| {
                 response_error(crate::Error::MissingAnswer {
@@ -1253,7 +1283,7 @@ spec:
         let text = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n:\n      type: noul\n      criteria: {true: a, maybe: b}\n";
         let err = Rubric::parse(text).unwrap_err();
         assert!(
-            matches!(&err, Error::Invalid { field, .. } if field == "questions.n.criteria"),
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.questions.n.criteria"),
             "{err}"
         );
         let text = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n:\n      type: noul\n      instructions: ok?\n      extra: 1\n";
@@ -1462,6 +1492,69 @@ spec:
         );
     }
 
+    /// `policy.gates` is public: a gate that bypassed `Rubric::gate` is
+    /// refused when applied, as it would be when written.
+    #[tokio::test]
+    async fn apply_refuses_a_gate_that_does_not_fit() {
+        let mut rubric = Rubric::parse(RUBRIC).unwrap();
+        let asked = rubric.lower(&json!({}), &Supplied::new()).unwrap();
+        let response = Fake::new()
+            .noul("actionable", 0.7)
+            .unwrap()
+            .choice(
+                "owner",
+                [("billing", 0.3), ("support", 0.5), ("none_of_these", 0.2)],
+                0.25,
+            )
+            .unwrap()
+            .score("tone", [0.1, 0.2, 0.7], 0.6)
+            .unwrap()
+            .answer(&json!({}), "jev-latest", &asked)
+            .await
+            .unwrap();
+        rubric.apply(&asked, &response).unwrap();
+        rubric.policy.gates.insert(
+            "actionable".to_owned(),
+            Gate {
+                threshold: Some(1.5),
+                ..Gate::default()
+            },
+        );
+        let err = rubric.apply(&asked, &response).unwrap_err();
+        assert!(
+            matches!(&err, Error::Policy { id, reason } if id == "actionable" && reason.contains("between 0 and 1")),
+            "{err}"
+        );
+    }
+
+    /// `version: 1.10` is the text `1.10`, not the float's `1.1`.
+    #[test]
+    fn a_number_version_is_read_as_its_source_text() {
+        let read = |version: &str| {
+            let text = format!(
+                "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\n  version: {version}\nspec:\n  questions:\n    n: {{type: noul, instructions: ok?}}\n"
+            );
+            Rubric::parse(&text).unwrap().version.unwrap()
+        };
+        for (written, text) in [
+            ("1.10", "1.10"),
+            ("3", "3"),
+            ("2.0", "2.0"),
+            ("1e3", "1e3"),
+            ("0.50", "0.50"),
+            ("'1.10'", "1.10"),
+            ("v1.10", "v1.10"),
+        ] {
+            assert_eq!(read(written), text, "{written}");
+        }
+        let mut rubric = Rubric::parse(RUBRIC).unwrap();
+        rubric.version = Some("1.10".to_owned());
+        assert_eq!(
+            Rubric::parse(&rubric.to_yaml().unwrap()).unwrap().version,
+            Some("1.10".to_owned())
+        );
+    }
+
     /// Every declaration, with a shared anchor in an annotation.
     const RUBRIC_1_1: &str = r"
 apiVersion: jud/v1.3
@@ -1653,27 +1746,27 @@ spec:
         let cases = [
             (
                 "  n:\n    type: noul\n    instructions: ok?\n    options_from: request\n",
-                "questions.n.options_from",
+                "spec.questions.n.options_from",
                 "only a Choice",
             ),
             (
                 "  c:\n    type: choice\n    criteria: {a: A}\n    options_from: database\n",
-                "questions.c.options_from",
+                "spec.questions.c.options_from",
                 "not a source",
             ),
             (
                 "  n:\n    type: noul\n    instructions: {question: ok?}\n    part_when: {context: a.b}\n",
-                "questions.n.part_when.context",
+                "spec.questions.n.part_when.context",
                 "no `context` part",
             ),
             (
                 "  n:\n    type: noul\n    instructions: ok?\n    part_when: {question: a.b}\n",
-                "questions.n.part_when",
+                "spec.questions.n.part_when",
                 "must then be an object",
             ),
             (
                 "  n:\n    type: noul\n    instructions: ok?\n    when: \"a..b\"\n",
-                "questions.n.when",
+                "spec.questions.n.when",
                 "not a state path",
             ),
         ];
@@ -2138,19 +2231,93 @@ spec:
         rubric.questions["actionable"].when = Some("message..text".to_owned());
         let err = rubric.to_yaml().unwrap_err();
         assert!(
-            matches!(&err, Error::Invalid { field, .. } if field == "questions.actionable.when"),
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.questions.actionable.when"),
             "{err}"
         );
         let mut rubric = Rubric::parse(RUBRIC).unwrap();
         rubric.questions["actionable"].options_from = Some(OptionsFrom::Request);
         let err = rubric.to_yaml().unwrap_err();
         assert!(
-            matches!(&err, Error::Invalid { field, .. } if field == "questions.actionable.options_from"),
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.questions.actionable.options_from"),
             "{err}"
         );
         let err = rubric.lower(&json!({}), &Supplied::new()).unwrap_err();
         assert!(
-            matches!(&err, Error::Invalid { field, .. } if field == "questions.actionable.options_from"),
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.questions.actionable.options_from"),
+            "{err}"
+        );
+    }
+
+    /// `part_when: {}` is a declaration that needs parts to name: beside text
+    /// it is refused, since a writer would leave it out; beside an object it
+    /// is read, changes nothing and is not written back.
+    #[test]
+    fn an_empty_part_when_needs_instructions_that_are_an_object() {
+        let base =
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n";
+        let err = Rubric::parse(&format!(
+            "{base}    n: {{type: noul, instructions: ok?, part_when: {{}}}}\n"
+        ))
+        .unwrap_err();
+        assert!(
+            matches!(&err, Error::Invalid { field, reason } if field == "spec.questions.n.part_when" && reason.contains("must then be an object")),
+            "{err}"
+        );
+        let rubric = Rubric::parse(&format!(
+            "{base}    n: {{type: noul, instructions: {{question: ok?}}, part_when: {{}}}}\n"
+        ))
+        .unwrap();
+        assert!(rubric.questions["n"].part_when.is_empty());
+        assert!(!rubric.to_yaml().unwrap().contains("part_when"));
+    }
+
+    /// A rubric built in code is held to what the reader refuses.
+    #[test]
+    fn a_rubric_is_checked_for_its_name_and_questions_before_it_is_written() {
+        let mut rubric = Rubric::parse(RUBRIC).unwrap();
+        Rubric::parse(&rubric.to_yaml().unwrap()).unwrap();
+        rubric.name = "../x".to_owned();
+        let err = rubric.to_yaml().unwrap_err();
+        assert!(
+            matches!(&err, Error::Invalid { field, .. } if field == "metadata.name"),
+            "{err}"
+        );
+        let err = Rubric::new("empty", Questions::new())
+            .to_yaml()
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.questions"),
+            "{err}"
+        );
+    }
+
+    /// A reference is in a string of a question, not in the syntax around it:
+    /// not a key (`instructions`), not a `type`, not a declaration.
+    #[test]
+    fn an_asset_reference_is_found_in_a_string_of_a_question() {
+        let parse = |question: &str, reference: &str| {
+            Rubric::parse(&format!(
+                "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    q: {question}\n  assets:\n    {reference}: {{path: p.png}}\n"
+            ))
+        };
+        let boxed = "{type: box, instructions: the mug in `photo`}";
+        parse(boxed, "photo").unwrap();
+        parse(boxed, "the mug").unwrap();
+        for reference in ["instructions", "type", "box", "q", "'\"'", "'`}'"] {
+            let err = parse(boxed, reference).unwrap_err();
+            assert!(
+                matches!(&err, Error::Invalid { reason, .. } if reason.contains("referenced nowhere")),
+                "{reference}: {err}"
+            );
+        }
+        // A declaration's value is no part of what a model is asked.
+        let err = parse(
+            "{type: noul, instructions: ok?, when: photo.exists}",
+            "photo",
+        )
+        .unwrap_err();
+        assert!(
+            matches!(&err, Error::Invalid { reason, .. } if reason.contains("referenced nowhere")),
             "{err}"
         );
     }

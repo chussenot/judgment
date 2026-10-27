@@ -62,6 +62,17 @@ pub const MAX_CHOICE_OPTIONS: usize = 255;
 /// The reference page's maximum levels per Score; the minimum is 2 (module docs).
 pub const MAX_SCORE_LEVELS: usize = 10;
 
+/// An instructions object goes out with its keys sorted, whatever
+/// `serde_json`'s `preserve_order` (the `mcp` feature turns it on) did to the map.
+fn sorted<S: serde::Serializer>(
+    value: &Value,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    let mut value = value.clone();
+    value.sort_all_objects();
+    value.serialize(serializer)
+}
+
 /// One question, as sent on the wire.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -69,6 +80,7 @@ pub enum Question {
     /// Yes/no; the answer is the probability of yes.
     Noul {
         /// What to decide; `null` when the criteria say it all.
+        #[serde(serialize_with = "sorted")]
         instructions: Value,
         /// Optional meaning of yes and no.
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,6 +89,7 @@ pub enum Question {
     /// One option from a defined set.
     Choice {
         /// What to decide; `null` when the option descriptions say it all.
+        #[serde(serialize_with = "sorted")]
         instructions: Value,
         /// Option key to description (`null` allowed), in the order the model sees them.
         criteria: IndexMap<String, Value>,
@@ -84,6 +97,7 @@ pub enum Question {
     /// A position along ordered levels.
     Score {
         /// What to rate; `null` when the levels say it all.
+        #[serde(serialize_with = "sorted")]
         instructions: Value,
         /// Ordered level descriptions, lowest first.
         criteria: Vec<Value>,
@@ -91,6 +105,7 @@ pub enum Question {
     /// Where something is in an image (module docs, `# A Box needs an image`).
     Box {
         /// What to locate, and in which image; never `null`, there are no criteria.
+        #[serde(serialize_with = "sorted")]
         instructions: Value,
     },
 }
@@ -388,10 +403,12 @@ impl Questions {
         self.push::<()>(id.into(), question).map(drop)
     }
 
-    /// A typed handle to a question added by id; `None` if absent or not of `A`'s primitive.
+    /// A typed handle to a question added by id; `None` if absent, not of
+    /// `A`'s primitive, or one `A` cannot always read ([`FromAnswer::fits`]:
+    /// a [`Choice<O>`] needs the question to offer exactly `O`'s options).
     pub fn handle<A: FromAnswer>(&self, id: &str) -> Option<Handle<A>> {
         let question = self.map.get(id)?;
-        (question.kind() == A::KIND).then(|| Handle {
+        (question.kind() == A::KIND && A::fits(question)).then(|| Handle {
             id: id.to_owned(),
             _answer: PhantomData,
         })
@@ -733,6 +750,18 @@ mod tests {
     }
 
     #[test]
+    fn instructions_objects_are_sent_with_sorted_keys_in_every_build() {
+        let mut q = Questions::new();
+        q.noul("n", json!({"zebra": "z", "apple": {"y": 1, "b": 2}}), None)
+            .unwrap();
+        let wire = serde_json::to_string(&q).unwrap();
+        assert!(
+            wire.contains(r#""instructions":{"apple":{"b":2,"y":1},"zebra":"z"}"#),
+            "{wire}"
+        );
+    }
+
+    #[test]
     fn null_instructions_are_sent_as_null() {
         let mut q = Questions::new();
         q.choice::<Colour>("unit", ()).unwrap();
@@ -855,6 +884,35 @@ mod tests {
         assert_eq!(kinds, ["noul", "choice", "score", "box"]);
         let ids: Vec<&str> = q.ids().collect();
         assert_eq!(ids, ["n", "c", "s", "b"]);
+    }
+
+    #[test]
+    fn a_handle_is_refused_for_a_choice_its_enum_cannot_read() {
+        crate::options! {
+            enum Two {
+                A = "a" => None,
+                B = "b" => None,
+                C = "c" => None,
+            }
+        }
+        let mut q = Questions::new();
+        let opt = |keys: &[&str]| {
+            keys.iter()
+                .map(|k| ((*k).to_owned(), None))
+                .collect::<Vec<_>>()
+        };
+        q.dynamic_choice("same", "?", opt(&["a", "b", "c"]))
+            .unwrap();
+        q.dynamic_choice("extra", "?", opt(&["a", "b", "c", "d"]))
+            .unwrap();
+        q.dynamic_choice("subset", "?", opt(&["a", "b"])).unwrap();
+        q.dynamic_choice("other", "?", opt(&["a", "b", "x"]))
+            .unwrap();
+        assert!(q.handle::<Choice<Two>>("same").is_some());
+        for id in ["extra", "subset", "other"] {
+            assert!(q.handle::<Choice<Two>>(id).is_none(), "{id}");
+            assert!(q.handle::<Choice<String>>(id).is_some(), "{id}");
+        }
     }
 
     #[test]
