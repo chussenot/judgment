@@ -1870,6 +1870,40 @@ async fn a_413_is_an_invalid_request_that_is_too_large_and_is_not_retried() {
 }
 
 #[tokio::test]
+async fn a_state_that_cannot_be_serialised_is_the_callers_input_not_a_decode_failure() {
+    // A map keyed by a tuple has no JSON form. Nothing is sent, and the
+    // error is the request's (`InvalidState`), not a response's (`Decode`).
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let mut q = Questions::new();
+    q.noul("urgent", "Does `message` convey urgency?", None)
+        .unwrap();
+    let state: std::collections::HashMap<(u8, u8), &str> = [((1, 2), "x")].into();
+    let err = client(&server, RetryPolicy::default())
+        .system_one(&state, &q)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, Error::InvalidState(_)), "{err:?}");
+    assert!(!err.to_string().contains("decode"), "{err}");
+    assert_eq!(err.request_id(), None);
+    // Negative: a body the API sent that does not decode is still Decode.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
+        .mount(&server)
+        .await;
+    let err = client(&server, RetryPolicy::default())
+        .system_one(&json!({ "message": "hi" }), &q)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, Error::Decode { .. }), "{err:?}");
+}
+
+#[tokio::test]
 async fn ollaya_s_size_codes_are_too_large_and_its_other_codes_are_not() {
     // Ollaya 0.17.0's 422s (docs/project/verification/ollaya.md): a code
     // beside the message, TypeSafe's issues in `detail`. A request over its
