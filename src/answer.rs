@@ -1843,6 +1843,15 @@ mod tests {
             serde_json::from_value::<Answer>(json!({ "type": "noul", "noul": 1.5, "x": 1 }))
                 .is_err()
         );
+        // Not even through duplicate keys: decoding buffers through a
+        // `Value`, where the last duplicate wins before `extra` collects,
+        // so write-back can never emit a field twice.
+        let twice: Answer =
+            serde_json::from_str(r#"{"type":"noul","noul":0.2,"noul":0.9}"#).unwrap();
+        let Answer::Noul { noul, extra } = &twice else {
+            panic!("{twice:?}");
+        };
+        assert!((noul.value() - 0.9).abs() < f64::EPSILON && extra.is_empty());
     }
 
     #[test]
