@@ -70,16 +70,16 @@ pub(crate) fn warn_duplicates(dir: &Path) {
         let names: Vec<String> = paths
             .iter()
             .map(|p| {
-                p.file_name().map_or_else(
+                crate::out::plain(&p.file_name().map_or_else(
                     || p.display().to_string(),
                     |n| n.to_string_lossy().into_owned(),
-                )
+                ))
             })
             .collect();
         crate::out::note!(
             "jud: warning: {} files under {} record the same request ({fingerprint}): {}; a replay answers from one of them, delete the one that is stale",
             names.len(),
-            dir.display(),
+            crate::out::plain(&dir.display().to_string()),
             names.join(", ")
         );
     }

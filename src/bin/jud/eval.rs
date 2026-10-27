@@ -892,19 +892,32 @@ impl Report {
             return writeln!(f, "model misses: none");
         }
         writeln!(f, "model misses ({total})")?;
-        let width = self.questions.iter().map(|q| q.id.len()).max().unwrap_or(0);
+        // Ids, case names and labels come from the documents: shown, never
+        // obeyed (`out::plain`).
+        let width = self
+            .questions
+            .iter()
+            .map(|q| out::plain(&q.id).chars().count())
+            .max()
+            .unwrap_or(0);
         for q in &self.questions {
+            let id = out::plain(&q.id);
             for m in &q.misses {
+                let case = out::plain(&m.case);
                 match m.iou {
                     Some(iou) => writeln!(
                         f,
                         "  {:<width$}  {}: a box at IoU {iou:.2} with the label, confidence {:.2}",
-                        q.id, m.case, m.confidence
+                        id, case, m.confidence
                     )?,
                     None => writeln!(
                         f,
                         "  {:<width$}  {}: expected {}, predicted {}, confidence {:.2}",
-                        q.id, m.case, m.expected, m.predicted, m.confidence
+                        id,
+                        case,
+                        out::plain(&m.expected),
+                        out::plain(&m.predicted),
+                        m.confidence
                     )?,
                 }
             }
