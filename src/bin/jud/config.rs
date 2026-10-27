@@ -84,12 +84,19 @@ impl Source {
     }
 }
 
+fn serialize_public_url<S: serde::Serializer>(url: &str, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&crate::backend::public_url(url))
+}
+
 /// The backend a run uses, with where each value came from.
 #[derive(Debug, Serialize)]
 pub(crate) struct Resolved {
     /// `None` when neither `XDG_CONFIG_HOME` nor `HOME` is an absolute path.
     config_file: Option<String>,
     config_file_present: bool,
+    /// Shown without userinfo, query or fragment, which can carry a
+    /// credential; the client is given the whole URL.
+    #[serde(serialize_with = "serialize_public_url")]
     base_url: String,
     base_url_from: Source,
     model: String,

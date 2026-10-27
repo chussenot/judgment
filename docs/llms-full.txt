@@ -1021,7 +1021,7 @@ A scripted Score is only its probabilities: its legend is the levels of the ques
 
 ## Record once, replay forever
 
-A `Recorder` wraps any backend and writes a recording for every call it forwards; a `Replay` over the same directory answers the same requests later, with no key and no network.
+A `Recorder` wraps any backend and writes a recording for every response it forwards that fits the questions, each one whole (a temporary file renamed onto its name), so a `Replay` opened over the directory while it writes never reads half of one; a `Replay` over the same directory answers the same requests later, with no key and no network.
 
 ```rust no_run
 use std::path::Path;
@@ -3862,7 +3862,7 @@ When nothing is proposed, there is no block and no file: a line on stderr says s
 
 ### With `--out`
 
-`--out PATH` writes the whole rubric with the proposal and the `tuning` block applied. Stdout stays empty and stderr says `jud: wrote the tuned rubric to PATH`. A file already at `PATH` is replaced. The rubric is serialised again, so its comments and layout are lost and `version` is written as text. `jud check` reads the result.
+`--out PATH` writes the whole rubric with the proposal and the `tuning` block applied. Stdout stays empty and stderr says `jud: wrote the tuned rubric to PATH`. `PATH` is written as a write to it would be: a regular file at `PATH`, or the one a symlink at `PATH` names, is replaced only once the whole rubric is written, as `jud record` writes a recording, so a failed write leaves it as it was; a pipe or a device (`--out /dev/stdout`, a FIFO) is written to as a stream. The rubric is serialised again, so its comments and layout are lost and `version` is written as text. `jud check` reads the result.
 
 `--out` is refused with status 2, before the documents are read, when `PATH`:
 
@@ -4017,7 +4017,7 @@ shared_images: false  # true: images as Ollama's shared `images` array, not the 
 
 ### `jud config`
 
-Prints the resolved backend and where each value came from, as JSON on stdout. The key is reported as `environment`, `config_file` or `missing` and never printed. With no variables set and no file:
+Prints the resolved backend and where each value came from, as JSON on stdout. The key is reported as `environment`, `config_file` or `missing` and never printed, and the base URL is shown without its userinfo, query or fragment, which can carry a credential, as in every other message (`jud record --dry-run` included); the client still sends to the whole URL. With no variables set and no file:
 
 <!-- transcript: env -u TYPESAFE_API_KEY -u TYPESAFE_BASE_URL XDG_CONFIG_HOME=/nonexistent jud config -->
 ```json
@@ -4187,7 +4187,7 @@ Labels and annotations are the only open maps outside `spec.tuning`, `spec.respo
 
 ### Questions
 
-A question is exactly what the API receives. The reader MUST apply the checks a request builder applies before sending, and refuse a question that would be refused: a Choice needs 2 to 255 options with non-empty keys, a Score needs 2 to 10 levels none of which is null, a Noul needs instructions or criteria that describe at least one outcome, a Box needs instructions that are not `null`, and no id is empty.
+A question is exactly what the API receives. The reader MUST apply the checks a request builder applies before sending, and refuse a question that would be refused: a Choice needs 2 to 255 options with non-empty keys, a Score needs 2 to 10 levels none of which is null, a Noul needs instructions or criteria that describe at least one outcome, a Box needs instructions that are not `null`, no id is empty, and instructions, a Noul's criteria, a Choice option's description and a Score level are each text, an object or an array (or `null` where the field may be left out), never a number or a boolean, which the API refuses.
 
 ```yaml
 questions:
@@ -4273,7 +4273,7 @@ The images a request carries (minor 4). `assets` is a map of reference to image,
 | Field | Required | Meaning |
 |---|---|---|
 | `type` | no | `image`, the one kind; written always, read optionally. |
-| `path` | one of the two | The file, relative to the document's directory. An absolute path, or one that leaves the directory (`..`), MUST be refused. The format is read from the bytes. |
+| `path` | one of the two | The file, relative to the document's directory. A path that is absolute or leaves the directory MUST be refused, judged as text so that every platform judges it alike: one that starts with `/` or `\`, starts with a drive (`C:`), has a `..` segment between either separator, or holds a line break. The format is read from the bytes. |
 | `data_base64` | one of the two | The bytes inline, base64 as the wire carries them, with `format` required: for a small image a document keeps to itself. |
 | `format` | with `data_base64` | `png`, `jpg` or `jpeg`. With a `path`, optional, and the file MUST match it. |
 
@@ -4347,7 +4347,7 @@ Where the gates came from. Every field is OPTIONAL.
 
 A rubric's fingerprint is the [fingerprint](#fingerprints) of its `spec.questions` map alone, unchanged by the name, the version, the description, the labels and annotations or the policy. A recording's `rubric` or a cases document's `rubric` MAY name a rubric by its name or by this fingerprint.
 
-A rubric's *policy fingerprint* is the fingerprint of its `spec.policy` map alone, the gates as written. `tuning` is provenance and part of neither.
+A rubric's *policy fingerprint* is the fingerprint of its `spec.policy` map alone, the gates in the form a writer writes them ([Fingerprints](#fingerprints)). `tuning` is provenance and part of neither.
 
 ## `Cases`
 
@@ -4528,7 +4528,7 @@ spec:
 
 ## Fingerprints
 
-A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 ([FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/upd1/final)) of the canonical JSON of a value. Canonical JSON is [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JSON Canonicalization Scheme): object members sorted by key, comparing keys as sequences of UTF-16 code units; no whitespace; strings escaped minimally (`"`, `\`, and control characters, as JSON requires, with the two-character escapes where they exist); numbers formatted as ECMAScript's `Number.prototype.toString` formats them (`1` not `1.0`, `0.1`, `1e+21`, `1e-7`).
+A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 ([FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/upd1/final)) of the canonical JSON of a value. Canonical JSON is [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JSON Canonicalization Scheme): object members sorted by key, comparing keys as sequences of UTF-16 code units; no whitespace; strings escaped minimally (`"`, `\`, and control characters, as JSON requires, with the two-character escapes where they exist); numbers formatted as ECMAScript's `Number.prototype.toString` formats them (`1` not `1.0`, `0.1`, `1e+21`, `1e-7`). An integer beyond ±2^53 is the nearest double, as ECMAScript reads it (`1234567890123456789` is `1234567890123456800`), so two such integers that round to one double give one fingerprint: an id that large belongs in a string, as [RFC 7493](https://www.rfc-editor.org/rfc/rfc7493#section-2.2) advises.
 
 | Fingerprint of | Over |
 |---|---|
@@ -4538,6 +4538,8 @@ A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 ([FIPS 
 | a request | `{"assets": {<reference>: "sha256:<hex of the image's bytes>", …}, "questions": <the questions map>, "state": <the state>}`, with `assets` left out when the request carries no image |
 
 Every fingerprint is over a value inside `spec`, never over the envelope: `apiVersion`, `kind` and `metadata` are part of none.
+
+A fingerprint is over the value as read, in the one form a writer writes it, so a document that spells a default another way has the same fingerprints: a question always has `instructions` (`null` when the document has none, as the wire sends it), and a Choice always has `criteria` (`{}` when every option comes with the request); a gate leaves out `strict: false`; an empty `part_when`, and a case's empty `tags`, `expect`, `options` and `assets`, are left out; a case's image always has `type: image`; a rubric with no `policy` has the policy `{}`. Everything else is as written: a level named by its text or by its index stays named so. Known vector: the questions `{c: {type: choice, criteria: {a: A, b: B}}}`, a Choice without instructions, canonicalise to `{"c":{"criteria":{"a":"A","b":"B"},"instructions":null,"type":"choice"}}` and fingerprint as `sha256:d10bb58f36f7e4cd6be5887cefaddad376348591fad70bf73fec962fcabf910b`.
 
 A fingerprint identifies content, not the order of object keys: canonical JSON sorts them. Two rubrics that differ only in the order of a Choice's options have the same fingerprint although the model sees the options in another order. Order is significant to the request ([Reading rules](#reading-rules)) and kept in the file; the fingerprint does not witness it.
 
@@ -4557,6 +4559,7 @@ An implementation MUST read a document under these rules.
 - `apiVersion` MUST be present and the string `jud/v1` (or the earlier spelling `jud/v1.3`); `metadata.minor` MUST be present under `jud/v1`, a non-negative integer at most the minor the reader implements, and absent under the earlier spelling; `kind` MUST be present and one of the three. All three are checked before anything else. A top-level key other than the four of the envelope is refused by name.
 - Every `metadata.name` and every case `id` is a [name](#names). `metadata.name` is REQUIRED on every kind; `metadata.version` is refused on a Cases document and a Recording, `metadata.description` on a Recording. `metadata.labels` and `metadata.annotations` are maps of string to string under any keys.
 - A field the kind does not define is refused, with its path. The exceptions are `tuning` in a rubric and `response` in a recording, which keep what they are given, and `state`, which is any JSON.
+- A field that takes only text takes a string: a number or a boolean there (`name: 2026`, `tags: [1, true]`, a Score's `fallback: 1`) is refused with its path, not read as its text; quote it. A key is text whatever YAML reads it as, as every key is in JSON, so `state: {2024: revenue}` is read. The fields that take a number too take one: `metadata.version` (read as its text, a boolean refused), and `level_at_least` and a Score label (read as a level index). `null` is refused, with its path, wherever the format gives it no meaning: it is a value of `instructions`, of an option's or a Noul criterion's description, of a turn label's `from_turn`, and of anything inside a case's `state`, a recording's answers, the fields a recording's `response` keeps beyond `model`, `answers`, `usage` and `request_id` (and its `usage` beyond `input_tokens` and `output_tokens`), and the fields a tuning block keeps beyond `cases`, `model`, `server` and `tuned_at`, and of nothing else. A field with no value is left out. Read as text or as absent, each would be a document the schemas refuse, and `threshold: null` would quietly be the default bar.
 - Order is significant and preserved for `questions`, a Choice's `criteria`, a Score's `criteria`, `bands`, `cases`, `expect` and a case's supplied options. It is not for the parts of an instructions object, which is a JSON object like the state: an implementation MAY send its keys in any order (this crate sends them sorted).
 - A state path in `when` or `part_when` is well formed, and every `part_when` name is a key of its instructions object. `options_from` is `request`, on a Choice. None of the three is `null`.
 - An asset is `type: image` (or no `type`), has exactly one of `path` and `data_base64`, a `format` the API takes (`png`, `jpg`, `jpeg`) that is required with `data_base64`, and a path that is relative and stays under the document's directory. Every reference a rubric declares appears in its questions, and every reference a case declares appears in its state; a document's references weigh at most 65,536 bytes together. A Box's `instructions` is not `null`.
@@ -4786,6 +4789,7 @@ What is promised, what is not, and for how long, for the format, its fingerprint
 The `.jud` format is at `apiVersion: jud/v1`, minor 4 ([The .jud format](jud-format.md)), and the `v1` line is stable:
 
 - **A valid document stays valid.** A document that a `jud/v1` reader accepts today is accepted by every later `jud/v1` reader. Nothing is removed, renamed or given a new meaning inside the `v1` line: not a field of the envelope, not a field of `spec`, not a kind, not a rule of reading.
+- **Valid means what the specification states.** A reader of this repository that accepted a document the specification or the schemas refuse (a number where only text goes, `null` where it has no meaning, a field the kind does not define) was wrong, and the document was never a valid `v1` document. A release that corrects such a reader lists the correction as breaking, with what to change in the document (quote the value, leave the field out), and reads every document the specification accepts as before. The second-pass review's fixes were the first such corrections ([CHANGELOG](../../CHANGELOG.md)).
 - **A minor version only adds.** A later minor (`1.4`, `1.5`) may add an optional field, a value a field may take, or a kind. It may not make an optional field required, narrow what a field accepts, or change what an existing field means. A document that uses nothing a later minor added is, byte for byte, a document of the earlier minor.
 - **Readers accept every `v1` document for at least twelve months.** When a later minor is published, every reader of the format that this repository ships (the crate's `judgment::jud`, the `jud` command, the plugin's checks) accepts documents of each earlier `v1` minor for at least twelve months from that publication. The date is the release date of the crate version that first reads the new minor, recorded in the `CHANGELOG`.
 - **A change of meaning is `jud/v2`.** Anything a minor may not do takes a new major version, with its own `apiVersion`, its own schemas and a page that maps `v1` onto it. A `v2` reader is not required to read `v1`; a `v1` document is moved by rewriting it.
@@ -4798,6 +4802,7 @@ A rubric's questions, a rubric's policy, a cases document's cases and a request 
 
 - **The envelope contributes nothing.** `apiVersion`, `kind` and the whole of `metadata` are outside every fingerprint. Renaming a document, labelling it, annotating it, or moving it to a later `apiVersion` leaves each fingerprint as it was.
 - **A document's `spec` has one fingerprint, for good.** The value fingerprinted and the canonicalisation are fixed for `v1`. A minor may add a field to `spec`; a document that does not use it fingerprints as it did. A change to what is fingerprinted or how would be a change of meaning, so it is `v2`.
+- **A fingerprint is RFC 8785's.** The canonicalisation is the one the specification has always named. Where the crate departed from it (it printed an integer beyond ±2^53 digit for digit where RFC 8785 prints the nearest double; a build without `serde_json`'s `float_roundtrip` read one JSON double in several one unit off before printing it), a release that corrects it lists the fingerprints that move as breaking, with what to record again; that is a correction to `v1`, not a change of it, and nothing else about what is fingerprinted or how changes inside `v1`.
 - **The known vector holds.** The specification carries a worked fingerprint; `tests/jud.rs` checks the crate against it, and another implementation can check itself the same way.
 
 ## The wire
@@ -4824,7 +4829,7 @@ Exit status 3, `jud eval`'s `--json` keys and the two places that write files ar
 | A `jud/v1` document | Valid today, valid under every later `v1` minor | minor 3 (`jud/v1.3`), crate 0.8.0 |
 | A `v1` minor | Adds only; never removes, renames, narrows or changes meaning | this page |
 | Readers of an earlier `v1` minor | Accepted for at least twelve months after a later minor is published | this page |
-| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good. A request's includes each image by the digest of its bytes, and is unchanged for a request without one | minor 3, decision 0018; the images, minor 4, decision 0025 |
+| A fingerprint | Over `spec` only; the envelope is outside it; one value per content, for good, short of a correction to RFC 8785 ([above](#fingerprints-exclude-the-envelope-and-never-change)). A request's includes each image by the digest of its bytes, and is unchanged for a request without one | minor 3, decision 0018; the images, minor 4, decision 0025 |
 | The wire | The vendored OpenAPI document; a change moves the contract test, the CHANGELOG and the README together | crate 0.3.0 |
 | The crate | 0.x: a minor may break and says so; a patch does not | crate 0.3.0 |
 | The `jud` command | Exit status (0 to 3), the verdict JSON, `jud eval`'s `--json` keys, the places that write files (`jud record --out`, `jud tune --out`, `jud split`) and the configuration: a change to what one means, or removing one, only in a minor, listed as breaking; an addition is listed under Added | crate 0.9.0; status 3, `eval --json` and the file writes from the release that ships `record`, `eval` and `tune` |
@@ -4994,7 +4999,7 @@ The word *rubric* comes from grading. A rubric is the sheet a grader holds: the 
 
 ## Identity by content
 
-A rubric's questions, a rubric's policy, a cases document's cases and a request each have a fingerprint: the SHA-256 of their [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical JSON. Any implementation computes the same fingerprint for the same content, so `tuning.cases: sha256:…` names one exact set of labels whichever tool wrote it, and an edited set is visibly another one.
+A rubric's questions, a rubric's policy, a cases document's cases and a request each have a fingerprint: the SHA-256 of their [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical JSON. Any implementation computes the same fingerprint for the same content, taken in the one form a writer writes it ([Fingerprints](../reference/jud-format.md#fingerprints)), so `tuning.cases: sha256:…` names one exact set of labels whichever tool wrote it, and an edited set is visibly another one.
 
 A rubric has two fingerprints on purpose. The questions' fingerprint is the exact identity of what the model can be asked, unchanged by the name, the description, a label, a comment or the policy. That makes it deliberately not an integrity check of the decision: a gate moved from `confidence: 0.45` to `0.30` leaves it unchanged. So the policy has a fingerprint of its own, and an application that must notice a change to what it does with an answer pins both.
 
@@ -5135,7 +5140,7 @@ A transient failure must not fail a call that a second attempt would have comple
 flowchart TD
     S[send request] --> R{response?}
     R -->|status| C{"in http_statuses?<br/>default 408, 429, 5xx"}
-    R -->|"transport error, or body cut short"| X{"transport level retries it?<br/>Any: yes; BeforeSend: only when<br/>the connection was never made; Never: no"}
+    R -->|"transport error, or a 2xx body cut short"| X{"transport level retries it?<br/>Any: yes; BeforeSend: only when<br/>the connection was never made; Never: no"}
     C -->|no| DONE[return status and body to the client for classification]
     C -->|yes| T{"attempt ≤ max_retries?"}
     X -->|yes| T
@@ -5245,7 +5250,7 @@ mise tasks            # the rest
 
 ## The gates
 
-`mise run check` runs, in CI's order: `cargo fmt --check`, `cargo clippy --all-targets --all-features` with warnings denied, a build and check of every target without the `http` feature (`check:minimal`), `cargo test --all-features` (unit, wiremock, example, doc and documentation tests, no network), `cargo doc` with broken links as errors, and the documentation checks below. The pre-commit hooks (`prek`, configured in `.pre-commit-config.yaml`) run the fast file-level checks and verify the commit message; the pre-push hook runs the tests. Two of them guard the repository rather than the crate: [zizmor](https://docs.zizmor.sh) audits the workflows and the Dependabot file (template injection, token permissions, persisted credentials, actions not pinned to a commit), and [gitleaks](https://github.com/gitleaks/gitleaks) refuses a commit whose staged changes hold a secret. Both run in CI's hooks job too; zizmor's findings there fail it. Every action a workflow uses is pinned to a commit SHA with its release in a comment, which Dependabot moves, a week after a release.
+`mise run check` runs, in CI's order: `cargo fmt --check`, `cargo clippy --all-targets --all-features` with warnings denied, a build and check of every target without the `http` feature, and a check that a normal build reads doubles exactly (`serde_json`'s `float_roundtrip`, which a dev-dependency would otherwise hide) (`check:minimal`), `cargo test --all-features` (unit, wiremock, example, doc and documentation tests, no network), `cargo doc` with broken links as errors, and the documentation checks below. The pre-commit hooks (`prek`, configured in `.pre-commit-config.yaml`) run the fast file-level checks and verify the commit message; the pre-push hook runs the tests. Two of them guard the repository rather than the crate: [zizmor](https://docs.zizmor.sh) audits the workflows and the Dependabot file (template injection, token permissions, persisted credentials, actions not pinned to a commit), and [gitleaks](https://github.com/gitleaks/gitleaks) refuses a commit whose staged changes hold a secret. Both run in CI's hooks job too; zizmor's findings there fail it. Every action a workflow uses is pinned to a commit SHA with its release in a comment, which Dependabot moves, a week after a release.
 
 Four more gates guard what a user of the crate depends on. Each is a CI job and a `mise run` task of the same name, and none is in `mise run check`, because the first two read the network (the baseline release, the advisory database):
 
@@ -5382,14 +5387,14 @@ The builder refuses before sending what the HTTP API reference page says the ser
 
 ## The retry loop
 
-- **A 2xx is never retried**, even when its status is listed in the policy: the call succeeded and was billed. The JS SDK returns on `res.ok` before reading its set; the Python SDK retries only a raised error.
+- **A 2xx whose body arrived whole is never retried**, even when its status is listed in the policy: the call succeeded and was billed. One whose body was cut short is a transport failure, retried only under `TransportRetry::Any`. The JS SDK returns on `res.ok` before reading its set; the Python SDK retries only a raised error.
 - **Transport failures** are retried by default. `TransportRetry` is one three-level setting rather than the SDKs' two flags because the flags split failures by kind, which does not answer whether the request left the process. `BeforeSend` retries only when `reqwest` reports the connection was never made; a connect or TLS handshake that hangs until the per-attempt timeout ends as a timeout and is not retried under it. A misclassification can only retry less.
 - **`conservative()`** retries 408, 429 and connections never made, because the API reference says a billed call's tokens are billable and does not say whether a 5xx or a timed-out call was charged; 529 is excluded because nothing says an overloaded server refused the request before processing it.
 - **The jitter is one-sided**, `backoff × (1 − U·j)`, so the nominal backoff is also the longest wait. A jitter above 1 reads as 1, a negative or NaN one as 0. The code never uses `Duration::mul_f64`, which panics at `Duration::MAX`.
 - **The server's wait** is read as `retry-after-ms` first (a convention of the OpenAI and Anthropic SDKs that both TypeSafe SDKs follow), then `Retry-After` in seconds, then as an HTTP date in the three [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110#field.retry-after) forms, measured against the response's own `Date` header when it has one so a skewed local clock neither stretches nor cuts the wait. It replaces the backoff with no jitter, on any retried status, up to `retry_after_max` (30 s; the JS SDK caps at 60 s, the Python SDK not at all), above which the client's own backoff applies so a hostile header cannot stall a caller. A value that is empty, negative, not finite or too large for a `Duration` is ignored. `retry_after_max` of zero is the crate's spelling of the SDKs' `respect_retry_after: false`.
 - **The budget** counts from the first send and stops a retry whose wait would end at or past it, returning the last failure: tenacity's `stop_before_delay`, which the Python SDK uses. It is off by default because the attempt count and the per-attempt timeout already bound a call, and the JS SDK has none.
-- **The body cap** (8 MiB, no SDK equivalent) fails on a `Content-Length` above it before a byte is read, and reads a body without one chunk by chunk until it would pass; a body over the cap is never retried.
-- **Every failed attempt is reported** from the loop, retried or not, under the status, `transport` or `too_large`, to the observer the caller passes (`send_with_retries_paced`; a client passes its own, or the global one) and to the global one when it passes none (`send_with_retries`); the loop is the one place every client passes through.
+- **The body cap** (8 MiB, no SDK equivalent) fails on a `Content-Length` above it before a byte is read, and reads a body without one chunk by chunk until it would pass; a success's body over the cap is never retried. A failed status's body that is over the cap or cut short is read as empty: the status already says what happened and what to do (a 429's wait, a 503's retry), so the attempt stays that status, its `Retry-After` honoured, the pacer paused and the error classed by it, and the half of an error body that arrived is dropped, since a JSON error cut short says nothing the status does not. Both SDKs differ here: they read an interrupted body of any status as a connection error, retried by backoff with the server's wait ignored; the crate keeps the status the server sent, so a cut-short 429 waits as told and a cut-short 400 is not retried.
+- **Every failed attempt is reported** once from the loop, retried or not, under the status, or `transport` or `too_large` when no failed status came back, to the observer the caller passes (`send_with_retries_paced`; a client passes its own, or the global one) and to the global one when it passes none (`send_with_retries`); the loop is the one place every client passes through.
 - **A pacer is shared state, not loop state.** With one, the loop waits out its pause before every attempt, and a retryable 429 or 529 that names a wait pauses it for the delay the policy computed (the server's wait, already capped by `retry_after_max`) before the call sleeps, so every call on the pacer holds its next attempt. Nothing else pauses: without a named wait, or on another status, a call backs off alone. The bound on calls in flight is not in the loop at all: `Paced` takes a place before the call and gives it back when the call's future is dropped.
 - **The loop names no vendor's header.** It returns the last response's headers for each client to read its own. `make` is called once per attempt so each attempt is a fresh request; dropping the future cancels the call, a wait included.
 - **Not taken from the SDKs**: exception and predicate hooks, because a closure field would cost the policy its `PartialEq` and `Debug`.
@@ -5630,7 +5635,7 @@ TypeSafe publishes an OpenAPI document for the System One API at <https://api.ty
 
 Where the crate and the schema disagree the test pins the difference, each at its own path, so a refreshed document that closes one fails loudly:
 
-- **The crate sends what the schema refuses**: a null or numeric state, numeric instructions, a boolean Noul criterion, a numeric Score level, an empty question set. The builders take any JSON value there and the client any `Serialize` state, so such a request reaches the server, which is expected to refuse it with a 422.
+- **The crate sends what the schema refuses**: a null or numeric state, an empty question set. The client takes any `Serialize` state and the builder does not refuse an empty `Questions`, so such a request reaches the server, which is expected to refuse it with a 422. Numeric instructions, a boolean Noul criterion and a numeric Score level are not on the list: the builders refuse them as the schema does (`Error::InvalidQuestion`).
 - **The builder refuses what the schema allows**: 1 option, 1 level, an empty question id, an empty option key. It follows the HTTP API reference page, which is stricter than the schema. Until 2026-10-25 the schema allowed 256 options and 11 levels as well; the document of that date bounds them (`maxProperties: 255`, `maxItems: 10`), and the hosted API now refuses them from its schema with a 422. It was probed past those limits on 2026-10-03, when it refused 256 options and 11 levels with a 400, refuses an empty question id with a 400, and answers one option or one level with probability 1 and accepts an empty option key, so the upper bounds are the server's and the lower ones this crate's alone (the rustdoc of `question` says why).
 - **The crate decodes differently**: it refuses a probability or confidence outside `[0, 1]` and a negative token count, which the schema types as bare numbers, because a value no threshold can use is better an error; and it accepts a response without `usage`, with `usage` or a token count null, with no answers, or with a legend entry that is null or a scalar, which the schema refuses, because decoding is tolerant and `Response::verify` is what holds a response to its questions. A `Fake` asked nothing answers `answers: {}`, which the schema refuses.
 
@@ -8029,7 +8034,7 @@ The subcommands are `src/bin/jud/record.rs`, `eval.rs` and `tune.rs`, with `batc
 - **Credentials.** The server written into a recording and into a `tuning` block is `scheme://host/path`, without userinfo, query or fragment, and so is the one a failure names. `jud tune` strips a recording's server the same way before it writes it into the `tuning` block, whatever the recording holds.
 - **One runtime per run.** The backend holds one async runtime for the life of the run, so the client's connection pool survives a loop of calls.
 - **Planning before any call.** Every request is lowered and every conversation label checked before any call is made or any answer is taken from a recording, so a document problem is status 2 found before case 1 is paid for, never status 1 after case 4. A failed call stops `jud record` at that case and names how many were recorded and kept; what was written stays. Under a replay `jud eval` and `jud tune` try every case before they fail, and one message names every case with no recording.
-- **Writes are atomic in `jud record`.** Each recording goes to a temporary file in the same directory, is flushed, and then takes its name, so a replay never reads half a file. Two cases that lower to one request share a recording: the second is kept.
+- **Writes are atomic in `jud record` and `jud tune --out`.** Each recording, and the tuned rubric, goes to a temporary file in the same directory, is flushed, and then takes its name, so a replay never reads half a file and a failed write leaves the file that was there. `jud tune --out` was a plain write, a known limit, until the second-pass review (judgment-y7a.18); it follows a symlink to the file it names, and writes to a pipe or a device (`/dev/stdout`) as a stream, since renaming over one loses the rubric (judgment-qvu). Two cases that lower to one request share a recording: the second is kept.
 - **Replay order.** `Replay::open` reads files in name order, so which of two files recording one request answers does not depend on the file system: the one that sorts last. A `.json` recording that does not parse is `Error::InvalidRecording`, naming the file, where it was `Error::Decode`. `jud record` and `jud tune` warn when two files record one request.
 
 ### What differs from the proposal
@@ -8042,7 +8047,6 @@ The subcommands are `src/bin/jud/record.rs`, `eval.rs` and `tune.rs`, with `batc
 - **A Score's table reads the most probable level; the policy reads the nearest.** The confidence table is the library's `gate_table`, which takes the most probable level as the answer. The policy acts on the level nearest the weighted score. They agree on an answer with one peak and part on a spread one. `jud tune` says so on stderr for every Score whose `confidence` bar it proposes.
 - **A strict gate's sweep counts an answer at the bar as acting.** A strict gate acts above its bar. `jud tune` counts the answers sitting exactly at the proposed bar and says what a strict gate does with them when there are any, and otherwise says that one can sit there.
 - **A lowest bar of 0.0 is proposed when every labelled answer is already right.** The gate would then defer nothing. `jud tune` proposes it and says so, as it does for `tone` on the triage documents.
-- **`jud tune --out` is a plain write.** It truncates and writes the path, not a temporary file renamed over it.
 - **A base URL with userinfo sends Basic auth.** With `https://user:pass@host` as the base URL the client sends those credentials as Basic auth instead of the API key. Every recording and message drops the userinfo, but the request still carries it.
 
 ## Pros and cons of the options

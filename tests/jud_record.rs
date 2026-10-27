@@ -1445,6 +1445,40 @@ fn a_dry_run_counts_what_a_run_would_ask_and_asks_nothing() {
     assert_eq!(contents(&dir), before, "a dry run writes nothing");
 }
 
+/// The dry run names the backend without a base URL's credentials, which
+/// an agent session that runs it keeps in its transcript.
+#[test]
+fn a_dry_run_never_prints_a_base_url_s_credentials() {
+    let dir = copy_dir(support::RECORDINGS);
+    let out = support::jud(
+        &[
+            "record",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--out",
+            dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[(
+            "TYPESAFE_BASE_URL",
+            "http://user:s3cret@127.0.0.1:9/?token=abc",
+        )],
+    );
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let (text, err) = (stdout(&out), stderr(&out));
+    assert!(
+        text.contains("backend http://127.0.0.1:9/, model"),
+        "{text}"
+    );
+    for leaked in ["s3cret", "token="] {
+        assert!(
+            !text.contains(leaked) && !err.contains(leaked),
+            "{text}{err}"
+        );
+    }
+}
+
 /// A stale recording is counted as one to replace, and named.
 #[test]
 fn a_dry_run_names_a_stale_recording_it_would_replace() {

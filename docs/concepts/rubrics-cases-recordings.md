@@ -2,7 +2,7 @@
 title: Rubrics, cases and recordings
 description: Why a decision is written as a rubric, why the labelled examples it is graded on and the answers a model gave are documents of their own, how the three name each other by content, and the loop that tunes a policy from them.
 status: current
-last_reviewed: 2026-10-24
+last_reviewed: 2026-10-26
 tags: [judgment, jud, rubric, cases, recordings, calibration, concepts]
 ---
 
@@ -50,7 +50,7 @@ The word *rubric* comes from grading. A rubric is the sheet a grader holds: the 
 
 ## Identity by content
 
-A rubric's questions, a rubric's policy, a cases document's cases and a request each have a fingerprint: the SHA-256 of their [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical JSON. Any implementation computes the same fingerprint for the same content, so `tuning.cases: sha256:…` names one exact set of labels whichever tool wrote it, and an edited set is visibly another one.
+A rubric's questions, a rubric's policy, a cases document's cases and a request each have a fingerprint: the SHA-256 of their [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) canonical JSON. Any implementation computes the same fingerprint for the same content, taken in the one form a writer writes it ([Fingerprints](../reference/jud-format.md#fingerprints)), so `tuning.cases: sha256:…` names one exact set of labels whichever tool wrote it, and an edited set is visibly another one.
 
 A rubric has two fingerprints on purpose. The questions' fingerprint is the exact identity of what the model can be asked, unchanged by the name, the description, a label, a comment or the policy. That makes it deliberately not an integrity check of the decision: a gate moved from `confidence: 0.45` to `0.30` leaves it unchanged. So the policy has a fingerprint of its own, and an application that must notice a change to what it does with an answer pins both.
 

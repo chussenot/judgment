@@ -108,7 +108,7 @@ Labels and annotations are the only open maps outside `spec.tuning`, `spec.respo
 
 ### Questions
 
-A question is exactly what the API receives. The reader MUST apply the checks a request builder applies before sending, and refuse a question that would be refused: a Choice needs 2 to 255 options with non-empty keys, a Score needs 2 to 10 levels none of which is null, a Noul needs instructions or criteria that describe at least one outcome, a Box needs instructions that are not `null`, and no id is empty.
+A question is exactly what the API receives. The reader MUST apply the checks a request builder applies before sending, and refuse a question that would be refused: a Choice needs 2 to 255 options with non-empty keys, a Score needs 2 to 10 levels none of which is null, a Noul needs instructions or criteria that describe at least one outcome, a Box needs instructions that are not `null`, no id is empty, and instructions, a Noul's criteria, a Choice option's description and a Score level are each text, an object or an array (or `null` where the field may be left out), never a number or a boolean, which the API refuses.
 
 ```yaml
 questions:
@@ -194,7 +194,7 @@ The images a request carries (minor 4). `assets` is a map of reference to image,
 | Field | Required | Meaning |
 |---|---|---|
 | `type` | no | `image`, the one kind; written always, read optionally. |
-| `path` | one of the two | The file, relative to the document's directory. An absolute path, or one that leaves the directory (`..`), MUST be refused. The format is read from the bytes. |
+| `path` | one of the two | The file, relative to the document's directory. A path that is absolute or leaves the directory MUST be refused, judged as text so that every platform judges it alike: one that starts with `/` or `\`, starts with a drive (`C:`), has a `..` segment between either separator, or holds a line break. The format is read from the bytes. |
 | `data_base64` | one of the two | The bytes inline, base64 as the wire carries them, with `format` required: for a small image a document keeps to itself. |
 | `format` | with `data_base64` | `png`, `jpg` or `jpeg`. With a `path`, optional, and the file MUST match it. |
 
@@ -268,7 +268,7 @@ Where the gates came from. Every field is OPTIONAL.
 
 A rubric's fingerprint is the [fingerprint](#fingerprints) of its `spec.questions` map alone, unchanged by the name, the version, the description, the labels and annotations or the policy. A recording's `rubric` or a cases document's `rubric` MAY name a rubric by its name or by this fingerprint.
 
-A rubric's *policy fingerprint* is the fingerprint of its `spec.policy` map alone, the gates as written. `tuning` is provenance and part of neither.
+A rubric's *policy fingerprint* is the fingerprint of its `spec.policy` map alone, the gates in the form a writer writes them ([Fingerprints](#fingerprints)). `tuning` is provenance and part of neither.
 
 ## `Cases`
 
@@ -449,7 +449,7 @@ spec:
 
 ## Fingerprints
 
-A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 ([FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/upd1/final)) of the canonical JSON of a value. Canonical JSON is [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JSON Canonicalization Scheme): object members sorted by key, comparing keys as sequences of UTF-16 code units; no whitespace; strings escaped minimally (`"`, `\`, and control characters, as JSON requires, with the two-character escapes where they exist); numbers formatted as ECMAScript's `Number.prototype.toString` formats them (`1` not `1.0`, `0.1`, `1e+21`, `1e-7`).
+A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 ([FIPS 180-4](https://csrc.nist.gov/pubs/fips/180-4/upd1/final)) of the canonical JSON of a value. Canonical JSON is [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) (JSON Canonicalization Scheme): object members sorted by key, comparing keys as sequences of UTF-16 code units; no whitespace; strings escaped minimally (`"`, `\`, and control characters, as JSON requires, with the two-character escapes where they exist); numbers formatted as ECMAScript's `Number.prototype.toString` formats them (`1` not `1.0`, `0.1`, `1e+21`, `1e-7`). An integer beyond ±2^53 is the nearest double, as ECMAScript reads it (`1234567890123456789` is `1234567890123456800`), so two such integers that round to one double give one fingerprint: an id that large belongs in a string, as [RFC 7493](https://www.rfc-editor.org/rfc/rfc7493#section-2.2) advises.
 
 | Fingerprint of | Over |
 |---|---|
@@ -459,6 +459,8 @@ A fingerprint is `sha256:` followed by the lowercase hexadecimal SHA-256 ([FIPS 
 | a request | `{"assets": {<reference>: "sha256:<hex of the image's bytes>", …}, "questions": <the questions map>, "state": <the state>}`, with `assets` left out when the request carries no image |
 
 Every fingerprint is over a value inside `spec`, never over the envelope: `apiVersion`, `kind` and `metadata` are part of none.
+
+A fingerprint is over the value as read, in the one form a writer writes it, so a document that spells a default another way has the same fingerprints: a question always has `instructions` (`null` when the document has none, as the wire sends it), and a Choice always has `criteria` (`{}` when every option comes with the request); a gate leaves out `strict: false`; an empty `part_when`, and a case's empty `tags`, `expect`, `options` and `assets`, are left out; a case's image always has `type: image`; a rubric with no `policy` has the policy `{}`. Everything else is as written: a level named by its text or by its index stays named so. Known vector: the questions `{c: {type: choice, criteria: {a: A, b: B}}}`, a Choice without instructions, canonicalise to `{"c":{"criteria":{"a":"A","b":"B"},"instructions":null,"type":"choice"}}` and fingerprint as `sha256:d10bb58f36f7e4cd6be5887cefaddad376348591fad70bf73fec962fcabf910b`.
 
 A fingerprint identifies content, not the order of object keys: canonical JSON sorts them. Two rubrics that differ only in the order of a Choice's options have the same fingerprint although the model sees the options in another order. Order is significant to the request ([Reading rules](#reading-rules)) and kept in the file; the fingerprint does not witness it.
 
@@ -478,6 +480,7 @@ An implementation MUST read a document under these rules.
 - `apiVersion` MUST be present and the string `jud/v1` (or the earlier spelling `jud/v1.3`); `metadata.minor` MUST be present under `jud/v1`, a non-negative integer at most the minor the reader implements, and absent under the earlier spelling; `kind` MUST be present and one of the three. All three are checked before anything else. A top-level key other than the four of the envelope is refused by name.
 - Every `metadata.name` and every case `id` is a [name](#names). `metadata.name` is REQUIRED on every kind; `metadata.version` is refused on a Cases document and a Recording, `metadata.description` on a Recording. `metadata.labels` and `metadata.annotations` are maps of string to string under any keys.
 - A field the kind does not define is refused, with its path. The exceptions are `tuning` in a rubric and `response` in a recording, which keep what they are given, and `state`, which is any JSON.
+- A field that takes only text takes a string: a number or a boolean there (`name: 2026`, `tags: [1, true]`, a Score's `fallback: 1`) is refused with its path, not read as its text; quote it. A key is text whatever YAML reads it as, as every key is in JSON, so `state: {2024: revenue}` is read. The fields that take a number too take one: `metadata.version` (read as its text, a boolean refused), and `level_at_least` and a Score label (read as a level index). `null` is refused, with its path, wherever the format gives it no meaning: it is a value of `instructions`, of an option's or a Noul criterion's description, of a turn label's `from_turn`, and of anything inside a case's `state`, a recording's answers, the fields a recording's `response` keeps beyond `model`, `answers`, `usage` and `request_id` (and its `usage` beyond `input_tokens` and `output_tokens`), and the fields a tuning block keeps beyond `cases`, `model`, `server` and `tuned_at`, and of nothing else. A field with no value is left out. Read as text or as absent, each would be a document the schemas refuse, and `threshold: null` would quietly be the default bar.
 - Order is significant and preserved for `questions`, a Choice's `criteria`, a Score's `criteria`, `bands`, `cases`, `expect` and a case's supplied options. It is not for the parts of an instructions object, which is a JSON object like the state: an implementation MAY send its keys in any order (this crate sends them sorted).
 - A state path in `when` or `part_when` is well formed, and every `part_when` name is a key of its instructions object. `options_from` is `request`, on a Choice. None of the three is `null`.
 - An asset is `type: image` (or no `type`), has exactly one of `path` and `data_base64`, a `format` the API takes (`png`, `jpg`, `jpeg`) that is required with `data_base64`, and a path that is relative and stays under the document's directory. Every reference a rubric declares appears in its questions, and every reference a case declares appears in its state; a document's references weigh at most 65,536 bytes together. A Box's `instructions` is not `null`.

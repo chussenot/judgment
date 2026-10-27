@@ -2,7 +2,7 @@
 title: How judgment works
 description: The mechanisms behind the crate's guarantees, typed handles from a question to its answer, the response check every backend applies, the path of one call through the modules, the retry loop with the official SDKs' defaults, the error grouping and the request id, and what the crate deliberately does not do.
 status: current
-last_reviewed: 2026-10-25
+last_reviewed: 2026-10-26
 tags: [judgment, design, typesafe, retries, concepts]
 ---
 
@@ -83,7 +83,7 @@ A transient failure must not fail a call that a second attempt would have comple
 flowchart TD
     S[send request] --> R{response?}
     R -->|status| C{"in http_statuses?<br/>default 408, 429, 5xx"}
-    R -->|"transport error, or body cut short"| X{"transport level retries it?<br/>Any: yes; BeforeSend: only when<br/>the connection was never made; Never: no"}
+    R -->|"transport error, or a 2xx body cut short"| X{"transport level retries it?<br/>Any: yes; BeforeSend: only when<br/>the connection was never made; Never: no"}
     C -->|no| DONE[return status and body to the client for classification]
     C -->|yes| T{"attempt ≤ max_retries?"}
     X -->|yes| T

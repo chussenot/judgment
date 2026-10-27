@@ -103,6 +103,34 @@ async fn backend(status: u16, body: Value, expected_calls: u64) -> MockServer {
 
 const STATE: &str = r#"{"message": "Charged twice. Fix it today."}"#;
 
+/// What a server sends in an error body is shown as text: an escape sequence
+/// in it would clear the screen or retitle the terminal.
+#[tokio::test]
+async fn a_server_error_body_is_shown_as_text() {
+    let body = json!({ "detail": "\u{1b}[2Jcleared\u{1b}]0;PWN\u{7}" });
+    let server = backend(400, body, 1).await;
+    let out = jud(
+        &[RUBRIC],
+        STATE,
+        &[
+            ("TYPESAFE_API_KEY", "test-key"),
+            ("TYPESAFE_BASE_URL", &server.uri()),
+        ],
+        &config_home(),
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(
+        !out.stderr.contains(&0x1b) && !out.stderr.contains(&0x07),
+        "{:?}",
+        stderr(&out)
+    );
+    assert!(
+        stderr(&out).contains("\\u{1b}[2Jcleared"),
+        "{}",
+        stderr(&out)
+    );
+}
+
 #[tokio::test]
 async fn a_valid_rubric_and_state_print_one_verdict_per_question() {
     let server = backend(200, answers(), 1).await;
@@ -748,6 +776,31 @@ fn a_malformed_configuration_file_is_refused_by_name() {
 
 /// A configuration file holds a key, and the line next to a typo can be it:
 /// a refusal names the file, the line and the column, and quotes nothing.
+/// A base URL can carry a credential (`user:pass@`, a `?token=`): `jud
+/// config` shows the URL without it, as every other message does.
+#[test]
+fn config_never_prints_a_base_url_s_credentials() {
+    let home = config_home();
+    let out = jud(
+        &["config"],
+        "",
+        &[(
+            "TYPESAFE_BASE_URL",
+            "http://user:s3cret@127.0.0.1:9/v1?token=abc#frag",
+        )],
+        &home,
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        !text.contains("s3cret") && !text.contains("token="),
+        "{text}"
+    );
+    let config: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(config["base_url"], "http://127.0.0.1:9/v1");
+    assert_eq!(config["base_url_from"], "environment");
+}
+
 #[test]
 fn a_malformed_configuration_file_never_prints_its_api_key() {
     for typo in ["timeout_secs: 3O\n", "modle: jev-latest\n"] {

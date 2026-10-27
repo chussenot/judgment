@@ -25,14 +25,14 @@ const RETRY_AFTER_MS: HeaderName = HeaderName::from_static("retry-after-ms");
 ///
 /// The levels split on whether the request left the process, because a
 /// System One call is billed: a connection never made sent nothing, while a
-/// timeout, a reset or a body cut short may have been processed. The SDKs'
+/// timeout, a reset or a 2xx body cut short may have been processed. The SDKs'
 /// two flags (connection error, timeout) do not answer that question.
 /// [`BeforeSend`](Self::BeforeSend) relies on
 /// [`reqwest::Error::is_connect`], so a misclassification only retries less.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum TransportRetry {
-    /// Every transport failure, a body cut short included; the SDKs' default.
+    /// Every transport failure, a 2xx body cut short included; the SDKs' default.
     #[default]
     Any,
     /// Only a failure to connect, when nothing was sent.
@@ -47,9 +47,11 @@ pub enum TransportRetry {
 /// The defaults are the official SDKs': two retries; 0.5 s doubling to 5 s,
 /// each wait `backoff × (1 − U·j)` for a uniform `U` in `[0, 1)` and jitter
 /// `j` 0.25, so the nominal backoff is also the longest; 408, 429, every 5xx
-/// (TypeSafe's 529 included) and every transport failure retried. A 2xx is
-/// never retried, even when listed: a System One call is billed, and
-/// re-sending a success would pay for it again.
+/// (TypeSafe's 529 included) and every transport failure retried. A 2xx
+/// whose body arrived whole is never retried, even when listed: a System
+/// One call is billed, and re-sending a success would pay for it again. One
+/// whose body was cut short is a transport failure, retried only under
+/// [`TransportRetry::Any`].
 ///
 /// # The server's wait
 ///
@@ -137,8 +139,9 @@ pub struct RetryPolicy {
     /// `None` (the default) for no budget, `Some(Duration::ZERO)` for none.
     pub budget: Option<Duration>,
     /// Most bytes of a response body the loop buffers, 8 MiB by default; over
-    /// it the call is [`Exhausted::TooLarge`], never retried since the next
-    /// attempt would carry the same body. Every body is decoded from that
+    /// it a success is [`Exhausted::TooLarge`], never retried since the next
+    /// attempt would carry the same body, and a failed status is that status
+    /// with an empty body. Every body is decoded from that
     /// buffer, so an upstream, or a proxy answering in its place, cannot grow
     /// the process without bound.
     pub max_body_bytes: usize,
@@ -293,7 +296,7 @@ pub enum Exhausted {
         /// The last error.
         source: reqwest::Error,
     },
-    /// The last response's body was over
+    /// The last response was a success whose body was over
     /// [`max_body_bytes`](RetryPolicy::max_body_bytes).
     TooLarge {
         /// Total attempts made, including the first.
@@ -307,13 +310,16 @@ pub enum Exhausted {
 /// the policy stops (`docs/concepts/how-judgment-works.md`, "Retries", draws the loop).
 ///
 /// A status the policy does not retry, or the last retried one when it
-/// stops, is `Ok(Completed)`; the last transport failure, or a body over
-/// [`max_body_bytes`](RetryPolicy::max_body_bytes), is `Err(Exhausted)`. The
-/// body is decoded as UTF-8 with invalid sequences replaced, since every
-/// upstream answers in JSON. Every failed attempt, retried or not, goes to
-/// the global [`crate::Observer`] under `service` as the status, `transport`
-/// or `too_large`: a retry that succeeds hides the failure from the caller,
-/// but the attempt was still load on the upstream.
+/// stops, is `Ok(Completed)`; the last transport failure, or a success's
+/// body over [`max_body_bytes`](RetryPolicy::max_body_bytes), is
+/// `Err(Exhausted)`. A failed status whose body is cut short or over the cap
+/// is that status with an empty body: its `Retry-After` is honoured and it
+/// is classed by its status. The body is decoded as UTF-8 with invalid
+/// sequences replaced, since every upstream answers in JSON. Every failed
+/// attempt, retried or not, goes once to the global [`crate::Observer`]
+/// under `service` as the status, or `transport` or `too_large` when no
+/// failed status came back: a retry that succeeds hides the failure from the
+/// caller, but the attempt was still load on the upstream.
 ///
 /// This is [`send_with_retries_paced`] with no pacer and no observer of its
 /// own.
@@ -357,11 +363,15 @@ pub async fn send_with_retries_paced(
             Ok(mut resp) => {
                 let status = resp.status();
                 let retry_after = parse_retry_after(resp.headers());
-                if !status.is_success() {
-                    report(status.as_str());
-                }
                 let headers = std::mem::take(resp.headers_mut());
-                let body = match read_body(resp, policy.max_body_bytes).await {
+                let read = read_body(resp, policy.max_body_bytes).await;
+                let read = if status.is_success() {
+                    read
+                } else {
+                    report(status.as_str());
+                    Ok(error_body(read, attempt, status))
+                };
+                let body = match read {
                     Ok(b) => b,
                     Err(BodyRead::TooLarge) => {
                         report("too_large");
@@ -433,6 +443,25 @@ pub async fn send_with_retries_paced(
             }
         }
     }
+}
+
+/// A failed status's body, empty when it could not be read whole: the
+/// attempt is answered by its status, so a body cut short or over the cap
+/// neither adds a second failure nor hides the status's wait and class.
+fn error_body(read: Result<String, BodyRead>, attempt: u32, status: reqwest::StatusCode) -> String {
+    read.unwrap_or_else(|e| {
+        let error = match e {
+            BodyRead::TooLarge => "over the cap".to_owned(),
+            BodyRead::Transport(source) => source.to_string(),
+        };
+        tracing::warn!(
+            attempt,
+            status = status.as_u16(),
+            error,
+            "error body not read; read as empty"
+        );
+        String::new()
+    })
 }
 
 /// Why [`read_body`] stopped.

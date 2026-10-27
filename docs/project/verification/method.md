@@ -2,7 +2,7 @@
 title: How the crate is checked
 description: The three checks that stand between the crate's mocks and a real server, the ignored live tests, the benchmark replay and the contract test against the vendored OpenAPI document, what each one can and cannot establish, and how to run them against the hosted API, Laya, Liquid, Ollama or Clef on Workers AI.
 status: current
-last_reviewed: 2026-10-25
+last_reviewed: 2026-10-26
 tags: [judgment, verification, contract, openapi, live-tests]
 ---
 
@@ -45,7 +45,7 @@ TypeSafe publishes an OpenAPI document for the System One API at <https://api.ty
 
 Where the crate and the schema disagree the test pins the difference, each at its own path, so a refreshed document that closes one fails loudly:
 
-- **The crate sends what the schema refuses**: a null or numeric state, numeric instructions, a boolean Noul criterion, a numeric Score level, an empty question set. The builders take any JSON value there and the client any `Serialize` state, so such a request reaches the server, which is expected to refuse it with a 422.
+- **The crate sends what the schema refuses**: a null or numeric state, an empty question set. The client takes any `Serialize` state and the builder does not refuse an empty `Questions`, so such a request reaches the server, which is expected to refuse it with a 422. Numeric instructions, a boolean Noul criterion and a numeric Score level are not on the list: the builders refuse them as the schema does (`Error::InvalidQuestion`).
 - **The builder refuses what the schema allows**: 1 option, 1 level, an empty question id, an empty option key. It follows the HTTP API reference page, which is stricter than the schema. Until 2026-10-25 the schema allowed 256 options and 11 levels as well; the document of that date bounds them (`maxProperties: 255`, `maxItems: 10`), and the hosted API now refuses them from its schema with a 422. It was probed past those limits on 2026-10-03, when it refused 256 options and 11 levels with a 400, refuses an empty question id with a 400, and answers one option or one level with probability 1 and accepts an empty option key, so the upper bounds are the server's and the lower ones this crate's alone (the rustdoc of `question` says why).
 - **The crate decodes differently**: it refuses a probability or confidence outside `[0, 1]` and a negative token count, which the schema types as bare numbers, because a value no threshold can use is better an error; and it accepts a response without `usage`, with `usage` or a token count null, with no answers, or with a legend entry that is null or a scalar, which the schema refuses, because decoding is tolerant and `Response::verify` is what holds a response to its questions. A `Fake` asked nothing answers `answers: {}`, which the schema refuses.
 

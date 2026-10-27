@@ -133,7 +133,11 @@ cli-otel = [
 # 1.0.181 is the first with `#[serde(untagged)]` on one variant, which
 # `Answer::Unknown` uses.
 serde = { version = "1.0.181", features = ["derive"] }
-serde_json = "1"
+# `float_roundtrip`: a double is read back to the same bits (a recording
+# replays what was received, a fingerprint keeps the digits other tools keep).
+# Without it the fast parser can land one ulp off; only a dev-dependency turned
+# it on, so the tests could not see that. CI checks a normal build has it.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 # Questions and Choice options in the order they were written: the model sees
 # that order, and a sorted map would send it alphabetically.
 indexmap = { version = "2", features = ["serde"] }

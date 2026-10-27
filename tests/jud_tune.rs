@@ -418,6 +418,59 @@ fn out_writes_a_rubric_jud_check_accepts_and_leaves_the_input_alone() {
     assert_eq!(doc["spec"]["tuning"]["model"], json!("jev-1.13.0"));
 }
 
+/// `--out` writes what the path names, as a write to it would: through a
+/// symlink, the file it names is replaced only once the whole rubric is
+/// written, the link is kept, and no temporary file is left beside either.
+#[cfg(unix)]
+#[test]
+fn out_through_a_symlink_replaces_the_file_it_names_whole() {
+    let dir = scratch("tune");
+    let target = write(&dir, "elsewhere.jud", "old\n");
+    let link = dir.join("tuned.jud");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let out = tune(
+        TRIAGE,
+        TRIAGE_CASES,
+        RECORDINGS,
+        &["--out", path_str(&link)],
+    );
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+    let check = jud(&["check", path_str(&target)], "", &[]);
+    assert_eq!(code(&check), 0, "{}{}", stdout(&check), stderr(&check));
+    let mut left: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    left.sort();
+    assert_eq!(left, ["elsewhere.jud", "tuned.jud"]);
+}
+
+/// `--out /dev/stdout` writes the rubric to stdout, as it did before the
+/// write became atomic, and leaves `/dev/stdout` the link it was: renaming
+/// over it would lose the rubric and, as root, replace the system's link.
+#[cfg(target_os = "linux")]
+#[test]
+fn out_to_dev_stdout_writes_the_rubric_to_stdout() {
+    let stdout_link = std::path::Path::new("/dev/stdout");
+    let was_link = stdout_link
+        .symlink_metadata()
+        .is_ok_and(|m| m.file_type().is_symlink());
+    let out = tune(TRIAGE, TRIAGE_CASES, RECORDINGS, &["--out", "/dev/stdout"]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(stdout(&out).contains("kind: Rubric"), "{}", stdout(&out));
+    if was_link {
+        assert!(
+            stdout_link
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "/dev/stdout was replaced"
+        );
+    }
+}
+
 #[test]
 fn the_blocks_pasted_under_spec_are_the_policy_out_writes() {
     let (dir, rubric, cases) = workspace(GUESSES);

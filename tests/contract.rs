@@ -48,11 +48,11 @@
 //! both directions, each case at its own instance path, so a schema refresh
 //! that closes a gap fails the case that pinned it:
 //!
-//! * `what_the_crate_sends_and_the_schema_refuses`: the builders accept any
-//!   JSON for state, instructions, criteria and levels, so a null or numeric
-//!   state, numeric instructions, a boolean Noul criterion and a numeric
-//!   Score level go out although the schema refuses them, as does a request
-//!   with no questions.
+//! * `what_the_crate_sends_and_the_schema_refuses`: the client takes any
+//!   `Serialize` state, so a null or numeric state goes out although the schema
+//!   refuses it, as does a request with no questions. Numeric instructions,
+//!   a boolean Noul criterion and a numeric Score level are refused by the
+//!   builder as by the schema, which the same test pins.
 //! * `what_the_builder_refuses_and_the_schema_allows`: the builder follows
 //!   the HTTP API reference page (at most 255 options, 2 to 10 levels); the
 //!   schema says only `minItems: 1` for levels and nothing about options.
@@ -1053,39 +1053,43 @@ fn what_the_crate_sends_and_the_schema_refuses() {
         "/state",
         "a number state",
     );
-    // Instructions, criteria and levels are `impl Into<Value>`.
-    let mut numeric_instructions = Questions::new();
-    numeric_instructions.noul("n", 42, None).unwrap();
-    assert_refused_at(
-        &schema,
-        &body(json!("text"), "jev-latest", &numeric_instructions),
-        "/questions/n/instructions",
-        "number instructions",
-    );
-    let mut boolean_criterion = Questions::new();
-    boolean_criterion
-        .noul(
-            "n",
-            "Is `message` spam?",
-            Some(NoulCriteria::new(true, "a real message")),
-        )
-        .unwrap();
-    assert_refused_at(
-        &schema,
-        &body(json!("text"), "jev-latest", &boolean_criterion),
-        "/questions/n/criteria/true",
-        "a boolean Noul criterion",
-    );
-    let mut numeric_level = Questions::new();
-    numeric_level
-        .score("s", "How urgent is `message`?", [json!(1), json!("high")])
-        .unwrap();
-    assert_refused_at(
-        &schema,
-        &body(json!("text"), "jev-latest", &numeric_level),
-        "/questions/s/criteria/0",
-        "a number Score level",
-    );
+    // Instructions, criteria and levels are `impl Into<Value>`, but a number
+    // or a boolean is refused by the builder as by the schema: they agree.
+    let hand_written = |question: Value| json!({ "state": "text", "model": "jev-latest", "questions": { "n": question } });
+    for (question, refused, at, what) in [
+        (
+            json!({ "type": "noul", "instructions": 42 }),
+            Questions::new().noul("n", 42, None).map(|_| ()),
+            "/questions/n/instructions",
+            "number instructions",
+        ),
+        (
+            json!({ "type": "noul", "instructions": "Is `message` spam?", "criteria": { "true": true, "false": "a real message" } }),
+            Questions::new()
+                .noul(
+                    "n",
+                    "Is `message` spam?",
+                    Some(NoulCriteria::new(true, "a real message")),
+                )
+                .map(|_| ()),
+            "/questions/n/criteria/true",
+            "a boolean Noul criterion",
+        ),
+        (
+            json!({ "type": "score", "instructions": "How urgent is `message`?", "criteria": [1, "high"] }),
+            Questions::new()
+                .score("n", "How urgent is `message`?", [json!(1), json!("high")])
+                .map(|_| ()),
+            "/questions/n/criteria/0",
+            "a number Score level",
+        ),
+    ] {
+        assert!(
+            matches!(refused, Err(Error::InvalidQuestion { .. })),
+            "{what}: {refused:?}"
+        );
+        assert_refused_at(&schema, &hand_written(question), at, what);
+    }
 }
 
 #[test]

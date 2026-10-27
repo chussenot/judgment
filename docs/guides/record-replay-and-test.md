@@ -2,7 +2,7 @@
 title: Record, replay and test
 description: How to test a decision with no key and no network, with the Fake backend that refuses an answer the question could not produce, the Recorder and Replay pair keyed by the request's content, jud --replay for a rubric on the command line, and jud record to answer a rubric's labelled cases once and keep the answers.
 status: current
-last_reviewed: 2026-10-24
+last_reviewed: 2026-10-26
 tags: [judgment, testing, fake, replay, recordings, record, how-to]
 ---
 
@@ -49,7 +49,7 @@ A scripted Score is only its probabilities: its legend is the levels of the ques
 
 ## Record once, replay forever
 
-A `Recorder` wraps any backend and writes a recording for every call it forwards; a `Replay` over the same directory answers the same requests later, with no key and no network.
+A `Recorder` wraps any backend and writes a recording for every response it forwards that fits the questions, each one whole (a temporary file renamed onto its name), so a `Replay` opened over the directory while it writes never reads half of one; a `Replay` over the same directory answers the same requests later, with no key and no network.
 
 ```rust no_run
 use std::path::Path;

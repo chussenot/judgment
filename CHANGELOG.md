@@ -34,6 +34,18 @@ All notable changes to the `judgment` crate. The format follows
   verifier, so the `jud` binaries built from this lockfile verify the
   server they call against the corrected roots. A library consumer's own
   lockfile resolves these on its next `cargo update`.
+- `jud config` and `jud record --dry-run` show the base URL without its
+  userinfo, query or fragment, as every other message already did. They
+  printed the base URL whole, from `TYPESAFE_BASE_URL` or the configuration
+  file, so a `user:pass@` or a `?token=` in it
+  reached the terminal, and the transcripts of the agent sessions the jud
+  plugin runs both commands in.
+- `jud` shows what a server or a recording put in an error as text, every
+  control character escaped (`\u{1b}`), as it already did for a model's
+  name. A compatible server, a proxy or anything on a plain-http path
+  could answer an error whose body held escape sequences, and `jud
+  RUBRIC`, `record`, `eval` and `mcp` wrote them raw to stderr, where they
+  could clear the screen, retitle the terminal or hide earlier output.
 
 ### Added
 
@@ -252,6 +264,19 @@ All notable changes to the `judgment` crate. The format follows
   is `gen_ai.usage.input_tokens`. A `tracing` subscriber or an
   `tracing-opentelemetry` view that reads the old names must read the new
   ones. `images`, `long_context`, `multipart` and `request_id` are unchanged.
+- **Breaking** for a value holding an integer beyond ±2^53: canonical JSON
+  (`eval::canonical`, every `sha256:` fingerprint) prints such an integer as
+  the nearest double, as ECMAScript and every RFC 8785 implementation do:
+  `1234567890123456789` is `1234567890123456800`. It printed every `u64` and
+  `i64` digit for digit, so a state or a document holding one had a
+  fingerprint no other tool computes, and a replay by another tool missed.
+  Every fingerprint of such a value moves, a request's, a rubric's and a
+  cases document's, so a `.jud` recording of such a request is recorded
+  again (a `.json` one still answers by its `request_hash`); no shipped
+  document or recording holds one. Two integers that round to one double
+  now share a fingerprint: keep an id that large in a string.
+  `docs/reference/stability.md` says why this is a correction inside
+  `jud/v1` rather than a `v2`.
 
 ### Fixed
 
@@ -284,6 +309,96 @@ All notable changes to the `judgment` crate. The format follows
   a model pinned to `jev-1.13.0`, and advise pinning `jev-1.14.0` once a
   rubric's bars are tuned, since an alias moves with the next release.
   The verification records keep what was true when they were written.
+- **Breaking** for a recording of a request whose state was read from JSON
+  by an earlier release: `serde_json` is built with `float_roundtrip`.
+  Without it, a normal build (the released `jud`, and any crate built on
+  this one) read about one JSON double in six to ten one unit in the last
+  place off, so it sent and fingerprinted a value one ulp from the one
+  given, a replayed recording no longer equalled the response it recorded,
+  and a state's fingerprint lost digits other RFC 8785 tools keep. The
+  request fingerprint and `request_hash` of such a state move, so a
+  `Replay` answers `NoRecording` for it: record those requests again
+  (`jud record --refresh`, or a fresh `Recorder` run). A state read from
+  `.jud` or YAML was read exactly and does not move. Cargo unifies features,
+  so a crate depending on this one parses its own JSON exactly too. Only a
+  dev-dependency enabled the feature, so the tests could not see it; CI and
+  `mise run check:minimal` now check that a normal build has it.
+- `Recorder` and `eval::write_recording` write each recording whole: to a
+  temporary file in the same directory, flushed, then renamed onto its
+  name, as `jud record` already did. A `Replay` opened over a directory a
+  `Recorder` was writing into failed on most attempts (`EOF while
+  parsing`), and a process stopped mid-write left a truncated file that
+  made every later `Replay::open` of the directory fail.
+- `jud tune --out PATH` writes the same way, so a failed write (a full
+  disk, a file size limit) leaves the file that was at `PATH`, where it
+  left half a rubric. Through a symlink, the file it names is replaced
+  whole; a pipe or a device (`--out /dev/stdout`, a FIFO) is written to as
+  a stream, as before, since renaming over one would lose the rubric.
+  `jud record`'s temporary names also carry a counter beside the process
+  id, so two writers of one name in one process never share one.
+- A failed status whose body is cut short or over `max_body_bytes` is that
+  status with an empty body. A 429 that closed before its body was whole
+  was reported twice to the observer (`429`, then `transport`), retried
+  after the backoff instead of its `Retry-After`, never paused the pacer,
+  and ended as `Error::Transport` rather than `RateLimited`; under
+  `RetryPolicy::conservative()` it was not retried at all. An error body
+  over the cap was `ResponseTooLarge`, reported as the status and
+  `too_large`. Each attempt is now reported once.
+- **Breaking** for a caller that repeated a key:
+  `Questions::choice` and `Questions::dynamic_choice` refuse an option key
+  given twice (`Error::InvalidQuestion`, "option key \"a\" appears twice")
+  before anything is sent. They merged the two into one entry, keeping one
+  description: the other option could never be chosen, and an enum with
+  only two variants sharing a key failed as "needs at least 2 options".
+- `eval::metrics::percentile` leaves NaN out, and is `None` when nothing
+  else is left. Its comparator was not a total order: past 20 values with a
+  NaN among them the sort could panic ("user-provided comparison function
+  does not correctly implement a total order"), and a shorter input
+  mis-sorted, so `[3, NaN, 1, 2]` had a median of NaN. The crate's own
+  callers pass whole milliseconds and were not affected.
+- **Breaking** for a caller or a document that held one: a question whose
+  instructions, Noul criteria, Choice option description or Score level is
+  a number or a boolean is `Error::InvalidQuestion` from the builders, and
+  `jud::Error::Question` around it from the `.jud` reader, as the API
+  refuses it with a 422; write it as text. The reader read `instructions:
+  42` or `criteria: [1, 2, 3]` and `to_yaml` wrote them back, so a document
+  `jud check` passed failed the schemas.
+- **Breaking** for a document that relied on it: the `.jud` reader refuses
+  a field a Recording's `spec` does not define,
+  naming it (`spec.fingreprint`), as the format and the schema require. It
+  was ignored, so a misspelt `fingerprint` read as a recording with none,
+  which no replay finds by its request, and the writer dropped it.
+- **Breaking** for a document that relied on it: an image's `path` is
+  checked as text, the same on every platform and as
+  the schema's pattern: a leading `/` or `\`, a drive (`C:`), a `..`
+  segment on either separator or a line break is refused. The check went through
+  `std::path`, so on Unix the reader took `..\secret.png` and
+  `\\server\share\logo.png`, which the schema refuses, and on Windows a
+  path starting with `\` or `/` is not absolute and would have been joined
+  out of the document's directory. The schema now also refuses a drive.
+- **Breaking** for a document that relied on it: the `.jud` reader refuses
+  a number or a boolean where the format takes only text, and `null`
+  wherever the format gives it no meaning, as the schemas do. It read
+  `metadata.name: 2026`, `tags: [1, true]`, a case's `id: 123` or a Score's
+  `fallback: 1` as text, and `threshold: null`, `policy: null` or a case's
+  `expect: null` as absent, so `jud check` passed documents another reader
+  holding to the schemas refuses, and a `null` bar silently became the
+  default one. The remedy is to quote the value or to leave the field out.
+  The refusal names the field and quotes nothing; a key is text whatever
+  YAML reads it as (`state: {2024: revenue}` is read), and
+  `metadata.version`, `level_at_least` and a Score label still take a
+  number. The spec's reading rules say so, and
+  `docs/reference/stability.md` says why this is a correction inside
+  `jud/v1`.
+- `docs/reference/jud-format.md` states the form a fingerprint is computed
+  over, the one the writer writes: `instructions: null` when a question has
+  none, `criteria: {}` for a Choice whose options all come with the
+  request, `strict: false` and an empty `part_when`, `tags`, `expect`,
+  `options` or `assets` left out. It said "the `spec.questions` map" and
+  "the gates as written", so another tool hashing the document as written
+  computed another fingerprint for such a document, and a `spec.rubric` it
+  wrote did not bind. No fingerprint moves; a known vector for a question
+  without instructions is added and tested.
 
 ## [0.14.0] - 2026-10-15
 

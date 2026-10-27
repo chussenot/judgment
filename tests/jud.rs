@@ -294,6 +294,18 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
             "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: ../photo.png}\n",
         ),
         (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: '..\\photo.png'}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: '\\\\server\\share\\photo.png'}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in `photo`}\n  assets:\n    photo: {type: image, path: C:/photo.png}\n",
+        ),
+        (
             &*CASES,
             "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: cases\n  minor: 4\nspec:\n  cases:\n    - state: {photo: photo}\n      assets:\n        photo: {type: image, path: photo.webp, format: webp}\n",
         ),
@@ -391,6 +403,77 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
         (
             &*RECORDING,
             "apiVersion: jud/v1.3\nkind: Recording\nmetadata:\n  name: c\nspec:\n  elapsed_ms: 1\n",
+        ),
+        // A number or a boolean where the format takes text, and null where it
+        // gives null no meaning: read as text or as absent, each would be a
+        // document the schemas refuse.
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: 2026\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\n  labels: {run: 3}\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    s: {type: score, instructions: rate, criteria: [low, high]}\n  policy:\n    s: {fallback: 1}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n  policy:\n    n: {threshold: null}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?}\n  policy: null\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - id: 123\n      state: s\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: s\n      tags: [1, true]\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: s\n      note: 4.5\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  rubric: 7\n  cases:\n    - state: s\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  rubric: null\n  cases:\n    - state: s\n",
+        ),
+        (
+            &*CASES,
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - state: s\n      expect: null\n",
+        ),
+        // A recording's field misspelt: read, it would be a recording with no
+        // fingerprint, which no replay finds by its request.
+        (
+            &*RECORDING,
+            "apiVersion: jud/v1.3\nkind: Recording\nmetadata:\n  name: c\nspec:\n  elapsed_ms: 1\n  fingreprint: sha256:00\n  response: {model: m, answers: {}, usage: {input_tokens: 1, output_tokens: 1}}\n",
+        ),
+        // A number or a boolean where the API takes text, an object, an array or
+        // null: instructions, a level, an option's description, a Noul's side.
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: 42}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    s: {type: score, instructions: how bad?, criteria: [1, 2, 3]}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    c: {type: choice, instructions: pick, criteria: {a: 1, b: true}}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, criteria: {true: 1, false: false}}\n",
         ),
     ]
 }
@@ -763,6 +846,67 @@ async fn the_shapes_cases_load_their_images_and_grade_a_box_by_iou() {
         .collect();
     assert_eq!(graded["circle"].correct, Some(false));
     assert_eq!(graded["circle"].iou, Some(0.0));
+}
+
+/// A fingerprint is over the value as read, in the form the writer writes:
+/// spelling a default another way moves none, and the format page's vector
+/// for a question without instructions holds.
+#[test]
+fn fingerprints_are_over_the_normal_form() {
+    let rubric = |questions: &str, policy: &str| {
+        Rubric::parse(&format!(
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    {questions}\n{policy}"
+        ))
+        .unwrap()
+    };
+    for (one, other) in [
+        // Instructions absent or null; a strict gate's default.
+        (
+            rubric(
+                "c: {type: choice, criteria: {a: A, b: B}}",
+                "  policy:\n    c: {confidence: 0.5}\n",
+            ),
+            rubric(
+                "c: {type: choice, instructions: null, criteria: {a: A, b: B}}",
+                "  policy:\n    c: {confidence: 0.5, strict: false}\n",
+            ),
+        ),
+        // An empty part_when.
+        (
+            rubric("n: {type: noul, instructions: {q: ok?}}", ""),
+            rubric("n: {type: noul, instructions: {q: ok?}, part_when: {}}", ""),
+        ),
+    ] {
+        assert_eq!(one.fingerprint(), other.fingerprint());
+        assert_eq!(one.policy_fingerprint(), other.policy_fingerprint());
+    }
+    let without = rubric("c: {type: choice, criteria: {a: A, b: B}}", "");
+    assert_eq!(
+        without.fingerprint(),
+        "sha256:d10bb58f36f7e4cd6be5887cefaddad376348591fad70bf73fec962fcabf910b"
+    );
+    // Every option from the request: the Choice's criteria are `{}`.
+    let supplied = rubric(
+        "c: {type: choice, instructions: pick, options_from: request}",
+        "",
+    );
+    assert_eq!(
+        supplied.fingerprint(),
+        judgment::eval::canonical::fingerprint(&json!({
+            "c": { "type": "choice", "instructions": "pick", "criteria": {}, "options_from": "request" }
+        }))
+    );
+    let cases = |case: &str| {
+        Cases::parse(&format!(
+            "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cs\nspec:\n  cases:\n    - {case}\n"
+        ))
+        .unwrap()
+        .fingerprint()
+    };
+    assert_eq!(
+        cases("{id: k, state: s, tags: [], expect: {}, options: {}, assets: {}}"),
+        cases("{id: k, state: s}")
+    );
 }
 
 /// The format page's second known vector: a request with one image

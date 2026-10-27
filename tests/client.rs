@@ -744,6 +744,76 @@ async fn a_truncated_body_is_retried_by_default_only() {
     }
 }
 
+/// Every failed attempt a client's own observer is told about.
+#[derive(Default)]
+struct Failures(std::sync::Mutex<Vec<String>>);
+
+impl Observer for Failures {
+    fn on_failed_attempt(&self, _service: &'static str, status: &str) {
+        self.0.lock().unwrap().push(status.to_owned());
+    }
+}
+
+fn observed(base_url: &str, retry: RetryPolicy, failures: &Arc<Failures>) -> Client {
+    Client::builder()
+        .api_key("test-key")
+        .base_url(base_url)
+        .retry(retry)
+        .timeout(Duration::from_secs(2))
+        .observer(Arc::clone(failures) as Arc<dyn Observer>)
+        .build()
+        .unwrap()
+}
+
+/// A 429 whose body is cut short is still a 429: one failed attempt each,
+/// its `Retry-After` honoured, and the call's error the status's class, not
+/// a transport failure.
+#[tokio::test]
+async fn a_cut_short_429_waits_as_told_and_is_one_failed_attempt() {
+    const CUT: &[u8] = b"HTTP/1.1 429 Too Many Requests\r\ncontent-type: application/json\r\n\
+        retry-after: 1\r\ncontent-length: 100\r\n\r\n{\"error\":";
+    let (url, connections, stop, thread) = raw_server(CUT);
+    let failures = Arc::new(Failures::default());
+    let started = Instant::now();
+    let err = observed(&url, fast_retries(1), &failures)
+        .system_one(&"s", &one_noul())
+        .await
+        .unwrap_err();
+    let elapsed = started.elapsed();
+    stop.store(true, Ordering::SeqCst);
+    thread.join().unwrap();
+    assert!(
+        matches!(&err, Error::RateLimited { attempts: 2, retry_after: Some(wait), .. } if *wait == Duration::from_secs(1)),
+        "{err:?}"
+    );
+    assert!(elapsed >= Duration::from_secs(1), "{elapsed:?}");
+    assert_eq!(connections.load(Ordering::SeqCst), 2);
+    assert_eq!(*failures.0.lock().unwrap(), ["429", "429"]);
+}
+
+/// An error body over the cap is the error's status with no body, reported
+/// once; only a success's body over the cap is `ResponseTooLarge`.
+#[tokio::test]
+async fn an_error_body_over_the_cap_is_its_status_reported_once() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503).set_body_bytes(vec![b'a'; 17]))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let failures = Arc::new(Failures::default());
+    let capped = RetryPolicy {
+        max_body_bytes: 16,
+        ..RetryPolicy::none()
+    };
+    let err = observed(&server.uri(), capped, &failures)
+        .system_one(&"s", &one_noul())
+        .await
+        .unwrap_err();
+    assert!(matches!(&err, Error::Http { status: 503, .. }), "{err:?}");
+    assert_eq!(*failures.0.lock().unwrap(), ["503"]);
+}
+
 /// Seventeen bytes under a sixteen-byte cap, once with a `Content-Length`
 /// (wiremock sets one, so the loop refuses before it reads) and once
 /// chunked (the raw server, so the loop stops on the read). Neither is

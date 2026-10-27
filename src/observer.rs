@@ -81,9 +81,10 @@ pub trait Observer: Send + Sync + 'static {
         let _ = (model, images, bytes);
     }
 
-    /// One attempt against `service` failed with `status`: an HTTP status
-    /// code, `transport` (no response), `too_large` (body over the policy's
-    /// cap), or, from the TypeSafe client, `decode` (a 2xx whose body did not
+    /// One attempt against `service` failed with `status`, reported once
+    /// per attempt: an HTTP status code (whether or not its body could be
+    /// read), `transport` (no response, or a 2xx cut short), `too_large` (a
+    /// 2xx body over the policy's cap), or, from the TypeSafe client, `decode` (a 2xx whose body did not
     /// decode) or `unfit` (a 2xx that did not fit the questions sent).
     /// Retried attempts are reported too: they are load whether or not a
     /// later attempt succeeds. An `unfit` response's usage is also reported

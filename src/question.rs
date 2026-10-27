@@ -39,8 +39,12 @@
 //! option or one level with probability 1
 //! (`docs/project/verification/hosted-typesafe.md`). An empty id is refused as the
 //! server refuses it, an empty option key because the server can choose
-//! it, an answer the caller cannot name. Refusing before sending costs no
-//! round trip; `tests/contract.rs` pins the limits against the schema.
+//! it, an answer the caller cannot name. An option key given twice is
+//! refused, since one option would be lost to the other; so is a number or
+//! a boolean as instructions, a Noul criterion, an option's description or
+//! a Score level, which the API refuses (it takes text, an object, an array
+//! or null). Refusing before sending costs no round trip and no 422;
+//! `tests/contract.rs` pins the limits against the schema.
 
 use indexmap::IndexMap;
 use indexmap::map::Entry;
@@ -282,7 +286,8 @@ impl Questions {
     }
 
     /// Add a yes/no question; [`Error::InvalidQuestion`] when neither
-    /// `instructions` nor `criteria` say anything (module docs).
+    /// `instructions` nor `criteria` say anything, or either holds a number
+    /// or a boolean (module docs).
     pub fn noul(
         &mut self,
         id: impl Into<String>,
@@ -298,23 +303,22 @@ impl Questions {
         )
     }
 
-    /// Add a Choice over a Rust enum implementing [`Options`].
+    /// Add a Choice over a Rust enum implementing [`Options`];
+    /// [`Error::InvalidQuestion`] when two variants share a key.
     pub fn choice<O: Options>(
         &mut self,
         id: impl Into<String>,
         instructions: impl Into<Value>,
     ) -> Result<Handle<Choice<O>>> {
-        let criteria: IndexMap<String, Value> = O::ALL
-            .iter()
-            .map(|o| {
-                (
-                    o.key().to_owned(),
-                    o.describe().map_or(Value::Null, Value::from),
-                )
-            })
-            .collect();
+        let id = id.into();
+        let criteria = option_map(
+            &id,
+            O::ALL
+                .iter()
+                .map(|o| (o.key().to_owned(), o.describe().map(str::to_owned))),
+        )?;
         self.push(
-            id.into(),
+            id,
             Question::Choice {
                 instructions: instructions.into(),
                 criteria,
@@ -322,7 +326,8 @@ impl Questions {
         )
     }
 
-    /// Add a Choice from runtime `(key, description)` pairs. The answer is a
+    /// Add a Choice from runtime `(key, description)` pairs, in their order;
+    /// [`Error::InvalidQuestion`] when a key is given twice. The answer is a
     /// [`Choice<String>`]: checking that the returned key is known is the caller's.
     pub fn dynamic_choice(
         &mut self,
@@ -330,12 +335,10 @@ impl Questions {
         instructions: impl Into<Value>,
         options: impl IntoIterator<Item = (String, Option<String>)>,
     ) -> Result<Handle<Choice<String>>> {
-        let criteria: IndexMap<String, Value> = options
-            .into_iter()
-            .map(|(k, d)| (k, d.map_or(Value::Null, Value::from)))
-            .collect();
+        let id = id.into();
+        let criteria = option_map(&id, options)?;
         self.push(
-            id.into(),
+            id,
             Question::Choice {
                 instructions: instructions.into(),
                 criteria,
@@ -344,6 +347,8 @@ impl Questions {
     }
 
     /// Add a Score over ordered levels, lowest first; the order is the meaning of the [`Score`].
+    /// [`Error::InvalidQuestion`] outside 2 to 10 levels, for a null level, or
+    /// for instructions or a level that is a number or a boolean (module docs).
     pub fn score(
         &mut self,
         id: impl Into<String>,
@@ -363,7 +368,7 @@ impl Questions {
     /// request carries, read as a [`BoundingBox`]. Name the target and the
     /// image ("the coffee mug in `photo`"); [`Error::InvalidQuestion`] for
     /// null instructions, since a Box has no criteria to carry the
-    /// question. Needs Jev 1.14 or later on the hosted API (`jev-latest`,
+    /// question, and for a number or a boolean. Needs Jev 1.14 or later on the hosted API (`jev-latest`,
     /// or `jev-1.14.0` pinned).
     pub fn r#box(
         &mut self,
@@ -428,6 +433,26 @@ impl IntoIterator for Questions {
     }
 }
 
+/// A Choice's options in the order given, refusing a key given twice: a
+/// map would keep one description and the model would never be offered the
+/// other, so the option could never be chosen.
+fn option_map(
+    id: &str,
+    options: impl IntoIterator<Item = (String, Option<String>)>,
+) -> Result<IndexMap<String, Value>> {
+    let mut criteria = IndexMap::new();
+    for (key, description) in options {
+        if criteria.contains_key(&key) {
+            return Err(Error::InvalidQuestion {
+                id: id.to_owned(),
+                reason: format!("option key {key:?} appears twice"),
+            });
+        }
+        criteria.insert(key, description.map_or(Value::Null, Value::from));
+    }
+    Ok(criteria)
+}
+
 /// The checks every question gets (module docs, `# Limits are checked here`).
 pub(crate) fn validate(id: &str, question: &Question) -> Result<()> {
     validate_with(id, question, 2)
@@ -442,6 +467,20 @@ pub(crate) fn validate_with(id: &str, question: &Question, min_options: usize) -
             reason,
         })
     };
+    // The API takes text, an object or an array (or null where a value may
+    // be left out); a number or a boolean is refused there, so here.
+    let scalar = |value: &Value| matches!(value, Value::Bool(_) | Value::Number(_));
+    let instructions = match question {
+        Question::Noul { instructions, .. }
+        | Question::Choice { instructions, .. }
+        | Question::Score { instructions, .. }
+        | Question::Box { instructions } => instructions,
+    };
+    if scalar(instructions) {
+        return refuse(format!(
+            "instructions must be text, an object, an array or null, not {instructions}"
+        ));
+    }
     match question {
         Question::Noul {
             instructions,
@@ -457,6 +496,15 @@ pub(crate) fn validate_with(id: &str, question: &Question, min_options: usize) -
                         .to_owned(),
                 );
             }
+            if let Some(criteria) = criteria {
+                for (side, value) in [("true", &criteria.yes), ("false", &criteria.no)] {
+                    if value.as_ref().is_some_and(scalar) {
+                        return refuse(format!(
+                            "criteria `{side}` must be text, an object, an array or null"
+                        ));
+                    }
+                }
+            }
         }
         Question::Choice { criteria, .. } => {
             if criteria.len() < min_options {
@@ -470,12 +518,22 @@ pub(crate) fn validate_with(id: &str, question: &Question, min_options: usize) -
             if criteria.contains_key("") {
                 return refuse("a Choice option key cannot be empty".to_owned());
             }
+            if let Some(key) = criteria.iter().find_map(|(k, d)| scalar(d).then_some(k)) {
+                return refuse(format!(
+                    "option {key:?}'s description must be text, an object, an array or null"
+                ));
+            }
         }
         Question::Score { criteria, .. } => {
             // The API gives a null level no meaning; a lenient backend echoes it into the legend.
             if let Some(index) = criteria.iter().position(Value::is_null) {
                 return refuse(format!(
                     "Score level {index} is null; every level needs a description"
+                ));
+            }
+            if let Some(index) = criteria.iter().position(scalar) {
+                return refuse(format!(
+                    "Score level {index} must be text, an object or an array"
                 ));
             }
             if criteria.len() < 2 || criteria.len() > MAX_SCORE_LEVELS {
@@ -533,6 +591,99 @@ mod tests {
             Red = "red" => "Warm",
             Blue = "blue" => None,
         }
+    }
+
+    options! {
+        enum Twice {
+            A = "x" => "First",
+            B = "x" => "Second",
+            C = "y" => None,
+        }
+    }
+
+    /// A key given twice is refused, not merged: the map would keep one
+    /// description and the other option could never be chosen.
+    #[test]
+    fn a_repeated_option_key_is_refused() {
+        let mut q = Questions::new();
+        let err = q
+            .dynamic_choice(
+                "d",
+                "Which?",
+                [("a", "first"), ("b", "b"), ("a", "again")]
+                    .map(|(k, d)| (k.to_owned(), Some(d.to_owned()))),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::InvalidQuestion { id, reason } if id == "d" && reason == "option key \"a\" appears twice"),
+            "{err:?}"
+        );
+        let err = q.choice::<Twice>("e", "Which?").unwrap_err();
+        assert!(
+            matches!(&err, Error::InvalidQuestion { id, reason } if id == "e" && reason.contains("\"x\" appears twice")),
+            "{err:?}"
+        );
+        assert!(q.is_empty(), "a refused question is not added");
+    }
+
+    /// What the API refuses is refused here: a number or a boolean where it
+    /// takes text, an object, an array or null.
+    #[test]
+    fn a_number_or_a_boolean_the_api_refuses_is_refused() {
+        let mut q = Questions::new();
+        let reason = |err: Error| match err {
+            Error::InvalidQuestion { reason, .. } => reason,
+            other => panic!("{other:?}"),
+        };
+        let err = q.noul("a", 42, None).unwrap_err();
+        assert!(reason(err).starts_with("instructions must be text"));
+        let err = q
+            .noul("b", Value::Null, Some(NoulCriteria::new(true, "no")))
+            .unwrap_err();
+        assert_eq!(
+            reason(err),
+            "criteria `true` must be text, an object, an array or null"
+        );
+        let err = q
+            .score("c", "How bad?", vec![json!("low"), json!(2)])
+            .unwrap_err();
+        assert_eq!(
+            reason(err),
+            "Score level 1 must be text, an object or an array"
+        );
+        let err = q
+            .noul("b", Value::Null, Some(NoulCriteria::new("yes", 0)))
+            .unwrap_err();
+        assert_eq!(
+            reason(err),
+            "criteria `false` must be text, an object, an array or null"
+        );
+        for err in [
+            q.score("c", true, ["low", "high"]).map(|_| ()),
+            q.r#box("d", 7).map(|_| ()),
+            q.dynamic_choice("e", 1.5, [("a".to_owned(), None), ("b".to_owned(), None)])
+                .map(|_| ()),
+        ] {
+            assert!(reason(err.unwrap_err()).starts_with("instructions must be text"));
+        }
+        let mut described = Questions::new();
+        let err = described
+            .add(
+                "f",
+                Question::Choice {
+                    instructions: json!("pick"),
+                    criteria: IndexMap::from([
+                        ("a".to_owned(), json!(1)),
+                        ("b".to_owned(), json!("B")),
+                    ]),
+                },
+            )
+            .unwrap_err();
+        assert_eq!(
+            reason(err),
+            "option \"a\"'s description must be text, an object, an array or null"
+        );
+        assert!(q.is_empty(), "a refused question is not added");
     }
 
     #[test]
