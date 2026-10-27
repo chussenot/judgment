@@ -489,13 +489,13 @@ fn sniff(bytes: &[u8]) -> std::result::Result<(ImageFormat, u32, u32), String> {
 
 fn be_u32(bytes: &[u8], at: usize) -> Option<u32> {
     bytes
-        .get(at..at + 4)
+        .get(at..at.checked_add(4)?)
         .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
 }
 
 fn be_u16(bytes: &[u8], at: usize) -> Option<u16> {
     bytes
-        .get(at..at + 2)
+        .get(at..at.checked_add(2)?)
         .map(|b| u16::from_be_bytes([b[0], b[1]]))
 }
 
@@ -509,7 +509,11 @@ fn png_size(bytes: &[u8]) -> std::result::Result<(u32, u32), String> {
     let width = be_u32(bytes, 16).ok_or_else(damaged)?;
     let height = be_u32(bytes, 20).ok_or_else(damaged)?;
     let mut at = 8;
-    while let (Some(length), Some(kind)) = (be_u32(bytes, at), bytes.get(at + 4..at + 8)) {
+    while let (Some(length), Some(kind)) = (
+        be_u32(bytes, at),
+        at.checked_add(4)
+            .and_then(|from| bytes.get(from..from.checked_add(4)?)),
+    ) {
         match kind {
             b"IDAT" | b"IEND" => break,
             b"acTL" => return Err("an animated PNG; the API takes still images only".to_owned()),
@@ -659,6 +663,23 @@ mod tests {
         }
         let bytes: Vec<u8> = (0..=255).collect();
         assert_eq!(decode_base64(&encode_base64(&bytes)).unwrap(), bytes);
+    }
+
+    /// An offset near `usize::MAX` is a miss, not an overflow (a panic in a
+    /// debug build, a wrap in a release one), whatever the pointer width.
+    #[test]
+    fn header_reads_past_the_end_of_the_address_space_are_misses() {
+        let bytes = png_header(280, 280);
+        assert_eq!(be_u32(&bytes, 16), Some(280));
+        assert_eq!(be_u16(&bytes, 18), Some(280));
+        for at in [usize::MAX, usize::MAX - 1, usize::MAX - 3] {
+            assert_eq!(be_u32(&bytes, at), None);
+            assert_eq!(be_u16(&bytes, at), None);
+        }
+        // A chunk whose length runs past the end ends the walk, not the process.
+        let mut bytes = png_header(280, 280);
+        bytes[33..37].copy_from_slice(&u32::MAX.to_be_bytes());
+        assert_eq!(png_size(&bytes), Ok((280, 280)));
     }
 
     #[test]
