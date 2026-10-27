@@ -22,7 +22,7 @@
 //!
 //! Every HTTP call goes through [`crate::http::send_with_retries_paced`] under the
 //! client's [`RetryPolicy`] or the call's. The final response is classified
-//! by status into [`Error`], grouped by what fixes it: 400, 413 and 422 are
+//! by status into [`Error`], grouped by what fixes it: 400, 413, 415 and 422 are
 //! [`Error::InvalidRequest`], with the server's message, the fields a
 //! validation body names as [`ValidationIssue`]s and the code a hosted-API
 //! 400 carries as `detail.error_type`; 401 is [`Error::Unauthorized`] and
@@ -1616,7 +1616,7 @@ impl ErrorBody {
     }
 }
 
-/// The message, the validation issues and the code of a 400, 402, 403 or 422
+/// The message, the validation issues and the code of a 400, 402, 403, 413, 415 or 422
 /// body, for [`Error::InvalidRequest`], [`Error::PermissionDenied`] and
 /// [`Error::PaymentRequired`].
 ///

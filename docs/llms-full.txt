@@ -5367,7 +5367,7 @@ The builder refuses before sending what the HTTP API reference page says the ser
 
 | Status | Error | Retried | Why |
 |---|---|---|---|
-| 400, 413, 422 | `InvalidRequest`, `status` tells them apart | no | a retry cannot fix a body |
+| 400, 413, 415, 422 | `InvalidRequest`, `status` tells them apart | no | a retry cannot fix a body |
 | 401 | `Unauthorized` | no | a new key fixes it |
 | 402 | `PaymentRequired` | no | credit does; neither a new key nor the account's access |
 | 403 | `PermissionDenied` | no | a new key does not; the account's access does |
