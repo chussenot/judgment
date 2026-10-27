@@ -89,10 +89,12 @@ pub enum Error {
     /// A `metadata.minor` above the one this crate reads: the document
     /// uses something a later minor added, and a later release reads it.
     #[error(
-        "`metadata.minor: {found}` is past the minor this crate reads, {reads}; a later release of the crate reads it"
+        "`metadata.minor: {}{found}` is past the minor this crate reads, {reads}; a later release of the crate reads it",
+        if *found == u64::MAX { "at least " } else { "" }
     )]
     Minor {
-        /// What the document declared.
+        /// What the document declared; a number past `u64` saturates here,
+        /// which the message says with "at least".
         found: u64,
         /// The highest minor this crate reads.
         reads: u32,
