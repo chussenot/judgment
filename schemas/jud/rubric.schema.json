@@ -93,7 +93,13 @@
               }
             },
             "additionalProperties": false,
-            "description": "One question's gate. Which fields fit which primitive is checked against the question: threshold for a Noul; confidence and bands for a Choice, a Score or a Box; fallback for a Choice or a Score; level_at_least for a Score; strict for every bar."
+            "description": "One question's gate. Which fields fit which primitive is checked against the question: threshold for a Noul; confidence and bands for a Choice, a Score or a Box; fallback for a Choice or a Score; level_at_least for a Score; strict for every bar.",
+            "not": {
+              "required": [
+                "confidence",
+                "bands"
+              ]
+            }
           }
         },
         "tuning": {
