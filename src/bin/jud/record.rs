@@ -316,9 +316,16 @@ fn describe_plan(p: &PlanSummary<'_>) -> String {
 /// what the run would refuse.
 fn refuse_stale_files(out: &Path, held_stale: &[&Planned]) -> Result<(), Failure> {
     let mut found: Option<Vec<recordings::Found>> = None;
+    // Cases that lower to one request are asked once, by the first: the later
+    // ones are kept from its recording, so its file is theirs, not "elsewhere".
+    let mut seen: Vec<String> = Vec::new();
     for step in held_stale {
         let state = &step.unit.case.state;
         let fingerprint = canonical::request_fingerprint_with(state, &step.questions, &step.assets);
+        if seen.contains(&fingerprint) {
+            continue;
+        }
+        seen.push(fingerprint.clone());
         let hash = request_hash_with(state, &step.questions, &step.assets);
         let own = recording_path(out, &step.name);
         let files = found.get_or_insert_with(|| recordings::scan(out));
