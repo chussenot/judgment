@@ -1283,6 +1283,78 @@ fn check_shows_a_recording_s_model_and_a_cases_name_as_text() {
     );
 }
 
+/// `lower --cases` names the case that does not lower and prints nothing
+/// before it, and a conversation labelled `from_turn` is one request per turn,
+/// as `record` sends it.
+#[test]
+fn lower_cases_names_the_failing_case_and_lowers_per_turn() {
+    let routing = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/jud/routing.jud");
+    let routing_cases = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/examples/jud/routing-cases.jud"
+    );
+    let out = jud(
+        &["lower", routing, "--cases", routing_cases],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+
+    // The second case loses its desk options: the first would print, the second fails.
+    let broken = support::scratch("lower").join("routing-cases.jud");
+    let text = std::fs::read_to_string(routing_cases).unwrap();
+    let cut = text.replacen(
+        "      options:\n        desk:\n          billing: Invoices, payments, refunds\n          technical: Errors and how-to questions\n      expect:\n        desk: technical",
+        "      expect:\n        desk: technical",
+        1,
+    );
+    assert_ne!(cut, text, "fixture lost the options of export-question");
+    std::fs::write(&broken, cut).unwrap();
+    let out = jud(
+        &["lower", routing, "--cases", broken.to_str().unwrap()],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", stdout(&out));
+    assert!(
+        stderr(&out).contains("case export-question:"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(stdout(&out).is_empty(), "{}", stdout(&out));
+
+    let handoff = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/jud/handoff.jud");
+    let handoff_cases = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/examples/jud/handoff-cases.jud"
+    );
+    let out = jud(
+        &["lower", handoff, "--cases", handoff_cases],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let headers: Vec<String> = stdout(&out)
+        .lines()
+        .filter(|l| l.starts_with("# "))
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(
+        headers,
+        [
+            "# escalates-turn-0",
+            "# escalates-turn-1",
+            "# escalates-turn-2",
+            "# patient-turn-0",
+            "# patient-turn-1",
+            "# patient-turn-2",
+        ]
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Options supplied per request (`options_from: request`)
 // ---------------------------------------------------------------------------

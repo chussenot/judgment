@@ -341,10 +341,21 @@ pub(crate) fn lower(args: &Lower) -> Fallible<bool> {
     };
     match (cases, state) {
         (Some(cases), _) => {
-            for (i, case) in cases.cases.iter().enumerate() {
-                let questions = case.request(&rubric)?;
-                crate::out::say!("# {}", case.name(i));
-                crate::out::say!("{}", serde_json::to_string_pretty(&questions)?);
+            // Every request is lowered before any is printed, so a case
+            // that does not lower leaves no partial output; a conversation
+            // labelled with `from_turn` is one request per turn, as `record`
+            // sends it.
+            let mut shown = Vec::new();
+            for unit in crate::batch::units(&cases) {
+                let questions = unit
+                    .case
+                    .request(&rubric)
+                    .map_err(|e| format!("case {}: {e}", crate::out::plain(&unit.name)))?;
+                shown.push((unit.name, serde_json::to_string_pretty(&questions)?));
+            }
+            for (name, questions) in shown {
+                crate::out::say!("# {}", crate::out::plain(&name));
+                crate::out::say!("{questions}");
             }
         }
         (None, Some(state)) => {
