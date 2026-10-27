@@ -226,9 +226,15 @@ pub fn read_recording(dir: &Path, case: &str) -> Result<Recording> {
         return Err(not_a_name(dir, case));
     }
     let path = recording_path(dir, case);
-    let text = std::fs::read_to_string(&path).map_err(|_| Error::MissingRecording {
-        case: case.to_owned(),
-        path: path.display().to_string(),
+    let text = std::fs::read_to_string(&path).map_err(|source| match source.kind() {
+        std::io::ErrorKind::NotFound => Error::MissingRecording {
+            case: case.to_owned(),
+            path: path.display().to_string(),
+        },
+        _ => Error::Io {
+            path: path.display().to_string(),
+            source,
+        },
     })?;
     serde_json::from_str(&text).map_err(|source| Error::Json {
         path: path.display().to_string(),
@@ -713,6 +719,25 @@ mod tests {
         assert!(matches!(
             read_recording(&dir, "ghost"),
             Err(Error::MissingRecording { case, .. }) if case == "ghost"
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Only a file that is not there is a missing recording; a path that
+    /// cannot be read is an I/O error naming it.
+    #[test]
+    fn an_unreadable_recording_is_an_io_error_not_a_missing_one() {
+        let dir = std::env::temp_dir().join(format!("judgment-unreadable-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(recording_path(&dir, "case-1")).unwrap();
+        let err = read_recording(&dir, "case-1").unwrap_err();
+        assert!(
+            matches!(&err, Error::Io { path, .. } if path.contains("case-1")),
+            "{err:?}"
+        );
+        assert!(matches!(
+            read_recording(&dir, "ghost"),
+            Err(Error::MissingRecording { .. })
         ));
         let _ = std::fs::remove_dir_all(&dir);
     }
