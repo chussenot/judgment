@@ -287,17 +287,20 @@ pub struct Completed {
 /// The retry loop gave up without a response the caller can classify.
 /// Exhaustive on purpose: every client must map a new kind, as
 /// [`crate::Error::request_id`] names every variant.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Exhausted {
     /// A transport-level failure the policy stopped retrying.
+    #[error("transport failure after {attempts} attempts: {source}")]
     Transport {
         /// Total attempts made, including the first.
         attempts: u32,
         /// The last error.
+        #[source]
         source: reqwest::Error,
     },
     /// The last response was a success whose body was over
     /// [`max_body_bytes`](RetryPolicy::max_body_bytes).
+    #[error("response body over the {limit}-byte cap after {attempts} attempts")]
     TooLarge {
         /// Total attempts made, including the first.
         attempts: u32,
@@ -571,6 +574,35 @@ mod tests {
     /// A whole second, so a date formatted from it parses back exactly.
     fn at(secs: u64) -> SystemTime {
         SystemTime::UNIX_EPOCH + Duration::from_secs(secs)
+    }
+
+    #[test]
+    fn exhausted_is_a_displayable_error() {
+        use std::error::Error as _;
+        let too_large = Exhausted::TooLarge {
+            attempts: 2,
+            limit: 10,
+        };
+        assert_eq!(
+            too_large.to_string(),
+            "response body over the 10-byte cap after 2 attempts"
+        );
+        assert!(too_large.source().is_none());
+        let cause = reqwest::Client::new()
+            .get("http://[::1")
+            .build()
+            .unwrap_err();
+        let transport = Exhausted::Transport {
+            attempts: 3,
+            source: cause,
+        };
+        assert!(
+            transport
+                .to_string()
+                .starts_with("transport failure after 3 attempts: "),
+            "{transport}"
+        );
+        assert!(transport.source().is_some());
     }
 
     #[test]
