@@ -818,7 +818,8 @@ impl Rubric {
 
     /// Read a response to `asked`, a request [`Rubric::lower`] built, through
     /// the policy (`docs/reference/jud-format.md`, Policy): one [`Verdict`] per question asked,
-    /// in wire order, after [`Response::verify`] ([`Error::Response`]).
+    /// in wire order, after [`Response::verify`] ([`Error::Response`]); a
+    /// gate of a question asked that does not fit it is [`Error::Policy`].
     /// Without a gate a Noul's threshold is 0.5 and nothing is deferred.
     pub fn apply(
         &self,
@@ -833,6 +834,10 @@ impl Rubric {
         for (id, question) in asked.iter() {
             self.check_asked(id, question)?;
             let default = Gate::default();
+            // `policy.gates` is public: a gate set past `Rubric::gate` is held to the same checks.
+            if let Some(gate) = self.policy.gates.get(id) {
+                validate_gate(id, gate, &self.questions)?;
+            }
             let gate = self.policy.gates.get(id).unwrap_or(&default);
             let answer = response.answers.get(id).ok_or_else(|| {
                 response_error(crate::Error::MissingAnswer {
@@ -1458,6 +1463,41 @@ spec:
         let err = rubric.apply(&asked, &response).unwrap_err();
         assert!(
             matches!(&err, Error::Response { source } if matches!(**source, crate::Error::MissingAnswer { .. })),
+            "{err}"
+        );
+    }
+
+    /// `policy.gates` is public: a gate that bypassed `Rubric::gate` is
+    /// refused when applied, as it would be when written.
+    #[tokio::test]
+    async fn apply_refuses_a_gate_that_does_not_fit() {
+        let mut rubric = Rubric::parse(RUBRIC).unwrap();
+        let asked = rubric.lower(&json!({}), &Supplied::new()).unwrap();
+        let response = Fake::new()
+            .noul("actionable", 0.7)
+            .unwrap()
+            .choice(
+                "owner",
+                [("billing", 0.3), ("support", 0.5), ("none_of_these", 0.2)],
+                0.25,
+            )
+            .unwrap()
+            .score("tone", [0.1, 0.2, 0.7], 0.6)
+            .unwrap()
+            .answer(&json!({}), "jev-latest", &asked)
+            .await
+            .unwrap();
+        rubric.apply(&asked, &response).unwrap();
+        rubric.policy.gates.insert(
+            "actionable".to_owned(),
+            Gate {
+                threshold: Some(1.5),
+                ..Gate::default()
+            },
+        );
+        let err = rubric.apply(&asked, &response).unwrap_err();
+        assert!(
+            matches!(&err, Error::Policy { id, reason } if id == "actionable" && reason.contains("between 0 and 1")),
             "{err}"
         );
     }
