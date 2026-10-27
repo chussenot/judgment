@@ -450,7 +450,7 @@ fn noul_criteria(id: &str, raw: RawNoulCriteria) -> Result<NoulCriteria> {
                 "false" => criteria.no = Some(value),
                 other => {
                     return Err(Error::Invalid {
-                        field: format!("questions.{id}.criteria"),
+                        field: format!("spec.questions.{id}.criteria"),
                         reason: format!("a Noul's criteria are `true` and `false`, not `{other}`"),
                     });
                 }
@@ -525,7 +525,7 @@ impl RawQuestion {
             Some("request") => Some(OptionsFrom::Request),
             Some(other) => {
                 return Err(Error::Invalid {
-                    field: format!("questions.{id}.options_from"),
+                    field: format!("spec.questions.{id}.options_from"),
                     reason: format!(
                         "`{other}` is not a source of options; the one source is `request`"
                     ),
@@ -558,31 +558,31 @@ fn check_question(id: &str, rq: &RubricQuestion) -> Result<()> {
     }
     if rq.options_from.is_some() && !matches!(rq.question, Question::Choice { .. }) {
         return Err(Error::Invalid {
-            field: format!("questions.{id}.options_from"),
+            field: format!("spec.questions.{id}.options_from"),
             reason: "only a Choice has options to supply".to_owned(),
         });
     }
     let min_options = if rq.options_from.is_some() { 0 } else { 2 };
     validate_with(id, &rq.question, min_options).map_err(question_error)?;
     if let Some(when) = &rq.when {
-        check_path(&format!("questions.{id}.when"), when)?;
+        check_path(&format!("spec.questions.{id}.when"), when)?;
     }
     if !rq.part_when.is_empty() {
         let instructions = rq.question.instructions();
         let Some(parts) = instructions.as_object() else {
             return Err(Error::Invalid {
-                field: format!("questions.{id}.part_when"),
+                field: format!("spec.questions.{id}.part_when"),
                 reason: "names parts of the instructions, which must then be an object".to_owned(),
             });
         };
         for (part, path) in &rq.part_when {
             if !parts.contains_key(part) {
                 return Err(Error::Invalid {
-                    field: format!("questions.{id}.part_when.{part}"),
+                    field: format!("spec.questions.{id}.part_when.{part}"),
                     reason: format!("the instructions have no `{part}` part"),
                 });
             }
-            check_path(&format!("questions.{id}.part_when.{part}"), path)?;
+            check_path(&format!("spec.questions.{id}.part_when.{part}"), path)?;
         }
     }
     Ok(())
@@ -781,7 +781,7 @@ impl Rubric {
             }
             if rq.options_from.is_some() && !matches!(rq.question, Question::Choice { .. }) {
                 return Err(Error::Invalid {
-                    field: format!("questions.{id}.options_from"),
+                    field: format!("spec.questions.{id}.options_from"),
                     reason: "only a Choice has options to supply".to_owned(),
                 });
             }
@@ -1253,7 +1253,7 @@ spec:
         let text = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n:\n      type: noul\n      criteria: {true: a, maybe: b}\n";
         let err = Rubric::parse(text).unwrap_err();
         assert!(
-            matches!(&err, Error::Invalid { field, .. } if field == "questions.n.criteria"),
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.questions.n.criteria"),
             "{err}"
         );
         let text = "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n:\n      type: noul\n      instructions: ok?\n      extra: 1\n";
@@ -1653,27 +1653,27 @@ spec:
         let cases = [
             (
                 "  n:\n    type: noul\n    instructions: ok?\n    options_from: request\n",
-                "questions.n.options_from",
+                "spec.questions.n.options_from",
                 "only a Choice",
             ),
             (
                 "  c:\n    type: choice\n    criteria: {a: A}\n    options_from: database\n",
-                "questions.c.options_from",
+                "spec.questions.c.options_from",
                 "not a source",
             ),
             (
                 "  n:\n    type: noul\n    instructions: {question: ok?}\n    part_when: {context: a.b}\n",
-                "questions.n.part_when.context",
+                "spec.questions.n.part_when.context",
                 "no `context` part",
             ),
             (
                 "  n:\n    type: noul\n    instructions: ok?\n    part_when: {question: a.b}\n",
-                "questions.n.part_when",
+                "spec.questions.n.part_when",
                 "must then be an object",
             ),
             (
                 "  n:\n    type: noul\n    instructions: ok?\n    when: \"a..b\"\n",
-                "questions.n.when",
+                "spec.questions.n.when",
                 "not a state path",
             ),
         ];
@@ -2138,19 +2138,19 @@ spec:
         rubric.questions["actionable"].when = Some("message..text".to_owned());
         let err = rubric.to_yaml().unwrap_err();
         assert!(
-            matches!(&err, Error::Invalid { field, .. } if field == "questions.actionable.when"),
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.questions.actionable.when"),
             "{err}"
         );
         let mut rubric = Rubric::parse(RUBRIC).unwrap();
         rubric.questions["actionable"].options_from = Some(OptionsFrom::Request);
         let err = rubric.to_yaml().unwrap_err();
         assert!(
-            matches!(&err, Error::Invalid { field, .. } if field == "questions.actionable.options_from"),
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.questions.actionable.options_from"),
             "{err}"
         );
         let err = rubric.lower(&json!({}), &Supplied::new()).unwrap_err();
         assert!(
-            matches!(&err, Error::Invalid { field, .. } if field == "questions.actionable.options_from"),
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.questions.actionable.options_from"),
             "{err}"
         );
     }

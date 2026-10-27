@@ -383,7 +383,7 @@ impl Cases {
             && *named != rubric.fingerprint()
         {
             return Err(Error::Invalid {
-                field: "rubric".to_owned(),
+                field: "spec.rubric".to_owned(),
                 reason: format!(
                     "the cases are for `{named}`, not for `{}` ({})",
                     rubric.name,
@@ -673,7 +673,7 @@ spec:
         other.rubric = Some("other".to_owned());
         let err = other.bind(&rubric).unwrap_err();
         assert!(
-            matches!(&err, Error::Invalid { field, .. } if field == "rubric"),
+            matches!(&err, Error::Invalid { field, .. } if field == "spec.rubric"),
             "{err}"
         );
     }
