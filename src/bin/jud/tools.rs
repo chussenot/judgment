@@ -183,7 +183,7 @@ fn print_rubric(l: &Loaded, rubric: &Rubric) {
     crate::out::say!(
         "rubric    {}: name {}, {}, {} questions, {gates} gates ({tuned}){images}",
         l.path,
-        rubric.name,
+        crate::out::plain(&rubric.name),
         l.declared,
         rubric.questions.len()
     );
@@ -195,20 +195,23 @@ fn print_rubric(l: &Loaded, rubric: &Rubric) {
         .as_ref()
         .and_then(|t| t.cases.as_deref())
     {
-        crate::out::say!("          tuned on  {cases}");
+        crate::out::say!("          tuned on  {}", crate::out::plain(cases));
     }
 }
 
 fn print_cases(l: &Loaded, cases: &Cases, rubric_path: Option<&str>) {
     let bound_to = match (rubric_path, cases.rubric.as_deref()) {
         (Some(path), _) => format!("bound to {path}"),
-        (None, Some(name)) => format!("rubric `{name}` not among the files, labels unchecked"),
+        (None, Some(name)) => format!(
+            "rubric `{}` not among the files, labels unchecked",
+            crate::out::plain(name)
+        ),
         (None, None) => "no rubric given, labels unchecked".to_owned(),
     };
     crate::out::say!(
         "cases     {}: name {}, {}, {} cases, {bound_to}",
         l.path,
-        cases.name,
+        crate::out::plain(&cases.name),
         l.declared,
         cases.cases.len()
     );
@@ -248,7 +251,10 @@ fn request_of(case: &Case, b: &Bound<'_>) -> Fallible<(Value, Questions, Assets)
 fn print_recording(l: &Loaded, recording: &Recording, bound: &[Bound<'_>]) -> bool {
     let mut line = format!(
         "recording {}: case {}, {}, model {}",
-        l.path, recording.case, l.declared, recording.response.model
+        l.path,
+        crate::out::plain(&recording.case),
+        l.declared,
+        crate::out::plain(&recording.response.model)
     );
     let Some(found) = find_request(bound, &recording.case) else {
         crate::out::say!("{line}, no bound case of that name, answers unchecked");

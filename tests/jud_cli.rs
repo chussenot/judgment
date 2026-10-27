@@ -1250,6 +1250,39 @@ fn check_counts_a_document_refused_after_loading_once() {
     );
 }
 
+/// What a recording or a cases document names is shown as text.
+#[test]
+fn check_shows_a_recording_s_model_and_a_cases_name_as_text() {
+    let dir = support::copy_dir(support::RECORDINGS);
+    let file = dir.join("close-account.jud");
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(text.contains("    model: jev-1.13.0\n"));
+    std::fs::write(
+        &file,
+        text.replacen("model: jev-1.13.0", "model: \"jev\\e[31mRED\"", 1),
+    )
+    .unwrap();
+    let out = jud(
+        &["check", RUBRIC, CASES, file.to_str().unwrap()],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert!(out.status.success(), "{}", stdout(&out));
+    assert!(!out.stdout.contains(&0x1b), "{:?}", stdout(&out));
+    assert!(
+        stdout(&out).contains("model jev\\u{1b}[31mRED"),
+        "{}",
+        stdout(&out)
+    );
+    // Plain text is untouched.
+    assert!(
+        stdout(&out).contains("name inbox-triage,"),
+        "{}",
+        stdout(&out)
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Options supplied per request (`options_from: request`)
 // ---------------------------------------------------------------------------
