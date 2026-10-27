@@ -306,3 +306,46 @@ fn without_a_key_it_refuses_to_start_as_jud_does() {
     assert!(out.stdout.is_empty());
     assert!(String::from_utf8_lossy(&out.stderr).contains("no API key"));
 }
+
+/// A subdirectory that cannot be read stops `jud mcp`, and the refusal names
+/// that subdirectory, not the directory it was asked to serve.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_subdirectory_is_named() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("jud-mcp-sub-{}", std::process::id()));
+    let sealed = dir.join("sealed");
+    std::fs::create_dir_all(&sealed).unwrap();
+    std::fs::copy(
+        format!("{ROOT}/examples/jud/triage.jud"),
+        dir.join("triage.jud"),
+    )
+    .unwrap();
+    std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let readable = std::fs::read_dir(&sealed).is_ok(); // root reads anything
+    let mut command = Command::new(env!("CARGO_BIN_EXE_jud"));
+    command
+        .args(["mcp", dir.to_str().unwrap()])
+        .args(["--replay", RECORDINGS])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    clean(&mut command);
+    let out = command.output().unwrap();
+    std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    if readable {
+        return;
+    }
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{err}");
+    assert!(
+        err.contains(&format!("cannot read {}:", sealed.display())),
+        "{err}"
+    );
+    // Not the top directory it was asked to serve.
+    assert!(
+        !err.contains(&format!("cannot read {}:", dir.display())),
+        "{err}"
+    );
+}

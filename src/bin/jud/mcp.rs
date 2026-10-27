@@ -123,8 +123,7 @@ fn serve(args: &Mcp) -> Result<(), Failure> {
 /// on stderr and passed over too, one bad file never hides the rest.
 fn scan(dir: &Path) -> Result<Vec<Arc<Entry>>, Failure> {
     let mut paths = Vec::new();
-    collect(dir, &mut paths)
-        .map_err(|e| Failure::Usage(format!("cannot read {}: {e}", dir.display())))?;
+    collect(dir, &mut paths).map_err(Failure::Usage)?;
     paths.sort();
     let mut entries: Vec<Arc<Entry>> = Vec::new();
     for path in paths {
@@ -163,11 +162,16 @@ fn scan(dir: &Path) -> Result<Vec<Arc<Entry>>, Failure> {
     Ok(entries)
 }
 
-/// The `.jud` regular files under `dir`; links are not followed.
-fn collect(dir: &Path, into: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let path = entry?.path();
-        let kind = path.symlink_metadata()?.file_type();
+/// The `.jud` regular files under `dir`; links are not followed. An error
+/// names the path that could not be read, which may be a subdirectory.
+fn collect(dir: &Path, into: &mut Vec<PathBuf>) -> Result<(), String> {
+    let cannot = |path: &Path, e: std::io::Error| format!("cannot read {}: {e}", path.display());
+    for entry in std::fs::read_dir(dir).map_err(|e| cannot(dir, e))? {
+        let path = entry.map_err(|e| cannot(dir, e))?.path();
+        let kind = path
+            .symlink_metadata()
+            .map_err(|e| cannot(&path, e))?
+            .file_type();
         if kind.is_dir() {
             collect(&path, into)?;
         } else if kind.is_file()
