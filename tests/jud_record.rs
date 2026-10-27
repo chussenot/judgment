@@ -462,10 +462,10 @@ spec:
 #[tokio::test]
 async fn a_turn_that_does_not_lower_is_refused_before_the_first_call() {
     // The question's only instruction part is sent from the second turn on.
-    // The whole conversation lowers, so the cases bind; its first turn, one
-    // request on its own, would send a Noul that asks nothing. The case
-    // before it is fine: asking it first would spend a call on a run that
-    // cannot finish.
+    // The whole conversation lowers, but `talk`'s first turn, one request
+    // on its own, would send a Noul that asks nothing, so binding refuses
+    // the document before anything is asked. The `whole` case is fine: no
+    // `from_turn` label grades its turns, so they are not lowered.
     let dir = scratch("late");
     let rubric = dir.join("rubric.jud");
     std::fs::write(
@@ -511,11 +511,9 @@ spec:
     let out = dir.join("recordings");
     let run = record(&server, rubric.to_str().unwrap(), &cases, &out, &[]);
     assert_eq!(code(&run), 2, "{}", stderr(&run));
-    assert!(
-        stderr(&run).contains("does not lower for case talk-turn-0"),
-        "{}",
-        stderr(&run)
-    );
+    let err = stderr(&run);
+    assert!(err.contains("case talk-turn-0"), "{err}");
+    assert!(err.contains("does not lower"), "{err}");
     assert!(!out.exists());
 }
 
@@ -1388,11 +1386,11 @@ spec:
 #[tokio::test]
 async fn a_label_on_a_turn_that_does_not_ask_its_question_is_refused_before_any_call() {
     // `wants_human` is asked only once the conversation has a second turn,
-    // yet the case labels it from turn 1 and `greeted` from turn 0. Binding
-    // reads the whole conversation, where the question is asked, and
-    // accepts it; the first turn alone does not ask the question, so the
-    // label can never be graded there. The whole conversation before it is
-    // fine, and is not asked either.
+    // yet the case labels it from turn 1 and `greeted` from turn 0. The
+    // first turn alone does not ask the question, so the label can never
+    // be graded there: binding refuses the document, `jud check` and
+    // `jud record` alike, before any call is spent. The `whole` case has
+    // no `from_turn` label and stays fine.
     let dir = scratch("conv");
     let rubric = dir.join("conv.jud");
     std::fs::write(
@@ -1436,9 +1434,10 @@ spec:
         greeted: {from_turn: 0}
 ",
     );
-    // The documents bind: `jud check` accepts them.
+    // Binding refuses the label, so `jud check` refuses the documents.
     let check = jud(&["check", rubric.to_str().unwrap(), &cases], "", &[]);
-    assert_eq!(code(&check), 0, "{}{}", stdout(&check), stderr(&check));
+    assert_eq!(code(&check), 2, "{}{}", stdout(&check), stderr(&check));
+    assert!(stdout(&check).contains("not asked"), "{}", stdout(&check));
 
     let server = server(handoff_answers(), 0).await;
     let out = dir.join("recordings");

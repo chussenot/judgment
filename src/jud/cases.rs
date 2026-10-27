@@ -385,7 +385,8 @@ impl Cases {
     /// Check every case against `rubric`: its request lowers
     /// ([`Case::request`]) and every label names a question that request
     /// asks and fits it (`docs/reference/jud-format.md`, cases), for the
-    /// state as a whole and at each turn of a conversation ([`Case::per_turn`]);
+    /// state as a whole and, where a `from_turn` label grades the turns,
+    /// at each turn of the conversation ([`Case::per_turn`]);
     /// the document's `rubric`, when named, is the rubric's id or fingerprint.
     pub fn bind(&self, rubric: &Rubric) -> Result<()> {
         if let Some(named) = &self.rubric
@@ -402,9 +403,26 @@ impl Cases {
             });
         }
         for (index, case) in self.cases.iter().enumerate() {
-            // The whole state, then each turn of a conversation: what
-            // per-turn grading ([`Case::per_turn`]) will ask and label.
-            let turns = case.per_turn().into_iter().map(|turn| turn.case);
+            // The whole state, then each turn of a conversation that a
+            // `from_turn` label grades: what per-turn grading
+            // ([`Case::per_turn`]) will ask and label. A case labelled
+            // only as a whole is asked only as a whole.
+            let name = case.name(index);
+            let graded_per_turn = case
+                .expect
+                .values()
+                .any(|e| matches!(e, Expect::FromTurn(_)));
+            let turns = if graded_per_turn {
+                case.per_turn()
+            } else {
+                Vec::new()
+            }
+            .into_iter()
+            .map(|turn| {
+                let mut at_turn = turn.case;
+                at_turn.id = Some(format!("{name}-turn-{}", turn.index));
+                at_turn
+            });
             for case in std::iter::once(case.clone()).chain(turns) {
                 let asked = request(rubric, &case, index)?;
                 for (id, expect) in &case.expect {
@@ -1067,7 +1085,7 @@ spec:
         // A `from_turn` label is graded at turn 0 too, where `late` is not asked.
         let err = bind("{late: {from_turn: 1}}").unwrap_err();
         assert!(
-            matches!(&err, Error::Case { case, reason } if case == "c" && reason.contains("not asked for this state")),
+            matches!(&err, Error::Case { case, reason } if case == "c-turn-0" && reason.contains("not asked for this state")),
             "{err}"
         );
     }
