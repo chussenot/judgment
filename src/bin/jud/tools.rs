@@ -109,6 +109,7 @@ fn load(paths: &[String]) -> (Vec<Loaded>, usize) {
 /// True when every document was read; a refusal is printed as it happens.
 pub(crate) fn check(paths: &[String]) -> bool {
     let (loaded, mut errors) = load(paths);
+    let unloaded = errors;
     let rubrics: Vec<(&str, &Rubric)> = loaded
         .iter()
         .filter_map(|l| match &l.document {
@@ -146,7 +147,9 @@ pub(crate) fn check(paths: &[String]) -> bool {
             errors += usize::from(!print_recording(l, recording, &bound));
         }
     }
-    let documents = loaded.len() + errors;
+    // `errors` already counts a cases document refused at binding, which is
+    // in `loaded`; only the files that never loaded are added.
+    let documents = loaded.len() + unloaded;
     crate::out::say!("{documents} documents, {errors} refused");
     errors == 0
 }

@@ -6,6 +6,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::missing_panics_doc)]
 
+mod support;
+
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -1208,6 +1210,44 @@ fn a_stdout_that_cannot_be_written_is_never_exit_0() {
             stderr(&out)
         );
     }
+}
+
+/// A cases document refused at binding is one document, loaded and refused,
+/// not two.
+#[test]
+fn check_counts_a_document_refused_after_loading_once() {
+    let bad = support::scratch("check").join("bad-cases.jud");
+    std::fs::write(
+        &bad,
+        std::fs::read_to_string(CASES)
+            .unwrap()
+            .replacen("desk: billing", "desk: refunds", 1),
+    )
+    .unwrap();
+    let out = jud(
+        &["check", RUBRIC, bad.to_str().unwrap()],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(
+        stdout(&out).contains("2 documents, 1 refused"),
+        "{}",
+        stdout(&out)
+    );
+    // A file that never loads is still one document, and refused.
+    let out = jud(
+        &["check", RUBRIC, "/nonexistent/x.jud"],
+        "",
+        &[],
+        &config_home(),
+    );
+    assert!(
+        stdout(&out).contains("2 documents, 1 refused"),
+        "{}",
+        stdout(&out)
+    );
 }
 
 // ---------------------------------------------------------------------------
