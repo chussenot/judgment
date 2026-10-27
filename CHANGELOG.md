@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-27
+
 The thirty-five findings of the second review pass, fixed. Three of them
 move the public API (0.x: a minor bump may break), and the `.jud` reader
 corrections under Fixed are breaking for a document the specification
