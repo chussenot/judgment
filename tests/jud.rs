@@ -475,6 +475,31 @@ fn refused_documents() -> Vec<(&'static jsonschema::Validator, &'static str)> {
             &*RUBRIC,
             "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, criteria: {true: 1, false: false}}\n",
         ),
+        // A gate with `confidence` and `bands`: one band is a confidence bar.
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    c: {type: choice, instructions: pick, criteria: {a: A, b: B}}\n  policy:\n    c: {confidence: 0.5, bands: [{at_least: 0.5, verdict: go}]}\n",
+        ),
+        // A blank reference.
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    b: {type: box, instructions: the mug in ` `}\n  assets:\n    \" \": {type: image, path: photo.png}\n",
+        ),
+        // `part_when` beside instructions that are text, empty or not.
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?, part_when: {}}\n",
+        ),
+        (
+            &*RUBRIC,
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    n: {type: noul, instructions: ok?, part_when: {question: a.b}}\n",
+        ),
+        // A Box label with an edge out of range, refused when read, not
+        // only when bound.
+        (
+            &*CASES,
+            "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: cases\n  minor: 4\nspec:\n  cases:\n    - state: {photo: photo}\n      expect: {b: {box: {top: 0.2, bottom: 1.5, left: 0.2, right: 0.8}}}\n",
+        ),
     ]
 }
 
