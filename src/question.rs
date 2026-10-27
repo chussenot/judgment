@@ -62,6 +62,17 @@ pub const MAX_CHOICE_OPTIONS: usize = 255;
 /// The reference page's maximum levels per Score; the minimum is 2 (module docs).
 pub const MAX_SCORE_LEVELS: usize = 10;
 
+/// An instructions object goes out with its keys sorted, whatever
+/// `serde_json`'s `preserve_order` (the `mcp` feature turns it on) did to the map.
+fn sorted<S: serde::Serializer>(
+    value: &Value,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    let mut value = value.clone();
+    value.sort_all_objects();
+    value.serialize(serializer)
+}
+
 /// One question, as sent on the wire.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -69,6 +80,7 @@ pub enum Question {
     /// Yes/no; the answer is the probability of yes.
     Noul {
         /// What to decide; `null` when the criteria say it all.
+        #[serde(serialize_with = "sorted")]
         instructions: Value,
         /// Optional meaning of yes and no.
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,6 +89,7 @@ pub enum Question {
     /// One option from a defined set.
     Choice {
         /// What to decide; `null` when the option descriptions say it all.
+        #[serde(serialize_with = "sorted")]
         instructions: Value,
         /// Option key to description (`null` allowed), in the order the model sees them.
         criteria: IndexMap<String, Value>,
@@ -84,6 +97,7 @@ pub enum Question {
     /// A position along ordered levels.
     Score {
         /// What to rate; `null` when the levels say it all.
+        #[serde(serialize_with = "sorted")]
         instructions: Value,
         /// Ordered level descriptions, lowest first.
         criteria: Vec<Value>,
@@ -91,6 +105,7 @@ pub enum Question {
     /// Where something is in an image (module docs, `# A Box needs an image`).
     Box {
         /// What to locate, and in which image; never `null`, there are no criteria.
+        #[serde(serialize_with = "sorted")]
         instructions: Value,
     },
 }
@@ -731,6 +746,18 @@ mod tests {
         assert!(
             matches!(&err, Error::InvalidQuestion { id, reason } if id == "s" && reason.contains("level 1 is null")),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn instructions_objects_are_sent_with_sorted_keys_in_every_build() {
+        let mut q = Questions::new();
+        q.noul("n", json!({"zebra": "z", "apple": {"y": 1, "b": 2}}), None)
+            .unwrap();
+        let wire = serde_json::to_string(&q).unwrap();
+        assert!(
+            wire.contains(r#""instructions":{"apple":{"b":2,"y":1},"zebra":"z"}"#),
+            "{wire}"
         );
     }
 
