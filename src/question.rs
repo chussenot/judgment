@@ -388,10 +388,12 @@ impl Questions {
         self.push::<()>(id.into(), question).map(drop)
     }
 
-    /// A typed handle to a question added by id; `None` if absent or not of `A`'s primitive.
+    /// A typed handle to a question added by id; `None` if absent, not of
+    /// `A`'s primitive, or one `A` cannot always read ([`FromAnswer::fits`]:
+    /// a [`Choice<O>`] needs the question to offer exactly `O`'s options).
     pub fn handle<A: FromAnswer>(&self, id: &str) -> Option<Handle<A>> {
         let question = self.map.get(id)?;
-        (question.kind() == A::KIND).then(|| Handle {
+        (question.kind() == A::KIND && A::fits(question)).then(|| Handle {
             id: id.to_owned(),
             _answer: PhantomData,
         })
@@ -855,6 +857,35 @@ mod tests {
         assert_eq!(kinds, ["noul", "choice", "score", "box"]);
         let ids: Vec<&str> = q.ids().collect();
         assert_eq!(ids, ["n", "c", "s", "b"]);
+    }
+
+    #[test]
+    fn a_handle_is_refused_for_a_choice_its_enum_cannot_read() {
+        crate::options! {
+            enum Two {
+                A = "a" => None,
+                B = "b" => None,
+                C = "c" => None,
+            }
+        }
+        let mut q = Questions::new();
+        let opt = |keys: &[&str]| {
+            keys.iter()
+                .map(|k| ((*k).to_owned(), None))
+                .collect::<Vec<_>>()
+        };
+        q.dynamic_choice("same", "?", opt(&["a", "b", "c"]))
+            .unwrap();
+        q.dynamic_choice("extra", "?", opt(&["a", "b", "c", "d"]))
+            .unwrap();
+        q.dynamic_choice("subset", "?", opt(&["a", "b"])).unwrap();
+        q.dynamic_choice("other", "?", opt(&["a", "b", "x"]))
+            .unwrap();
+        assert!(q.handle::<Choice<Two>>("same").is_some());
+        for id in ["extra", "subset", "other"] {
+            assert!(q.handle::<Choice<Two>>(id).is_none(), "{id}");
+            assert!(q.handle::<Choice<String>>(id).is_some(), "{id}");
+        }
     }
 
     #[test]

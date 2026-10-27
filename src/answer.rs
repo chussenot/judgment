@@ -42,8 +42,9 @@
 //! * A known kind still decodes strictly: `{"type": "noul", "noul": 1.2}`,
 //!   a missing or non-string `type` and a non-object are [`Error::Decode`].
 //! * An absent or `null` `usage`, or count in it, is zero ([`Usage`]).
-//! * Undocumented top-level fields are kept in [`Response::extra`]; fields
-//!   inside an answer are ignored, as in the Python SDK.
+//! * Undocumented top-level fields are kept in [`Response::extra`], and
+//!   those inside an answer in that answer's `extra` (Laya's `action`), both
+//!   written back, so a recording keeps what the server sent.
 //!
 //! # What `Response::verify` checks
 //!
@@ -211,6 +212,34 @@ pub struct BoxEdges {
     pub right: f64,
 }
 
+/// Why [`BoxEdges::check`] refuses edges. Its text is the reason
+/// [`Response::verify`] gives for a Box that is not a region.
+#[derive(Debug, Clone, Copy, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+pub enum BoxEdgesError {
+    /// An edge is outside `0..=1` (NaN included).
+    #[error("{edge} {value} is outside 0..=1")]
+    OutsideUnit {
+        /// `top`, `bottom`, `left` or `right`.
+        edge: &'static str,
+        /// The value it has.
+        value: f64,
+    },
+    /// An edge is not below the one it should be below: `left` and `right`,
+    /// or `top` and `bottom`.
+    #[error("{low} {low_value} is not below {high} {high_value}")]
+    NotBelow {
+        /// The edge that should be the smaller: `left` or `top`.
+        low: &'static str,
+        /// Its value.
+        low_value: f64,
+        /// The edge that should be the larger: `right` or `bottom`.
+        high: &'static str,
+        /// Its value.
+        high_value: f64,
+    },
+}
+
 impl BoxEdges {
     /// Edges in the wire's order: top, bottom, left, right.
     pub const fn new(top: f64, bottom: f64, left: f64, right: f64) -> Self {
@@ -225,7 +254,7 @@ impl BoxEdges {
     /// Why these edges are not a region, if they are not: an edge outside
     /// `0..=1` (NaN included), or `left` not below `right`, or `top` not
     /// below `bottom`. What [`Response::verify`] refuses an answer for.
-    pub fn check(&self) -> std::result::Result<(), String> {
+    pub fn check(&self) -> std::result::Result<(), BoxEdgesError> {
         for (name, value) in [
             ("top", self.top),
             ("bottom", self.bottom),
@@ -233,20 +262,21 @@ impl BoxEdges {
             ("right", self.right),
         ] {
             if !(0.0..=1.0).contains(&value) {
-                return Err(format!("{name} {value} is outside 0..=1"));
+                return Err(BoxEdgesError::OutsideUnit { edge: name, value });
             }
         }
-        if self.left >= self.right {
-            return Err(format!(
-                "left {} is not below right {}",
-                self.left, self.right
-            ));
-        }
-        if self.top >= self.bottom {
-            return Err(format!(
-                "top {} is not below bottom {}",
-                self.top, self.bottom
-            ));
+        for (low, low_value, high, high_value) in [
+            ("left", self.left, "right", self.right),
+            ("top", self.top, "bottom", self.bottom),
+        ] {
+            if low_value >= high_value {
+                return Err(BoxEdgesError::NotBelow {
+                    low,
+                    low_value,
+                    high,
+                    high_value,
+                });
+            }
         }
         Ok(())
     }
@@ -368,6 +398,11 @@ pub enum Answer {
     Noul {
         /// 0 is no, 1 is yes.
         noul: Probability,
+        /// Every field beyond the documented ones, as it came (Laya's
+        /// `action`, a model's own `confidence` on a Noul), written back so
+        /// a recording keeps what the server sent.
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
     },
     /// The chosen option and the full distribution.
     Choice {
@@ -377,6 +412,11 @@ pub enum Answer {
         probabilities: BTreeMap<String, Probability>,
         /// Distribution concentration.
         confidence: Confidence,
+        /// Every field beyond the documented ones, as it came (Laya's
+        /// `action`, a model's own `confidence` on a Noul), written back so
+        /// a recording keeps what the server sent.
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
     },
     /// A probability-weighted position on the levels.
     Score {
@@ -389,6 +429,11 @@ pub enum Answer {
         probabilities: BTreeMap<String, Probability>,
         /// Distribution concentration.
         confidence: Confidence,
+        /// Every field beyond the documented ones, as it came (Laya's
+        /// `action`, a model's own `confidence` on a Noul), written back so
+        /// a recording keeps what the server sent.
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
     },
     /// Where something is in an image (module docs, `# A Box is a region`).
     Box {
@@ -398,6 +443,11 @@ pub enum Answer {
         /// Confidence in the box, `None` when the model gives none (the
         /// document allows `null`; the hosted API has always sent a number).
         confidence: Option<Confidence>,
+        /// Every field beyond the documented ones, as it came (Laya's
+        /// `action`, a model's own `confidence` on a Noul), written back so
+        /// a recording keeps what the server sent.
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
     },
     /// An answer whose `type` this release does not know, as the JSON
     /// object it came as; a handle reads it as [`Error::AnswerTypeMismatch`]
@@ -448,22 +498,30 @@ pub(crate) fn sanitize_server_str(text: &str) -> String {
 enum KnownAnswer {
     Noul {
         noul: Probability,
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
     },
     Choice {
         choice: String,
         probabilities: BTreeMap<String, Probability>,
         confidence: Confidence,
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
     },
     Score {
         score: f64,
         legend: BTreeMap<String, Value>,
         probabilities: BTreeMap<String, Probability>,
         confidence: Confidence,
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
     },
     Box {
         #[serde(rename = "box")]
         edges: BoxEdges,
         confidence: Option<Confidence>,
+        #[serde(flatten)]
+        extra: BTreeMap<String, Value>,
     },
 }
 
@@ -472,28 +530,40 @@ impl From<KnownAnswer> for Answer {
     /// [`Answer`] and not to the mirror (or the reverse) does not compile.
     fn from(known: KnownAnswer) -> Self {
         match known {
-            KnownAnswer::Noul { noul } => Self::Noul { noul },
+            KnownAnswer::Noul { noul, extra } => Self::Noul { noul, extra },
             KnownAnswer::Choice {
                 choice,
                 probabilities,
                 confidence,
+                extra,
             } => Self::Choice {
                 choice,
                 probabilities,
                 confidence,
+                extra,
             },
             KnownAnswer::Score {
                 score,
                 legend,
                 probabilities,
                 confidence,
+                extra,
             } => Self::Score {
                 score,
                 legend,
                 probabilities,
                 confidence,
+                extra,
             },
-            KnownAnswer::Box { edges, confidence } => Self::Box { edges, confidence },
+            KnownAnswer::Box {
+                edges,
+                confidence,
+                extra,
+            } => Self::Box {
+                edges,
+                confidence,
+                extra,
+            },
         }
     }
 }
@@ -556,6 +626,28 @@ where
     Option::<T>::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
+/// A token count: absent or `null` is zero, a whole-number float (`12.0`,
+/// as a JSON encoder that writes every number as a float sends it) is that
+/// integer; a negative, fractional or string count is an error.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn token_count<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    match Option::<Value>::deserialize(deserializer)? {
+        None | Some(Value::Null) => Ok(0),
+        Some(Value::Number(n)) => n
+            .as_u64()
+            .or_else(|| {
+                n.as_f64()
+                    .filter(|f| f.fract() == 0.0 && (0.0..18_446_744_073_709_551_616.0).contains(f))
+                    .map(|f| f as u64)
+            })
+            .ok_or_else(|| de::Error::custom(format!("token count {n} is not a whole number"))),
+        Some(other) => Err(de::Error::invalid_type(
+            unexpected(&other),
+            &"a token count",
+        )),
+    }
+}
+
 /// A string as itself, anything else as `None`: for a body `request_id`,
 /// which the documented body does not have, so it may be of any type.
 fn string_or_none<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
@@ -576,15 +668,16 @@ fn number_or_none<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<f
 ///
 /// A count the server did not report reads as zero, which leaves a counter
 /// or a sum right; more tolerant than the OpenAPI document (both counts
-/// required) and the Python SDK (`usage` has no default). A negative,
-/// fractional or string count is still [`Error::Decode`].
+/// required) and the Python SDK (`usage` has no default). A whole-number
+/// float (`12.0`) reads as its integer; a negative, fractional or string
+/// count is still [`Error::Decode`].
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub struct Usage {
     /// Tokens in `state` plus all questions.
-    #[serde(default, deserialize_with = "null_as_default")]
+    #[serde(default, deserialize_with = "token_count")]
     pub input_tokens: u64,
     /// Tokens in the answers.
-    #[serde(default, deserialize_with = "null_as_default")]
+    #[serde(default, deserialize_with = "token_count")]
     pub output_tokens: u64,
     /// What the call cost in US dollars, when the server says: `OpenRouter`
     /// sends `usage.cost` on every System One response; TypeSafe's own API
@@ -613,7 +706,9 @@ pub struct Response {
     /// One answer per question id; an unknown kind is [`Answer::Unknown`],
     /// which [`Response::verify`] refuses under an asked question.
     pub answers: BTreeMap<String, Answer>,
-    /// Token accounting; zero for whatever the server did not report.
+    /// Token accounting; zero for whatever the server did not report, and
+    /// written back as those zeros: the OpenAPI document requires `usage`
+    /// on a response, so a recording keeps conforming to it.
     #[serde(default, deserialize_with = "null_as_default")]
     pub usage: Usage,
     /// TypeSafe's request id for this call, from the `x-typesafe-request-id`
@@ -647,7 +742,8 @@ impl Response {
     /// its enum (a [`Choice<String>`] passes its keys through), or
     /// [`Error::Decode`] for legend keys that are not indices, the first
     /// three with this response's request id. After [`Response::verify`], it
-    /// cannot fail.
+    /// cannot fail for a handle from [`Questions`], whose `handle` refuses a
+    /// typed Choice whose options are not the enum's.
     pub fn get<A: FromAnswer>(&self, handle: &crate::Handle<A>) -> Result<A> {
         let id = handle.id();
         let answer = self.answers.get(id).ok_or_else(|| Error::MissingAnswer {
@@ -812,6 +908,15 @@ pub trait FromAnswer: Sized {
     const KIND: &'static str;
     /// Convert, or explain why the answer does not fit.
     fn from_answer(id: &str, answer: &Answer) -> Result<Self>;
+    /// Whether `question`, of this primitive, is one whose verified answer
+    /// [`FromAnswer::from_answer`] always converts: what
+    /// [`Questions::handle`] holds a question to, so a handle it hands out
+    /// cannot fail [`Response::get`] after [`Response::verify`]. True unless
+    /// the view is narrower than the question (a [`Choice<O>`] over options
+    /// the enum does not have).
+    fn fits(_question: &Question) -> bool {
+        true
+    }
 }
 
 /// Typed view of a Noul answer.
@@ -832,7 +937,7 @@ impl FromAnswer for Noul {
     const KIND: &'static str = "noul";
     fn from_answer(id: &str, answer: &Answer) -> Result<Self> {
         match answer {
-            Answer::Noul { noul } => Ok(Self { yes: *noul }),
+            Answer::Noul { noul, .. } => Ok(Self { yes: *noul }),
             other => Err(mismatch(id, Self::KIND, other)),
         }
     }
@@ -844,7 +949,8 @@ impl FromAnswer for Noul {
 pub struct Choice<K: Eq + Hash> {
     /// The highest-probability option.
     pub chosen: K,
-    /// Every option's probability.
+    /// Every option's probability; for a typed `Choice<O>`, every variant
+    /// of `O`, those the server left out at 0.
     pub probabilities: HashMap<K, Probability>,
     /// Distribution concentration.
     pub confidence: Confidence,
@@ -857,7 +963,8 @@ impl<K: Eq + Hash> Choice<K> {
     }
 
     /// The confidence TypeSafe documents for a Choice, computed from
-    /// `probabilities`: `(p_max − 1/n) / (1 − 1/n)` for `n` options, so an
+    /// `probabilities`: `(p_max − 1/n) / (1 − 1/n)` for `n` options (the
+    /// offered ones: a typed Choice fills in what the server omitted), so an
     /// even split reads 0 and all on one option reads 1; one option is 1.
     /// The hosted API agrees to its two decimals
     /// (`docs/project/verification/hosted-typesafe.md`); a compatible server may
@@ -882,11 +989,19 @@ impl<K: Eq + Hash> Choice<K> {
 
 impl<O: Options> FromAnswer for Choice<O> {
     const KIND: &'static str = "choice";
+    /// The question offers exactly `O::ALL`: a key the enum lacks would fail
+    /// [`Response::get`], and a missing one would leave `n` of
+    /// [`Choice::confidence_from_probabilities`] short of the options.
+    fn fits(question: &Question) -> bool {
+        matches!(question, Question::Choice { criteria, .. }
+            if criteria.len() == O::ALL.len() && criteria.keys().all(|key| O::from_key(key).is_some()))
+    }
     fn from_answer(id: &str, answer: &Answer) -> Result<Self> {
         let Answer::Choice {
             choice,
             probabilities,
             confidence,
+            ..
         } = answer
         else {
             return Err(mismatch(id, Self::KIND, answer));
@@ -899,10 +1014,14 @@ impl<O: Options> FromAnswer for Choice<O> {
             })
         };
         let chosen = parse(choice)?;
-        let probabilities = probabilities
+        let mut probabilities = probabilities
             .iter()
             .map(|(k, p)| Ok((parse(k)?, *p)))
             .collect::<Result<HashMap<O, Probability>>>()?;
+        // An option the server left out has probability 0, and still counts.
+        for option in O::ALL {
+            probabilities.entry(*option).or_insert(Probability(0.0));
+        }
         Ok(Self {
             chosen,
             probabilities,
@@ -918,6 +1037,7 @@ impl FromAnswer for Choice<String> {
             choice,
             probabilities,
             confidence,
+            ..
         } = answer
         else {
             return Err(mismatch(id, Self::KIND, answer));
@@ -1040,6 +1160,7 @@ impl FromAnswer for Score {
             legend,
             probabilities,
             confidence,
+            ..
         } = answer
         else {
             return Err(mismatch(id, Self::KIND, answer));
@@ -1137,7 +1258,9 @@ impl FromAnswer for BoundingBox {
     const KIND: &'static str = "box";
     fn from_answer(id: &str, answer: &Answer) -> Result<Self> {
         match answer {
-            Answer::Box { edges, confidence } => Ok(Self {
+            Answer::Box {
+                edges, confidence, ..
+            } => Ok(Self {
                 edges: *edges,
                 confidence: *confidence,
             }),
@@ -1399,6 +1522,7 @@ mod tests {
 
         let noul = Answer::Noul {
             noul: Probability::new(0.25).unwrap(),
+            extra: BTreeMap::new(),
         };
         assert_eq!(
             serde_json::to_value(&noul).unwrap(),
@@ -1410,7 +1534,8 @@ mod tests {
         assert_eq!(
             decode::<Answer>(&serde_json::to_value(&hand).unwrap()).unwrap(),
             Answer::Noul {
-                noul: Probability::new(0.5).unwrap()
+                noul: Probability::new(0.5).unwrap(),
+                extra: BTreeMap::new(),
             }
         );
         assert_eq!(Answer::Unknown(json!(5)).kind(), "unknown");
@@ -1485,7 +1610,8 @@ mod tests {
         assert_eq!(
             answer,
             Answer::Noul {
-                noul: Probability::new(0.9).unwrap()
+                noul: Probability::new(0.9).unwrap(),
+                extra: BTreeMap::new(),
             }
         );
         // A duplicate `type` decides the kind by its last value, either way.
@@ -1498,7 +1624,8 @@ mod tests {
         assert_eq!(
             answer,
             Answer::Noul {
-                noul: Probability::new(0.5).unwrap()
+                noul: Probability::new(0.5).unwrap(),
+                extra: BTreeMap::new(),
             }
         );
     }
@@ -1643,11 +1770,90 @@ mod tests {
     }
 
     #[test]
+    fn a_whole_number_float_count_is_its_integer() {
+        let r: Response = decode(&json!({ "model": "m", "answers": {},
+            "usage": { "input_tokens": 12.0, "output_tokens": 3e2 } }))
+        .unwrap();
+        assert_eq!((r.usage.input_tokens, r.usage.output_tokens), (12, 300));
+    }
+
+    #[test]
+    fn a_typed_choice_counts_the_options_the_server_left_out() {
+        let q = |q: &mut Questions| q.choice::<Dept>("d", "?").unwrap();
+        let mut questions = Questions::new();
+        let handle = q(&mut questions);
+        let r = response(&json!({ "d": { "type": "choice", "choice": "billing",
+            "probabilities": { "billing": 1.0 }, "confidence": 1.0 } }));
+        r.verify(&questions).unwrap();
+        let choice = r.get(&handle).unwrap();
+        assert_eq!(choice.probabilities.len(), 2);
+        assert!(choice.probability_of(&Dept::Technical).abs() < f64::EPSILON);
+        // n = 2 and p_max = 1: confidence 1, not the `n < 2` shortcut's accident.
+        assert!((choice.confidence_from_probabilities() - 1.0).abs() < 1e-9);
+        let r = response(&json!({ "d": { "type": "choice", "choice": "billing",
+            "probabilities": { "billing": 0.75 }, "confidence": 0.5 } }));
+        assert!((r.get(&handle).unwrap().confidence_from_probabilities() - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_response_round_trips_unknown_answer_fields() {
+        let body = json!({
+            "model": "m",
+            "answers": {
+                "n": { "type": "noul", "noul": 0.8, "confidence": 0.8, "action": { "p": 0.4 } },
+                "c": { "type": "choice", "choice": "a", "probabilities": { "a": 1.0, "b": 0.0 },
+                       "confidence": 1.0, "rank": 1 },
+                "s": { "type": "score", "score": 0.0, "legend": { "0": "lo", "1": "hi" },
+                       "probabilities": { "0": 1.0, "1": 0.0 }, "confidence": 1.0, "note": "x" },
+                "b": { "type": "box", "box": { "top": 0.1, "bottom": 0.5, "left": 0.1, "right": 0.5 },
+                       "confidence": null, "label": "mug" }
+            }
+        });
+        let r: Response = decode(&body).unwrap();
+        let Answer::Noul { extra, .. } = &r.answers["n"] else {
+            panic!("{:?}", r.answers["n"]);
+        };
+        assert_eq!(extra["action"], json!({ "p": 0.4 }));
+        assert_eq!(
+            extra["confidence"],
+            json!(0.8),
+            "a field the kind does not define"
+        );
+        // Written back as it came, answers whole; a missing `usage` is the
+        // zeros the OpenAPI document requires.
+        let mut expected = body.clone();
+        expected["usage"] = json!({ "input_tokens": 0, "output_tokens": 0 });
+        assert_eq!(serde_json::to_value(&r).unwrap(), expected);
+        assert_eq!(decode::<Response>(&body).unwrap(), r);
+
+        // A usage that was sent is kept, zeros or not.
+        let counted = json!({ "model": "m", "answers": {}, "usage": { "input_tokens": 1, "output_tokens": 0 } });
+        assert_eq!(
+            serde_json::to_value(decode::<Response>(&counted).unwrap()).unwrap(),
+            counted
+        );
+
+        // A field the kind defines is never an extra, and a known answer
+        // still refuses what its kind refuses.
+        let r: Response =
+            decode(&json!({ "model": "m", "answers": { "n": { "type": "noul", "noul": 0.5 } } }))
+                .unwrap();
+        assert!(matches!(&r.answers["n"], Answer::Noul { extra, .. } if extra.is_empty()));
+        assert!(
+            serde_json::from_value::<Answer>(json!({ "type": "noul", "noul": 1.5, "x": 1 }))
+                .is_err()
+        );
+    }
+
+    #[test]
     fn negative_or_string_usage_is_still_an_error() {
         for usage in [
             json!({ "input_tokens": -1 }),
             json!({ "input_tokens": "3" }),
             json!({ "output_tokens": 1.5 }),
+            json!({ "output_tokens": -2.0 }),
+            json!({ "input_tokens": 1e30 }),
+            json!({ "input_tokens": true }),
         ] {
             let body = json!({ "model": "m", "answers": {}, "usage": usage });
             assert!(decode::<Response>(&body).is_err(), "{body}");
@@ -1674,9 +1880,13 @@ mod tests {
         assert_eq!(
             r.answers["urgent"],
             Answer::Noul {
-                noul: Probability::new(0.8123).unwrap()
+                noul: Probability::new(0.8123).unwrap(),
+                extra: BTreeMap::from([
+                    ("confidence".to_owned(), json!(0.8123)),
+                    ("action".to_owned(), json!({ "act_probability": 0.4 })),
+                ]),
             },
-            "fields inside an answer are ignored"
+            "fields inside an answer are kept"
         );
         let written = serde_json::to_value(&r).unwrap();
         assert_eq!(
@@ -2240,8 +2450,24 @@ mod tests {
                 "top 0.82 is not below bottom 0.25",
             ),
         ] {
-            assert_eq!(edges.check().unwrap_err(), needle);
+            assert_eq!(edges.check().unwrap_err().to_string(), needle);
         }
+        assert_eq!(
+            BoxEdges::new(0.25, 0.82, 0.44, 1.2).check(),
+            Err(BoxEdgesError::OutsideUnit {
+                edge: "right",
+                value: 1.2
+            })
+        );
+        assert_eq!(
+            BoxEdges::new(0.82, 0.25, 0.44, 0.84).check(),
+            Err(BoxEdgesError::NotBelow {
+                low: "top",
+                low_value: 0.82,
+                high: "bottom",
+                high_value: 0.25
+            })
+        );
     }
 
     #[test]

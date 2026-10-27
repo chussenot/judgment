@@ -277,6 +277,7 @@ impl Scripted {
                         .map(|(i, p)| (i.to_string(), *p))
                         .collect(),
                     confidence: *confidence,
+                    extra: BTreeMap::new(),
                 }
             }
         }
@@ -327,7 +328,13 @@ impl Fake {
     /// A Noul answer: the probability of yes, checked as on the wire.
     pub fn noul(self, id: impl Into<String>, p_yes: f64) -> Result<Self> {
         let noul = Probability::new(p_yes)?;
-        Ok(self.with_answer(id, Answer::Noul { noul }))
+        Ok(self.with_answer(
+            id,
+            Answer::Noul {
+                noul,
+                extra: BTreeMap::new(),
+            },
+        ))
     }
 
     /// A Choice answer from `(option, probability)` pairs; the chosen option
@@ -355,6 +362,7 @@ impl Fake {
                 choice,
                 probabilities: probs,
                 confidence: Confidence::new(confidence)?,
+                extra: BTreeMap::new(),
             },
         ))
     }
@@ -396,7 +404,14 @@ impl Fake {
         confidence: Option<f64>,
     ) -> Result<Self> {
         let confidence = confidence.map(Confidence::new).transpose()?;
-        Ok(self.with_answer(id, Answer::Box { edges, confidence }))
+        Ok(self.with_answer(
+            id,
+            Answer::Box {
+                edges,
+                confidence,
+                extra: BTreeMap::new(),
+            },
+        ))
     }
 
     /// Every request received so far, oldest first.

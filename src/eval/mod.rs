@@ -425,7 +425,9 @@ impl Judgment {
                 asked: true,
                 iou: None,
             },
-            Answer::Box { edges, confidence } => {
+            Answer::Box {
+                edges, confidence, ..
+            } => {
                 let mut graded = Self::located(
                     edges,
                     None,
@@ -435,11 +437,14 @@ impl Judgment {
                 graded.expected = expected.map(str::to_owned);
                 graded
             }
-            Answer::Noul { noul } => Self::noul(noul.value(), expected.map(|e| e == "yes"), true),
+            Answer::Noul { noul, .. } => {
+                Self::noul(noul.value(), expected.map(|e| e == "yes"), true)
+            }
             Answer::Choice {
                 choice,
                 probabilities,
                 confidence,
+                ..
             } => Self::new(
                 choice.clone(),
                 expected.map(str::to_owned),
@@ -692,6 +697,7 @@ mod tests {
                     "a".to_owned(),
                     Answer::Noul {
                         noul: Probability::new(0.7).unwrap(),
+                        extra: BTreeMap::new(),
                     },
                 ),
                 // An unknown kind and an undocumented field both survive.
@@ -802,6 +808,7 @@ mod tests {
                 ("technical".to_owned(), Probability::new(0.2).unwrap()),
             ]),
             confidence: Confidence::new(0.7).unwrap(),
+            extra: BTreeMap::new(),
         };
         let right = Judgment::of_answer(&choice, Some("billing"));
         assert_eq!(right.correct, Some(true));
@@ -821,10 +828,12 @@ mod tests {
                 ("2".to_owned(), Probability::new(0.7).unwrap()),
             ]),
             confidence: Confidence::new(0.6).unwrap(),
+            extra: BTreeMap::new(),
         };
         assert_eq!(Judgment::of_answer(&score, Some("2")).predicted, "2");
         let noul = Answer::Noul {
             noul: Probability::new(0.3).unwrap(),
+            extra: BTreeMap::new(),
         };
         let n = Judgment::of_answer(&noul, Some("no"));
         assert_eq!(n.predicted, "no");
@@ -890,6 +899,7 @@ mod tests {
         let answer = Answer::Box {
             edges: close,
             confidence: Some(Confidence::new(0.7).unwrap()),
+            extra: BTreeMap::new(),
         };
         let graded = Judgment::of_answer(&answer, Some("box"));
         assert_eq!(

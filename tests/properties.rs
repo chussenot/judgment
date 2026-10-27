@@ -508,7 +508,10 @@ fn conf(c: f64) -> Confidence {
 #[allow(clippy::cast_precision_loss)]
 fn fitting_answer(spec: &Spec) -> Answer {
     match spec {
-        Spec::Noul { p } => Answer::Noul { noul: prob(*p) },
+        Spec::Noul { p } => Answer::Noul {
+            noul: prob(*p),
+            extra: BTreeMap::new(),
+        },
         Spec::Choice {
             options,
             pick,
@@ -518,6 +521,7 @@ fn fitting_answer(spec: &Spec) -> Answer {
             choice: option(*pick),
             probabilities: (0..*options).map(|k| (option(k), prob(*p))).collect(),
             confidence: conf(*confidence),
+            extra: BTreeMap::new(),
         },
         Spec::Score {
             levels,
@@ -547,11 +551,13 @@ fn fitting_answer(spec: &Spec) -> Answer {
                     .map(|i| (i.to_string(), prob(*p)))
                     .collect(),
                 confidence: conf(*confidence),
+                extra: BTreeMap::new(),
             }
         }
         Spec::Box { top, left } => Answer::Box {
             edges: BoxEdges::new(*top, top + 0.5, *left, left + 0.5),
             confidence: None,
+            extra: BTreeMap::new(),
         },
     }
 }
@@ -579,7 +585,7 @@ proptest! {
         let questions = questions_for(&specs);
         let mut response = response_for(&specs);
         prop_assert!(response.verify(&questions).is_ok());
-        response.answers.insert("not-asked".to_owned(), Answer::Noul { noul: prob(0.5) });
+        response.answers.insert("not-asked".to_owned(), Answer::Noul { noul: prob(0.5), extra: BTreeMap::new(), });
         prop_assert!(response.verify(&questions).is_ok());
     }
 
@@ -670,10 +676,9 @@ proptest! {
             Answer::Choice {
                 choice: "x".to_owned(),
                 probabilities: BTreeMap::from([("x".to_owned(), prob(1.0))]),
-                confidence: conf(1.0),
-            }
+                confidence: conf(1.0), extra: BTreeMap::new(), }
         } else {
-            Answer::Noul { noul: prob(0.5) }
+            Answer::Noul { noul: prob(0.5), extra: BTreeMap::new(), }
         };
         let actual_kind = wrong.kind().to_owned();
         response.answers.insert(id(at), wrong);

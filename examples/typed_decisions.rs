@@ -195,7 +195,7 @@ fn questions_from_wire(
 /// answer's probability.
 fn grade(answer: &judgment::Answer, expected: Option<&str>) -> Judgment {
     // The benchmark labels a noul "true" or "false".
-    if let judgment::Answer::Noul { noul } = answer {
+    if let judgment::Answer::Noul { noul, .. } = answer {
         return Judgment::noul(noul.value(), expected.map(|l| l == "true"), true);
     }
     let graded = Judgment::of_answer(answer, expected);
