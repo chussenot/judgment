@@ -309,13 +309,14 @@ impl AssetSource {
 }
 
 /// The reference and shape checks over a document's asset map, and that
-/// every reference appears in `referenced_json` (the questions' or the
-/// state's JSON text): the server refuses an unreferenced asset with a 400,
+/// every reference appears in a string of `referenced` (the questions' or the
+/// state's value, as or inside the text of a string, never in a key or in
+/// the JSON syntax): the server refuses an unreferenced asset with a 400,
 /// and a reference that appears nowhere is a typo somewhere.
 pub(crate) fn check_assets(
     field: &str,
     assets: &IndexMap<String, AssetSource>,
-    referenced_json: &str,
+    referenced: &Value,
 ) -> Result<()> {
     let mut total = 0;
     for (reference, source) in assets {
@@ -331,8 +332,7 @@ pub(crate) fn check_assets(
         }
         total += reference.len();
         source.check(&entry)?;
-        let quoted = serde_json::to_string(reference).unwrap_or_default();
-        if !referenced_json.contains(quoted.trim_matches('"')) {
+        if !mentions(referenced, reference) {
             return Err(Error::Invalid {
                 field: entry,
                 reason: "is referenced nowhere; write the reference where the image belongs, or drop the entry".to_owned(),
@@ -349,6 +349,16 @@ pub(crate) fn check_assets(
         });
     }
     Ok(())
+}
+
+/// Whether `reference` is in a string value of `value`, as the whole or a part.
+fn mentions(value: &Value, reference: &str) -> bool {
+    match value {
+        Value::String(text) => text.contains(reference),
+        Value::Array(items) => items.iter().any(|item| mentions(item, reference)),
+        Value::Object(map) => map.values().any(|item| mentions(item, reference)),
+        _ => false,
+    }
 }
 
 /// Load a document's declared images into the request's [`Assets`], each
@@ -465,7 +475,15 @@ fn check_minor(minor: Option<&Value>) -> Result<()> {
             field: "metadata.minor",
         });
     };
-    let Some(found) = minor.as_u64() else {
+    // Past `u64` a number reads as a float, every one of them whole: still a
+    // minor above ours, refused by number (as large as the error holds).
+    let found = minor.as_u64().or_else(|| {
+        minor
+            .as_f64()
+            .filter(|f| *f >= 18_446_744_073_709_551_616.0 && f.is_finite())
+            .map(|_| u64::MAX)
+    });
+    let Some(found) = found else {
         return Err(Error::Invalid {
             field: "metadata.minor".to_owned(),
             reason: format!(
@@ -493,8 +511,9 @@ pub(crate) struct Metadata {
     pub(crate) name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) minor: Option<u32>,
+    /// Text or a number, read as its source text (`1.10` is not `1.1`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) version: Option<Value>,
+    pub(crate) version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) description: Option<String>,
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
@@ -884,7 +903,19 @@ mod tests {
             matches!(err, Error::Minor { found, reads } if found == u64::from(MINOR + 1) && reads == MINOR),
             "{err}"
         );
-        for bad in ["\"3\"", "3.5", "-1", "null"] {
+        // Past `u64` is still a minor above ours, refused by number.
+        for big in ["18446744073709551616", "99999999999999999999999"] {
+            let err = parse(&format!(
+                "apiVersion: jud/v1\nkind: Rubric\nmetadata: {{name: r, minor: {big}}}\n"
+            ))
+            .unwrap_err();
+            assert!(
+                matches!(err, Error::Minor { found: u64::MAX, reads } if reads == MINOR),
+                "{big}: {err}"
+            );
+        }
+        // `4.0` is a float to the reader, though JSON Schema's integer takes it.
+        for bad in ["\"3\"", "3.5", "4.0", "-1", "null", "-18446744073709551616"] {
             let err = parse(&format!(
                 "apiVersion: jud/v1\nkind: Rubric\nmetadata: {{name: r, minor: {bad}}}\n"
             ))

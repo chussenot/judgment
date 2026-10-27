@@ -266,13 +266,6 @@ impl Cases {
         let raw: RawCases = from_text(text)?;
         refuse_extra(&raw.rest)?;
         raw.metadata.refuse("version", "Cases")?;
-        check_name("metadata.name", &raw.metadata.name)?;
-        if raw.spec.cases.is_empty() {
-            return Err(Error::Invalid {
-                field: "spec.cases".to_owned(),
-                reason: "a cases document needs at least one case".to_owned(),
-            });
-        }
         let cases = Self {
             name: raw.metadata.name,
             description: raw.metadata.description,
@@ -294,7 +287,21 @@ impl Cases {
                 })
                 .collect(),
         };
-        for (index, case) in cases.cases.iter().enumerate() {
+        cases.check()?;
+        Ok(cases)
+    }
+
+    /// What a reader refuses of a cases document, held to a document built
+    /// in code before it is written ([`Cases::to_yaml`]) as to one read.
+    fn check(&self) -> Result<()> {
+        check_name("metadata.name", &self.name)?;
+        if self.cases.is_empty() {
+            return Err(Error::Invalid {
+                field: "spec.cases".to_owned(),
+                reason: "a cases document needs at least one case".to_owned(),
+            });
+        }
+        for (index, case) in self.cases.iter().enumerate() {
             if let Some(id) = &case.id {
                 check_name(&format!("spec.cases.{index}.id"), id).map_err(|e| Error::Case {
                     case: format!("#{index}"),
@@ -315,27 +322,28 @@ impl Cases {
                 }
             }
             // A case's images are declared well and referenced in its state.
-            check_assets("assets", &case.assets, &case.state.to_string()).map_err(|e| {
-                Error::Case {
-                    case: case.name(index),
-                    reason: e.to_string(),
-                }
+            check_assets("assets", &case.assets, &case.state).map_err(|e| Error::Case {
+                case: case.name(index),
+                reason: e.to_string(),
             })?;
-            // A Box label's bar is a fraction, as the schema has it.
+            // A Box label is a region and its bar a fraction, as at bind.
             for (question, expect) in &case.expect {
-                if let Expect::Box(label) = expect
-                    && let Some(bar) = label.iou_at_least
+                let Expect::Box(label) = expect else { continue };
+                let reason = if let Err(reason) = label.edges.check() {
+                    format!("`expect.{question}.box` is not a region: {reason}")
+                } else if let Some(bar) = label.iou_at_least
                     && !(0.0..=1.0).contains(&bar)
                 {
-                    return Err(Error::Case {
-                        case: case.name(index),
-                        reason: format!(
-                            "`expect.{question}.iou_at_least` must be between 0 and 1, got {bar}"
-                        ),
-                    });
-                }
+                    format!("`expect.{question}.iou_at_least` must be between 0 and 1, got {bar}")
+                } else {
+                    continue;
+                };
+                return Err(Error::Case {
+                    case: case.name(index),
+                    reason,
+                });
             }
-            if let Some(dup) = cases.cases[..index]
+            if let Some(dup) = self.cases[..index]
                 .iter()
                 .find(|other| other.id.is_some() && other.id == case.id)
             {
@@ -345,11 +353,12 @@ impl Cases {
                 });
             }
         }
-        Ok(cases)
+        Ok(())
     }
 
-    /// The cases as a YAML document.
+    /// The cases as a YAML document, after the checks [`Cases::parse`] makes.
     pub fn to_yaml(&self) -> Result<String> {
+        self.check()?;
         to_yaml(&CasesDoc {
             api_version: API_VERSION,
             kind: "Cases",
@@ -375,8 +384,9 @@ impl Cases {
 
     /// Check every case against `rubric`: its request lowers
     /// ([`Case::request`]) and every label names a question that request
-    /// asks and fits it (`docs/reference/jud-format.md`, cases); the document's `rubric`,
-    /// when named, is the rubric's id or fingerprint.
+    /// asks and fits it (`docs/reference/jud-format.md`, cases), for the
+    /// state as a whole and at each turn of a conversation ([`Case::per_turn`]);
+    /// the document's `rubric`, when named, is the rubric's id or fingerprint.
     pub fn bind(&self, rubric: &Rubric) -> Result<()> {
         if let Some(named) = &self.rubric
             && *named != rubric.name
@@ -392,9 +402,14 @@ impl Cases {
             });
         }
         for (index, case) in self.cases.iter().enumerate() {
-            let asked = request(rubric, case, index)?;
-            for (id, expect) in &case.expect {
-                expected_label(rubric, &asked, case, index, id, expect)?;
+            // The whole state, then each turn of a conversation: what
+            // per-turn grading ([`Case::per_turn`]) will ask and label.
+            let turns = case.per_turn().into_iter().map(|turn| turn.case);
+            for case in std::iter::once(case.clone()).chain(turns) {
+                let asked = request(rubric, &case, index)?;
+                for (id, expect) in &case.expect {
+                    expected_label(rubric, &asked, &case, index, id, expect)?;
+                }
             }
         }
         Ok(())
@@ -786,8 +801,8 @@ spec:
             let text = format!(
                 "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: crops\nspec:\n  cases:\n    - id: c\n      state: {{photo: img-1}}\n      {expect}\n"
             );
-            // The bar is checked as the document is read; the region and
-            // the kind, when the label is bound to its question.
+            // The region and the bar are checked as the document is read; the
+            // kind, when the label is bound to its question.
             let err = match Cases::parse(&text) {
                 Ok(cases) => cases.bind(&rubric).unwrap_err(),
                 Err(err) => err,
@@ -1006,5 +1021,110 @@ spec:
             "    options: {desk: {billing: Invoices, technical: null, other: {what: x}}}\n",
         ))
         .unwrap();
+    }
+
+    /// A label that is no region is refused when read, with no rubric to
+    /// bind to, as the schemas refuse an edge outside 0..1.
+    #[test]
+    fn a_box_labels_region_is_checked_when_read() {
+        for (edges, needle) in [
+            (
+                "top: 0.2, bottom: 1.5, left: 0.2, right: 0.8",
+                "outside 0..=1",
+            ),
+            ("top: 0.2, bottom: 0.8, left: 0.8, right: 0.2", "not below"),
+        ] {
+            let text = format!(
+                "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: c\n  minor: 4\nspec:\n  cases:\n    - id: c\n      state: {{photo: p}}\n      expect: {{b: {{box: {{{edges}}}}}}}\n"
+            );
+            let err = Cases::parse(&text).unwrap_err();
+            assert!(
+                matches!(&err, Error::Case { case, reason } if case == "c" && reason.contains("not a region") && reason.contains(needle)),
+                "{edges}: {err}"
+            );
+        }
+    }
+
+    /// Per-turn grading asks each turn's own request: a label bind let
+    /// through for the whole conversation is refused if a turn cannot take it.
+    #[test]
+    fn bind_checks_each_turn_of_a_conversation() {
+        let rubric = Rubric::parse(
+            "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\nspec:\n  questions:\n    always:\n      type: noul\n      instructions: ok?\n    late:\n      type: noul\n      instructions: ok?\n      when: \"1\"\n",
+        )
+        .unwrap();
+        let bind = |expect: &str| {
+            Cases::parse(&format!(
+                "apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: cases\nspec:\n  cases:\n    - id: c\n      state: [a, b]\n      expect: {expect}\n"
+            ))
+            .unwrap()
+            .bind(&rubric)
+        };
+        // Asked at turn 1 only: a label at the last turn is graded there alone.
+        bind("{late: true}").unwrap();
+        bind("{always: {from_turn: 1}}").unwrap();
+        // A `from_turn` label is graded at turn 0 too, where `late` is not asked.
+        let err = bind("{late: {from_turn: 1}}").unwrap_err();
+        assert!(
+            matches!(&err, Error::Case { case, reason } if case == "c" && reason.contains("not asked for this state")),
+            "{err}"
+        );
+    }
+
+    /// A writer refuses what its reader refuses, so what it writes reads back.
+    #[test]
+    fn cases_are_checked_before_they_are_written() {
+        let mut cases = Cases::parse(CASES).unwrap();
+        Cases::parse(&cases.to_yaml().unwrap()).unwrap();
+        let mut dup = cases.clone();
+        dup.cases[1].id = Some("refund".to_owned());
+        let err = dup.to_yaml().unwrap_err();
+        assert!(
+            matches!(&err, Error::Case { reason, .. } if reason.contains("same id")),
+            "{err}"
+        );
+        let mut unnamed = cases.clone();
+        unnamed.cases[0].id = Some("../x".to_owned());
+        assert!(unnamed.to_yaml().is_err());
+        let mut bad_label = cases.clone();
+        bad_label.cases[0].expect.insert(
+            "b".to_owned(),
+            Expect::Box(BoxLabel {
+                edges: BoxEdges::new(0.8, 0.2, 0.2, 0.8),
+                iou_at_least: None,
+            }),
+        );
+        assert!(bad_label.to_yaml().is_err());
+        let mut empty = cases.clone();
+        empty.cases.clear();
+        assert!(empty.to_yaml().is_err());
+        cases.name = "a b".to_owned();
+        assert!(cases.to_yaml().is_err());
+    }
+
+    /// A reference is in a string of the state, never only in its syntax.
+    #[test]
+    fn a_case_reference_is_found_in_a_string_of_the_state() {
+        let parse = |state: &str| {
+            Cases::parse(&format!(
+                "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: c\n  minor: 4\nspec:\n  cases:\n    - state: {state}\n      assets:\n        photo: {{path: p.png}}\n"
+            ))
+        };
+        parse("{image: photo}").unwrap();
+        parse("{text: see the photo here}").unwrap();
+        parse("[a, {image: x-photo-y}]").unwrap();
+        // Only a key, a number, or the JSON syntax around the values.
+        for state in [
+            "{photo: x}",
+            "{image: 1}",
+            "{image: [\"{\", \"}\"]}",
+            "[\"\", 3]",
+        ] {
+            let err = parse(state).unwrap_err();
+            assert!(
+                matches!(&err, Error::Case { reason, .. } if reason.contains("referenced nowhere")),
+                "{state}: {err}"
+            );
+        }
     }
 }
