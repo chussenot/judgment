@@ -552,6 +552,7 @@ pub fn grade(
                     Answer::Box {
                         edges: answered,
                         confidence,
+                        ..
                     },
                 ) => Judgment::located(
                     answered,
