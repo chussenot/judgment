@@ -1031,6 +1031,75 @@ async fn a_stale_recording_in_the_file_the_case_takes_is_replaced_in_place() {
     assert_answers_every_case(&dir, TRIAGE_CASES);
 }
 
+/// `TRIAGE_CASES` and a second case, `receipt-again`, that lowers to the
+/// request `receipt` does, as a file.
+fn cases_with_a_twin_of_receipt() -> String {
+    let mut cases =
+        judgment::jud::Cases::parse(&std::fs::read_to_string(TRIAGE_CASES).unwrap()).unwrap();
+    let mut twin = cases
+        .cases
+        .iter()
+        .find(|c| c.id.as_deref() == Some("receipt"))
+        .unwrap()
+        .clone();
+    twin.id = Some("receipt-again".to_owned());
+    cases.cases.push(twin);
+    let path = support::scratch("stale-twins").join("twins.jud");
+    std::fs::write(&path, cases.to_yaml().unwrap()).unwrap();
+    path.to_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn a_stale_recording_two_identical_cases_share_is_replaced_as_the_dry_run_says() {
+    // The stale file is the first case's own; the second is kept from the
+    // first's new recording, so the file is not "elsewhere" for it.
+    let cases = cases_with_a_twin_of_receipt();
+    let dir = with_stale("receipt", None, None);
+    let dry = jud(
+        &[
+            "record",
+            TRIAGE,
+            &cases,
+            "--out",
+            dir.to_str().unwrap(),
+            "--dry-run",
+        ],
+        "",
+        &[],
+    );
+    assert_eq!(code(&dry), 0, "{}", stderr(&dry));
+    assert!(
+        stdout(&dry).contains("1 to ask (1 replacing a stale recording)"),
+        "{}",
+        stdout(&dry)
+    );
+    let server = server(triage_answers(), 1).await;
+    let run = record(&server, TRIAGE, &cases, &dir, &[]);
+    let err = stderr(&run);
+    assert_eq!(code(&run), 0, "{err}");
+    assert!(err.contains("replaced receipt (stale)"), "{err}");
+    assert!(err.contains("kept receipt-again"), "{err}");
+    assert_answers_every_case(&dir, &cases);
+}
+
+#[tokio::test]
+async fn a_stale_recording_in_a_file_no_twin_writes_is_still_refused() {
+    // The dedupe does not hide a stale file elsewhere: with the twins in play,
+    // the stale copy under another name is refused before any call.
+    let cases = cases_with_a_twin_of_receipt();
+    let dir = with_stale("receipt", Some("zz-stale-copy"), None);
+    let before = contents(&dir);
+    let server = server(triage_answers(), 0).await;
+    let run = record(&server, TRIAGE, &cases, &dir, &[]);
+    let err = stderr(&run);
+    assert_eq!(code(&run), 2, "{err}");
+    assert!(
+        err.contains("zz-stale-copy.jud records this request"),
+        "{err}"
+    );
+    assert_eq!(contents(&dir), before, "nothing was written");
+}
+
 #[tokio::test]
 async fn a_stale_file_of_its_own_beside_a_valid_twin_is_replaced_and_the_twin_reported() {
     // `aa-twin.jud` still answers the request; `receipt.jud` (read later,

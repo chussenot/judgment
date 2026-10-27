@@ -821,6 +821,41 @@ fn a_malformed_configuration_file_never_prints_its_api_key() {
     }
 }
 
+#[test]
+fn a_zero_timeout_is_a_configuration_error() {
+    let home = config_home();
+    std::fs::write(home.join("jud/config.yaml"), "timeout_secs: 0\n").unwrap();
+    let out = jud(&["config"], "", &[], &home);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(err.contains("timeout_secs"), "{err}");
+    assert!(err.contains("at least 1"), "{err}");
+    // One second is the smallest timeout there is, and is accepted.
+    std::fs::write(home.join("jud/config.yaml"), "timeout_secs: 1\n").unwrap();
+    let out = jud(&["config"], "", &[], &home);
+    assert!(out.status.success(), "{}", stderr(&out));
+}
+
+#[test]
+fn a_blank_api_key_in_the_configuration_file_is_not_set() {
+    let home = config_home();
+    for blank in ["\"\"", "\"   \""] {
+        std::fs::write(home.join("jud/config.yaml"), format!("api_key: {blank}\n")).unwrap();
+        let out = jud(&["config"], "", &[], &home);
+        let config: Value = serde_json::from_str(&stdout(&out)).unwrap();
+        assert_eq!(config["api_key"], "missing", "{blank}");
+    }
+    // A blank file key does not hide the environment's, and a real one counts.
+    std::fs::write(home.join("jud/config.yaml"), "api_key: \" \"\n").unwrap();
+    let out = jud(&["config"], "", &[("TYPESAFE_API_KEY", "sk-env")], &home);
+    let config: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(config["api_key"], "environment");
+    std::fs::write(home.join("jud/config.yaml"), "api_key: sk-file\n").unwrap();
+    let out = jud(&["config"], "", &[], &home);
+    let config: Value = serde_json::from_str(&stdout(&out)).unwrap();
+    assert_eq!(config["api_key"], "config_file");
+}
+
 /// With no absolute `XDG_CONFIG_HOME` or `HOME` there is no configuration
 /// file: one in the working directory is never read, since a checkout could
 /// then name the server while the environment supplies the key.
