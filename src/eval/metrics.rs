@@ -61,11 +61,11 @@ fn bin_index(c: f64, bins: usize) -> usize {
 }
 
 /// Wilson score interval (Wilson 1927) for `correct / n` at `z` (1.96 for 95%), `(low, high)`
-/// in `[0, 1]`; `None` at `n = 0`. Chosen over the normal approximation because it stays in
-/// `[0, 1]` and does not collapse to a point at 0 of 3 or 3 of 3, the extremes a small
+/// in `[0, 1]`; `None` at `n = 0` and when `correct > n`, which no count can be. Chosen over
+/// the normal approximation because it stays in `[0, 1]` and does not collapse to a point at 0 of 3 or 3 of 3, the extremes a small
 /// labelled set produces; it assumes independent observations.
 pub fn wilson_interval(correct: usize, n: usize, z: f64) -> Option<(f64, f64)> {
-    if n == 0 {
+    if n == 0 || correct > n {
         return None;
     }
     let n = n as f64;
@@ -114,6 +114,13 @@ mod tests {
     #![allow(clippy::unwrap_used)]
 
     use super::*;
+
+    #[test]
+    fn wilson_refuses_what_is_not_a_proportion() {
+        assert_eq!(wilson_interval(0, 0, 1.96), None);
+        assert_eq!(wilson_interval(4, 3, 1.96), None, "more correct than asked");
+        assert!(wilson_interval(3, 3, 1.96).is_some());
+    }
 
     #[test]
     fn brier_is_zero_when_certain_and_right_and_two_when_certain_and_wrong() {
