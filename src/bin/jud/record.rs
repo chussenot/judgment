@@ -361,11 +361,11 @@ fn duration(ms: u64) -> String {
     if ms < 1_000 {
         return format!("{ms} ms");
     }
-    let tenths = (ms + 50) / 100;
+    let tenths = ms.saturating_add(50) / 100;
     if tenths < 600 {
         return format!("{}.{} s", tenths / 10, tenths % 10);
     }
-    let minutes = (ms + 30_000) / 60_000;
+    let minutes = ms.saturating_add(30_000) / 60_000;
     if minutes < 60 {
         return format!("{minutes} min");
     }
@@ -686,6 +686,9 @@ mod tests {
         assert_eq!(duration(7_199_000), "2 h 0 min");
         assert_eq!(duration(3_570_000), "1 h 0 min");
         assert_eq!(duration(3_569_999), "59 min");
+        // A recording's elapsed_ms is whatever it says; the sum never wraps.
+        assert!(duration(u64::MAX).ends_with(" min"));
+        assert!(duration(u64::MAX - 49).ends_with(" min"));
     }
 
     #[test]
