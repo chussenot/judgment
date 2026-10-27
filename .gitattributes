@@ -7,3 +7,8 @@ docs/llms-full.txt linguist-generated=true
 # (newer rows win) and the next write exports it deduplicated.
 .beads/issues.jsonl merge=union
 .beads/memories.jsonl merge=union
+
+# pact: these logs are append-only, so a merge keeps BOTH sides
+# rather than stopping for a human who has nothing to decide.
+.pact/events.jsonl merge=union
+.pact/messages.jsonl merge=union

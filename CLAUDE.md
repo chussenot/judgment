@@ -239,3 +239,13 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - Do not commit or push without clear authority from the active profile or the current user request.
 - If a required sync or push is blocked, stop and report the exact command and error.
 <!-- END BEADS INTEGRATION -->
+
+<!-- pact:begin hash:bec01292 -->
+## pact coordination protocol
+
+Claude Code loads this file, not `AGENTS.md`, so the protocol is imported
+here instead of copied — one source of truth, in the file the other agents
+already read. Run `pact init` to refresh it.
+
+@AGENTS.md
+<!-- pact:end -->
