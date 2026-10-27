@@ -146,6 +146,40 @@ async fn a_replay_prefers_the_fingerprint_to_the_hash() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The other direction: a recording that declares a fingerprint is found
+/// by that fingerprint alone, so its hash cannot make it answer for another
+/// request, and a replaced duplicate is not counted.
+#[tokio::test]
+async fn a_replay_does_not_serve_a_fingerprinted_recording_by_its_hash() {
+    let (q, _, _) = questions();
+    let state = json!({ "message": "charged twice" });
+    let response = fake().answer(&state, "m", &q).await.unwrap();
+    let mut replay = Replay::default();
+    replay.add(Recording {
+        request_hash: Some(judgment::eval::request_hash(&state, &q)),
+        fingerprint: Some("names-another-request".to_owned()),
+        ..Recording::new("elsewhere", response.clone(), 1)
+    });
+    assert!(matches!(
+        replay.answer(&state, "m", &q).await,
+        Err(judgment::Error::NoRecording(_))
+    ));
+    // A hash-only recording still answers.
+    replay.add(Recording {
+        request_hash: Some(judgment::eval::request_hash(&state, &q)),
+        fingerprint: None,
+        ..Recording::new("hash-only", response.clone(), 1)
+    });
+    assert_eq!(replay.answer(&state, "m", &q).await.unwrap(), response);
+    // The same request twice is one recording that can answer.
+    replay.add(Recording {
+        request_hash: Some(judgment::eval::request_hash(&state, &q)),
+        fingerprint: None,
+        ..Recording::new("hash-again", response, 1)
+    });
+    assert_eq!(replay.len(), 2, "the fingerprinted one and the hash's");
+}
+
 #[tokio::test]
 async fn a_default_fake_reports_the_model_a_new_one_does() {
     let (q, _, _) = questions();

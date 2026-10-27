@@ -618,8 +618,11 @@ impl Replay {
         Ok(replay)
     }
 
-    /// Add one recording under its request hash and its fingerprint (neither:
-    /// skipped); a later recording of the same request replaces an earlier.
+    /// Add one recording under its fingerprint, or, when it declares none,
+    /// under its request hash (neither: skipped); a later recording of the
+    /// same key replaces an earlier. A recording with a fingerprint is never
+    /// found by hash: the hash is FNV, and one that names another request
+    /// than its fingerprint does must not answer for it.
     pub fn add(&mut self, recording: Recording) {
         let Recording {
             response,
@@ -634,15 +637,15 @@ impl Replay {
         self.responses.push(response);
         if let Some(fingerprint) = fingerprint {
             self.by_fingerprint.insert(fingerprint, index);
-        }
-        if let Some(hash) = request_hash {
+        } else if let Some(hash) = request_hash {
             self.by_hash.insert(hash, index);
         }
     }
 
-    /// Number of recordings this replay can answer from.
+    /// Number of recordings this replay can answer from: one that a later
+    /// recording of the same request replaced is not counted.
     pub fn len(&self) -> usize {
-        self.responses.len()
+        self.by_fingerprint.len() + self.by_hash.len()
     }
 
     /// True when no recording carries a hash or a fingerprint.
