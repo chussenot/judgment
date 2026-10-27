@@ -647,7 +647,8 @@ impl Response {
     /// its enum (a [`Choice<String>`] passes its keys through), or
     /// [`Error::Decode`] for legend keys that are not indices, the first
     /// three with this response's request id. After [`Response::verify`], it
-    /// cannot fail.
+    /// cannot fail for a handle from [`Questions`], whose `handle` refuses a
+    /// typed Choice whose options are not the enum's.
     pub fn get<A: FromAnswer>(&self, handle: &crate::Handle<A>) -> Result<A> {
         let id = handle.id();
         let answer = self.answers.get(id).ok_or_else(|| Error::MissingAnswer {
@@ -812,6 +813,15 @@ pub trait FromAnswer: Sized {
     const KIND: &'static str;
     /// Convert, or explain why the answer does not fit.
     fn from_answer(id: &str, answer: &Answer) -> Result<Self>;
+    /// Whether `question`, of this primitive, is one whose verified answer
+    /// [`FromAnswer::from_answer`] always converts: what
+    /// [`Questions::handle`] holds a question to, so a handle it hands out
+    /// cannot fail [`Response::get`] after [`Response::verify`]. True unless
+    /// the view is narrower than the question (a [`Choice<O>`] over options
+    /// the enum does not have).
+    fn fits(_question: &Question) -> bool {
+        true
+    }
 }
 
 /// Typed view of a Noul answer.
@@ -844,7 +854,8 @@ impl FromAnswer for Noul {
 pub struct Choice<K: Eq + Hash> {
     /// The highest-probability option.
     pub chosen: K,
-    /// Every option's probability.
+    /// Every option's probability; for a typed `Choice<O>`, every variant
+    /// of `O`, those the server left out at 0.
     pub probabilities: HashMap<K, Probability>,
     /// Distribution concentration.
     pub confidence: Confidence,
@@ -857,7 +868,8 @@ impl<K: Eq + Hash> Choice<K> {
     }
 
     /// The confidence TypeSafe documents for a Choice, computed from
-    /// `probabilities`: `(p_max − 1/n) / (1 − 1/n)` for `n` options, so an
+    /// `probabilities`: `(p_max − 1/n) / (1 − 1/n)` for `n` options (the
+    /// offered ones: a typed Choice fills in what the server omitted), so an
     /// even split reads 0 and all on one option reads 1; one option is 1.
     /// The hosted API agrees to its two decimals
     /// (`docs/project/verification/hosted-typesafe.md`); a compatible server may
@@ -882,6 +894,13 @@ impl<K: Eq + Hash> Choice<K> {
 
 impl<O: Options> FromAnswer for Choice<O> {
     const KIND: &'static str = "choice";
+    /// The question offers exactly `O::ALL`: a key the enum lacks would fail
+    /// [`Response::get`], and a missing one would leave `n` of
+    /// [`Choice::confidence_from_probabilities`] short of the options.
+    fn fits(question: &Question) -> bool {
+        matches!(question, Question::Choice { criteria, .. }
+            if criteria.len() == O::ALL.len() && criteria.keys().all(|key| O::from_key(key).is_some()))
+    }
     fn from_answer(id: &str, answer: &Answer) -> Result<Self> {
         let Answer::Choice {
             choice,
@@ -899,10 +918,14 @@ impl<O: Options> FromAnswer for Choice<O> {
             })
         };
         let chosen = parse(choice)?;
-        let probabilities = probabilities
+        let mut probabilities = probabilities
             .iter()
             .map(|(k, p)| Ok((parse(k)?, *p)))
             .collect::<Result<HashMap<O, Probability>>>()?;
+        // An option the server left out has probability 0, and still counts.
+        for option in O::ALL {
+            probabilities.entry(*option).or_insert(Probability(0.0));
+        }
         Ok(Self {
             chosen,
             probabilities,
@@ -1640,6 +1663,24 @@ mod tests {
             serde_json::to_value(r.usage).unwrap(),
             json!({ "input_tokens": 7, "output_tokens": 0 })
         );
+    }
+
+    #[test]
+    fn a_typed_choice_counts_the_options_the_server_left_out() {
+        let q = |q: &mut Questions| q.choice::<Dept>("d", "?").unwrap();
+        let mut questions = Questions::new();
+        let handle = q(&mut questions);
+        let r = response(&json!({ "d": { "type": "choice", "choice": "billing",
+            "probabilities": { "billing": 1.0 }, "confidence": 1.0 } }));
+        r.verify(&questions).unwrap();
+        let choice = r.get(&handle).unwrap();
+        assert_eq!(choice.probabilities.len(), 2);
+        assert!(choice.probability_of(&Dept::Technical).abs() < f64::EPSILON);
+        // n = 2 and p_max = 1: confidence 1, not the `n < 2` shortcut's accident.
+        assert!((choice.confidence_from_probabilities() - 1.0).abs() < 1e-9);
+        let r = response(&json!({ "d": { "type": "choice", "choice": "billing",
+            "probabilities": { "billing": 0.75 }, "confidence": 0.5 } }));
+        assert!((r.get(&handle).unwrap().confidence_from_probabilities() - 0.5).abs() < 1e-9);
     }
 
     #[test]
