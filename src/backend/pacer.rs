@@ -46,11 +46,13 @@ pub struct Pacer {
 
 impl Pacer {
     /// A pacer allowing `max_in_flight` calls at once and no pause. Zero is
-    /// read as one: a pacer that admits nothing would hang every call.
+    /// read as one: a pacer that admits nothing would hang every call. More
+    /// than the semaphore can hold ([`Semaphore::MAX_PERMITS`]) is read as
+    /// that many, which is no bound in practice.
     #[must_use]
     pub fn new(max_in_flight: usize) -> Self {
         Self {
-            permits: Arc::new(Semaphore::new(max_in_flight.max(1))),
+            permits: Arc::new(Semaphore::new(max_in_flight.clamp(1, Semaphore::MAX_PERMITS))),
             until: Arc::new(watch::channel(Instant::now()).0),
         }
     }
@@ -206,5 +208,13 @@ mod tests {
         let started = Instant::now();
         pacer.pause_for(Duration::MAX);
         assert_eq!(pacer.until() - started, LONGEST_PAUSE);
+    }
+
+    #[test]
+    fn more_places_than_the_semaphore_holds_is_the_most_it_holds() {
+        let pacer = Pacer::new(usize::MAX);
+        assert_eq!(pacer.permits.available_permits(), Semaphore::MAX_PERMITS);
+        // A bound inside the range is taken as given.
+        assert_eq!(Pacer::new(8).permits.available_permits(), 8);
     }
 }
