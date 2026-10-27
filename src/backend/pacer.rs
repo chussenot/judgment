@@ -52,7 +52,9 @@ impl Pacer {
     #[must_use]
     pub fn new(max_in_flight: usize) -> Self {
         Self {
-            permits: Arc::new(Semaphore::new(max_in_flight.clamp(1, Semaphore::MAX_PERMITS))),
+            permits: Arc::new(Semaphore::new(
+                max_in_flight.clamp(1, Semaphore::MAX_PERMITS),
+            )),
             until: Arc::new(watch::channel(Instant::now()).0),
         }
     }
