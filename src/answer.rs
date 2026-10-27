@@ -212,6 +212,34 @@ pub struct BoxEdges {
     pub right: f64,
 }
 
+/// Why [`BoxEdges::check`] refuses edges. Its text is the reason
+/// [`Response::verify`] gives for a Box that is not a region.
+#[derive(Debug, Clone, Copy, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+pub enum BoxEdgesError {
+    /// An edge is outside `0..=1` (NaN included).
+    #[error("{edge} {value} is outside 0..=1")]
+    OutsideUnit {
+        /// `top`, `bottom`, `left` or `right`.
+        edge: &'static str,
+        /// The value it has.
+        value: f64,
+    },
+    /// An edge is not below the one it should be below: `left` and `right`,
+    /// or `top` and `bottom`.
+    #[error("{low} {low_value} is not below {high} {high_value}")]
+    NotBelow {
+        /// The edge that should be the smaller: `left` or `top`.
+        low: &'static str,
+        /// Its value.
+        low_value: f64,
+        /// The edge that should be the larger: `right` or `bottom`.
+        high: &'static str,
+        /// Its value.
+        high_value: f64,
+    },
+}
+
 impl BoxEdges {
     /// Edges in the wire's order: top, bottom, left, right.
     pub const fn new(top: f64, bottom: f64, left: f64, right: f64) -> Self {
@@ -226,7 +254,7 @@ impl BoxEdges {
     /// Why these edges are not a region, if they are not: an edge outside
     /// `0..=1` (NaN included), or `left` not below `right`, or `top` not
     /// below `bottom`. What [`Response::verify`] refuses an answer for.
-    pub fn check(&self) -> std::result::Result<(), String> {
+    pub fn check(&self) -> std::result::Result<(), BoxEdgesError> {
         for (name, value) in [
             ("top", self.top),
             ("bottom", self.bottom),
@@ -234,20 +262,21 @@ impl BoxEdges {
             ("right", self.right),
         ] {
             if !(0.0..=1.0).contains(&value) {
-                return Err(format!("{name} {value} is outside 0..=1"));
+                return Err(BoxEdgesError::OutsideUnit { edge: name, value });
             }
         }
-        if self.left >= self.right {
-            return Err(format!(
-                "left {} is not below right {}",
-                self.left, self.right
-            ));
-        }
-        if self.top >= self.bottom {
-            return Err(format!(
-                "top {} is not below bottom {}",
-                self.top, self.bottom
-            ));
+        for (low, low_value, high, high_value) in [
+            ("left", self.left, "right", self.right),
+            ("top", self.top, "bottom", self.bottom),
+        ] {
+            if low_value >= high_value {
+                return Err(BoxEdgesError::NotBelow {
+                    low,
+                    low_value,
+                    high,
+                    high_value,
+                });
+            }
         }
         Ok(())
     }
@@ -2421,8 +2450,24 @@ mod tests {
                 "top 0.82 is not below bottom 0.25",
             ),
         ] {
-            assert_eq!(edges.check().unwrap_err(), needle);
+            assert_eq!(edges.check().unwrap_err().to_string(), needle);
         }
+        assert_eq!(
+            BoxEdges::new(0.25, 0.82, 0.44, 1.2).check(),
+            Err(BoxEdgesError::OutsideUnit {
+                edge: "right",
+                value: 1.2
+            })
+        );
+        assert_eq!(
+            BoxEdges::new(0.82, 0.25, 0.44, 0.84).check(),
+            Err(BoxEdgesError::NotBelow {
+                low: "top",
+                low_value: 0.82,
+                high: "bottom",
+                high_value: 0.25
+            })
+        );
     }
 
     #[test]
