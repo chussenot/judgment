@@ -9,6 +9,7 @@ pub mod metrics;
 pub mod tuning;
 
 use std::collections::BTreeMap;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -181,25 +182,38 @@ pub fn write_recording(dir: &Path, recording: &Recording) -> Result<PathBuf> {
         path: path.display().to_string(),
         source,
     })?;
-    write_atomically(&path, &(text + "\n")).map_err(|source| Error::Io {
+    write_atomically(&path, |file| {
+        file.write_all(text.as_bytes())?;
+        file.write_all(b"\n")
+    })
+    .map_err(|source| Error::Io {
         path: path.display().to_string(),
         source,
     })?;
     Ok(path)
 }
 
-/// Write `path` so that no reader ever sees half of it: a [`Replay`] opened
-/// over the directory while a [`Recorder`] writes into it, or after a crash
-/// mid-write. The text goes to a temporary file beside it (one file system,
-/// so the rename is atomic), is flushed, then takes the name. The temporary
+/// Write `path` so that no reader ever sees half of it, and a failed write
+/// leaves the file that was there: a [`Replay`] opened over the directory
+/// while a [`Recorder`] writes into it, or after a crash mid-write. `write`
+/// fills a temporary file beside it (one file system, so the rename is
+/// atomic); the file is created exclusively, flushed to disk, then takes the
+/// name, replacing a symlink rather than writing through it. The temporary
 /// name ends in `.tmp`, which a replay skips, and carries the process id and
 /// a counter, so two writers of one request never share it. A failed write
 /// removes its temporary file.
 ///
+/// The one atomic writer of the crate and the `jud` binary, which is why it
+/// is public; `write` is the seam a fault test hooks. `jud split` creates a
+/// file that must not exist yet, which is a different rule and its own code.
+///
 /// [`Replay`]: crate::backend::Replay
 /// [`Recorder`]: crate::backend::Recorder
-fn write_atomically(path: &Path, text: &str) -> std::io::Result<()> {
-    use std::io::Write as _;
+#[doc(hidden)]
+pub fn write_atomically(
+    path: &Path,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> std::io::Result<()> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let name = path.file_name().unwrap_or_default().to_string_lossy();
@@ -208,8 +222,8 @@ fn write_atomically(path: &Path, text: &str) -> std::io::Result<()> {
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
-    let written = std::fs::File::create(&temporary).and_then(|mut file| {
-        file.write_all(text.as_bytes())?;
+    let written = std::fs::File::create_new(&temporary).and_then(|mut file| {
+        write(&mut file)?;
         file.sync_all()
     });
     let renamed = written.and_then(|()| std::fs::rename(&temporary, path));
