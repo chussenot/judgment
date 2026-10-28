@@ -6,6 +6,22 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Breaking** for a document the specification already refused: the
+  `.jud` reader refuses a key written once as a number and once as text in
+  the same map (`labels: {2024: a, "2024": b}`), as the duplicate key it
+  is, since every key is text. It kept the last silently, dropping a
+  label, a question, an option, a key of a case's state, an expect label
+  or a recorded answer. Rename or remove one of the two keys. A key is its
+  written text, so `01` and `1` remain two keys.
+- The `.jud` reader reads a number key inside a question as text, as the
+  specification and the schemas always did: a Choice's options
+  (`criteria: {1: poor, 2: fair}`), an instructions object, `part_when`, a
+  Score level object and a Noul criterion's description were refused with
+  "expected a string key". A question's `criteria` of the wrong shape for
+  its type is now refused with its path rather than as a syntax error.
+
 ## [0.16.1] - 2026-10-28
 
 ### Security

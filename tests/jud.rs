@@ -1842,10 +1842,9 @@ fn a_duplicate_key_is_refused_at_every_level_by_its_line() {
 /// A key is text whatever YAML reads it as (`docs/reference/jud-format.md`,
 /// Reading rules), so `2024` and `"2024"` are one key, written twice: a
 /// duplicate, to be refused. The YAML layer sees an integer and a string,
-/// two keys, and the reader keeps the last under the one text, silently
-/// dropping a label, a question, an option or an answer.
+/// two keys; kept as one text, the last would silently drop a label, a
+/// question, an option or an answer.
 #[test]
-#[ignore = "judgment-l47 (found by judgment-bsz.18.20): a key spelled as a number and as text collapses to one"]
 fn a_key_spelled_as_a_number_and_as_text_is_a_duplicate() {
     let read_as_one = [
         ("metadata.labels", with_line_after(DUP_RUBRIC, 4, "  labels: {2024: a, \"2024\": b}")),
@@ -1870,11 +1869,9 @@ fn a_key_spelled_as_a_number_and_as_text_is_a_duplicate() {
 
 /// A key is text whatever YAML reads it as, inside a question as in a
 /// state: a Choice rated `1` to `3`, instructions in numbered parts. The
-/// schema reads the keys as JSON does and takes these; the reader buffers a
-/// question by its `type` and then refuses the integer key ("expected a
-/// string key", at the question's line).
+/// schema reads the keys as JSON does and takes these, and so does the
+/// reader.
 #[test]
-#[ignore = "judgment-pry (found by judgment-bsz.18.20): a number key inside a question is refused"]
 fn a_number_key_inside_a_question_is_read_as_text() {
     let refused = [
         "{type: choice, instructions: rate it, criteria: {1: poor, 2: fair, 3: good}}",
