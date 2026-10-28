@@ -1869,3 +1869,67 @@ fn an_asset_the_state_does_not_refer_to_is_refused_before_any_backend() {
         stderr(&out)
     );
 }
+
+/// Every command documented as asking nothing, run with a key set and the
+/// base URL on a listener that counts connections: none may connect. A loop
+/// over the subcommands in one test, since each is a process.
+// ponytail: the plain `jud RUBRIC --replay DIR` run is left out, it needs the state of one recorded request; add it if a command is found that connects.
+#[test]
+fn the_commands_documented_as_asking_nothing_never_open_a_socket() {
+    use std::net::TcpListener;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let (connections, stop) = (
+        Arc::new(AtomicUsize::new(0)),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let watcher = {
+        let (connections, stop) = (connections.clone(), stop.clone());
+        std::thread::spawn(move || {
+            while !stop.load(Ordering::SeqCst) {
+                if listener.accept().is_ok() {
+                    connections.fetch_add(1, Ordering::SeqCst);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        })
+    };
+
+    let home = config_home();
+    let scratch = home.join("scratch");
+    let (split_out, record_out) = (scratch.join("split"), scratch.join("recorded"));
+    let (split_out, record_out) = (split_out.to_str().unwrap(), record_out.to_str().unwrap());
+    let recordings = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/examples/recordings/jud_calibration"
+    );
+    let env = [
+        ("TYPESAFE_API_KEY", "test-key"),
+        ("TYPESAFE_BASE_URL", url.as_str()),
+    ];
+    let state = r#"{"message": "hi"}"#;
+    let commands: [&[&str]; 7] = [
+        &["check", RUBRIC, CASES],
+        &["lower", RUBRIC, "--state", state],
+        &["config"],
+        &["eval", RUBRIC, CASES, "--replay", recordings],
+        &["tune", RUBRIC, CASES, "--replay", recordings],
+        &["split", CASES, "--out", split_out],
+        &["record", RUBRIC, CASES, "--out", record_out, "--dry-run"],
+    ];
+    for args in commands {
+        let out = jud(args, "", &env, &home);
+        assert_eq!(out.status.code(), Some(0), "{args:?}: {}", stderr(&out));
+    }
+    stop.store(true, Ordering::SeqCst);
+    watcher.join().unwrap();
+    assert_eq!(
+        connections.load(Ordering::SeqCst),
+        0,
+        "a command opened a socket"
+    );
+}
