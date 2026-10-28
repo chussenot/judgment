@@ -25,6 +25,7 @@ use crate::backend::{Backend, Failure};
 use crate::batch::{self, Answered, Loaded, Variant};
 use crate::out;
 use crate::perturb::{self, Agreement, PerturbArgs, Robustness};
+use crate::recordings;
 
 /// Grade a model's answers against the labelled cases.
 ///
@@ -1122,6 +1123,11 @@ fn check_bars(rubric: &Rubric, bars: &[MinAccuracy], rubric_path: &str) -> Resul
 fn evaluate(args: &Eval) -> Result<Report, Failure> {
     let loaded = batch::load(&args.rubric, &args.cases)?;
     check_bars(&loaded.rubric, &args.min_accuracy, &args.rubric)?;
+    // Two files recording one request leave a replay to answer from the one
+    // that sorts last, so the report would depend on file names: say so.
+    for dir in args.replay.iter().chain(&args.against) {
+        recordings::warn_duplicates(dir);
+    }
     // The other side first: it is a replay and costs nothing, so a missing
     // recording there stops the run before a server is asked anything.
     let theirs = match &args.against {
