@@ -6,6 +6,16 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Canonical JSON (`eval::canonical`) prints a double whose two shortest
+  digit strings are equally near it with the even last digit, as RFC 8785
+  and ECMAScript do: `1424953923781206.25` is now `1424953923781206.2`,
+  not `...206.3`. The fingerprint of a request, a recording or a `.jud`
+  document holding such a double changes value and now matches other
+  RFC 8785 tools; the known vectors on the format page hold none and do
+  not move. All 24 rows of RFC 8785 Appendix B are tested.
+
 ## [0.16.1] - 2026-10-28
 
 ### Security
