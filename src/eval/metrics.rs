@@ -33,7 +33,12 @@ pub fn expected_calibration_error(pairs: &[(f64, bool)], bins: usize) -> f64 {
     let mut sum_correct = vec![0.0; bins];
     let mut count = vec![0usize; bins];
     for (conf, correct) in pairs {
-        let c = conf.clamp(0.0, 1.0);
+        // NaN is no confidence at all, read as 0 as an unreadable answer's is.
+        let c = if conf.is_nan() {
+            0.0
+        } else {
+            conf.clamp(0.0, 1.0)
+        };
         let b = bin_index(c, bins);
         sum_conf[b] += c;
         sum_correct[b] += if *correct { 1.0 } else { 0.0 };
@@ -188,6 +193,63 @@ mod tests {
         assert!((h - 1.0).abs() < 1e-12, "{h}");
         let (l, h) = wilson_interval(50, 100, 1.96).unwrap();
         assert!(l < 0.5 && 0.5 < h && h - l < 0.21, "{l} {h}");
+    }
+
+    /// A NaN confidence (reachable through `Judgment::noul(f64::NAN, ..)`) is
+    /// read as 0, so it cannot turn the whole figure into NaN.
+    #[test]
+    fn ece_with_a_nan_confidence_stays_a_number() {
+        let ece = expected_calibration_error(&[(f64::NAN, false), (0.9, true), (0.9, true)], 10);
+        assert!((ece - (2.0 / 3.0) * 0.1).abs() < 1e-12, "{ece}");
+        assert!(expected_calibration_error(&[(f64::NAN, true)], 10).is_finite());
+    }
+
+    /// NaN in, NaN out and no panic: read as "no", with a NaN confidence and
+    /// a NaN distribution. Pinned, not guarded: there is no honest number to
+    /// put there, and the ECE above no longer lets it spread.
+    #[test]
+    fn a_nan_noul_reads_as_no_and_does_not_panic() {
+        let j = crate::eval::Judgment::noul(f64::NAN, Some(false), true);
+        assert_eq!(j.predicted, "no");
+        assert_eq!(j.correct, Some(true));
+        assert!(j.confidence.is_nan());
+    }
+
+    /// The Brier score of a distribution that sums to 1 is `1 - 2 p_truth +
+    /// Σ p_i²`, between 0 and 2; unnormalised input has no such bound.
+    #[test]
+    fn brier_of_an_unnormalised_distribution_can_exceed_two() {
+        assert!((brier(&[(true, 0.0), (false, 1.0), (false, 1.0)]) - 3.0).abs() < 1e-12);
+    }
+
+    proptest::proptest! {
+        #[test]
+        fn brier_of_a_distribution_that_sums_to_one_is_in_zero_two(
+            weights in proptest::collection::vec(0.001_f64..1.0, 1..8),
+            truth in 0_usize..8,
+        ) {
+            let total: f64 = weights.iter().sum();
+            let distribution: Vec<(bool, f64)> = weights
+                .iter()
+                .enumerate()
+                .map(|(i, w)| (i == truth % weights.len(), w / total))
+                .collect();
+            let b = brier(&distribution);
+            proptest::prop_assert!((-1e-9..=2.0 + 1e-9).contains(&b), "{b}");
+        }
+
+        #[test]
+        fn wilson_never_panics_and_stays_in_the_unit_square(
+            a in proptest::prop_oneof![0_usize..50, proptest::num::usize::ANY],
+            b in proptest::prop_oneof![0_usize..50, proptest::num::usize::ANY],
+            z in 0.0_f64..10.0,
+        ) {
+            let (correct, n) = (a.min(b), a.max(b));
+            let (low, high) = wilson_interval(correct, n, z).unwrap_or((0.0, 1.0));
+            proptest::prop_assert!((0.0..=1.0).contains(&low), "{low}");
+            proptest::prop_assert!((0.0..=1.0).contains(&high), "{high}");
+            proptest::prop_assert!(low <= high, "{low} {high}");
+        }
     }
 }
 

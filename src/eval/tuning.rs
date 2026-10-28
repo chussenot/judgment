@@ -425,4 +425,179 @@ mod tests {
         assert!(level_sweep(&skipped, 4).iter().all(|r| r.n == 0));
         assert_eq!(best_level(&level_sweep(&skipped, 4)), None);
     }
+
+    // ---- the sweeps' laws ----
+
+    use crate::answer::{Answer, Confidence, FromAnswer, Probability, Score};
+    use proptest::prelude::*;
+
+    /// The documented selection rule, written out apart from the fold: the
+    /// greatest F1, and among equal F1s the lowest key.
+    fn pick<K: Copy + PartialOrd>(rows: impl Iterator<Item = (Option<f64>, K)>) -> Option<K> {
+        let rows: Vec<(f64, K)> = rows.filter_map(|(f1, key)| Some((f1?, key))).collect();
+        let top = rows
+            .iter()
+            .map(|(f1, _)| *f1)
+            .fold(f64::NEG_INFINITY, f64::max);
+        rows.iter()
+            .filter(|(f1, _)| *f1 == top)
+            .map(|(_, key)| *key)
+            .fold(None, |low: Option<K>, key| match low {
+                Some(l) if l <= key => Some(l),
+                _ => Some(key),
+            })
+    }
+
+    fn sorted(mut bars: Vec<f64>) -> Vec<f64> {
+        bars.sort_by(f64::total_cmp);
+        bars
+    }
+
+    /// A Score distribution over four levels, normalised, and its label.
+    fn distribution() -> impl Strategy<Value = ([f64; 4], usize)> {
+        (prop::array::uniform4(0.0_f64..1.0), 0_usize..4).prop_map(|(w, expected)| {
+            let total: f64 = w.iter().sum::<f64>() + 1e-3;
+            (w.map(|x| x / total), expected)
+        })
+    }
+
+    proptest! {
+        /// Every bar sees every labelled judgment exactly once, and a higher bar never
+        /// says yes more often.
+        #[test]
+        fn a_threshold_sweep_conserves_the_cases_and_is_monotone(
+            cases in prop::collection::vec((0.0_f64..=1.0, prop::option::of(any::<bool>())), 0..30),
+            bars in prop::collection::vec(0.0_f64..=1.0, 0..12),
+        ) {
+            let js: Vec<Judgment> = cases.iter().map(|(p, l)| Judgment::noul(*p, *l, true)).collect();
+            let labelled = cases.iter().filter(|(_, l)| l.is_some()).count();
+            let rows = threshold_sweep(&js, &sorted(bars));
+            for row in &rows {
+                prop_assert_eq!(row.n, labelled);
+                prop_assert_eq!(
+                    row.true_positives + row.false_positives + row.false_negatives + row.true_negatives,
+                    labelled
+                );
+            }
+            for pair in rows.windows(2) {
+                prop_assert!(pair[1].true_positives <= pair[0].true_positives);
+                prop_assert!(pair[1].false_positives <= pair[0].false_positives);
+                prop_assert!(pair[1].false_negatives >= pair[0].false_negatives);
+            }
+            prop_assert_eq!(best_threshold(&rows), pick(rows.iter().map(|r| (r.f1, r.threshold))));
+        }
+
+        /// Covered never exceeds the labelled count, never grows with the bar, and
+        /// `lowest_bar` is the least bar whose row is big enough and accurate enough.
+        #[test]
+        fn a_gate_table_is_monotone_and_lowest_bar_is_the_least_qualifying_bar(
+            cases in prop::collection::vec((0.0_f64..=1.0, any::<bool>()), 0..30),
+            bars in prop::collection::vec(0.0_f64..=1.0, 0..12),
+            target in 0.0_f64..=1.0,
+            min_covered in 0_usize..6,
+        ) {
+            let js: Vec<Judgment> = cases
+                .iter()
+                .map(|(c, ok)| {
+                    Judgment::new(
+                        if *ok { "a" } else { "b" }.into(),
+                        Some("a".into()),
+                        *c,
+                        std::collections::BTreeMap::default(),
+                        true,
+                    )
+                })
+                .collect();
+            let rows = gate_table(&js, &sorted(bars));
+            for row in &rows {
+                prop_assert_eq!(row.n, cases.len());
+                prop_assert!(row.correct <= row.covered && row.covered <= row.n);
+            }
+            for pair in rows.windows(2) {
+                prop_assert!(pair[1].covered <= pair[0].covered);
+            }
+            let want = rows
+                .iter()
+                .filter(|r| r.covered >= min_covered.max(1) && r.accuracy.is_some_and(|a| a >= target))
+                .map(|r| r.bar)
+                .reduce(f64::min);
+            prop_assert_eq!(lowest_bar(&rows, target, min_covered), want);
+        }
+
+        /// The same two laws for a level sweep, and `best_level` follows the same rule.
+        #[test]
+        fn a_level_sweep_conserves_the_cases_and_is_monotone(
+            cases in prop::collection::vec(distribution(), 0..30),
+        ) {
+            let js: Vec<Judgment> = cases.iter().map(|(p, e)| score(*p, *e)).collect();
+            let rows = level_sweep(&js, 4);
+            for row in &rows {
+                prop_assert_eq!(row.n, cases.len());
+                prop_assert_eq!(
+                    row.true_positives + row.false_positives + row.false_negatives + row.true_negatives,
+                    cases.len()
+                );
+            }
+            // The label moves with the level, so only what was predicted is monotone.
+            for pair in rows.windows(2) {
+                prop_assert!(
+                    pair[1].true_positives + pair[1].false_positives
+                        <= pair[0].true_positives + pair[0].false_positives
+                );
+            }
+            prop_assert_eq!(best_level(&rows), pick(rows.iter().map(|r| (r.f1, r.level))));
+        }
+
+        /// Where the wire `score` is the probability-weighted position its own
+        /// probabilities give, the level the sweep reads is the level the gate reads.
+        #[test]
+        fn the_sweep_and_the_gate_read_the_same_level_when_the_wire_score_agrees(
+            (p, expected) in distribution(),
+        ) {
+            let position: f64 = p.iter().enumerate().fold(0.0, |sum, (i, p)| sum + i as f64 * p);
+            let (gate, sweep) = gate_and_sweep_levels(position, p, expected);
+            prop_assert_eq!(gate, sweep);
+        }
+    }
+
+    /// `(level the gate reads from the wire score, level the sweep reads)` for one answer.
+    fn gate_and_sweep_levels(wire_score: f64, p: [f64; 4], expected: usize) -> (usize, usize) {
+        let answer = Answer::Score {
+            score: wire_score,
+            legend: (0..4)
+                .map(|i| (i.to_string(), serde_json::json!(format!("level {i}"))))
+                .collect(),
+            probabilities: p
+                .iter()
+                .enumerate()
+                .map(|(i, p)| (i.to_string(), Probability::new(p.min(1.0)).unwrap()))
+                .collect(),
+            confidence: Confidence::new(0.9).unwrap(),
+            extra: std::collections::BTreeMap::new(),
+        };
+        let gate = Score::from_answer("q", &answer).unwrap().nearest_level();
+        let judgment = Judgment::of_answer(&answer, Some(&expected.to_string()));
+        // One judgment: row `level` says yes exactly when it reached `level`.
+        let sweep = level_sweep([&judgment], 4)
+            .iter()
+            .filter(|r| r.true_positives + r.false_positives == 1)
+            .count();
+        (gate, sweep)
+    }
+
+    /// Deliberate: the sweep reads the probabilities, never the wire `score`, so a
+    /// server whose `score` disagrees with its own distribution is graded by the
+    /// distribution (the rubric gate, which reads `score`, may then read another level).
+    #[test]
+    fn the_sweep_reads_the_probabilities_not_a_disagreeing_wire_score() {
+        // All the weight on level 0; the server claims 3.0.
+        assert_eq!(gate_and_sweep_levels(3.0, [1.0, 0.0, 0.0, 0.0], 0), (3, 0));
+        // At a .5 boundary: the distribution's position is exactly 0.5, which
+        // rounds up to level 1; a score a hair under it stays at 0.
+        assert_eq!(gate_and_sweep_levels(0.5, [0.5, 0.5, 0.0, 0.0], 0), (1, 1));
+        assert_eq!(
+            gate_and_sweep_levels(0.499_999, [0.5, 0.5, 0.0, 0.0], 0),
+            (0, 1)
+        );
+    }
 }

@@ -207,6 +207,8 @@ fn half(
 
 /// Write a half to a file that must not exist yet: `create_new` refuses one
 /// that appeared since the check, so nothing is ever written over.
+// ponytail: not `eval::write_atomically`, which replaces its target; this refuses one, and a
+// half written in place is removed on failure. Merge only if a second refuse-existing writer appears.
 fn write_new(half: &Half, source: &str, every: usize) -> Result<(), Failure> {
     let yaml = half
         .cases
