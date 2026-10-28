@@ -2,7 +2,7 @@
 title: Internals
 description: The rules the code applies that the rustdoc states only once, with the reason behind each; the client's key check, status classification and error-body reading, the per-call options, the retry loop's edges, the backends, the tolerant decoder, what the response check leaves unchecked, the observer, the recordings and metrics, the .jud reader, and the bounded proofs.
 status: current
-last_reviewed: 2026-10-27
+last_reviewed: 2026-10-28
 tags: [judgment, internals, implementation, decoding, errors, retries, eval, jud, kani]
 ---
 
@@ -98,7 +98,7 @@ flowchart TD
 
 ## Checking the response
 
-`Response::verify` walks the questions in id order, stops at the first failure, is pure, and is public for a response that did not come through a backend. What it deliberately leaves unchecked matters as much as what it checks:
+`Response::verify` walks the questions in wire order (the order they were added, which is the order the model saw), stops at the first failure, is pure, and is public for a response that did not come through a backend. What it deliberately leaves unchecked matters as much as what it checks:
 
 - **Distribution sums.** 0.97 or 1.0002 is rounding, and the API promises no tolerance to check against.
 - **An offered option missing from a Choice's distribution.** It reads as zero through `Choice::probability_of`. The check is for keys the question never offered.
