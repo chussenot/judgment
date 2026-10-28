@@ -52,7 +52,7 @@
 //! decoding does not know the questions. [`Response::verify`] holds a
 //! response against the [`Questions`] it was sent for; every backend calls
 //! it before returning, so afterwards [`Response::get`] with a handle from
-//! the same questions cannot fail. In id order, stopping at the first
+//! the same questions cannot fail. In wire order, stopping at the first
 //! failure: an answer under every id, of the question's primitive, a Choice
 //! naming only offered options (the chosen one, then every distribution
 //! key), a Score on the scale sent: one legend entry per level keyed `"0"`
@@ -755,7 +755,7 @@ impl Response {
 
     /// Check that this response answers `questions` as they were asked
     /// (module docs, `# What Response::verify checks`): the first failure in
-    /// id order, as [`Error::MissingAnswer`], [`Error::AnswerTypeMismatch`],
+    /// wire order, as [`Error::MissingAnswer`], [`Error::AnswerTypeMismatch`],
     /// [`Error::UnknownOption`] or [`Error::InvalidAnswer`], with this
     /// response's request id. Every backend calls it; it is public for a
     /// response that came another way: read from a recording by case id
