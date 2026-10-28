@@ -2321,4 +2321,83 @@ spec:
             "{err}"
         );
     }
+
+    /// Which of the questions `apply` defers: one Choice per confidence,
+    /// each under a gate with the matching bar. Bars and confidences are
+    /// tenths, so a confidence lands exactly on a bar often enough to test
+    /// the edge.
+    // ponytail: a single bar per gate; `bands` share `meets` and are not generated, add them if a second comparison appears.
+    fn deferred_at(confidences: &[u8], bars: &[u8], strict: bool) -> Vec<bool> {
+        let tenth = |k: u8| f64::from(k) / 10.0;
+        let mut questions = Questions::new();
+        let ids: Vec<String> = (0..confidences.len()).map(|i| format!("c{i}")).collect();
+        for id in &ids {
+            let options = [("a", "A"), ("b", "B")].map(|(k, d)| (k.to_owned(), Some(d.to_owned())));
+            questions.dynamic_choice(id, "pick", options).unwrap();
+        }
+        let mut rubric = Rubric::new("r", questions);
+        for (id, bar) in ids.iter().zip(bars) {
+            let gate = Gate {
+                confidence: Some(tenth(*bar)),
+                strict,
+                ..Gate::default()
+            };
+            rubric.gate(id, gate).unwrap();
+        }
+        let asked = rubric.lower(&json!({}), &Supplied::new()).unwrap();
+        let answers: serde_json::Map<String, Value> = ids
+            .iter()
+            .zip(confidences)
+            .map(|(id, c)| {
+                let answer = json!({"type": "choice", "choice": "a",
+                    "probabilities": {"a": 0.5, "b": 0.5}, "confidence": tenth(*c)});
+                (id.clone(), answer)
+            })
+            .collect();
+        let response: Response = serde_json::from_value(json!({
+            "model": "m", "answers": answers,
+            "usage": {"input_tokens": 0, "output_tokens": 0}
+        }))
+        .unwrap();
+        let verdicts = rubric.apply(&asked, &response).unwrap();
+        ids.iter()
+            .map(|id| matches!(verdicts[id.as_str()], Verdict::Deferred(_)))
+            .collect()
+    }
+
+    proptest::proptest! {
+        /// Raising a bar never turns a deferred answer into a decided one,
+        /// strict or not: the deferred set only grows with the bars.
+        #[test]
+        fn apply_defers_more_as_a_bar_rises(
+            rows in proptest::collection::vec((0u8..=10, 0u8..=10, 0u8..=10), 1..5),
+        ) {
+            let confidences: Vec<u8> = rows.iter().map(|r| r.0).collect();
+            let low: Vec<u8> = rows.iter().map(|r| r.1.min(r.2)).collect();
+            let high: Vec<u8> = rows.iter().map(|r| r.1.max(r.2)).collect();
+            for strict in [false, true] {
+                let before = deferred_at(&confidences, &low, strict);
+                let after = deferred_at(&confidences, &high, strict);
+                for (i, was) in before.iter().enumerate() {
+                    proptest::prop_assert!(!was || after[i], "question {i} deferred at {low:?}, decided at {high:?}, strict {strict}");
+                }
+            }
+        }
+
+        /// Strict and not differ exactly at confidence == bar, where strict
+        /// defers and the other decides; everywhere else they agree.
+        #[test]
+        fn strict_differs_from_non_strict_only_at_the_bar(
+            rows in proptest::collection::vec((0u8..=10, 0u8..=10), 1..5),
+        ) {
+            let confidences: Vec<u8> = rows.iter().map(|r| r.0).collect();
+            let bars: Vec<u8> = rows.iter().map(|r| r.1).collect();
+            let lax = deferred_at(&confidences, &bars, false);
+            let strict = deferred_at(&confidences, &bars, true);
+            for (i, (c, b)) in confidences.iter().zip(&bars).enumerate() {
+                proptest::prop_assert_eq!(lax[i], c < b, "non-strict, question {}", i);
+                proptest::prop_assert_eq!(strict[i], c <= b, "strict, question {}", i);
+            }
+        }
+    }
 }

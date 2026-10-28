@@ -1785,3 +1785,340 @@ async fn a_case_missing_from_the_against_recordings_is_refused_before_any_call()
     assert!(stdout(&out).is_empty());
     assert!(server.received_requests().await.unwrap().is_empty());
 }
+
+/// The directory `dir` copied with every file under a name in the reverse
+/// of its sorted order, so the files are read in the other order.
+fn renamed_in_reverse(dir: &str) -> String {
+    let mut names: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    names.sort();
+    let out = scratch("renamed");
+    for (i, name) in names.iter().rev().enumerate() {
+        std::fs::copy(Path::new(dir).join(name), out.join(format!("{i:02}.jud"))).unwrap();
+    }
+    out.to_str().unwrap().to_owned()
+}
+
+#[test]
+fn the_report_does_not_depend_on_the_names_of_the_recordings() {
+    let renamed = renamed_in_reverse(RECORDINGS);
+    for extra in [&["--json"][..], &[]] {
+        let (a, b) = (
+            triage(extra),
+            eval_with(&renamed, TRIAGE, TRIAGE_CASES, extra),
+        );
+        assert_eq!(code(&a), 0, "{}", stderr(&a));
+        assert_eq!(
+            (stdout(&a), stderr(&a)),
+            (stdout(&b), stderr(&b)),
+            "{extra:?}"
+        );
+    }
+}
+
+/// judgment-bsz.20.9: two files recording one request leave the report to
+/// the file names (the replay keeps the one that sorts last), and `jud eval`
+/// used to say nothing about it while `tune` and `record` warned.
+#[test]
+fn two_files_recording_one_request_are_named_in_a_warning_and_the_last_name_answers() {
+    let stale = replaced(
+        &read(&format!("{RECORDINGS}/receipt.jud")),
+        "noul: 0.52",
+        "noul: 0.1",
+    );
+    let with_copy = |name: &str| {
+        let dir = copy_dir(RECORDINGS);
+        std::fs::write(dir.join(name), &stale).unwrap();
+        dir.to_str().unwrap().to_owned()
+    };
+    let misses = |out: &Output| {
+        question(&report(out), "actionable")["misses"]
+            .as_array()
+            .unwrap()
+            .len()
+    };
+    // Named before `receipt.jud`, the copy loses: the report is the original's.
+    let first = eval_with(
+        &with_copy("0-receipt.jud"),
+        TRIAGE,
+        TRIAGE_CASES,
+        &["--json"],
+    );
+    // Named after it, the copy answers: the receipt is no longer a miss.
+    let last = eval_with(
+        &with_copy("z-receipt.jud"),
+        TRIAGE,
+        TRIAGE_CASES,
+        &["--json"],
+    );
+    assert_eq!((misses(&first), misses(&last)), (1, 0));
+    for (out, copy) in [(&first, "0-receipt.jud"), (&last, "z-receipt.jud")] {
+        assert_eq!(code(out), 0, "{}", stderr(out));
+        let warning = stderr(out);
+        assert_eq!(
+            warning.matches("record the same request").count(),
+            1,
+            "{warning}"
+        );
+        assert!(
+            warning.contains(&format!("{copy}, ")) || warning.contains(&format!(", {copy}")),
+            "{warning}"
+        );
+        assert!(warning.contains("receipt.jud"), "{warning}");
+    }
+    // stdout stays the one JSON object, and a clean directory says nothing.
+    assert!(triage(&["--json"]).stderr.is_empty());
+}
+
+/// The same run twice, `--json` first and as text: the two renderings of one report.
+fn both(recordings: &str, rubric: &str, cases: &str, extra: &[&str]) -> (Output, Output) {
+    let mut json_args = vec!["--json"];
+    json_args.extend_from_slice(extra);
+    (
+        eval_with(recordings, rubric, cases, &json_args),
+        eval_with(recordings, rubric, cases, extra),
+    )
+}
+
+/// A scenario of the status table: name, rubric, cases, recordings, extra arguments, status.
+type Scenario<'a> = (&'a str, &'a str, &'a str, &'a str, &'a [&'a str], i32);
+
+/// judgment-bsz.20.11: the status is a function of the report. A report on
+/// stdout is status 3 when, and only when, a bar in it is not met (and says
+/// so on stderr with the same count), else 0; no report on stdout is an
+/// error, 1 or 2, whatever the bars would have said; text and JSON agree.
+#[test]
+fn the_exit_status_follows_from_the_report_in_both_renderings() {
+    let missing = copy_dir(RECORDINGS);
+    std::fs::remove_file(missing.join("invoice-vat.jud")).unwrap();
+    let missing = missing.to_str().unwrap();
+    // (scenario, rubric, cases, recordings, extra, status)
+    let table: [Scenario; 6] = [
+        (
+            "all met",
+            TRIAGE,
+            TRIAGE_CASES,
+            RECORDINGS,
+            &["--min-accuracy", "0.8"],
+            0,
+        ),
+        (
+            "a bar not met",
+            TRIAGE,
+            TRIAGE_CASES,
+            RECORDINGS,
+            &["--min-accuracy", "0.9"],
+            3,
+        ),
+        ("no bars", TRIAGE, TRIAGE_CASES, RECORDINGS, &[], 0),
+        // The bar is unmet too, but there is nothing to measure it on: the error wins.
+        (
+            "a missing recording and an unmet bar",
+            TRIAGE,
+            TRIAGE_CASES,
+            missing,
+            &["--min-accuracy", "0.99"],
+            1,
+        ),
+        (
+            "a refused document",
+            TRIAGE_CASES,
+            TRIAGE_CASES,
+            RECORDINGS,
+            &["--min-accuracy", "0.99"],
+            2,
+        ),
+        (
+            "a missing recording, no bar",
+            TRIAGE,
+            TRIAGE_CASES,
+            missing,
+            &[],
+            1,
+        ),
+    ];
+    for (scenario, rubric, cases, recordings, extra, status) in table {
+        let (as_json, as_text) = both(recordings, rubric, cases, extra);
+        assert_eq!(code(&as_json), status, "{scenario}: {}", stderr(&as_json));
+        assert_eq!(code(&as_text), status, "{scenario}: {}", stderr(&as_text));
+        assert_eq!(stderr(&as_json), stderr(&as_text), "{scenario}");
+        if status == 1 || status == 2 {
+            assert!(
+                stdout(&as_json).is_empty() && stdout(&as_text).is_empty(),
+                "{scenario}"
+            );
+            continue;
+        }
+        let json = report(&as_json);
+        let checks = json["min_accuracy"].as_array().unwrap();
+        let unmet = checks.iter().filter(|c| c["met"] == false).count();
+        let text = stdout(&as_text);
+        assert_eq!(
+            text.matches("\n  NOT MET  ").count(),
+            unmet,
+            "{scenario}\n{text}"
+        );
+        assert_eq!(
+            text.matches("\n  met      ").count(),
+            checks.len() - unmet,
+            "{scenario}"
+        );
+        assert_eq!(status == 3, unmet > 0, "{scenario}");
+        let line = stderr(&as_text);
+        assert_eq!(
+            line.contains(&format!("jud: {unmet} question(s) below")),
+            unmet > 0,
+            "{scenario}: {line}"
+        );
+        assert_eq!(line.is_empty(), unmet == 0, "{scenario}: {line}");
+        assert!(
+            text.contains(&format!("{} requests", json["requests"])),
+            "{scenario}"
+        );
+    }
+}
+
+/// The numbers a question's block in the text report carries, in the order
+/// the text prints them: (labelled, correct), outcomes' (labelled, answered,
+/// right) triples, and the gate's (acted, deferred) when there is one.
+type Block = (
+    (usize, usize),
+    Vec<(usize, usize, usize)>,
+    Option<(usize, usize)>,
+);
+
+fn text_block(text: &str, id: &str) -> Block {
+    let lines: Vec<&str> = text
+        .lines()
+        .skip_while(|l| *l != id)
+        .skip(1)
+        .take_while(|l| !l.is_empty())
+        .collect();
+    let number = |s: &str| {
+        s.trim_matches(|c: char| !c.is_ascii_digit())
+            .parse::<usize>()
+            .unwrap()
+    };
+    let find = |prefix: &str| {
+        lines
+            .iter()
+            .find_map(|l| l.trim_start().strip_prefix(prefix))
+    };
+    let counts = find("labelled ").map_or((0, 0), |rest| {
+        let mut parts = rest.split(", ");
+        (
+            number(parts.next().unwrap()),
+            number(parts.next().unwrap().trim_start_matches("correct ")),
+        )
+    });
+    let outcomes = find("outcomes, labelled/answered/right: ").map_or_else(Vec::new, |rest| {
+        rest.split(", ")
+            .map(|entry| {
+                let mut n = entry
+                    .rsplit(' ')
+                    .next()
+                    .unwrap()
+                    .split('/')
+                    .map(|n| n.parse().unwrap());
+                (n.next().unwrap(), n.next().unwrap(), n.next().unwrap())
+            })
+            .collect()
+    });
+    let gate = find("gate: acts on ").map(|rest| {
+        let (_, defers) = rest.split_once(", defers ").unwrap();
+        let acted: Vec<&str> = rest.split(' ').collect();
+        (number(acted[0]), number(defers.split(',').next().unwrap()))
+    });
+    (counts, outcomes, gate)
+}
+
+/// judgment-bsz.20.20: counts are conserved inside a report and the two
+/// renderings carry the same ones. Per question the model's answers split
+/// into right and wrong (a miss each) over the labelled; every outcome count
+/// adds up to them; the gate saw no more requests than were asked and at
+/// least the labelled ones; the misses total across questions.
+// ponytail: four shapes over the fixtures instead of a generated family: each case is two processes, and the shapes (a conversation, a moved bar, a withdrawn label, relabelled misses) are the ones the counts differ on.
+#[test]
+fn a_report_conserves_its_counts_and_the_renderings_carry_the_same_ones() {
+    let relabelled = write(
+        "cases.jud",
+        &read(TRIAGE_CASES).replace("desk: billing", "desk: account"),
+    );
+    let unlabelled = write("cases.jud", &cases_without_labels("tone"));
+    let high_bar = triage_with_desk_bar("0.99");
+    let shapes: [(&str, &str, &str); 4] = [
+        ("triage", TRIAGE, TRIAGE_CASES),
+        ("handoff conversations", HANDOFF, HANDOFF_CASES),
+        ("desk relabelled, three misses", TRIAGE, &relabelled),
+        ("desk bar at 0.99, tone unlabelled", &high_bar, &unlabelled),
+    ];
+    for (shape, rubric, cases) in shapes {
+        let (as_json, as_text) = both(RECORDINGS, rubric, cases, &[]);
+        assert_eq!(
+            (code(&as_json), code(&as_text)),
+            (0, 0),
+            "{shape}: {}",
+            stderr(&as_json)
+        );
+        let json = report(&as_json);
+        let text = stdout(&as_text);
+        let requests = json["requests"].as_u64().unwrap();
+        let (mut misses, mut labelled_total) = (0, 0);
+        for q in json["questions"].as_array().unwrap() {
+            let id = q["id"].as_str().unwrap();
+            let n = |v: &Value| usize::try_from(v.as_u64().unwrap()).unwrap();
+            let (labelled, correct) = (n(&q["labelled"]), n(&q["correct"]));
+            let wrong = q["misses"].as_array().unwrap().len();
+            assert_eq!(correct + wrong, labelled, "{shape}/{id}: right + wrong");
+            let sum = |key: &str| {
+                q["outcomes"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|o| n(&o[key]))
+                    .sum::<usize>()
+            };
+            let outcomes: Vec<(usize, usize, usize)> = q["outcomes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|o| (n(&o["labelled"]), n(&o["predicted"]), n(&o["correct"])))
+                .collect();
+            if labelled > 0 {
+                assert_eq!(
+                    (sum("labelled"), sum("predicted"), sum("correct")),
+                    (labelled, labelled, correct),
+                    "{shape}/{id}: outcomes"
+                );
+            }
+            let gate = q["gate"]
+                .as_object()
+                .map(|g| (n(&g["acted"]), n(&g["deferred"])));
+            if let Some((acted, deferred)) = gate {
+                assert!(
+                    labelled <= acted + deferred && ((acted + deferred) as u64) <= requests,
+                    "{shape}/{id}: gate {acted}+{deferred} of {requests}, {labelled} labelled"
+                );
+            }
+            // The text says the same numbers.
+            let (counts, from_text, text_gate) = text_block(&text, id);
+            assert_eq!(counts, (labelled, correct), "{shape}/{id}: text");
+            if labelled > 0 {
+                assert_eq!(from_text, outcomes, "{shape}/{id}: text outcomes");
+            }
+            assert_eq!(text_gate, gate, "{shape}/{id}: text gate");
+            misses += wrong;
+            labelled_total += labelled;
+        }
+        let said = if misses == 0 {
+            "model misses: none".to_owned()
+        } else {
+            format!("model misses ({misses})")
+        };
+        assert!(text.contains(&said), "{shape}: {said}\n{text}");
+        assert!(labelled_total > 0, "{shape}");
+        assert!(text.contains(&format!("{requests} request")), "{shape}");
+    }
+}
