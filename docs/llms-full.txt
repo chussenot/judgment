@@ -4488,7 +4488,7 @@ spec:
   recorded_at: "2026-10-04T11:58:00Z"
 ```
 
-Any field of `spec` the kind does not define MUST be refused; `response` keeps whatever the server sent, with one normalisation: a `usage` the server left out, in whole or by count, is recorded as zeros, because the API requires `usage` on every response and the reader of this format normalises an absent count to zero before anything reads it — a recording of zeros is exactly what a live caller of the same response observed. A recording MUST be verified against the questions of the request that finds it before it is replayed, as a live response would be (an answer for every question, of its primitive, a Choice naming an offered option, a Score whose legend is the levels sent, a Box whose box is a region), so a recording that no longer fits the rubric fails naming the question rather than replaying an answer the rubric would refuse.
+Any field of `spec` the kind does not define MUST be refused; `response` keeps whatever the server sent, with one normalisation: a `usage` the server left out, in whole or by count, is recorded as zeros, because the API requires `usage` on every response and the reader of this format normalises an absent count to zero before anything reads it — a recording of zeros is exactly what a live caller of the same response observed ([decision 0030](../project/decisions/0030-an-absent-usage-is-recorded-as-zeros.md)). A recording MUST be verified against the questions of the request that finds it before it is replayed, as a live response would be (an answer for every question, of its primitive, a Choice naming an offered option, a Score whose legend is the levels sent, a Box whose box is a region), so a recording that no longer fits the rubric fails naming the question rather than replaying an answer the rubric would refuse.
 
 A recording of a request with an image holds no image: the fingerprint folds each image in by the digest of its bytes, so a replay finds the recording only when the same bytes are sent again, under the same reference, and the `response` carries the box as the wire does. One of the shapes example's recordings (`examples/recordings/shapes/`, `jev-1.14.0`'s answers to `examples/jud/shapes-cases.jud`):
 
@@ -7236,6 +7236,7 @@ A number is an identifier, never reused or renumbered, so `decision 0003` means 
 | [0027](0027-long-context-is-a-switch-on-the-call.md) | Long context is a switch on the call, not a request field or a default | accepted |
 | [0028](0028-multipart-is-a-feature-and-a-switch.md) | Multipart upload is a feature and a switch on the call, off by default | accepted |
 | [0029](0029-request-compression-is-a-feature-and-a-switch.md) | Request compression is a feature and a switch, off by default | accepted |
+| [0030](0030-an-absent-usage-is-recorded-as-zeros.md) | An absent usage is recorded as zeros, not kept absent | accepted |
 
 ## Status notes
 
@@ -8692,3 +8693,142 @@ Chosen option 1.
 ## More information
 
 The SDK releases: [Python 0.7.5](https://github.com/typesafe-ai/typesafe-sdk-python/releases/tag/v0.7.5) (`MIN_COMPRESSED_BODY_LENGTH = 1024` in its `_core/compression.py`) and [JavaScript 0.7.0](https://github.com/typesafe-ai/typesafe-sdk-js/releases/tag/v0.7.0) ("request bodies of 1 KiB or more"); the hosted API's [request rules](https://docs.typesafe.ai/api/errors#compression). `src/client.rs` (`# Compression`) implements it; [Configuration](../../reference/configuration.md) and [The crate](../../reference/crate.md#features) list the switch and the feature; beads issue `judgment-mwx` tracked the work.
+
+
+<!-- source: docs/project/decisions/0030-an-absent-usage-is-recorded-as-zeros.md -->
+
+
+# 0030 An absent usage is recorded as zeros, not kept absent
+
+## Context and problem statement
+
+The OpenAPI document requires `usage` on every response, with both counts.
+The crate is more tolerant on purpose: a `usage` a server leaves out, or a
+count inside it, decodes as zero, so one missing field does not lose a
+billed response (`Response::usage`, the tolerance table in
+[Internals](../internals.md)). A recording then writes the response back
+with those zeros.
+
+The second review pass (judgment-y7a.52) read that against the format
+page's fidelity rule — a recording's `response` keeps whatever the server
+sent — and found the contradiction: a server that sent no `usage` is
+recorded as having sent zeros. The review fixed the larger half in 0.16.0
+(an answer's unknown fields are kept in that answer's `extra`) and left
+the question: should `Response::usage` become `Option<Usage>`, so a
+recording keeps the absence?
+
+## Decision drivers
+
+- The decoder normalises before anything reads it: a live caller of a
+  response without `usage` sees zeros, through the field, the `Observer`
+  and the `typesafe.evaluate` span. What a recording writes should be what
+  a replay makes a caller see, and both should be what the live caller saw.
+- Every consumer reads `response.usage.input_tokens` as a number to add to
+  a sum or a counter. None has a different action for "the server said
+  nothing" — there is no better number to account a billed call with.
+- The OpenAPI document requires `usage`; only a non-conforming server
+  omits it, and the crate's contract tests check recordings against that
+  document.
+- 0.16.0 already broke `Answer` construction (`extra`); a second
+  consecutive break of the response type needs to buy something a
+  consumer can act on.
+- A recording is not a packet capture: the format already normalises (an
+  empty `part_when` is left out, numbers print through the double), and
+  its fidelity rule is about not dropping information, with any
+  normalisation stated on the page.
+
+## Considered options
+
+1. **Keep `usage: Usage`, state the normalisation in the format page**:
+   absent decodes as zero, is written back as zeros, and the page says so
+   beside the fidelity rule.
+2. **`Option<Usage>` on `Response`**: `None` when the server sent
+   nothing, serialised only when present.
+3. **Skip serialising a default usage**: keep the type, leave zeros out
+   on write.
+4. **A hidden absence marker**: keep the type, remember absence in a
+   private field, write it back faithfully.
+
+## Decision outcome
+
+Chosen option 1.
+
+- `Response::usage` stays a plain `Usage`. The field's documentation says
+  an absent usage is written back as zeros and why; the format page's
+  fidelity rule now carries the carve-out in the same sentence that
+  states the rule ([The .jud format](../../reference/jud-format.md),
+  Recordings).
+- The absent-versus-zero distinction is dropped knowingly: it reaches no
+  decision a consumer of this crate makes, and keeping it would cost
+  every reader of the commonest field on the response.
+
+### Consequences
+
+- Good: live and replay agree by construction — a replayed response
+  reports to the `Observer` exactly what the live response did.
+- Good: every recording conforms to the OpenAPI document's response
+  schema, whatever the server did.
+- Bad: a recording cannot show that a server violated the document by
+  omitting `usage`; whoever debugs an off-spec server needs the wire, not
+  a recording.
+- Bad: zeros from an off-spec server read as a free call in cost sums.
+  The counts were never sent, so no shape of the field could report a
+  truer number.
+
+### Confirmation
+
+The unit round-trip test pins a response without `usage` written back as
+zeros and one with a sent usage kept as sent (`src/answer.rs`); the
+contract test's tolerance rows pin that the schema refuses a response
+without `usage` while the crate decodes it, and what each tolerated value
+reads as (`tests/contract.rs`); `mise run docs:check` holds the page and
+its derived copies together.
+
+## Pros and cons of the options
+
+### Option 1: keep the type, state the normalisation
+
+- Good, because the behaviour was already shipped, documented on the
+  field and pinned by tests in 0.16.0; the only defect left was the page
+  contradicting it.
+- Good, because `usage.input_tokens` stays one field read on the path
+  every consumer walks.
+- Bad, because the fidelity rule gains an exception a reader must know.
+
+### Option 2: `Option<Usage>`
+
+- Good, because a recording would keep the absence, faithful to the wire.
+- Bad, because every read of the commonest response field becomes an
+  unwrap-or-default — about fifty in this crate alone, every consumer
+  besides — for a distinction none of them acts on.
+- Bad, because it is a second consecutive breaking change to the response
+  type, one release after `Answer` gained `extra`.
+- Bad, because a recording without `usage` no longer conforms to the
+  OpenAPI document the contract tests hold recordings to.
+
+### Option 3: skip serialising a default usage
+
+- Good, because no type changes.
+- Bad, because it conflates a *sent* zero usage with an absent one: a
+  `Fake`'s explicit zeros would vanish on write, which is the measured
+  failure (both committed-recording contract tests went red when the
+  review fleet tried it).
+
+### Option 4: a hidden absence marker
+
+- Good, because reads stay one field and the write-back is faithful.
+- Bad, because `Response` is constructed by struct literal, so any new
+  field is the same break as option 2 with a stranger shape, and the
+  marker would have to survive `PartialEq`, `Clone` and every test that
+  builds a `Response` by hand.
+
+## More information
+
+[The .jud format](../../reference/jud-format.md) carries the fidelity
+rule and its one normalisation; [Internals](../internals.md) lists the
+decoder's four tolerances; [decision 0014](0014-a-file-format-for-rubrics-cases-and-recordings.md)
+made recordings part of the format. The review finding and the weighing
+are in the tracker as judgment-y7a.52; the answers half of the same
+finding shipped in 0.16.0 (every `Answer` variant keeps unknown fields in
+`extra`). The `usage` keys the crate does not model are a separate,
+still-open question (judgment-bsz.16.13).
