@@ -204,7 +204,9 @@ impl Backend {
 /// the fragment, which can carry a credential and which a recording that is
 /// meant to be committed must not. A string that is not a URL is returned
 /// as it is; one the split below cannot place (no `://`, as `https:user:pw@host`,
-/// or extra slashes after it) but the URL parser reads as one goes through the parser, which clears the parts.
+/// or extra slashes after it) goes through the URL parser, which clears the
+/// parts — and one the parser refuses too still has its authority stripped
+/// by hand, so no spelling keeps a credential by being malformed enough.
 pub(crate) fn public_url(url: &str) -> String {
     // Extra slashes (`https:///user@host`) move the authority, so they go to the parser too.
     let split = url
@@ -212,7 +214,16 @@ pub(crate) fn public_url(url: &str) -> String {
         .filter(|(_, rest)| !rest.starts_with(['/', '\\']));
     let Some((scheme, rest)) = split else {
         let Ok(mut parsed) = reqwest::Url::parse(url) else {
-            return url.to_owned();
+            // The parser refused (a bad port, a bad host, stray slashes with
+            // garbage after them). Strip by hand what the parser would have:
+            // keep less, never more, of a string that held a `://`.
+            return match url.split_once("://") {
+                Some((scheme, rest)) => {
+                    let rest = rest.trim_start_matches(['/', '\\']);
+                    strip_authority(scheme, rest)
+                }
+                None => url.to_owned(),
+            };
         };
         let _ = parsed.set_username("");
         let _ = parsed.set_password(None);
@@ -220,6 +231,12 @@ pub(crate) fn public_url(url: &str) -> String {
         parsed.set_fragment(None);
         return parsed.into();
     };
+    strip_authority(scheme, rest)
+}
+
+/// `scheme://host` + path with the userinfo, query and fragment dropped, by
+/// text alone: the fallback for what the URL parser cannot read.
+fn strip_authority(scheme: &str, rest: &str) -> String {
     let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let (authority, tail) = rest.split_at(end);
     let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
@@ -294,6 +311,10 @@ mod tests {
             "https://SECRETU:SECRETP@h:99999/v1",
             "https://SECRETU:SECRETP@[::1/v1",
             "https://SECRETU:SECRETP@h<>/v1?SECRETQ",
+            // Leading slashes move the authority AND the parser refuses the
+            // remainder: the fallback still strips by hand.
+            "https://\\SECRETU:SECRETP@h:99999/v1",
+            "https:///SECRETU:SECRETP@h:99999/v1?SECRETQ",
         ] {
             assert!(reqwest::Url::parse(url).is_err(), "{url} parses");
             let out = public_url(url);

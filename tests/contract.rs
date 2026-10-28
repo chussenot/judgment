@@ -59,7 +59,9 @@
 //!   an array) as its whole exception list.
 //! * `what_the_builder_refuses_and_the_schema_allows`: the builder follows
 //!   the HTTP API reference page (at most 255 options, 2 to 10 levels); the
-//!   schema says only `minItems: 1` for levels and nothing about options.
+//!   schema has since caught up (`maxProperties: 255` on a Choice's
+//!   criteria, `minItems: 1`/`maxItems: 10` on a Score's), and the test
+//!   keeps the cases where the two still part.
 //! * `what_the_crate_decodes_differently_from_the_schema`: the schema
 //!   types probabilities as bare numbers and counts as bare integers, so the
 //!   crate refuses values it allows; and the crate tolerates what the schema

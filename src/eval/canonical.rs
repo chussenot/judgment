@@ -293,7 +293,7 @@ mod tests {
     /// Rust's shortest formatting takes `.3`, so `ecmascript` disagrees with
     /// every other RFC 8785 implementation on such ties.
     #[test]
-    #[ignore = "judgment-bsz.16.8: found, ecmascript() prints a shortest-digits tie as .3, the RFC and ECMAScript say .2"]
+    #[ignore = "judgment-f2m (found by judgment-bsz.16.8): ecmascript() prints a shortest-digits tie as .3, the RFC and ECMAScript say .2"]
     fn rfc_8785_appendix_b_shortest_digit_tie_takes_the_even_digit() {
         let f = f64::from_bits(0x4314_3ff3_c1cb_0959);
         assert_eq!(to_string(&json!(f)), "1424953923781206.2");

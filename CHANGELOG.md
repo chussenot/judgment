@@ -8,11 +8,11 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Security
 
-- `jud`'s plain-text escape (`out::plain`), which every document-chosen and
-  server-chosen string passes through, now neutralises the hidden Unicode
-  characters beyond the control set — bidi overrides and isolates,
-  zero-width characters, the BOM, the line and paragraph separators — and
-  bounds a line at 4096 characters, the cut never landing inside an
+- `jud`'s plain-text escape (`out::plain`), which `jud`'s messages pass
+  through, now neutralises the hidden Unicode characters beyond the
+  control set — bidi overrides and isolates, zero-width characters, the
+  BOM, the line and paragraph separators — and cuts a line at 4096
+  characters with a trailing ellipsis, the cut never landing inside an
   escape. A recording or a server could previously reorder or hide parts
   of `jud`'s own output with a right-to-left override.
 - `jud config` and the dry run strip credentials from base-URL spellings
@@ -24,8 +24,8 @@ All notable changes to the `judgment` crate. The format follows
 ### Fixed
 
 - `jud eval` warns, as `record` and `tune` already did, when two recording
-  files record the same request, naming both files and which one answers.
-  Its report no longer depends silently on recording file names.
+  files record the same request, naming both files. Its report no longer
+  depends silently on recording file names.
 - The expected calibration error of answers whose confidence is NaN reads
   the confidence as zero, the value an unreadable answer already gets,
   instead of turning the whole figure into NaN.
