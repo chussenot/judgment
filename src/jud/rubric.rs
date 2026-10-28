@@ -337,54 +337,68 @@ struct RawRubricSpec {
 }
 
 /// The reading mirror of [`Question`], which only serialises ([`some`]).
+/// Read flat rather than as a `type`-tagged enum: serde buffers a tagged
+/// enum's fields, and a number key in that buffer never becomes text
+/// (`criteria: {1: poor}`), where read straight from the document it does.
 #[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
-enum RawQuestion {
-    Noul {
-        #[serde(default)]
-        instructions: Value,
-        #[serde(default)]
-        criteria: Option<RawNoulCriteria>,
-        #[serde(default, deserialize_with = "some")]
-        when: Option<String>,
-        #[serde(default, deserialize_with = "some")]
-        part_when: Option<IndexMap<String, String>>,
-        #[serde(default, deserialize_with = "some")]
-        options_from: Option<String>,
-    },
-    Choice {
-        #[serde(default)]
-        instructions: Value,
-        #[serde(default)]
-        criteria: IndexMap<String, Value>,
-        #[serde(default, deserialize_with = "some")]
-        when: Option<String>,
-        #[serde(default, deserialize_with = "some")]
-        part_when: Option<IndexMap<String, String>>,
-        #[serde(default, deserialize_with = "some")]
-        options_from: Option<String>,
-    },
-    Score {
-        #[serde(default)]
-        instructions: Value,
-        criteria: Vec<Value>,
-        #[serde(default, deserialize_with = "some")]
-        when: Option<String>,
-        #[serde(default, deserialize_with = "some")]
-        part_when: Option<IndexMap<String, String>>,
-        #[serde(default, deserialize_with = "some")]
-        options_from: Option<String>,
-    },
-    Box {
-        #[serde(default)]
-        instructions: Value,
-        #[serde(default, deserialize_with = "some")]
-        when: Option<String>,
-        #[serde(default, deserialize_with = "some")]
-        part_when: Option<IndexMap<String, String>>,
-        #[serde(default, deserialize_with = "some")]
-        options_from: Option<String>,
-    },
+#[serde(deny_unknown_fields)]
+struct RawQuestion {
+    #[serde(rename = "type")]
+    kind: QuestionKind,
+    #[serde(default)]
+    instructions: Value,
+    #[serde(default)]
+    criteria: Option<RawCriteria>,
+    #[serde(default, deserialize_with = "some")]
+    when: Option<String>,
+    #[serde(default, deserialize_with = "some")]
+    part_when: Option<IndexMap<String, String>>,
+    #[serde(default, deserialize_with = "some")]
+    options_from: Option<String>,
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum QuestionKind {
+    Noul,
+    Choice,
+    Score,
+    Box,
+}
+
+/// A question's `criteria` as written: by key in the order written (a
+/// Choice's options, a Noul's `true` and `false`), or a Score's levels.
+enum RawCriteria {
+    Keyed(IndexMap<String, Value>),
+    Levels(Vec<Value>),
+}
+
+impl<'de> Deserialize<'de> for RawCriteria {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        use serde::de::value::{MapAccessDeserializer, SeqAccessDeserializer};
+        struct Shape;
+        impl<'de> serde::de::Visitor<'de> for Shape {
+            type Value = RawCriteria;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a map of options or a list of levels")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                map: A,
+            ) -> std::result::Result<RawCriteria, A::Error> {
+                IndexMap::deserialize(MapAccessDeserializer::new(map)).map(RawCriteria::Keyed)
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                seq: A,
+            ) -> std::result::Result<RawCriteria, A::Error> {
+                Vec::deserialize(SeqAccessDeserializer::new(seq)).map(RawCriteria::Levels)
+            }
+        }
+        deserializer.deserialize_any(Shape)
+    }
 }
 
 /// A gate as read; `bands`, `level_at_least` and `strict` count by their presence ([`some`]).
@@ -429,32 +443,19 @@ impl RawGate {
 }
 
 /// A Noul's criteria keys are booleans to a YAML parser and the strings
-/// `true` and `false` on the wire, so a key is read either way.
-type RawNoulCriteria = IndexMap<CriteriaKey, Value>;
-
-#[derive(Deserialize, PartialEq, Eq, Hash)]
-#[serde(untagged)]
-enum CriteriaKey {
-    Bool(bool),
-    Text(String),
-}
-
-fn noul_criteria(id: &str, raw: RawNoulCriteria) -> Result<NoulCriteria> {
+/// `true` and `false` on the wire; read as text, a key is either.
+fn noul_criteria(id: &str, raw: IndexMap<String, Value>) -> Result<NoulCriteria> {
     let mut criteria = NoulCriteria::default();
     for (key, value) in raw {
-        match key {
-            CriteriaKey::Bool(true) => criteria.yes = Some(value),
-            CriteriaKey::Bool(false) => criteria.no = Some(value),
-            CriteriaKey::Text(text) => match text.as_str() {
-                "true" => criteria.yes = Some(value),
-                "false" => criteria.no = Some(value),
-                other => {
-                    return Err(Error::Invalid {
-                        field: format!("spec.questions.{id}.criteria"),
-                        reason: format!("a Noul's criteria are `true` and `false`, not `{other}`"),
-                    });
-                }
-            },
+        match key.as_str() {
+            "true" => criteria.yes = Some(value),
+            "false" => criteria.no = Some(value),
+            other => {
+                return Err(Error::Invalid {
+                    field: format!("spec.questions.{id}.criteria"),
+                    reason: format!("a Noul's criteria are `true` and `false`, not `{other}`"),
+                });
+            }
         }
     }
     Ok(criteria)
@@ -462,63 +463,50 @@ fn noul_criteria(id: &str, raw: RawNoulCriteria) -> Result<NoulCriteria> {
 
 impl RawQuestion {
     fn lower(self, id: &str) -> Result<RubricQuestion> {
-        let (question, when, part_when, options_from) = match self {
-            Self::Noul {
+        let Self {
+            kind,
+            instructions,
+            criteria,
+            when,
+            part_when,
+            options_from,
+        } = self;
+        let shape = |reason: &str| Error::Invalid {
+            field: format!("spec.questions.{id}.criteria"),
+            reason: reason.to_owned(),
+        };
+        let question = match (kind, criteria) {
+            (QuestionKind::Noul, None) => Question::Noul {
+                instructions,
+                criteria: None,
+            },
+            (QuestionKind::Noul, Some(RawCriteria::Keyed(criteria))) => Question::Noul {
+                instructions,
+                criteria: Some(noul_criteria(id, criteria)?),
+            },
+            (QuestionKind::Choice, None) => Question::Choice {
+                instructions,
+                criteria: IndexMap::new(),
+            },
+            (QuestionKind::Choice, Some(RawCriteria::Keyed(criteria))) => Question::Choice {
                 instructions,
                 criteria,
-                when,
-                part_when,
-                options_from,
-            } => (
-                Question::Noul {
-                    instructions,
-                    criteria: criteria.map(|c| noul_criteria(id, c)).transpose()?,
-                },
-                when,
-                part_when,
-                options_from,
-            ),
-            Self::Choice {
+            },
+            (QuestionKind::Score, Some(RawCriteria::Levels(criteria))) => Question::Score {
                 instructions,
                 criteria,
-                when,
-                part_when,
-                options_from,
-            } => (
-                Question::Choice {
-                    instructions,
-                    criteria,
-                },
-                when,
-                part_when,
-                options_from,
-            ),
-            Self::Score {
-                instructions,
-                criteria,
-                when,
-                part_when,
-                options_from,
-            } => (
-                Question::Score {
-                    instructions,
-                    criteria,
-                },
-                when,
-                part_when,
-                options_from,
-            ),
-            Self::Box {
-                instructions,
-                when,
-                part_when,
-                options_from,
-            } => (
-                Question::Box { instructions },
-                when,
-                part_when,
-                options_from,
-            ),
+            },
+            (QuestionKind::Box, None) => Question::Box { instructions },
+            (QuestionKind::Noul, Some(RawCriteria::Levels(_))) => {
+                return Err(shape("a Noul's criteria are a map: `true` and `false`"));
+            }
+            (QuestionKind::Choice, Some(RawCriteria::Levels(_))) => {
+                return Err(shape("a Choice's criteria are its options, a map"));
+            }
+            (QuestionKind::Score, _) => {
+                return Err(shape("a Score's criteria are its levels, a list"));
+            }
+            (QuestionKind::Box, Some(_)) => return Err(shape("a Box takes no criteria")),
         };
         let options_from = match options_from.as_deref() {
             None => None,
