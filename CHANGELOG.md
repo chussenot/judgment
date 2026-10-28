@@ -32,6 +32,13 @@ All notable changes to the `judgment` crate. The format follows
 - `Response::verify`'s documentation said it walks questions in id order;
   it walks them in wire order (the order they were added), and now says
   so.
+- The options a case supplies are asked in the order the document writes
+  them, in every build. The reader took them through a JSON value, whose
+  map is sorted unless serde_json's `preserve_order` is on (only the `mcp`
+  feature turns it on), so the released `jud` binary, built with `cli`,
+  asked them in alphabetical order. An instructions object is the opposite
+  case: its parts carry no order, so they are still sent sorted, and so are
+  the `part_when` names that select them. No fingerprint moves.
 
 ## [0.16.0] - 2026-10-27
 

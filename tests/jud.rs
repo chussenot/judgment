@@ -1510,17 +1510,7 @@ mod generated {
             .prop_map(|(has_id, state, expect, options, tags, note)| {
                 let mut case = Case::new(state);
                 case.expect = map(expect);
-                // ponytail: supplied options drawn in sorted order, since the
-                // reader sorts them without `preserve_order`
-                // (`supplied_options_are_read_in_the_order_written`); drop
-                // the sort with that fix.
-                case.options = options
-                    .into_iter()
-                    .map(|(q, mut o)| {
-                        o.sort_by(|a, b| a.0.cmp(&b.0));
-                        (q, map(o))
-                    })
-                    .collect();
+                case.options = options.into_iter().map(|(q, o)| (q, map(o))).collect();
                 case.tags = tags;
                 case.note = note;
                 (has_id, case)
@@ -1907,12 +1897,10 @@ fn a_number_key_inside_a_question_is_read_as_text() {
 
 /// The options a case supplies are asked in the order written, before the
 /// static ones (`docs/reference/jud-format.md`, Declarations): the order
-/// the model sees. The reader takes `options` through a `serde_json::Value`,
-/// whose map is sorted unless `preserve_order` is on (the `mcp` feature,
-/// so `cargo test --all-features` passes this), and the shipped build sorts
-/// them: `cargo test --features jud --test jud -- --ignored` shows it.
+/// the model sees. Read through a `serde_json::Value` they were sorted
+/// unless `preserve_order` was on (the `mcp` feature), so this holds under
+/// `--features jud` as well as `--all-features`.
 #[test]
-#[ignore = "judgment-bsz.16.10: found, supplied options are read sorted without preserve_order"]
 fn supplied_options_are_read_in_the_order_written() {
     let text = with_line(DUP_CASES, 15, "        q: {zebra: null, apple: null}");
     let cases = Cases::parse(&text).unwrap();
