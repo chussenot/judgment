@@ -14,6 +14,9 @@ use serde_json::{Value, json};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+pub mod raw;
+pub mod sinks;
+
 pub const ROOT: &str = env!("CARGO_MANIFEST_DIR");
 
 pub const TRIAGE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/jud/triage.jud");
