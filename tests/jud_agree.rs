@@ -667,6 +667,7 @@ fn answering(asked: &judgment::Questions) -> judgment::Response {
 /// through the policy into one verdict per question asked, in that order.
 /// The oracle is the page's Declarations paragraph, not `lower`.
 #[test]
+#[allow(clippy::too_many_lines)]
 fn what_the_reader_accepts_lowers_and_is_answerable() {
     use judgment::Question;
     use judgment::jud::{Rubric, Supplied, present};
