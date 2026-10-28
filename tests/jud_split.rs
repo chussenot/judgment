@@ -8,7 +8,8 @@ mod support;
 
 use std::path::Path;
 
-use judgment::jud::Cases;
+use judgment::eval::canonical::request_fingerprint;
+use judgment::jud::{Cases, Rubric};
 use support::{
     HANDOFF, HANDOFF_CASES, RECORDINGS, TRIAGE, TRIAGE_CASES, code, jud, scratch, stderr, stdout,
 };
@@ -224,4 +225,60 @@ fn the_description_counts_in_words() {
         description.contains("every 4th case, case 4;"),
         "{description}"
     );
+}
+
+/// Cases without an id (named by position, which a split moves), the same
+/// state twice with different labels, and `from_turn` labels: the halves are
+/// still the whole, case for case, and each case asks the same request in
+/// its half, so a recording found by fingerprint over the whole answers it
+/// there, one recording answering a repeated state in both halves.
+#[test]
+fn cases_without_ids_or_with_a_repeated_state_keep_their_request_in_their_half() {
+    let dir = scratch("split-shapes");
+    let source = dir.join("shapes.jud");
+    std::fs::write(
+        &source,
+        "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: shapes\n  minor: 4\nspec:\n  rubric: handoff\n  cases:\n    - state: [{role: user, text: Can I talk to a person?}]\n      expect: {wants_human: true}\n    - state: [{role: user, text: Can I talk to a person?}]\n      expect: {wants_human: {from_turn: 0}}\n    - id: later\n      state: [{role: user, text: Hi}, {role: user, text: A human please.}]\n      expect: {wants_human: {from_turn: 1}}\n    - state: [{role: user, text: Thanks}]\n      expect: {wants_human: {from_turn: null}}\n    - id: plain\n      state: [{role: user, text: Thanks}]\n      expect: {wants_human: false}\n",
+    )
+    .unwrap();
+    let out_dir = dir.join("out");
+    let out = jud(
+        &[
+            "split",
+            source.to_str().unwrap(),
+            "--every",
+            "2",
+            "--rubric",
+            HANDOFF,
+            "--out",
+            out_dir.to_str().unwrap(),
+        ],
+        "",
+        &[],
+    );
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    let whole = read(&source);
+    let tune = read(&out_dir.join("shapes-tune.jud"));
+    let holdout = read(&out_dir.join("shapes-holdout.jud"));
+    let at = |positions: &[usize]| -> Vec<_> {
+        positions.iter().map(|&i| whole.cases[i].clone()).collect()
+    };
+    assert_eq!(tune.cases, at(&[0, 2, 4]));
+    assert_eq!(holdout.cases, at(&[1, 3]));
+
+    let rubric = Rubric::parse(&std::fs::read_to_string(HANDOFF).unwrap()).unwrap();
+    let asked = |cases: &Cases| -> Vec<String> {
+        cases
+            .cases
+            .iter()
+            .map(|c| request_fingerprint(&c.state, &c.request(&rubric).unwrap()))
+            .collect()
+    };
+    let all = asked(&whole);
+    assert_eq!(all[0], all[1], "the repeated state is one request");
+    assert_eq!(
+        asked(&tune),
+        [all[0].clone(), all[2].clone(), all[4].clone()]
+    );
+    assert_eq!(asked(&holdout), [all[1].clone(), all[3].clone()]);
 }

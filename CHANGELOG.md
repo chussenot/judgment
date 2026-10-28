@@ -6,6 +6,40 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- `jud`'s plain-text escape (`out::plain`), which `jud`'s messages pass
+  through, now neutralises the hidden Unicode characters beyond the
+  control set — bidi overrides and isolates, zero-width characters, the
+  BOM, the line and paragraph separators — and cuts a line at 4096
+  characters with a trailing ellipsis, the cut never landing inside an
+  escape. A recording or a server could previously reorder or hide parts
+  of `jud`'s own output with a right-to-left override.
+- `jud config` and the dry run strip credentials from base-URL spellings
+  the simple `scheme://` split could not place (`https:user:pw@host`,
+  backslashed and triple-slash forms), through the URL parser the client
+  already uses. A property test holds `public_url` to that parser's
+  reading of userinfo, query and fragment.
+
+### Fixed
+
+- `jud eval` warns, as `record` and `tune` already did, when two recording
+  files record the same request, naming both files. Its report no longer
+  depends silently on recording file names.
+- The expected calibration error of answers whose confidence is NaN reads
+  the confidence as zero, the value an unreadable answer already gets,
+  instead of turning the whole figure into NaN.
+- `Response::verify`'s documentation said it walks questions in id order;
+  it walks them in wire order (the order they were added), and now says
+  so.
+- The options a case supplies are asked in the order the document writes
+  them, in every build. The reader took them through a JSON value, whose
+  map is sorted unless serde_json's `preserve_order` is on (only the `mcp`
+  feature turns it on), so the released `jud` binary, built with `cli`,
+  asked them in alphabetical order. An instructions object is the opposite
+  case: its parts carry no order, so they are still sent sorted, and so are
+  the `part_when` names that select them. No fingerprint moves.
+
 ## [0.16.0] - 2026-10-27
 
 The thirty-five findings of the second review pass, fixed. Three of them

@@ -15,18 +15,19 @@
 //! disk.
 
 use std::collections::HashSet;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
 use clap::{Args, ValueHint};
-use judgment::eval::{Recording, canonical, now_rfc3339, request_hash_with};
+use judgment::eval::{Recording, canonical, now_rfc3339, request_hash_with, write_atomically};
 use judgment::jud::{self, recording_to_yaml};
 use judgment::{Assets, Error, Questions, Replay, SystemOne};
 
 use crate::backend::{Backend, Failure};
 use crate::batch::{self, Unit};
-use crate::fsutil::{self, same_file};
+use crate::fsutil::same_file;
 use crate::out::note;
 use crate::recordings;
 
@@ -515,7 +516,7 @@ impl Session<'_> {
         recording.recorded_at = Some(now_rfc3339());
         let text = render(&recording, &planned.questions)?;
         let path = recording_path(self.out, &planned.name);
-        fsutil::write_atomically(&path, &text)
+        write_atomically(&path, |file| file.write_all(text.as_bytes()))
             .map_err(|e| Failure::Backend(format!("cannot write {}: {e}", path.display())))?;
         self.known.add(recording);
         self.tally.recorded += 1;

@@ -9,6 +9,7 @@ pub mod metrics;
 pub mod tuning;
 
 use std::collections::BTreeMap;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -181,25 +182,38 @@ pub fn write_recording(dir: &Path, recording: &Recording) -> Result<PathBuf> {
         path: path.display().to_string(),
         source,
     })?;
-    write_atomically(&path, &(text + "\n")).map_err(|source| Error::Io {
+    write_atomically(&path, |file| {
+        file.write_all(text.as_bytes())?;
+        file.write_all(b"\n")
+    })
+    .map_err(|source| Error::Io {
         path: path.display().to_string(),
         source,
     })?;
     Ok(path)
 }
 
-/// Write `path` so that no reader ever sees half of it: a [`Replay`] opened
-/// over the directory while a [`Recorder`] writes into it, or after a crash
-/// mid-write. The text goes to a temporary file beside it (one file system,
-/// so the rename is atomic), is flushed, then takes the name. The temporary
+/// Write `path` so that no reader ever sees half of it, and a failed write
+/// leaves the file that was there: a [`Replay`] opened over the directory
+/// while a [`Recorder`] writes into it, or after a crash mid-write. `write`
+/// fills a temporary file beside it (one file system, so the rename is
+/// atomic); the file is created exclusively, flushed to disk, then takes the
+/// name, replacing a symlink rather than writing through it. The temporary
 /// name ends in `.tmp`, which a replay skips, and carries the process id and
 /// a counter, so two writers of one request never share it. A failed write
 /// removes its temporary file.
 ///
+/// The one atomic writer of the crate and the `jud` binary, which is why it
+/// is public; `write` is the seam a fault test hooks. `jud split` creates a
+/// file that must not exist yet, which is a different rule and its own code.
+///
 /// [`Replay`]: crate::backend::Replay
 /// [`Recorder`]: crate::backend::Recorder
-fn write_atomically(path: &Path, text: &str) -> std::io::Result<()> {
-    use std::io::Write as _;
+#[doc(hidden)]
+pub fn write_atomically(
+    path: &Path,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> std::io::Result<()> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let name = path.file_name().unwrap_or_default().to_string_lossy();
@@ -208,8 +222,8 @@ fn write_atomically(path: &Path, text: &str) -> std::io::Result<()> {
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
-    let written = std::fs::File::create(&temporary).and_then(|mut file| {
-        file.write_all(text.as_bytes())?;
+    let written = std::fs::File::create_new(&temporary).and_then(|mut file| {
+        write(&mut file)?;
         file.sync_all()
     });
     let renamed = written.and_then(|()| std::fs::rename(&temporary, path));
@@ -942,5 +956,72 @@ mod tests {
         assert_eq!(m.confidence_when_wrong, Some(0.0));
         assert_eq!(m.confidence_when_right, None);
         assert_eq!(m.confusion["billing"]["<rank>"], 1);
+    }
+
+    #[test]
+    fn rfc3339_from_unix_pins_the_epoch_leap_days_and_year_boundaries() {
+        for (secs, want) in [
+            (0, "1970-01-01T00:00:00Z"),
+            (946_684_799, "1999-12-31T23:59:59Z"),
+            (946_684_800, "2000-01-01T00:00:00Z"),
+            (951_782_400, "2000-02-29T00:00:00Z"), // 2000 is a leap year (divisible by 400)
+            (951_868_800, "2000-03-01T00:00:00Z"),
+            (1_709_164_800, "2024-02-29T00:00:00Z"),
+            (4_107_456_000, "2100-02-28T00:00:00Z"), // 2100 is not (divisible by 100 only)
+            (4_107_542_400, "2100-03-01T00:00:00Z"),
+            (253_402_300_799, "9999-12-31T23:59:59Z"),
+        ] {
+            assert_eq!(rfc3339_from_unix(secs), want, "{secs}");
+        }
+    }
+
+    /// A calendar worked out apart from the implementation: walk the years
+    /// and then the months from 1970, no closed-form arithmetic to share a bug.
+    fn calendar_by_walking(secs: u64) -> String {
+        let leap =
+            |y: u64| y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400));
+        let mut days = secs / 86_400;
+        let mut year = 1970;
+        while days >= if leap(year) { 366 } else { 365 } {
+            days -= if leap(year) { 366 } else { 365 };
+            year += 1;
+        }
+        let mut month = 1;
+        for length in [
+            31,
+            if leap(year) { 29 } else { 28 },
+            31,
+            30,
+            31,
+            30,
+            31,
+            31,
+            30,
+            31,
+            30,
+        ] {
+            if days < length {
+                break;
+            }
+            days -= length;
+            month += 1;
+        }
+        let rem = secs % 86_400;
+        format!(
+            "{year:04}-{month:02}-{:02}T{:02}:{:02}:{:02}Z",
+            days + 1,
+            rem / 3600,
+            rem % 3600 / 60,
+            rem % 60
+        )
+    }
+
+    proptest::proptest! {
+        /// Every second from the epoch to the end of year 9999 reads as the
+        /// walked calendar reads it.
+        #[test]
+        fn rfc3339_from_unix_agrees_with_a_walked_calendar(secs in 0_u64..=253_402_300_799) {
+            proptest::prop_assert_eq!(rfc3339_from_unix(secs), calendar_by_walking(secs));
+        }
     }
 }

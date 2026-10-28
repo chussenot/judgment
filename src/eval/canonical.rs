@@ -252,4 +252,93 @@ mod tests {
         let s2: Value = serde_json::from_str(r#"{"b": 2, "a": 1}"#).unwrap();
         assert_eq!(request_fingerprint(&s1, &q), request_fingerprint(&s2, &q));
     }
+
+    /// RFC 8785 Appendix B's table: the IEEE 754 bit pattern and the text
+    /// the RFC says it prints as (the NaN row is an error there, and is not
+    /// a JSON number here either).
+    #[test]
+    fn rfc_8785_appendix_b_numbers() {
+        for (bits, want) in [
+            (0x0000_0000_0000_0000_u64, "0"),
+            (0x8000_0000_0000_0000, "0"),
+            (0x0000_0000_0000_0001, "5e-324"),
+            (0x8000_0000_0000_0001, "-5e-324"),
+            (0x7fef_ffff_ffff_ffff, "1.7976931348623157e+308"),
+            (0xffef_ffff_ffff_ffff, "-1.7976931348623157e+308"),
+            (0x4340_0000_0000_0000, "9007199254740992"),
+            (0xc340_0000_0000_0000, "-9007199254740992"),
+            (0x4430_0000_0000_0000, "295147905179352830000"),
+            (0x44b5_2d02_c7e1_4af5, "9.999999999999997e+22"),
+            (0x44b5_2d02_c7e1_4af6, "1e+23"),
+            (0x44b5_2d02_c7e1_4af7, "1.0000000000000001e+23"),
+            (0x444b_1ae4_d6e2_ef4e, "999999999999999700000"),
+            (0x444b_1ae4_d6e2_ef4f, "999999999999999900000"),
+            (0x444b_1ae4_d6e2_ef50, "1e+21"),
+            (0x3eb0_c6f7_a0b5_ed8c, "9.999999999999997e-7"),
+            (0x3eb0_c6f7_a0b5_ed8d, "0.000001"),
+            (0x41b3_de43_5555_5553, "333333333.3333332"),
+            (0x41b3_de43_5555_5554, "333333333.33333325"),
+            (0x41b3_de43_5555_5555, "333333333.3333333"),
+            (0x41b3_de43_5555_5556, "333333333.3333334"),
+            (0x41b3_de43_5555_5557, "333333333.33333343"),
+            (0xbecb_f647_612f_3696, "-0.0000033333333333333333"),
+        ] {
+            let f = f64::from_bits(bits);
+            assert_eq!(to_string(&json!(f)), want, "{bits:#018x}");
+        }
+    }
+
+    /// The Appendix B row where two shortest digit strings are equally near
+    /// the double (1424953923781206.25): ECMAScript takes the even one, `.2`;
+    /// Rust's shortest formatting takes `.3`, so `ecmascript` disagrees with
+    /// every other RFC 8785 implementation on such ties.
+    #[test]
+    #[ignore = "judgment-f2m (found by judgment-bsz.16.8): ecmascript() prints a shortest-digits tie as .3, the RFC and ECMAScript say .2"]
+    fn rfc_8785_appendix_b_shortest_digit_tie_takes_the_even_digit() {
+        let f = f64::from_bits(0x4314_3ff3_c1cb_0959);
+        assert_eq!(to_string(&json!(f)), "1424953923781206.2");
+    }
+
+    /// RFC 8785 §3.2.2.2: `"` and `\` and the controls are escaped (the five
+    /// with short forms, the rest as lowercase `\u00xx`), every other
+    /// character is written as itself, DEL and the line separators included.
+    #[test]
+    fn strings_escape_as_rfc_8785_says_for_every_ascii_and_the_edge_scalars() {
+        let rule = |c: char| match c {
+            '"' => "\\\"".to_owned(),
+            '\\' => "\\\\".to_owned(),
+            '\u{8}' => "\\b".to_owned(),
+            '\t' => "\\t".to_owned(),
+            '\n' => "\\n".to_owned(),
+            '\u{c}' => "\\f".to_owned(),
+            '\r' => "\\r".to_owned(),
+            c if (c as u32) < 0x20 => format!("\\u{:04x}", c as u32),
+            c => c.to_string(),
+        };
+        let chars: Vec<char> = (0..128_u8)
+            .map(char::from)
+            .chain(['\u{2028}', '\u{2029}', '\u{FFFF}'])
+            .collect();
+        for c in &chars {
+            let want = format!("\"{}\"", rule(*c));
+            assert_eq!(to_string(&Value::String(c.to_string())), want, "{c:?}");
+        }
+        let all: String = chars.iter().collect();
+        let want = format!("\"{}\"", chars.iter().map(|c| rule(*c)).collect::<String>());
+        assert_eq!(to_string(&Value::String(all)), want);
+    }
+
+    proptest::proptest! {
+        /// Whatever finite double is drawn from its bits, the canonical text
+        /// reads back as the same double: nothing is lost in the shortest form.
+        #[test]
+        fn a_canonical_number_reads_back_as_the_same_double(bits in proptest::num::u64::ANY) {
+            let f = f64::from_bits(bits);
+            proptest::prop_assume!(f.is_finite());
+            let text = to_string(&json!(f));
+            let back: f64 = text.parse().unwrap();
+            // Same bits, bar the sign of zero, which prints as `0`.
+            proptest::prop_assert!(back.to_bits() == f.to_bits() || back == 0.0 && f == 0.0, "{}", text);
+        }
+    }
 }

@@ -2,7 +2,7 @@
 title: Internals
 description: The rules the code applies that the rustdoc states only once, with the reason behind each; the client's key check, status classification and error-body reading, the per-call options, the retry loop's edges, the backends, the tolerant decoder, what the response check leaves unchecked, the observer, the recordings and metrics, the .jud reader, and the bounded proofs.
 status: current
-last_reviewed: 2026-10-27
+last_reviewed: 2026-10-28
 tags: [judgment, internals, implementation, decoding, errors, retries, eval, jud, kani]
 ---
 
@@ -98,7 +98,7 @@ flowchart TD
 
 ## Checking the response
 
-`Response::verify` walks the questions in id order, stops at the first failure, is pure, and is public for a response that did not come through a backend. What it deliberately leaves unchecked matters as much as what it checks:
+`Response::verify` walks the questions in wire order (the order they were added, which is the order the model saw), stops at the first failure, is pure, and is public for a response that did not come through a backend. What it deliberately leaves unchecked matters as much as what it checks:
 
 - **Distribution sums.** 0.97 or 1.0002 is rounding, and the API promises no tolerance to check against.
 - **An offered option missing from a Choice's distribution.** It reads as zero through `Choice::probability_of`. The check is for keys the question never offered.
@@ -140,7 +140,7 @@ flowchart LR
 
 **Grading.** A Noul is `yes` at a probability of 0.5 or more, with `max(p, 1 − p)` standing in for the confidence the wire does not send; a Choice is graded by its option keys and a Score by its level indices as strings, the most probable level predicted. An `Answer::Unknown` is graded as a miss rather than dropped, because dropping it would raise the accuracy of a model whose answers could not be read: it predicts `<kind>`, which no option key equals, with probability zero on the label and confidence zero. A label outside the option set adds the missing `(1 − 0)²` term to that judgment's Brier; unlabelled judgments count in nothing.
 
-**Metrics.** The Brier score is the multi-class sum `Σ_i (p_i − y_i)²` against the one-hot truth, 0 perfect and 2 full confidence in the wrong option (Brier 1950); other tools halve it or report the binary form. The expected calibration error uses ten equal-width bins over the clamped confidence, `Σ_b (n_b / n) · |mean confidence_b − accuracy_b|` over the non-empty bins (Naeini, Cooper and Hauskrecht 2015). The accuracy interval is Wilson's (1927), chosen over the normal approximation because it stays inside `[0, 1]` and does not collapse to a point at 0 of 3 or 3 of 3; it assumes independent observations. Percentiles are nearest-rank. The papers are cited in [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md#the-metrics).
+**Metrics.** The Brier score is the multi-class sum `Σ_i (p_i − y_i)²` against the one-hot truth, 0 perfect and 2 full confidence in the wrong option (Brier 1950); other tools halve it or report the binary form. The expected calibration error uses ten equal-width bins over the clamped confidence, a NaN read as zero, `Σ_b (n_b / n) · |mean confidence_b − accuracy_b|` over the non-empty bins (Naeini, Cooper and Hauskrecht 2015). The accuracy interval is Wilson's (1927), chosen over the normal approximation because it stays inside `[0, 1]` and does not collapse to a point at 0 of 3 or 3 of 3; it assumes independent observations. Percentiles are nearest-rank. The papers are cited in [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md#the-metrics).
 
 **Tuning.** A threshold is a property of the model, the questions and the data together, so it is read off a table and the rule that picks from the table is printed with the result. The threshold sweep steps 0.05 to 0.95, predicts yes at `p_yes ≥ threshold`, and `best_threshold` takes the best F1 with ties to the lowest threshold, because a lower threshold says yes more often and a tie means the extra yeses cost nothing. The gate table steps a confidence bar from 0 to 0.95, reporting coverage and the accuracy among the covered; `lowest_bar` takes the lowest bar reaching a target accuracy over a minimum of covered judgments, lowest because every step up hands more work to a person. The level sweep reads a Score the way a rubric gate does, by the nearest level to the probability-weighted position rather than the most probable level, which differ on a spread distribution.
 

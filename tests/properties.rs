@@ -8,7 +8,12 @@
 //!   were written in, names the same value as its canonical text does, and
 //!   changes when any leaf does.
 //! - [`Response::verify`] accepts a response that fits its questions and
-//!   refuses each way of not fitting with the error that names it.
+//!   refuses each way of not fitting with the error that names it, the
+//!   first in wire order; after it, every handle from the same questions
+//!   reads through [`Response::get`].
+//! - Decoding a response is total, keeps every probability and confidence
+//!   in `[0, 1]`, takes the kind from the exact `type` sent, and writes back
+//!   to what it read.
 //! - [`Questions`] holds its limits at their edges: 255 options, 2 to 10
 //!   levels, no empty and no repeated id.
 //!
@@ -21,7 +26,10 @@
 use std::collections::BTreeMap;
 
 use judgment::eval::canonical;
-use judgment::{Answer, BoxEdges, Confidence, Error, Probability, Questions, Response, Usage};
+use judgment::{
+    Answer, BoundingBox, BoxEdges, Choice, Confidence, Error, Noul, Options, Probability,
+    Questions, Response, Score, Usage, options,
+};
 use proptest::prelude::*;
 use proptest::test_runner::FileFailurePersistence;
 use serde_json::{Value, json};
@@ -35,6 +43,9 @@ fn config() -> ProptestConfig {
         failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
             "proptest-regressions/properties.txt",
         ))),
+        // `two_boxes_that_do_not_touch_have_no_overlap` rejects about half its
+        // cases; the default 1024 stops it near 2000 under `PROPTEST_CASES`.
+        max_global_rejects: 1 << 16,
         ..ProptestConfig::default()
     }
 }
@@ -420,7 +431,8 @@ fn choice_spec() -> impl Strategy<Value = Spec> {
 }
 
 fn score_spec() -> impl Strategy<Value = Spec> {
-    prop::collection::vec((level(), any::<bool>()), 2..=6)
+    // Up to the limit of ten, so `"10"` and `"2"` sort apart as text.
+    prop::collection::vec((level(), any::<bool>()), 2..=10)
         .prop_flat_map(|levels| (Just(levels), unit(), unit(), unit()))
         .prop_map(|(levels, at, p, confidence)| Spec::Score {
             echo_as_text: levels.iter().map(|(_, text)| *text).collect(),
@@ -503,7 +515,7 @@ fn conf(c: f64) -> Confidence {
     Confidence::new(c).unwrap()
 }
 
-/// The answer that fits `spec`'s question. A Score has at most six levels,
+/// The answer that fits `spec`'s question. A Score has at most ten levels,
 /// so its top index is exact as a float.
 #[allow(clippy::cast_precision_loss)]
 fn fitting_answer(spec: &Spec) -> Answer {
@@ -689,6 +701,424 @@ proptest! {
                 prop_assert_eq!(actual, actual_kind);
             }
             other => prop_assert!(false, "{other:?}"),
+        }
+    }
+}
+
+options! {
+    /// The options a generated three-option Choice offers (`option(0..3)`),
+    /// so a typed handle reads exactly those questions.
+    enum Three {
+        O0 = "o0" => None,
+        O1 = "o1" => "the second",
+        O2 = "o2" => None,
+    }
+}
+
+/// The `extra` map every known answer carries.
+fn extra_of(answer: &mut Answer) -> &mut BTreeMap<String, Value> {
+    match answer {
+        Answer::Noul { extra, .. }
+        | Answer::Choice { extra, .. }
+        | Answer::Score { extra, .. }
+        | Answer::Box { extra, .. } => extra,
+        other => panic!("not a known answer: {other:?}"),
+    }
+}
+
+/// What `src/answer.rs` allows a score past either end of its scale
+/// (`SCORE_EPSILON`, private there).
+const SCORE_MARGIN: f64 = 1e-9;
+
+proptest! {
+#![proptest_config(config())]
+    /// The guarantee `Response::get` documents: after `verify`, a handle
+    /// from the same questions cannot fail, whatever else the answer holds.
+    #[test]
+    fn after_verify_every_handle_from_the_questions_reads(
+        specs in prop::collection::vec(any_spec(), 1..6),
+        thin in prop::collection::vec(any::<bool>(), 6),
+    ) {
+        let questions = questions_for(&specs);
+        let mut response = response_for(&specs);
+        for (i, answer) in response.answers.values_mut().enumerate() {
+            // An undocumented field, as Laya's `action`, and a Choice
+            // distribution missing every option but the chosen one.
+            extra_of(answer).insert("action".to_owned(), json!({ "n": i }));
+            if let (true, Answer::Choice { choice, probabilities, .. }) = (thin[i], &mut *answer) {
+                probabilities.retain(|key, _| key == choice);
+            }
+        }
+        prop_assert!(response.verify(&questions).is_ok());
+        #[allow(clippy::cast_precision_loss)]
+        for (i, spec) in specs.iter().enumerate() {
+            let id = id(i);
+            match spec {
+                Spec::Noul { p } => {
+                    let read = response.get(&questions.handle::<Noul>(&id).unwrap()).unwrap();
+                    prop_assert_eq!(read.yes.value().to_bits(), p.to_bits());
+                }
+                Spec::Choice { options, pick, .. } => {
+                    let read = response.get(&questions.handle::<Choice<String>>(&id).unwrap()).unwrap();
+                    prop_assert_eq!(read.chosen, option(*pick));
+                    // A typed handle exists exactly when the enum is the options offered.
+                    let typed = questions.handle::<Choice<Three>>(&id);
+                    prop_assert_eq!(typed.is_some(), *options == 3);
+                    if let Some(handle) = typed {
+                        let read = response.get(&handle).unwrap();
+                        prop_assert_eq!(read.chosen.key(), option(*pick));
+                        prop_assert_eq!(read.probabilities.len(), 3);
+                    }
+                }
+                Spec::Score { levels, at, .. } => {
+                    let read = response.get(&questions.handle::<Score>(&id).unwrap()).unwrap();
+                    prop_assert_eq!(read.levels.len(), levels.len());
+                    prop_assert_eq!(read.probabilities.len(), levels.len());
+                    // In level order, `"10"` after `"9"`: each label is its level's.
+                    for (label, level) in read.levels.iter().zip(levels) {
+                        match level {
+                            Value::String(text) => prop_assert_eq!(label, text),
+                            structured => prop_assert_eq!(label, &structured.to_string()),
+                        }
+                    }
+                    prop_assert_eq!(read.value.to_bits(), (at * (levels.len() - 1) as f64).to_bits());
+                }
+                Spec::Box { .. } => {
+                    response.get(&questions.handle::<BoundingBox>(&id).unwrap()).unwrap();
+                }
+            }
+        }
+    }
+
+    /// With several answers wrong, the one reported is the first in wire
+    /// order (the order the questions were added), not the lowest id: the
+    /// ids here are added shuffled.
+    #[test]
+    fn verify_reports_the_first_failure_in_wire_order(
+        specs in prop::collection::vec(any_spec(), 2..6),
+        names in Just((0..6).collect::<Vec<usize>>()).prop_shuffle(),
+        broken in prop::collection::vec(prop_oneof![Just(None), Just(Some(true)), Just(Some(false))], 6),
+        forced in any::<usize>(),
+    ) {
+        let base = questions_for(&specs);
+        let fitting = response_for(&specs);
+        let mut broken = broken;
+        // At least one answer is wrong.
+        broken[forced % specs.len()].get_or_insert(true);
+        let mut questions = Questions::new();
+        let mut response = fitting.clone();
+        response.answers.clear();
+        let mut expected = None;
+        for (i, (old, question)) in base.iter().enumerate() {
+            let name = format!("q{}", names[i]);
+            questions.add(name.clone(), question.clone()).unwrap();
+            match broken[i] {
+                None => {
+                    response.answers.insert(name, fitting.answers[old].clone());
+                }
+                Some(missing) => {
+                    expected.get_or_insert((name.clone(), missing));
+                    if !missing {
+                        let wrong = if matches!(question, judgment::Question::Noul { .. }) {
+                            fitting_answer(&Spec::Box { top: 0.1, left: 0.1 })
+                        } else {
+                            fitting_answer(&Spec::Noul { p: 0.5 })
+                        };
+                        response.answers.insert(name, wrong);
+                    }
+                }
+            }
+        }
+        let (first, missing) = expected.unwrap();
+        match response.verify(&questions) {
+            Err(Error::MissingAnswer { id, .. }) if missing => prop_assert_eq!(id, first),
+            Err(Error::AnswerTypeMismatch { id, .. }) if !missing => prop_assert_eq!(id, first),
+            other => prop_assert!(false, "expected {first} ({missing}): {other:?}"),
+        }
+    }
+
+    /// The offered set is matched by exact string: a key one space, one
+    /// case or one Unicode normalisation away from an offered option is not
+    /// it. The oracle is membership, so a mutation that lands on another
+    /// offered option (or changes nothing) must verify.
+    #[test]
+    fn an_option_near_an_offered_one_is_offered_only_if_it_is_one(
+        offered in prop::collection::btree_set("(?:[a-z]|é|e\u{301}|ß){1,5}", 2..5),
+        which in any::<usize>(),
+        how in 0u8..6,
+        in_the_distribution in any::<bool>(),
+    ) {
+        let offered: Vec<String> = offered.into_iter().collect();
+        let near = &offered[which % offered.len()];
+        let mutated = match how {
+            0 => format!(" {near}"),
+            1 => format!("{near}\u{a0}"),
+            2 => near.to_uppercase(),
+            3 => near.replace('é', "e\u{301}"),
+            4 => near.replace("e\u{301}", "é"),
+            _ => near.replace('ß', "ss"),
+        };
+        let mut questions = Questions::new();
+        questions
+            .dynamic_choice("c", "?", offered.iter().map(|k| (k.clone(), None)))
+            .unwrap();
+        let (choice, key) = if in_the_distribution {
+            (offered[0].clone(), mutated.clone())
+        } else {
+            (mutated.clone(), offered[0].clone())
+        };
+        let response = Response {
+            model: "jev-test".to_owned(),
+            answers: BTreeMap::from([(
+                "c".to_owned(),
+                Answer::Choice {
+                    choice,
+                    probabilities: BTreeMap::from([(key, prob(1.0))]),
+                    confidence: conf(1.0),
+                    extra: BTreeMap::new(),
+                },
+            )]),
+            usage: Usage::default(),
+            request_id: None,
+            extra: BTreeMap::new(),
+        };
+        match response.verify(&questions) {
+            Ok(()) => prop_assert!(offered.contains(&mutated), "{mutated:?} is not offered"),
+            Err(Error::UnknownOption { option, .. }) => {
+                prop_assert!(!offered.contains(&mutated), "{mutated:?} is offered");
+                prop_assert_eq!(option, mutated);
+            }
+            Err(other) => prop_assert!(false, "{other:?}"),
+        }
+    }
+
+    /// A Score is on its scale up to the margin past either end and off it
+    /// beyond, at every number of levels; a probability key is a level only
+    /// as the exact decimal index.
+    #[test]
+    fn a_score_is_held_to_its_scale_and_its_exact_level_keys(
+        (specs, at) in specs_with(score_spec()),
+        top_end in any::<bool>(),
+        offset in prop::sample::select(vec![0.0, 0.5e-9, -0.5e-9, 2e-9, -2e-9, 1e-3, -1e-3]),
+        key in 0usize..7,
+        level in any::<usize>(),
+    ) {
+        let questions = questions_for(&specs);
+        let mut response = response_for(&specs);
+        let Some(Answer::Score { score, probabilities, .. }) = response.answers.get_mut(&id(at)) else {
+            panic!("question {at} is a Score");
+        };
+        let n = probabilities.len();
+        #[allow(clippy::cast_precision_loss)]
+        let top = (n - 1) as f64;
+        let value = if top_end { top + offset } else { offset };
+        *score = value;
+        let outward = if top_end { offset } else { -offset };
+        let on_scale = outward <= 0.0 || outward < SCORE_MARGIN;
+        prop_assert_eq!(response.verify(&questions).is_ok(), on_scale, "{} on 0..={}", value, top);
+
+        // Back on the scale, then a key that parses as a level and is not one.
+        let Some(Answer::Score { score, probabilities, .. }) = response.answers.get_mut(&id(at)) else {
+            unreachable!();
+        };
+        *score = 0.0;
+        let i = level % n;
+        let off = match key {
+            0 => format!("0{i}"),
+            1 => format!("+{i}"),
+            2 => format!(" {i}"),
+            3 => format!("{i} "),
+            4 => format!("{i}.0"),
+            5 => format!("{i}\u{0}"),
+            _ => n.to_string(),
+        };
+        probabilities.insert(off.clone(), prob(0.0));
+        match response.verify(&questions) {
+            Err(Error::InvalidAnswer { id: found, reason, .. }) => {
+                prop_assert_eq!(found, id(at));
+                prop_assert!(reason.starts_with("probability key"), "{}", reason);
+            }
+            other => prop_assert!(false, "{off:?}: {other:?}"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Decoding a response
+// ---------------------------------------------------------------------------
+
+/// Strings a server could send where a kind or a field name goes, the
+/// documented ones and their near misses among them.
+fn wire_word() -> impl Strategy<Value = String> {
+    prop_oneof![
+        prop::sample::select(vec![
+            "noul",
+            "choice",
+            "score",
+            "box",
+            "Choice",
+            "NOUL",
+            " noul",
+            "rank",
+            "type",
+            "probabilities",
+            "confidence",
+            "legend",
+            "top",
+            "bottom",
+            "left",
+            "right",
+            "0",
+            "1",
+            "01",
+            "model",
+            "answers",
+            "usage",
+            "input_tokens",
+            "output_tokens",
+            "cost",
+            "request_id",
+            "id",
+            "action",
+        ])
+        .prop_map(str::to_owned),
+        "\\PC{0,4}",
+    ]
+}
+
+/// A JSON value to depth three, numbers biased to the unit interval and its
+/// edges, keys from [`wire_word`].
+fn wire_value() -> impl Strategy<Value = Value> {
+    let leaf = prop_oneof![
+        1 => Just(Value::Null),
+        1 => any::<bool>().prop_map(Value::from),
+        1 => any::<i64>().prop_map(Value::from),
+        1 => any::<u64>().prop_map(Value::from),
+        3 => any_float().prop_filter_map("not a JSON number", |f| {
+            serde_json::Number::from_f64(f).map(Value::Number)
+        }),
+        1 => wire_word().prop_map(Value::from),
+    ];
+    leaf.prop_recursive(3, 24, 5, |inner| {
+        prop_oneof![
+            prop::collection::vec(inner.clone(), 0..4).prop_map(Value::from),
+            prop::collection::btree_map(wire_word(), inner, 0..5)
+                .prop_map(|m| Value::Object(m.into_iter().collect())),
+        ]
+    })
+}
+
+/// An answer-shaped object: one that fits a question, then as often as not
+/// a field set to anything (the `type` among them: a kind, a near miss or
+/// not a string), a field dropped, a field added.
+fn wire_answer() -> impl Strategy<Value = Value> {
+    (
+        any_spec(),
+        prop::option::of((
+            prop_oneof![Just("type".to_owned()), wire_word(),],
+            prop_oneof![
+                2 => wire_value(),
+                1 => prop::sample::select(vec![Value::Null, json!(5), json!("Choice")]),
+            ],
+        )),
+        prop::option::of(wire_word()),
+        prop::option::of((wire_word(), wire_value())),
+    )
+        .prop_map(|(spec, set, dropped, added)| {
+            let mut answer = serde_json::to_value(fitting_answer(&spec)).unwrap();
+            let fields = answer.as_object_mut().unwrap();
+            if let Some((key, value)) = set {
+                fields.insert(key, value);
+            }
+            if let Some(key) = dropped {
+                fields.remove(&key);
+            }
+            if let Some((key, value)) = added {
+                fields.entry(key).or_insert(value);
+            }
+            answer
+        })
+}
+
+/// A response-shaped object over [`wire_answer`]s, or any value at all.
+fn wire_response() -> impl Strategy<Value = Value> {
+    prop_oneof![
+        4 => (
+            prop::collection::btree_map(wire_word(), wire_value(), 0..4),
+            prop::collection::btree_map("q[0-3]", wire_answer(), 0..4),
+            any::<bool>(),
+        )
+            .prop_map(|(mut top, answers, named)| {
+                if named {
+                    top.insert("model".to_owned(), json!("jev-test"));
+                }
+                top.insert("answers".to_owned(), Value::Object(answers.into_iter().collect()));
+                Value::Object(top.into_iter().collect())
+            }),
+        1 => wire_value(),
+    ]
+}
+
+/// Every probability and confidence `answer` holds, as numbers.
+fn unit_values(answer: &Answer) -> Vec<f64> {
+    match answer {
+        Answer::Noul { noul, .. } => vec![noul.value()],
+        Answer::Choice {
+            probabilities,
+            confidence,
+            ..
+        }
+        | Answer::Score {
+            probabilities,
+            confidence,
+            ..
+        } => probabilities
+            .values()
+            .map(|p| p.value())
+            .chain([confidence.value()])
+            .collect(),
+        Answer::Box { confidence, .. } => confidence.iter().map(|c| c.value()).collect(),
+        _ => Vec::new(),
+    }
+}
+
+proptest! {
+#![proptest_config(config())]
+    /// Decoding is total (a value or an error, never a panic), a decoded
+    /// probability or confidence is in `[0, 1]`, the kind is the `type` sent
+    /// exactly (a near miss is an unknown kind kept as it came, a `type`
+    /// that is not a string an error), and what decodes writes back to
+    /// itself.
+    #[test]
+    fn decoding_is_total_keeps_the_unit_interval_and_the_kind_sent(raw in wire_response()) {
+        // Each answer alone, so one that fails does not hide the others.
+        let sent_answers = raw.get("answers").and_then(Value::as_object).cloned().unwrap_or_default();
+        let mut decoded = BTreeMap::new();
+        for (id, sent) in &sent_answers {
+            let Ok(answer) = serde_json::from_str::<Answer>(&sent.to_string()) else {
+                continue;
+            };
+            for x in unit_values(&answer) {
+                prop_assert!(in_unit_interval(x), "{id}: {x}");
+            }
+            match sent["type"].as_str() {
+                Some(kind @ ("noul" | "choice" | "score" | "box")) => {
+                    prop_assert_eq!(answer.kind(), kind);
+                    // The tag is the variant's, never a stray field written back twice.
+                    prop_assert!(!extra_of(&mut answer.clone()).contains_key("type"));
+                }
+                Some(_) => prop_assert_eq!(&answer, &Answer::Unknown(sent.clone())),
+                None => prop_assert!(false, "{id} decoded without a string type: {sent}"),
+            }
+            let again = serde_json::from_str::<Answer>(&serde_json::to_string(&answer).unwrap());
+            prop_assert_eq!(again.unwrap(), answer.clone());
+            decoded.insert(id.clone(), answer);
+        }
+        if let Ok(response) = serde_json::from_str::<Response>(&raw.to_string()) {
+            // A response holds its answers as each decodes alone, and writes back to itself.
+            prop_assert_eq!(&response.answers, &decoded);
+            let again = serde_json::from_str::<Response>(&serde_json::to_string(&response).unwrap());
+            prop_assert_eq!(again.unwrap(), response);
         }
     }
 }

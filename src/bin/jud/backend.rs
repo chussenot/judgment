@@ -203,11 +203,40 @@ impl Backend {
 /// message: without the userinfo (`https://user:token@host/`), the query and
 /// the fragment, which can carry a credential and which a recording that is
 /// meant to be committed must not. A string that is not a URL is returned
-/// as it is.
+/// as it is; one the split below cannot place (no `://`, as `https:user:pw@host`,
+/// or extra slashes after it) goes through the URL parser, which clears the
+/// parts — and one the parser refuses too still has its authority stripped
+/// by hand, so no spelling keeps a credential by being malformed enough.
 pub(crate) fn public_url(url: &str) -> String {
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return url.to_owned();
+    // Extra slashes (`https:///user@host`) move the authority, so they go to the parser too.
+    let split = url
+        .split_once("://")
+        .filter(|(_, rest)| !rest.starts_with(['/', '\\']));
+    let Some((scheme, rest)) = split else {
+        let Ok(mut parsed) = reqwest::Url::parse(url) else {
+            // The parser refused (a bad port, a bad host, stray slashes with
+            // garbage after them). Strip by hand what the parser would have:
+            // keep less, never more, of a string that held a `://`.
+            return match url.split_once("://") {
+                Some((scheme, rest)) => {
+                    let rest = rest.trim_start_matches(['/', '\\']);
+                    strip_authority(scheme, rest)
+                }
+                None => url.to_owned(),
+            };
+        };
+        let _ = parsed.set_username("");
+        let _ = parsed.set_password(None);
+        parsed.set_query(None);
+        parsed.set_fragment(None);
+        return parsed.into();
     };
+    strip_authority(scheme, rest)
+}
+
+/// `scheme://host` + path with the userinfo, query and fragment dropped, by
+/// text alone: the fallback for what the URL parser cannot read.
+fn strip_authority(scheme: &str, rest: &str) -> String {
     let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let (authority, tail) = rest.split_at(end);
     let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
@@ -233,4 +262,96 @@ mod tests {
         assert_eq!(public_url("http://h/?a=b"), "http://h/");
         assert_eq!(public_url("not a url"), "not a url");
     }
+
+    /// What `reqwest::Url` (the oracle) sees as a credential in `url`, and
+    /// whether `public_url` left any of it in.
+    fn leaks(url: &str) -> Vec<String> {
+        let out = public_url(url);
+        let Ok(u) = reqwest::Url::parse(url) else {
+            return Vec::new();
+        };
+        let mut secrets = vec![
+            u.username(),
+            u.password().unwrap_or(""),
+            u.query().unwrap_or(""),
+            u.fragment().unwrap_or(""),
+        ];
+        secrets.retain(|s| !s.is_empty());
+        secrets
+            .into_iter()
+            .filter(|s| out.contains(s))
+            .map(|s| format!("{s:?} left in {out:?}"))
+            .collect()
+    }
+
+    #[test]
+    fn every_spelling_the_oracle_reads_as_a_credential_is_stripped() {
+        for url in [
+            "https://SECRETU:SECRETP@h/v1?k=SECRETQ#SECRETF",
+            "https:SECRETU:SECRETP@h/v1",
+            "https:/SECRETU:SECRETP@h/v1",
+            "https:\\\\SECRETU:SECRETP@h\\v1",
+            "https://SECRETU:SECRETP@[::1]:8080/v1",
+            "https://SECRETU@[2001:db8::1]/v1?SECRETQ",
+            "https://h?SECRETQ",
+            "https://h#SECRETF",
+            "https://h\\x?SECRETQ",
+            "https://a@SECRETU:SECRETP@h/v1",
+            "https://SECRETU:SECRETP@h:80",
+            "HTTPS://SECRETU:SECRETP@h/",
+        ] {
+            assert_eq!(leaks(url), Vec::<String>::new(), "{url}");
+        }
+    }
+
+    #[test]
+    fn a_string_the_oracle_refuses_still_loses_its_userinfo() {
+        for url in [
+            "https://SECRETU:SECRETP@bad host/v1",
+            "https://SECRETU:SECRETP@h:99999/v1",
+            "https://SECRETU:SECRETP@[::1/v1",
+            "https://SECRETU:SECRETP@h<>/v1?SECRETQ",
+            // Leading slashes move the authority AND the parser refuses the
+            // remainder: the fallback still strips by hand.
+            "https://\\SECRETU:SECRETP@h:99999/v1",
+            "https:///SECRETU:SECRETP@h:99999/v1?SECRETQ",
+        ] {
+            assert!(reqwest::Url::parse(url).is_err(), "{url} parses");
+            let out = public_url(url);
+            assert!(!out.contains("SECRET"), "{url} -> {out}");
+        }
+    }
+
+    use proptest::prelude::*;
+
+    proptest! {
+    #![proptest_config(ProptestConfig {
+                failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Direct(
+                    "proptest-regressions/jud-backend.txt",
+                ))),
+                ..ProptestConfig::default()
+            })]
+            /// Any mix of the separators a URL has, around marked secrets: what
+            /// the oracle reads as userinfo, query or fragment is gone from the
+            /// output; and a `://` string it cannot parse loses its `userinfo@`.
+                    #[test]
+            fn public_url_never_leaks_what_the_oracle_calls_a_credential(
+                scheme in prop::sample::select(vec!["https://", "https:", "https:/", "http:\\\\", "HTTP://", "https:///"]),
+                user in prop::sample::select(vec!["", "SECRETU@", "SECRETU:SECRETP@", "a@SECRETU:SECRETP@"]),
+                host in prop::sample::select(vec!["h", "h:8080", "[::1]:1", "[2001:db8::1]", "h:99999", "bad host", "h<>"]),
+                path in prop::sample::select(vec!["", "/", "/v1", "\\v1", "/a:b@c"]),
+                query in prop::sample::select(vec!["", "?SECRETQ", "?k=SECRETQ#SECRETF", "#SECRETF", "?#"]),
+            ) {
+                let url = format!("{scheme}{user}{host}{path}{query}");
+                let out = public_url(&url);
+                if reqwest::Url::parse(&url).is_ok() {
+                    prop_assert_eq!(leaks(&url), Vec::<String>::new());
+                } else if scheme == "https://" || scheme == "HTTP://" {
+                    // ponytail: an unparseable string the split cannot place (no
+                    // `://`, extra slashes) is returned as it is; callers pass the
+                    // base URL the client already parsed, so it never arrives.
+                    prop_assert!(!out.contains("SECRETU"), "{} -> {}", url, out);
+                }
+            }
+        }
 }

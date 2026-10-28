@@ -53,9 +53,15 @@
 //!   refuses it, as does a request with no questions. Numeric instructions,
 //!   a boolean Noul criterion and a numeric Score level are refused by the
 //!   builder as by the schema, which the same test pins.
+//!   `what_the_builders_accept_the_schema_accepts` generates builder
+//!   inputs and holds everything the builders keep to the closed schema,
+//!   with these gaps (an empty set, a state that is not text, an object or
+//!   an array) as its whole exception list.
 //! * `what_the_builder_refuses_and_the_schema_allows`: the builder follows
 //!   the HTTP API reference page (at most 255 options, 2 to 10 levels); the
-//!   schema says only `minItems: 1` for levels and nothing about options.
+//!   schema has since caught up (`maxProperties: 255` on a Choice's
+//!   criteria, `minItems: 1`/`maxItems: 10` on a Score's), and the test
+//!   keeps the cases where the two still part.
 //! * `what_the_crate_decodes_differently_from_the_schema`: the schema
 //!   types probabilities as bare numbers and counts as bare integers, so the
 //!   crate refuses values it allows; and the crate tolerates what the schema
@@ -68,8 +74,8 @@
 //! the discriminator mappings with the crate's kinds instead, so a document
 //! that adds a kind fails there.
 //!
-//! Three tests drive the client over wiremock and need the `http` feature;
-//! the other nine build and run under `--no-default-features`, which is why
+//! Four tests drive the client over wiremock and need the `http` feature;
+//! the other eleven build and run under `--no-default-features`, which is why
 //! request bodies there are assembled with `json!` rather than through
 //! `judgment::Request` (defined in the client module).
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::too_many_lines)]
@@ -80,8 +86,11 @@ use std::sync::LazyLock;
 
 use judgment::eval::Recording;
 use judgment::{
-    Answer, Error, Fake, NoulCriteria, Question, Questions, Response, SystemOne, Usage, options,
+    Answer, Error, Fake, NoulCriteria, Options, Question, Questions, Response, SystemOne, Usage,
+    options,
 };
+use proptest::prelude::*;
+use proptest::test_runner::FileFailurePersistence;
 use serde_json::{Map, Value, json};
 
 #[cfg(feature = "http")]
@@ -1146,6 +1155,203 @@ fn what_the_builder_refuses_and_the_schema_allows() {
         "/questions/q",
         "a Score of 0 levels",
     );
+}
+
+/// Any value a builder argument can be turned into, scalars included.
+fn builder_value() -> impl Strategy<Value = Value> {
+    let leaf = prop_oneof![
+        Just(Value::Null),
+        any::<bool>().prop_map(Value::from),
+        any::<i32>().prop_map(Value::from),
+        (-1e3f64..1e3).prop_map(Value::from),
+        "\\PC{0,6}".prop_map(Value::from),
+    ];
+    leaf.prop_recursive(2, 8, 3, |inner| {
+        prop_oneof![
+            prop::collection::vec(inner.clone(), 0..3).prop_map(Value::from),
+            prop::collection::btree_map("[a-z]{1,3}", inner, 0..3)
+                .prop_map(|m| Value::Object(m.into_iter().collect())),
+        ]
+    })
+}
+
+/// What one builder call is given.
+#[derive(Debug, Clone)]
+enum Asked {
+    Noul(Value, Option<(Option<Value>, Option<Value>)>),
+    Choice(Value, Vec<(String, Value)>),
+    Score(Value, Vec<Value>),
+    Box(Value),
+}
+
+fn asked() -> impl Strategy<Value = Asked> {
+    let side = || prop::option::of(builder_value());
+    prop_oneof![
+        (builder_value(), prop::option::of((side(), side()))).prop_map(|(i, c)| Asked::Noul(i, c)),
+        (
+            builder_value(),
+            // Mostly two or more, mostly described by text or nothing.
+            prop::collection::vec(
+                (
+                    "\\PC{1,3}",
+                    prop_oneof![
+                        Just(Value::Null),
+                        "\\PC{0,6}".prop_map(Value::from),
+                        builder_value()
+                    ]
+                ),
+                1..6
+            )
+        )
+            .prop_map(|(i, o)| Asked::Choice(i, o)),
+        (
+            builder_value(),
+            prop::collection::vec(builder_value(), 0..12)
+        )
+            .prop_map(|(i, l)| Asked::Score(i, l)),
+        builder_value().prop_map(Asked::Box),
+    ]
+}
+
+/// The request schema with the request components closed, compiled once.
+static STRICT_REQUEST: LazyLock<jsonschema::Validator> =
+    LazyLock::new(|| strict_validator(&request_schema()));
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
+            "proptest-regressions/contract.txt",
+        ))),
+        ..ProptestConfig::default()
+    })]
+    /// Whatever the builders accept goes out as a request the closed schema
+    /// validates, except for the gaps pinned by
+    /// `what_the_crate_sends_and_the_schema_refuses`, the whole list: an
+    /// empty question set, and a state that is not text, an object or an
+    /// array (null, a number, a boolean: the client takes any `Serialize`).
+    #[test]
+    fn what_the_builders_accept_the_schema_accepts(
+        calls in prop::collection::vec((prop_oneof![4 => "\\PC{1,3}", 1 => Just(String::new())], asked()), 0..5),
+        state in prop_oneof![
+            builder_value(),
+            Just(json!("text")),
+            Just(json!({ "message": "Please help." })),
+        ],
+    ) {
+        let mut questions = Questions::new();
+        for (id, asked) in calls {
+            // A refusal is the builder's to make; only what it keeps goes out.
+            let _ = match asked {
+                Asked::Noul(i, c) => questions
+                    .noul(id, i, c.map(|(yes, no)| NoulCriteria { yes, no }))
+                    .map(drop),
+                Asked::Choice(i, o) => questions.add(
+                    id,
+                    Question::Choice { instructions: i, criteria: o.into_iter().collect() },
+                ),
+                Asked::Score(i, l) => questions.score(id, i, l).map(drop),
+                Asked::Box(i) => questions.r#box(id, i).map(drop),
+            };
+        }
+        let gap = questions.is_empty() || !(state.is_string() || state.is_object() || state.is_array());
+        let body = body(state, "jev-latest", &questions);
+        let failures = failures_of(&STRICT_REQUEST, &body);
+        prop_assert_eq!(failures.is_empty(), !gap, "{}\n{:#}", listed(&failures), body);
+    }
+}
+
+/// `options!` is a Choice built by hand: each key reads back to its
+/// variant, the typed and the dynamic question serialise byte for byte
+/// alike, and every variant a Fake answers comes back as itself.
+#[tokio::test]
+async fn a_typed_choice_is_the_same_options_built_by_hand() {
+    let mut typed = Questions::new();
+    let handle = typed
+        .choice::<Tone>("tone", "What is the tone of `message`?")
+        .unwrap();
+    let mut by_hand = Questions::new();
+    by_hand
+        .dynamic_choice(
+            "tone",
+            "What is the tone of `message`?",
+            Tone::ALL
+                .iter()
+                .map(|o| (o.key().to_owned(), o.describe().map(str::to_owned))),
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::to_string(&typed).unwrap(),
+        serde_json::to_string(&by_hand).unwrap()
+    );
+    for tone in Tone::ALL {
+        assert_eq!(Tone::from_key(tone.key()), Some(*tone));
+        let response = Fake::new()
+            .choice("tone", [(tone.key(), 0.9)], 0.8)
+            .unwrap()
+            .answer(&json!("text"), "jev-latest", &typed)
+            .await
+            .unwrap();
+        assert_eq!(response.get(&handle).unwrap().chosen, *tone);
+    }
+}
+
+/// A body that is not UTF-8 is read with each bad sequence as U+FFFD, so an
+/// option key carrying one can match an offered option only if that option
+/// holds U+FFFD itself: no near miss (the key without the bytes, read as
+/// Latin-1, decomposed, or read as the overlong character) fits. That one
+/// edge, a repaired key fitting an option written with U+FFFD, is pinned as
+/// accepted.
+#[cfg(feature = "http")]
+#[tokio::test]
+async fn invalid_utf8_in_an_option_key_fits_only_an_option_holding_u_fffd() {
+    let server = MockServer::start().await;
+    let client = Client::builder()
+        .api_key("test-key")
+        .base_url(server.uri())
+        .retry(RetryPolicy::none())
+        .build()
+        .unwrap();
+    let template = r#"{"model":"jev-1.13.0","answers":{"c":{"type":"choice","choice":"KEY","probabilities":{"KEY":1.0},"confidence":1.0}},"usage":{"input_tokens":1,"output_tokens":1}}"#;
+    // Latin-1 `é`, a lone continuation byte, a cut sequence, an overlong `/`.
+    for bad in [&b"\xE9"[..], b"\x80", b"\xE2\x82", b"\xC0\xAF"] {
+        let key = [&b"caf"[..], bad].concat();
+        let body = template
+            .split("KEY")
+            .map(str::as_bytes)
+            .collect::<Vec<_>>()
+            .join(&key[..]);
+        let repaired = String::from_utf8_lossy(&key).into_owned();
+        server.reset().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/systemone"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(body, "application/json"))
+            .mount(&server)
+            .await;
+
+        let mut near = Questions::new();
+        near.dynamic_choice(
+            "c",
+            "?",
+            ["caf", "café", "cafe\u{301}", "cafe", "caf/"].map(|k| (k.to_owned(), None)),
+        )
+        .unwrap();
+        let err = client.system_one(&"text", &near).await.unwrap_err();
+        assert!(
+            matches!(&err, Error::UnknownOption { option, .. } if *option == repaired),
+            "{bad:?}: {err:?}"
+        );
+
+        let mut holding = Questions::new();
+        let handle = holding
+            .dynamic_choice(
+                "c",
+                "?",
+                [(repaired.clone(), None), ("caf".to_owned(), None)],
+            )
+            .unwrap();
+        let response = client.system_one(&"text", &holding).await.unwrap();
+        assert_eq!(response.get(&handle).unwrap().chosen, repaired, "{bad:?}");
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -2420,4 +2420,137 @@ mod tests {
         assert!(!dbg.contains("sk-secret"));
         assert!(dbg.contains("<redacted>"));
     }
+
+    /// `classify` and the default policy over every status `StatusCode`
+    /// accepts: 900 values, so a loop and not a property.
+    #[test]
+    fn every_status_has_one_outcome_and_only_the_listed_ones_retry() {
+        let default = http::RetryPolicy::default();
+        let everything = http::RetryPolicy {
+            http_statuses: (100..=999).collect(),
+            ..http::RetryPolicy::default()
+        };
+        for code in 100u16..=999 {
+            let status = StatusCode::from_u16(code).unwrap();
+            let err = classify(status, "{}".to_owned(), 1, None, None);
+            // One variant per status, by the module docs' table; the rest is Http.
+            let ok = match code {
+                400 | 413 | 415 | 422 => {
+                    matches!(&err, Error::InvalidRequest { status, .. } if *status == code)
+                }
+                401 => matches!(err, Error::Unauthorized { .. }),
+                402 => matches!(err, Error::PaymentRequired { .. }),
+                403 => matches!(err, Error::PermissionDenied { .. }),
+                429 => matches!(err, Error::RateLimited { .. }),
+                529 => matches!(err, Error::Overloaded { .. }),
+                _ => matches!(&err, Error::Http { status, .. } if *status == code),
+            };
+            assert!(ok, "{code}: {err:?}");
+
+            // The policy's documented set: 408, 429 and every 5xx.
+            let listed = code == 408 || code == 429 || (500..=599).contains(&code);
+            assert_eq!(default.is_retryable(status), listed, "{code}");
+            // A success is never retried, even when the policy lists it.
+            assert_eq!(
+                everything.is_retryable(status),
+                !status.is_success(),
+                "{code}"
+            );
+        }
+    }
+
+    /// Both endpoints go through `url`, so they join a base the same way:
+    /// the path kept (with a slash added), the query and fragment dropped.
+    #[test]
+    fn both_endpoints_join_a_base_url_identically() {
+        for (base, prefix) in [
+            ("http://h", "http://h/"),
+            ("http://h/", "http://h/"),
+            ("http://h/api", "http://h/api/"),
+            ("http://h/api/", "http://h/api/"),
+            ("http://h/a/b?key=1#frag", "http://h/a/b/"),
+            ("http://h/api/?key=1", "http://h/api/"),
+            ("http://h?key=1", "http://h/"),
+            ("http://h#frag", "http://h/"),
+            ("http://u:p@h:8080/api", "http://u:p@h:8080/api/"),
+        ] {
+            let c = Client::builder()
+                .api_key("sk-test")
+                .base_url(base)
+                .build()
+                .unwrap();
+            for endpoint in ["v1/systemone", "v1/models"] {
+                assert_eq!(
+                    c.url(endpoint).unwrap().as_str(),
+                    format!("{prefix}{endpoint}"),
+                    "{base}"
+                );
+            }
+        }
+    }
+
+    /// The header and a body's `id` decide through one predicate. The header
+    /// is printable ASCII only (`to_str`, module docs), so a plain non-ASCII
+    /// id is the one place the two sources differ, and it is pinned as such.
+    #[tokio::test]
+    async fn a_request_id_is_accepted_from_the_body_and_the_header_alike() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let body = |id: &str| {
+            serde_json::json!({
+                "model": "m", "id": id,
+                "answers": { "x": { "type": "noul", "noul": 0.5 } },
+                "usage": { "input_tokens": 1, "output_tokens": 1 }
+            })
+        };
+        let long = "a".repeat(1000);
+        // (id, accepted by the body, accepted by the header)
+        let table: Vec<(&str, bool, bool)> = vec![
+            ("req_1", true, true),
+            ("gén-1", true, false),
+            ("gen\u{85}1", false, false),
+            ("gen\u{202E}1", false, false),
+            ("gen\u{200B}1", false, false),
+            ("\u{FEFF}gen", false, false),
+            ("gen\t1", false, false),
+            (&long, false, false),
+            ("", false, false),
+        ];
+        let mut q = Questions::new();
+        q.noul("x", "?", None).unwrap();
+        let server = MockServer::start().await;
+        let c = Client::builder()
+            .api_key("sk-test")
+            .base_url(server.uri())
+            .retry(http::RetryPolicy::none())
+            .build()
+            .unwrap();
+        for (id, from_body, from_header) in table {
+            server.reset().await;
+            Mock::given(method("POST"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body(id)))
+                .mount(&server)
+                .await;
+            let r = c.system_one(&"s", &q).await.unwrap();
+            assert_eq!(r.request_id.is_some(), from_body, "body {id:?}");
+
+            server.reset().await;
+            Mock::given(method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(200)
+                        .insert_header(
+                            REQUEST_ID_HEADER,
+                            HeaderValue::from_bytes(id.as_bytes()).unwrap(),
+                        )
+                        .set_body_json(body("body-id")),
+                )
+                .mount(&server)
+                .await;
+            let r = c.system_one(&"s", &q).await.unwrap();
+            // A refused header leaves the body's own id as the handle.
+            let want = if from_header { id.trim() } else { "body-id" };
+            assert_eq!(r.request_id.as_deref(), Some(want), "header {id:?}");
+        }
+    }
 }

@@ -1128,3 +1128,872 @@ fn tempdir() -> PathBuf {
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
+
+/// Typed documents, generated over the shapes the format takes rather than
+/// over the space of strings: at most four questions, cases, answers or
+/// entries anywhere, short strings drawn mostly from the ones YAML reads as
+/// something else (`yes`, `null`, `1`, `0x1`, `- a`, a line break, a BOM),
+/// and maps built in insertion order, the order the model sees and the
+/// writer keeps. A state is arbitrary JSON, which has no NaN, so no `.nan`
+/// is generated (nor can a state hold one).
+mod generated {
+    use std::collections::BTreeMap;
+
+    use indexmap::IndexMap;
+    use judgment::eval::Recording;
+    use judgment::jud::{
+        Band, BoxLabel, Case, Cases, Expect, FromTurn, Gate, LevelRef, OptionsFrom, Policy, Rubric,
+        RubricQuestion, Tuning,
+    };
+    use judgment::{
+        Answer, BoxEdges, Confidence, NoulCriteria, Probability, Question, Response, Usage,
+    };
+    use proptest::collection::vec;
+    use proptest::option;
+    use proptest::prelude::*;
+    use proptest::sample::{Index, select};
+    use proptest::test_runner::FileFailurePersistence;
+    use serde_json::{Value, json};
+
+    /// Failures saved at the crate root, as `tests/properties.rs` does.
+    pub fn config() -> ProptestConfig {
+        ProptestConfig {
+            failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
+                "proptest-regressions/jud.txt",
+            ))),
+            ..ProptestConfig::default()
+        }
+    }
+
+    /// What a YAML reader could take for something other than the text.
+    #[rustfmt::skip]
+    const AWKWARD: &[&str] = &[
+        "", "yes", "No", "true", "null", "~", "1", "-0", "0x1", "0o7", "1e3", "1_000", ".inf",
+        ".nan", "2024-01-01", "- a", "a: b", "a #b", "#", "'", "\"", " x", "x ", "\n", "a\nb",
+        "\r\n", "\t", "\u{2028}", "\u{feff}x", "\u{85}", "é", "🙂", "*a", "&a", "!t", "%x",
+        "@x", "`", "{", "[a]", ">", "|", "? x", "<<", "\\", "---", "...", "=",
+    ];
+
+    pub fn text() -> impl Strategy<Value = String> {
+        prop_oneof![
+            3 => select(AWKWARD).prop_map(str::to_owned),
+            1 => "[a-z ]{1,5}",
+        ]
+    }
+
+    fn filled() -> impl Strategy<Value = String> {
+        text().prop_filter("not blank", |t| !t.trim().is_empty())
+    }
+
+    /// A name (`docs/reference/jud-format.md`, Names).
+    pub fn name() -> impl Strategy<Value = String> {
+        "[a-z0-9][a-z0-9._-]{0,5}"
+    }
+
+    fn path() -> impl Strategy<Value = String> {
+        vec("[a-z0-9_]{1,3}", 1..3).prop_map(|segments| segments.join("."))
+    }
+
+    fn unit() -> impl Strategy<Value = f64> {
+        prop_oneof![select(&[0.0, 1.0, 0.5][..]), 0.0..=1.0f64]
+    }
+
+    /// Any JSON: every scalar, any finite float, nested to depth three.
+    pub fn json() -> impl Strategy<Value = Value> {
+        let leaf = prop_oneof![
+            Just(Value::Null),
+            any::<bool>().prop_map(Value::Bool),
+            any::<i64>().prop_map(Value::from),
+            any::<u64>().prop_map(Value::from),
+            any::<f64>()
+                .prop_filter("JSON has no NaN or infinity", |f| f.is_finite())
+                .prop_map(Value::from),
+            text().prop_map(Value::String),
+        ];
+        leaf.prop_recursive(3, 16, 4, |inner| {
+            prop_oneof![
+                vec(inner.clone(), 0..4).prop_map(Value::Array),
+                vec((text(), inner), 0..4).prop_map(|kv| Value::Object(kv.into_iter().collect())),
+            ]
+        })
+    }
+
+    /// Text, an object, an array or null: what instructions and a
+    /// description may be.
+    fn described() -> impl Strategy<Value = Value> {
+        prop_oneof![
+            text().prop_map(Value::String),
+            Just(Value::Null),
+            vec(json(), 0..3).prop_map(Value::Array),
+            vec((text(), json()), 1..3).prop_map(|kv| Value::Object(kv.into_iter().collect())),
+        ]
+    }
+
+    fn map<V>(entries: Vec<(String, V)>) -> IndexMap<String, V> {
+        entries.into_iter().collect()
+    }
+
+    /// One question with its declarations, valid as the builder checks it.
+    fn question() -> impl Strategy<Value = RubricQuestion> {
+        let noul = (
+            described(),
+            option::of((option::of(described()), option::of(described()))),
+        )
+            .prop_map(|(instructions, criteria)| {
+                let criteria = criteria.map(|(yes, no)| NoulCriteria { yes, no });
+                let silent = criteria.as_ref().is_none_or(|c| {
+                    c.yes.as_ref().is_none_or(Value::is_null)
+                        && c.no.as_ref().is_none_or(Value::is_null)
+                });
+                let instructions = if instructions.is_null() && silent {
+                    json!("ok?")
+                } else {
+                    instructions
+                };
+                (
+                    Question::Noul {
+                        instructions,
+                        criteria,
+                    },
+                    false,
+                )
+            });
+        let choice = (
+            described(),
+            vec((filled(), described()), 0..5),
+            any::<bool>(),
+        )
+            .prop_map(|(instructions, options, from_request)| {
+                let criteria = map(options);
+                let from_request = from_request || criteria.len() < 2;
+                (
+                    Question::Choice {
+                        instructions,
+                        criteria,
+                    },
+                    from_request,
+                )
+            });
+        let level = prop_oneof![
+            text().prop_map(Value::String),
+            vec(json(), 0..2).prop_map(Value::Array),
+            vec((text(), json()), 0..2).prop_map(|kv| Value::Object(kv.into_iter().collect())),
+        ];
+        let score = (described(), vec(level, 2..5)).prop_map(|(instructions, criteria)| {
+            (
+                Question::Score {
+                    instructions,
+                    criteria,
+                },
+                false,
+            )
+        });
+        let boxed = described().prop_map(|instructions| {
+            let instructions = if instructions.is_null() {
+                json!("the logo")
+            } else {
+                instructions
+            };
+            (Question::Box { instructions }, false)
+        });
+        (
+            prop_oneof![noul, choice, score, boxed],
+            option::of(path()),
+            vec(path(), 4),
+            any::<u8>(),
+        )
+            .prop_map(|((question, from_request), when, paths, mask)| {
+                // Some of the instructions' parts, each under a path.
+                let part_when = question
+                    .instructions()
+                    .as_object()
+                    .map(|parts| {
+                        parts
+                            .keys()
+                            .zip(&paths)
+                            .enumerate()
+                            .filter(|(i, _)| mask & (1 << i) != 0)
+                            .map(|(_, (part, path))| (part.clone(), path.clone()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                RubricQuestion {
+                    question,
+                    when,
+                    part_when,
+                    options_from: from_request.then_some(OptionsFrom::Request),
+                }
+            })
+    }
+
+    /// The raw draws a gate is built from, fitted to its question by [`gate`].
+    type GateSeed = (
+        Option<f64>,
+        bool,
+        Vec<(f64, String)>,
+        Option<Index>,
+        Option<(bool, Index)>,
+        bool,
+        Option<String>,
+    );
+
+    fn gate_seed() -> impl Strategy<Value = GateSeed> {
+        (
+            option::of(unit()),
+            any::<bool>(),
+            vec((unit(), filled()), 1..4),
+            option::of(any::<Index>()),
+            option::of((any::<bool>(), any::<Index>())),
+            any::<bool>(),
+            option::of(text()),
+        )
+    }
+
+    /// A gate that fits `question` (`docs/reference/jud-format.md`, Policy).
+    fn gate(question: &Question, seed: GateSeed) -> Gate {
+        let (bar, banded, draws, fallback, level, strict, note) = seed;
+        let mut gate = Gate {
+            strict,
+            note,
+            ..Gate::default()
+        };
+        if let Question::Noul { .. } = question {
+            gate.threshold = bar;
+            return gate;
+        }
+        if banded {
+            // Highest bar first, each lower and each named once.
+            let mut draws = draws;
+            draws.sort_by(|a, b| b.0.total_cmp(&a.0));
+            for (at_least, verdict) in draws {
+                let lower = gate
+                    .bands
+                    .last()
+                    .is_none_or(|b: &Band| at_least < b.at_least);
+                if lower && gate.bands.iter().all(|b| b.verdict != verdict) {
+                    gate.bands.push(Band { at_least, verdict });
+                }
+            }
+        } else {
+            gate.confidence = bar;
+        }
+        match question {
+            Question::Choice { criteria, .. } if !criteria.is_empty() => {
+                gate.fallback = fallback.map(|i| {
+                    criteria
+                        .get_index(i.index(criteria.len()))
+                        .unwrap()
+                        .0
+                        .clone()
+                });
+            }
+            Question::Score { criteria, .. } => {
+                let pick = |i: &Index| i.index(criteria.len());
+                gate.fallback = fallback.map(|i| match &criteria[pick(&i)] {
+                    Value::String(text) => text.clone(),
+                    _ => pick(&i).to_string(),
+                });
+                gate.level_at_least = level.map(|(by_index, i)| {
+                    if by_index {
+                        LevelRef::Index(pick(&i))
+                    } else {
+                        LevelRef::Text(pick(&i).to_string())
+                    }
+                });
+            }
+            _ => {}
+        }
+        gate
+    }
+
+    fn labels() -> impl Strategy<Value = IndexMap<String, String>> {
+        vec((text(), text()), 0..3).prop_map(map)
+    }
+
+    fn extra(reserved: &'static [&'static str]) -> impl Strategy<Value = Vec<(String, Value)>> {
+        vec(
+            (
+                text().prop_filter("a field of its own", move |k| {
+                    !reserved.contains(&k.as_str())
+                }),
+                json(),
+            ),
+            0..3,
+        )
+    }
+
+    pub fn rubric() -> impl Strategy<Value = Rubric> {
+        (
+            (
+                name(),
+                option::of(text()),
+                option::of(text()),
+                labels(),
+                labels(),
+            ),
+            vec((filled(), question(), option::of(gate_seed())), 1..5),
+            option::of((
+                option::of(text()),
+                option::of(text()),
+                option::of(text()),
+                option::of(text()),
+                extra(&["cases", "model", "server", "tuned_at"]),
+            )),
+        )
+            .prop_map(
+                |((name, version, description, labels, annotations), questions, tuning)| {
+                    let mut rubric = Rubric::new(name, judgment::Questions::new());
+                    rubric.version = version;
+                    rubric.description = description;
+                    rubric.labels = labels;
+                    rubric.annotations = annotations;
+                    let mut gates = IndexMap::new();
+                    for (id, question, seed) in questions {
+                        // A repeated id replaces the question, and its gate with it.
+                        gates.shift_remove(&id);
+                        if let Some(seed) = seed {
+                            gates.insert(id.clone(), gate(&question.question, seed));
+                        }
+                        rubric.questions.insert(id, question);
+                    }
+                    rubric.policy = Policy {
+                        gates,
+                        tuning: tuning.map(|(cases, model, server, tuned_at, extra)| Tuning {
+                            cases,
+                            model,
+                            server,
+                            tuned_at,
+                            extra: map(extra),
+                        }),
+                    };
+                    rubric
+                },
+            )
+    }
+
+    /// Two distinct fractions, lowest first.
+    fn span() -> impl Strategy<Value = (f64, f64)> {
+        (unit(), unit())
+            .prop_filter("a region has width", |(a, b)| a.total_cmp(b).is_ne())
+            .prop_map(|(a, b)| (a.min(b), a.max(b)))
+    }
+
+    fn region() -> impl Strategy<Value = BoxEdges> {
+        (span(), span())
+            .prop_map(|((top, bottom), (left, right))| BoxEdges::new(top, bottom, left, right))
+    }
+
+    fn expect() -> impl Strategy<Value = Expect> {
+        prop_oneof![
+            any::<bool>().prop_map(Expect::Bool),
+            any::<u64>().prop_map(Expect::Index),
+            text().prop_map(Expect::Text),
+            option::of(any::<u64>()).prop_map(|from_turn| Expect::FromTurn(FromTurn { from_turn })),
+            (region(), option::of(unit())).prop_map(|(edges, iou_at_least)| Expect::Box(
+                BoxLabel {
+                    edges,
+                    iou_at_least
+                }
+            )),
+        ]
+    }
+
+    fn case() -> impl Strategy<Value = (bool, Case)> {
+        (
+            any::<bool>(),
+            json(),
+            vec((text(), expect()), 0..4),
+            vec((text(), vec((filled(), described()), 0..3)), 0..2),
+            vec(text(), 0..3),
+            option::of(text()),
+        )
+            .prop_map(|(has_id, state, expect, options, tags, note)| {
+                let mut case = Case::new(state);
+                case.expect = map(expect);
+                case.options = options.into_iter().map(|(q, o)| (q, map(o))).collect();
+                case.tags = tags;
+                case.note = note;
+                (has_id, case)
+            })
+    }
+
+    /// Cases with and without ids (each id once), states that may repeat,
+    /// and every form of label.
+    pub fn cases() -> impl Strategy<Value = Cases> {
+        (
+            (
+                name(),
+                option::of(text()),
+                labels(),
+                labels(),
+                option::of(text()),
+            ),
+            vec(case(), 1..5),
+            any::<bool>(),
+        )
+            .prop_map(
+                |((name, description, labels, annotations, rubric), drawn, repeat)| {
+                    let mut cases: Vec<Case> = drawn
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, (has_id, mut case))| {
+                            case.id = has_id.then(|| format!("{name}-{i}"));
+                            case
+                        })
+                        .collect();
+                    if repeat && cases.len() > 1 {
+                        let state = cases[0].state.clone();
+                        cases.last_mut().unwrap().state = state;
+                    }
+                    Cases {
+                        name,
+                        description,
+                        labels,
+                        annotations,
+                        rubric,
+                        cases,
+                    }
+                },
+            )
+    }
+
+    fn prob() -> impl Strategy<Value = Probability> {
+        unit().prop_map(|p| Probability::new(p).unwrap())
+    }
+
+    fn conf() -> impl Strategy<Value = Confidence> {
+        unit().prop_map(|c| Confidence::new(c).unwrap())
+    }
+
+    fn probabilities() -> impl Strategy<Value = BTreeMap<String, Probability>> {
+        vec((text(), prob()), 0..4).prop_map(|kv| kv.into_iter().collect())
+    }
+
+    /// An answer of each kind a server may send, its unknown fields kept in
+    /// `extra` under any key but the kind's own fields, and a kind this
+    /// release does not know.
+    fn answer() -> impl Strategy<Value = Answer> {
+        let extras =
+            |reserved| extra(reserved).prop_map(|kv| kv.into_iter().collect::<BTreeMap<_, _>>());
+        prop_oneof![
+            (prob(), extras(&["type", "noul"]))
+                .prop_map(|(noul, extra)| Answer::Noul { noul, extra }),
+            (
+                text(),
+                probabilities(),
+                conf(),
+                extras(&["type", "choice", "probabilities", "confidence"])
+            )
+                .prop_map(|(choice, probabilities, confidence, extra)| {
+                    Answer::Choice {
+                        choice,
+                        probabilities,
+                        confidence,
+                        extra,
+                    }
+                }),
+            (
+                any::<f64>().prop_filter("finite", |f| f.is_finite()),
+                vec((text(), json()), 0..4),
+                probabilities(),
+                conf(),
+                extras(&["type", "score", "legend", "probabilities", "confidence"]),
+            )
+                .prop_map(|(score, legend, probabilities, confidence, extra)| {
+                    Answer::Score {
+                        score,
+                        legend: legend.into_iter().collect(),
+                        probabilities,
+                        confidence,
+                        extra,
+                    }
+                }),
+            (
+                region(),
+                option::of(conf()),
+                extras(&["type", "box", "confidence"])
+            )
+                .prop_map(|(edges, confidence, extra)| Answer::Box {
+                    edges,
+                    confidence,
+                    extra
+                }),
+            (
+                select(&["polygon", "Noul", "x-1", ""][..]),
+                extras(&["type"])
+            )
+                .prop_map(|(kind, extra)| {
+                    let mut raw: serde_json::Map<String, Value> = extra.into_iter().collect();
+                    raw.insert("type".to_owned(), json!(kind));
+                    Answer::Unknown(Value::Object(raw))
+                }),
+        ]
+    }
+
+    /// Whatever shape a server's response took: any model string, answers
+    /// under any id, the usage, and top-level fields the crate does not know.
+    fn response() -> impl Strategy<Value = Response> {
+        (
+            text(),
+            vec((text(), answer()), 0..4),
+            (
+                any::<u64>(),
+                any::<u64>(),
+                option::of(any::<f64>().prop_filter("finite", |f| f.is_finite())),
+            ),
+            option::of(text()),
+            extra(&["model", "answers", "usage", "request_id"]),
+        )
+            .prop_map(
+                |(model, answers, (input_tokens, output_tokens, cost), request_id, extra)| {
+                    Response {
+                        model,
+                        answers: answers.into_iter().collect(),
+                        usage: Usage {
+                            input_tokens,
+                            output_tokens,
+                            cost,
+                        },
+                        request_id,
+                        extra: extra.into_iter().collect(),
+                    }
+                },
+            )
+    }
+
+    pub fn recording() -> impl Strategy<Value = Recording> {
+        (
+            name(),
+            response(),
+            any::<u64>(),
+            option::of(text()),
+            option::of(text()),
+            option::of(text()),
+            option::of(text()),
+            option::of(text()),
+        )
+            .prop_map(
+                |(
+                    case,
+                    response,
+                    elapsed_ms,
+                    request_hash,
+                    fingerprint,
+                    rubric,
+                    server,
+                    recorded_at,
+                )| {
+                    let mut recording = Recording::new(case, response, elapsed_ms);
+                    recording.request_hash = request_hash;
+                    recording.fingerprint = fingerprint;
+                    recording.rubric = rubric;
+                    recording.server = server;
+                    recording.recorded_at = recorded_at;
+                    recording
+                },
+            )
+    }
+}
+
+proptest::proptest! {
+    #![proptest_config(generated::config())]
+
+    /// A rubric written and read back is the rubric, writing it again gives
+    /// the same text, and neither fingerprint moves: what a reviewer reads
+    /// is what is asked and how it is gated.
+    #[test]
+    fn a_rubric_written_reads_back_as_itself_with_its_fingerprints(rubric in generated::rubric()) {
+        let text = rubric.to_yaml().unwrap();
+        let read = Rubric::parse(&text).unwrap_or_else(|e| panic!("{e}\n{text}"));
+        proptest::prop_assert_eq!(&read, &rubric, "{}", text);
+        proptest::prop_assert_eq!(read.to_yaml().unwrap(), text);
+        proptest::prop_assert_eq!(read.fingerprint(), rubric.fingerprint());
+        proptest::prop_assert_eq!(read.policy_fingerprint(), rubric.policy_fingerprint());
+    }
+
+    /// The same of a cases document, ids or none, repeated states, every
+    /// form of label.
+    #[test]
+    fn cases_written_read_back_as_themselves_with_their_fingerprint(cases in generated::cases()) {
+        let text = cases.to_yaml().unwrap();
+        let read = Cases::parse(&text).unwrap_or_else(|e| panic!("{e}\n{text}"));
+        proptest::prop_assert_eq!(&read, &cases, "{}", text);
+        proptest::prop_assert_eq!(read.to_yaml().unwrap(), text);
+        proptest::prop_assert_eq!(read.fingerprint(), cases.fingerprint());
+    }
+
+    /// Whatever a server answered, the recording the writer makes of it
+    /// reads back as that recording and writes back as the same text: an
+    /// odd model name, an answer of a kind not known yet, fields nobody
+    /// documented, at the top level or inside an answer.
+    #[test]
+    fn whatever_a_server_answered_the_recording_written_reads_back(recording in generated::recording()) {
+        let text = recording_to_yaml(&recording).unwrap();
+        let read = jud::parse_recording(&text).unwrap_or_else(|e| panic!("{e}\n{text}"));
+        proptest::prop_assert_eq!(&read, &recording, "{}", text);
+        proptest::prop_assert_eq!(recording_to_yaml(&read).unwrap(), text);
+    }
+}
+
+/// The `n`th line (one-based) of `base` replaced by `line`.
+fn with_line(base: &str, n: usize, line: &str) -> String {
+    let mut lines: Vec<&str> = base.lines().collect();
+    lines[n - 1] = line;
+    lines.join("\n") + "\n"
+}
+
+/// `line` put after the `n`th line (one-based) of `base`, so it is line `n + 1`.
+fn with_line_after(base: &str, n: usize, line: &str) -> String {
+    let mut lines: Vec<&str> = base.lines().collect();
+    lines.insert(n, line);
+    lines.join("\n") + "\n"
+}
+
+const DUP_RUBRIC: &str = "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    q:\n      type: choice\n      instructions: pick in logo\n      criteria: {a: null, b: null}\n  assets:\n    logo: {path: logo.png}\n  policy:\n    q: {confidence: 0.5}\n";
+const DUP_CASES: &str = "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: c\n  minor: 4\nspec:\n  cases:\n    - id: one\n      state: {text: see logo}\n      expect:\n        q: a\n      assets:\n        logo: {path: logo.png}\n      options:\n        q: {x: null}\n";
+const DUP_RECORDING: &str = "apiVersion: jud/v1\nkind: Recording\nmetadata:\n  name: c\n  minor: 4\nspec:\n  elapsed_ms: 1\n  response:\n    model: m\n    answers:\n      q: {type: noul, noul: 0.5}\n";
+
+/// A duplicate key is an error (`docs/reference/jud-format.md`, Reading
+/// rules) at every level of every kind, and the error names the line of
+/// the second one: a reviewer reads the first, a lenient reader the last.
+#[test]
+fn a_duplicate_key_is_refused_at_every_level_by_its_line() {
+    for base in [DUP_RUBRIC, DUP_CASES, DUP_RECORDING] {
+        jud::parse(base).unwrap_or_else(|e| panic!("{e}\n{base}"));
+    }
+    let after = |base, n, line| (with_line_after(base, n, line), n + 1);
+    let at = |base, n, line| (with_line(base, n, line), n);
+    for (what, (text, line)) in [
+        ("the envelope", after(DUP_RUBRIC, 2, "kind: Cases")),
+        ("metadata", after(DUP_RUBRIC, 4, "  name: s")),
+        ("spec", after(DUP_RUBRIC, 15, "  policy: {}")),
+        (
+            "spec.questions",
+            after(DUP_RUBRIC, 11, "    q: {type: noul, instructions: ok?}"),
+        ),
+        (
+            "a question's fields",
+            after(DUP_RUBRIC, 10, "      instructions: again"),
+        ),
+        (
+            "a Choice's options",
+            at(
+                DUP_RUBRIC,
+                11,
+                "      criteria: {a: null, a: null, b: null}",
+            ),
+        ),
+        (
+            "spec.assets",
+            after(DUP_RUBRIC, 13, "    logo: {path: other.png}"),
+        ),
+        (
+            "an asset's fields",
+            at(DUP_RUBRIC, 13, "    logo: {path: logo.png, path: x.png}"),
+        ),
+        (
+            "spec.policy",
+            after(DUP_RUBRIC, 15, "    q: {confidence: 0.6}"),
+        ),
+        (
+            "a gate's fields",
+            at(DUP_RUBRIC, 15, "    q: {confidence: 0.5, confidence: 0.6}"),
+        ),
+        ("a case's fields", after(DUP_CASES, 8, "      id: two")),
+        (
+            "a state",
+            at(DUP_CASES, 9, "      state: {text: see logo, text: again}"),
+        ),
+        ("expect", after(DUP_CASES, 11, "        q: b")),
+        (
+            "a case's assets",
+            after(DUP_CASES, 13, "        logo: {path: x.png}"),
+        ),
+        (
+            "a case's options",
+            after(DUP_CASES, 15, "        q: {y: null}"),
+        ),
+        (
+            "a recording's spec",
+            after(DUP_RECORDING, 7, "  elapsed_ms: 2"),
+        ),
+        ("the response", after(DUP_RECORDING, 9, "    model: n")),
+        (
+            "the answers",
+            after(DUP_RECORDING, 11, "      q: {type: noul, noul: 0.6}"),
+        ),
+        (
+            "an answer's fields",
+            at(
+                DUP_RECORDING,
+                11,
+                "      q: {type: noul, noul: 0.5, noul: 0.6}",
+            ),
+        ),
+    ] {
+        let err = jud::parse(&text).unwrap_err();
+        assert!(
+            matches!(&err, jud::Error::Syntax(m) if m.contains("duplicate") && m.contains(&format!("line {line},"))),
+            "{what}: {err}\n{text}"
+        );
+    }
+}
+
+/// A key is text whatever YAML reads it as (`docs/reference/jud-format.md`,
+/// Reading rules), so `2024` and `"2024"` are one key, written twice: a
+/// duplicate, to be refused. The YAML layer sees an integer and a string,
+/// two keys, and the reader keeps the last under the one text, silently
+/// dropping a label, a question, an option or an answer.
+#[test]
+#[ignore = "judgment-l47 (found by judgment-bsz.18.20): a key spelled as a number and as text collapses to one"]
+fn a_key_spelled_as_a_number_and_as_text_is_a_duplicate() {
+    let read_as_one = [
+        ("metadata.labels", with_line_after(DUP_RUBRIC, 4, "  labels: {2024: a, \"2024\": b}")),
+        (
+            "spec.questions",
+            with_line_after(DUP_RUBRIC, 11, "    1: {type: noul, instructions: one}\n    \"1\": {type: noul, instructions: two}"),
+        ),
+        ("a Choice's options", with_line(DUP_RUBRIC, 11, "      criteria: {1: null, \"1\": null, b: null}")),
+        ("a state", with_line(DUP_CASES, 9, "      state: {1: see logo, \"1\": logo again}")),
+        ("expect", with_line_after(DUP_CASES, 11, "        1: a\n        \"1\": b")),
+        (
+            "the answers",
+            with_line_after(DUP_RECORDING, 11, "      1: {type: noul, noul: 0.1}\n      \"1\": {type: noul, noul: 0.9}"),
+        ),
+    ]
+    .into_iter()
+    .filter(|(_, text)| jud::parse(text).is_ok())
+    .map(|(what, _)| what)
+    .collect::<Vec<_>>();
+    assert!(read_as_one.is_empty(), "read as one key: {read_as_one:?}");
+}
+
+/// A key is text whatever YAML reads it as, inside a question as in a
+/// state: a Choice rated `1` to `3`, instructions in numbered parts. The
+/// schema reads the keys as JSON does and takes these; the reader buffers a
+/// question by its `type` and then refuses the integer key ("expected a
+/// string key", at the question's line).
+#[test]
+#[ignore = "judgment-pry (found by judgment-bsz.18.20): a number key inside a question is refused"]
+fn a_number_key_inside_a_question_is_read_as_text() {
+    let refused = [
+        "{type: choice, instructions: rate it, criteria: {1: poor, 2: fair, 3: good}}",
+        "{type: noul, instructions: {1: first, 2: second}}",
+        "{type: noul, instructions: {\"1\": first}, part_when: {1: x.y}}",
+        "{type: score, instructions: rate it, criteria: [{1: low}, high]}",
+        "{type: noul, instructions: x, criteria: {true: {1: yes}}}",
+    ]
+    .into_iter()
+    .map(|q| {
+        format!("apiVersion: jud/v1\nkind: Rubric\nmetadata: {{name: r, minor: 4}}\nspec:\n  questions:\n    q: {q}\n")
+    })
+    .filter(|text| {
+        assert!(RUBRIC.is_valid(&value_of(text)), "the schema refuses:\n{text}");
+        Rubric::parse(text).is_err()
+    })
+    .collect::<Vec<_>>();
+    assert!(refused.is_empty(), "{refused:#?}");
+}
+
+/// The options a case supplies are asked in the order written, before the
+/// static ones (`docs/reference/jud-format.md`, Declarations): the order
+/// the model sees. Read through a `serde_json::Value` they were sorted
+/// unless `preserve_order` was on (the `mcp` feature), so this holds under
+/// `--features jud` as well as `--all-features`.
+#[test]
+fn supplied_options_are_read_in_the_order_written() {
+    let text = with_line(DUP_CASES, 15, "        q: {zebra: null, apple: null}");
+    let cases = Cases::parse(&text).unwrap();
+    let order: Vec<&String> = cases.cases[0].options["q"].keys().collect();
+    assert_eq!(order, ["zebra", "apple"]);
+}
+
+/// The example documents, each read once.
+static EXAMPLE_TEXTS: LazyLock<Vec<String>> = LazyLock::new(|| {
+    example_files("jud")
+        .iter()
+        .map(|p| std::fs::read_to_string(p).unwrap())
+        .collect()
+});
+
+/// One edit a hand, a merge or a truncated write makes to a document.
+#[derive(Debug, Clone)]
+enum Mutation {
+    Truncate(proptest::sample::Index),
+    DuplicateLine(proptest::sample::Index),
+    DeleteLine(proptest::sample::Index),
+    SwapLines(proptest::sample::Index, proptest::sample::Index),
+    SwapChars(proptest::sample::Index, proptest::sample::Index),
+    Insert(proptest::sample::Index, char),
+}
+
+fn mutation() -> impl proptest::strategy::Strategy<Value = Mutation> {
+    use proptest::prelude::*;
+    use proptest::sample::{Index, select};
+    prop_oneof![
+        any::<Index>().prop_map(Mutation::Truncate),
+        any::<Index>().prop_map(Mutation::DuplicateLine),
+        any::<Index>().prop_map(Mutation::DeleteLine),
+        (any::<Index>(), any::<Index>()).prop_map(|(a, b)| Mutation::SwapLines(a, b)),
+        (any::<Index>(), any::<Index>()).prop_map(|(a, b)| Mutation::SwapChars(a, b)),
+        (
+            any::<Index>(),
+            select(
+                &[
+                    ':', '-', '{', '}', '[', ']', '"', '\'', '\n', ' ', '\t', '#', '&', '*', '!',
+                    '|', '>', '\0', '\u{feff}', 'é'
+                ][..]
+            ),
+        )
+            .prop_map(|(a, c)| Mutation::Insert(a, c)),
+    ]
+}
+
+fn mutate(text: &str, mutation: &Mutation) -> String {
+    let mut chars: Vec<char> = text.chars().collect();
+    let mut lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let (nc, nl) = (chars.len().max(1), lines.len().max(1));
+    match mutation {
+        Mutation::Truncate(i) => chars.truncate(i.index(nc)),
+        Mutation::SwapChars(a, b) if !chars.is_empty() => chars.swap(a.index(nc), b.index(nc)),
+        Mutation::Insert(a, c) => chars.insert(a.index(nc + 1).min(chars.len()), *c),
+        Mutation::DuplicateLine(i) if !lines.is_empty() => {
+            let i = i.index(nl);
+            lines.insert(i, lines[i]);
+            return lines.concat();
+        }
+        Mutation::DeleteLine(i) if !lines.is_empty() => {
+            lines.remove(i.index(nl));
+            return lines.concat();
+        }
+        Mutation::SwapLines(a, b) if !lines.is_empty() => {
+            lines.swap(a.index(nl), b.index(nl));
+            return lines.concat();
+        }
+        _ => {}
+    }
+    chars.into_iter().collect()
+}
+
+proptest::proptest! {
+    #![proptest_config(generated::config())]
+
+    /// Every reader is total over what a hand or a broken write makes of a
+    /// valid document: a truncation, a line repeated, dropped or moved, two
+    /// characters swapped, a stray one inserted. The answer is a document or
+    /// an error, never a panic.
+    #[test]
+    fn a_mangled_document_is_read_or_refused_never_a_panic(
+        which in proptest::prelude::any::<proptest::sample::Index>(),
+        mutations in proptest::collection::vec(mutation(), 1..4),
+    ) {
+        let mut text = EXAMPLE_TEXTS[which.index(EXAMPLE_TEXTS.len())].clone();
+        for m in &mutations {
+            text = mutate(&text, m);
+        }
+        let _ = jud::parse(&text);
+        let _ = Rubric::parse(&text);
+        let _ = Cases::parse(&text);
+        let _ = jud::parse_recording(&text);
+    }
+}

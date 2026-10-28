@@ -9,7 +9,7 @@ use std::path::Path;
 use super::rubric::level_index;
 use super::{
     API_VERSION, AssetSource, Envelope, Error, MINOR, Metadata, Result, Rubric, Supplied,
-    check_assets, check_name, check_scalars, from_text, load_assets, refuse_extra, some, to_yaml,
+    check_assets, check_name, check_scalars, from_text, load_assets, refuse_extra, to_yaml,
 };
 use crate::answer::{Answer, BoxEdges, Confidence, Response};
 use crate::asset::Assets;
@@ -222,7 +222,7 @@ struct RawCasesSpec {
     cases: Vec<RawCase>,
 }
 
-/// A case as read; `options` counts by its presence ([`some`]).
+/// A case as read; `options` counts by its presence ([`supplied`]).
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawCase {
@@ -231,7 +231,7 @@ struct RawCase {
     state: Value,
     #[serde(default)]
     expect: IndexMap<String, Expect>,
-    #[serde(default, deserialize_with = "some")]
+    #[serde(default, deserialize_with = "supplied")]
     options: Option<Supplied>,
     #[serde(default)]
     assets: IndexMap<String, AssetSource>,
@@ -239,6 +239,20 @@ struct RawCase {
     tags: Vec<String>,
     #[serde(default)]
     note: Option<String>,
+}
+
+/// [`some`](super::some) for a case's options, read straight into their maps rather than
+/// through a JSON value, whose map is sorted unless `preserve_order` is on:
+/// the order written is the order the model sees.
+fn supplied<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<Supplied>, D::Error> {
+    match Option::deserialize(deserializer)? {
+        None => Err(serde::de::Error::custom(
+            "null is not a value of this field; leave the field out instead",
+        )),
+        supplied => Ok(supplied),
+    }
 }
 
 #[derive(Serialize)]

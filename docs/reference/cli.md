@@ -2,7 +2,7 @@
 title: The jud command line
 description: Every command, flag, argument and environment variable of the jud binary, with each command's help text as the binary prints it, the verdict JSON a run writes, the report jud eval prints and its JSON keys, what jud record, jud tune and jud split write, and the exit status.
 status: current
-last_reviewed: 2026-10-27
+last_reviewed: 2026-10-28
 tags: [judgment, jud, cli, record, eval, tune, split, reference]
 ---
 
@@ -418,7 +418,7 @@ Options:
           Print help (see a summary with '-h')
 ```
 
-Against a server, before the first call, eval writes the same line to stderr that `jud record` does ([What it prints](#what-it-prints)): `asking MODEL at URL for up to N requests (base URL from SOURCE)`. A replay writes nothing there.
+Against a server, before the first call, eval writes the same line to stderr that `jud record` does ([What it prints](#what-it-prints)): `asking MODEL at URL for up to N requests (base URL from SOURCE)`. Under a replay the only stderr is the warning record and tune also give, one line per request that two recording files record, naming both files: the report must not depend on file names, so the duplication is said out loud.
 
 Reads `RUBRIC`, `CASES` and, with `--replay DIR` or `JUD_REPLAY`, the recordings in `DIR`; the flag overrides the variable. With `--against DIR` it also reads the recordings in that `DIR`, before asking anything. Writes nothing, against a server too: use [`jud record`](#jud-record) to keep what a server answered. Without a replay it asks the configured backend once per request and needs a key. With one it needs no key and no network.
 
@@ -896,6 +896,6 @@ Options:
 | 2 | Wrong before any call, and fixable: no rubric argument, a file that cannot be read, a document that is not valid, cases that do not fit their rubric, stdin that is empty or not one JSON value, a missing API key, a malformed configuration file, an unknown flag or a flag with a bad value, an `--out` that would overwrite an input, a `--min-accuracy` that names no question; for `check`, any document refused. |
 | 3 | `jud eval` only. The evaluation ran, the report is on stdout, and a `--min-accuracy` bar was not met. |
 
-Every failure goes to stderr as `jud: MESSAGE`. A usage error that clap catches prints clap's own `error:` text instead, with status 2. `jud check` is the exception: its refusals are `error` lines in its result on stdout. Stdout carries the command's result and nothing else: the verdicts of a run, the lines of `jud check` and `jud lower`, the JSON of `jud config`, `jud eval`'s report, `jud tune`'s blocks and the completion script. `jud record` prints nothing on stdout but its `--dry-run` plan, and `jud split` prints its report there. Everything else is a diagnostic and goes to stderr: the progress and tally of `jud record`, the tables and notes of `jud tune`, and the line that says a bar was not met. A pipeline never reads an error as a result. A reader that closes stdout early (`jud check FILE | head -1`) is not an error for any command: nothing panics, and the status is the command's own.
+Every failure goes to stderr as `jud: MESSAGE`. A usage error that clap catches prints clap's own `error:` text instead, with status 2. `jud check` is the exception: its refusals are `error` lines in its result on stdout. Stdout carries the command's result and nothing else: the verdicts of a run, the lines of `jud check` and `jud lower`, the JSON of `jud config`, `jud eval`'s report, `jud tune`'s blocks and the completion script. `jud record` prints nothing on stdout but its `--dry-run` plan, and `jud split` prints its report there. Everything else is a diagnostic and goes to stderr: the progress and tally of `jud record`, the tables and notes of `jud tune`, the warning that two recording files record one request (`record`, `tune` and `eval` alike), and the line that says a bar was not met. Every line `jud` prints shows hidden Unicode — control characters, bidi overrides and isolates, zero-width characters — as `\u{…}` escapes and is cut at 4096 characters with a trailing `…`, so a document or a server cannot reorder or hide parts of the output. A pipeline never reads an error as a result. A reader that closes stdout early (`jud check FILE | head -1`) is not an error for any command: nothing panics, and the status is the command's own.
 
 Three commands write files, and nothing else does. `jud record` writes recordings into its `--out` directory. `jud tune --out` writes one rubric file. `jud split` writes two new cases files, and refuses when either exists. None writes over a rubric or a cases document it was given, and `jud tune --out` never writes among the recordings. Every other command, `jud eval` and a plain run among them, writes no file.
