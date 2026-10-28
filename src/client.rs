@@ -1767,22 +1767,13 @@ fn read_request_id(headers: &HeaderMap) -> Option<String> {
     )
 }
 
-/// A control character (C0, DEL, C1) or an invisible format one that can
-/// reorder or hide text in a log: line and paragraph separators, zero-width
-/// and bidi marks, embeddings, overrides and isolates, the BOM.
-fn is_unfit_in_id(c: char) -> bool {
-    c.is_control()
-        || matches!(c, '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}'
-            | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}' | '\u{FEFF}')
-}
-
 /// `id` trimmed, when it is fit to log, record and quote: not empty, no
 /// control character, at most [`REQUEST_ID_MAX_LEN`] bytes. The header and
 /// a body's `id` pass the same checks, since both end up on the span, in
 /// the response and in a recording. `source` names it in the debug line.
 fn usable_request_id(id: &str, source: &str) -> Option<String> {
     let v = id.trim();
-    if v.is_empty() || v.chars().any(is_unfit_in_id) {
+    if v.is_empty() || v.chars().any(crate::error::is_unfit_char) {
         return None;
     }
     if v.len() > REQUEST_ID_MAX_LEN {

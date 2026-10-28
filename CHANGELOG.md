@@ -6,6 +6,14 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- An `Error`'s message writes control, line-break and invisible format
+  characters from a server's text (the detail of a 402, 403 or 400, the body
+  of another status, a decode failure's reason) as escapes (`\n`,
+  `\u{1b}`), so a hostile response cannot forge a log line or move a
+  cursor. The error's fields keep the string as sent.
+
 ## [0.16.1] - 2026-10-28
 
 ### Security
