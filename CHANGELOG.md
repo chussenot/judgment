@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-10-28
+
 ### Security
 
 - `jud`'s plain-text escape (`out::plain`), which `jud`'s messages pass
