@@ -106,7 +106,7 @@ async fn a_report_from_recordings_equals_the_report_from_the_live_run() {
     );
     assert_eq!(code(&live), 0, "{}", stderr(&live));
 
-    let recorder = server(triage_answers(), 7).await;
+    let origin = server(triage_answers(), 7).await;
     let dir = scratch("fidelity");
     let recorded = run(
         &[
@@ -116,7 +116,7 @@ async fn a_report_from_recordings_equals_the_report_from_the_live_run() {
             "--out",
             dir.to_str().unwrap(),
         ],
-        &recorder.uri(),
+        &origin.uri(),
     );
     assert_eq!(code(&recorded), 0, "{}", stderr(&recorded));
 
