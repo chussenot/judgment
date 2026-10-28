@@ -554,6 +554,7 @@ fn truncate_to(mut s: String, max: usize) -> String {
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+    use proptest::prelude::*;
     use reqwest::header::HeaderValue;
 
     fn no_jitter() -> RetryPolicy {
@@ -630,13 +631,21 @@ mod tests {
         let p = RetryPolicy::default();
         assert_eq!(p.delay_with(1, None, 0.0), Duration::from_millis(500));
         assert_eq!(p.delay_with(1, None, 1.0), Duration::from_millis(375));
+        let (mut low, mut high) = (false, false);
         for _ in 0..1000 {
             let d = p.delay(1, None);
             assert!(
                 (Duration::from_millis(375)..=Duration::from_millis(500)).contains(&d),
                 "{d:?}"
             );
+            // A constant draw in `delay` would stay in one half of the range.
+            if d < Duration::from_micros(437_500) {
+                low = true;
+            } else {
+                high = true;
+            }
         }
+        assert!(low && high, "1000 draws sat in one half of [375, 500] ms");
 
         let nan = RetryPolicy {
             backoff_jitter: f64::NAN,
@@ -812,6 +821,169 @@ mod tests {
             );
         }
         assert_eq!(parse(&[]), None);
+    }
+
+    /// The last second RFC 9110 dates can name (9999-12-31T23:59:59Z).
+    const LAST_DATE_SECS: u64 = 253_402_300_799;
+
+    /// A duration over the whole range, with the small ones that meet a
+    /// budget or a cap more often than a random `u64` of seconds would.
+    fn any_duration() -> impl Strategy<Value = Duration> {
+        prop_oneof![
+            (0u64..20_000).prop_map(Duration::from_millis),
+            (any::<u64>(), 0u32..1_000_000_000).prop_map(|(s, n)| Duration::new(s, n)),
+        ]
+    }
+
+    fn any_policy() -> impl Strategy<Value = RetryPolicy> {
+        (
+            0u32..6,
+            any_duration(),
+            any_duration(),
+            prop_oneof![
+                Just(f64::NAN),
+                Just(f64::INFINITY),
+                any::<f64>(),
+                0.0..=1.0f64
+            ],
+            any_duration(),
+            proptest::option::of(any_duration()),
+        )
+            .prop_map(
+                |(
+                    max_retries,
+                    backoff_initial,
+                    backoff_max,
+                    backoff_jitter,
+                    retry_after_max,
+                    budget,
+                )| {
+                    RetryPolicy {
+                        max_retries,
+                        backoff_initial,
+                        backoff_max,
+                        backoff_jitter,
+                        retry_after_max,
+                        budget,
+                        ..RetryPolicy::default()
+                    }
+                },
+            )
+    }
+
+    proptest! {
+        /// `next_wait` and `delay` hold the attempt, wait and budget bounds
+        /// for every input; the jitter is random, so only bounds are asserted.
+        #[test]
+        fn next_wait_obeys_attempt_wait_and_budget_bounds(
+            p in any_policy(),
+            attempt in prop_oneof![0u32..10, any::<u32>()],
+            retry_after in proptest::option::of(any_duration()),
+            elapsed in any_duration(),
+            on_the_edge in any::<bool>(),
+        ) {
+            // A server's wait in range makes the delay exact, so the budget's edge can be aimed at.
+            let elapsed = match (p.budget, retry_after) {
+                (Some(b), Some(ra)) if on_the_edge => b.saturating_sub(ra),
+                _ => elapsed,
+            };
+            let delay = p.delay(attempt, retry_after);
+            match retry_after {
+                Some(ra) if ra <= p.retry_after_max => prop_assert_eq!(delay, ra),
+                _ => prop_assert!(delay <= p.backoff_max, "{delay:?}"),
+            }
+            match p.next_wait(attempt, retry_after, elapsed) {
+                None => prop_assert!(attempt > p.max_retries || p.budget.is_some()),
+                Some(w) => {
+                    prop_assert!(attempt <= p.max_retries);
+                    prop_assert!(w <= p.backoff_max.max(p.retry_after_max), "{w:?}");
+                    if let Some(budget) = p.budget {
+                        prop_assert!(elapsed.saturating_add(w) < budget);
+                    }
+                }
+            }
+            if attempt > p.max_retries {
+                prop_assert_eq!(p.next_wait(attempt, retry_after, elapsed), None);
+            } else if let (Some(ra), Some(b)) =
+                (retry_after.filter(|ra| *ra <= p.retry_after_max), p.budget)
+            {
+                let expected = (elapsed.saturating_add(ra) < b).then_some(ra);
+                prop_assert_eq!(p.next_wait(attempt, Some(ra), elapsed), expected);
+            }
+        }
+
+        /// Whatever bytes `Retry-After` and `retry-after-ms` hold, the parse
+        /// is `None` or a wait, and the wait the policy takes from it is
+        /// still capped.
+        #[test]
+        fn parse_retry_after_is_total_on_arbitrary_bytes(
+            ra in proptest::option::of(proptest::collection::vec(any::<u8>(), 0..40)),
+            ms in proptest::option::of(proptest::collection::vec(any::<u8>(), 0..40)),
+            now in any::<u32>(),
+        ) {
+            let mut h = HeaderMap::new();
+            for (name, bytes) in [(RETRY_AFTER, ra), (RETRY_AFTER_MS, ms)] {
+                if let Some(v) = bytes.and_then(|b| HeaderValue::from_bytes(&b).ok()) {
+                    h.insert(name, v);
+                }
+            }
+            if let Some(wait) = parse_retry_after_at(&h, at(u64::from(now))) {
+                let p = RetryPolicy::default();
+                prop_assert!(p.delay(1, Some(wait)) <= p.retry_after_max.max(p.backoff_max));
+            }
+        }
+
+        /// Numbers in the shapes a server writes and a hostile one stretches.
+        #[test]
+        fn parse_retry_after_on_number_shapes_is_none_or_exact(
+            value in "[-+]?[0-9]{0,25}(\\.[0-9]{0,25})?([eE][-+]?[0-9]{0,4})?|inf|NaN",
+            ms in any::<bool>(),
+        ) {
+            let name = if ms { RETRY_AFTER_MS } else { RETRY_AFTER };
+            let h = headers(&[(&name, &value)]);
+            let wait = parse_retry_after_at(&h, at(0));
+            if let (Some(wait), Ok(n)) = (wait, value.trim().parse::<f64>()) {
+                let scale = if ms { 1000.0 } else { 1.0 };
+                prop_assert!(n >= 0.0 && n.is_finite());
+                prop_assert!((wait.as_secs_f64() - n / scale).abs() <= n / scale * 1e-9 + 1e-9);
+            }
+        }
+
+        /// A date is measured against the response's `Date` header when it
+        /// parses, else the local clock; a past date is zero, a far-future
+        /// one stays within the last date a header can name.
+        #[test]
+        fn parse_retry_after_dates_measure_against_the_reference(
+            target in 0..=LAST_DATE_SECS,
+            date in proptest::option::of(0..=LAST_DATE_SECS),
+            now in 0..=LAST_DATE_SECS,
+        ) {
+            let mut pairs = vec![(RETRY_AFTER, httpdate::fmt_http_date(at(target)))];
+            if let Some(d) = date {
+                pairs.push((DATE, httpdate::fmt_http_date(at(d))));
+            }
+            let mut h = HeaderMap::new();
+            for (n, v) in &pairs {
+                h.insert(n.clone(), HeaderValue::from_str(v).unwrap());
+            }
+            let wait = parse_retry_after_at(&h, at(now)).unwrap();
+            prop_assert_eq!(wait, Duration::from_secs(target.saturating_sub(date.unwrap_or(now))));
+            prop_assert!(wait <= Duration::from_secs(LAST_DATE_SECS));
+        }
+
+        /// Dates before the epoch are refused or read as already past, never a panic.
+        #[test]
+        fn parse_retry_after_dates_before_1970_are_not_a_wait(
+            year in 0u32..1970,
+            month in 0usize..12,
+            day in 1u32..29,
+        ) {
+            const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            let value = format!("Mon, {day:02} {} {year:04} 00:00:00 GMT", MONTHS[month]);
+            let h = headers(&[(&RETRY_AFTER, &value)]);
+            let wait = parse_retry_after_at(&h, at(1_700_000_000));
+            prop_assert!(wait.is_none() || wait == Some(Duration::ZERO), "{value}: {wait:?}");
+        }
     }
 
     #[test]
