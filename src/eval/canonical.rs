@@ -124,7 +124,9 @@ fn ecmascript(number: f64) -> String {
     if number == 0.0 {
         return "0".to_owned();
     }
-    let negative = number < 0.0;
+    // After the zero return above the sign alone decides; `is_sign_negative`
+    // leaves no `<`-vs-`<=` mutant that equality can never reach.
+    let negative = number.is_sign_negative();
     // serde_json's shortest round-trip digits break a tie to the even digit,
     // as ECMAScript does; Rust's `{:e}` rounds it up (RFC 8785 Appendix B).
     let shortest = serde_json::Value::from(number.abs()).to_string();

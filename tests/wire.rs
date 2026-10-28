@@ -306,7 +306,7 @@ enum Outcome {
 
 /// One row per departure in `docs/project/verification/`: the page, the
 /// path, the status and body the server sent, and the outcome. The three
-/// OpenRouter rows have no verification record yet — they come from the
+/// `OpenRouter` rows have no verification record yet — they come from the
 /// documented shapes in `docs/project/research/compatible-servers-and-models.md`
 /// (`mise run live:openrouter` not yet run).
 #[allow(clippy::too_many_lines)]
