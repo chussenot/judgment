@@ -213,6 +213,12 @@ opentelemetry_sdk = { version = "0.33", default-features = false, features = ["m
 name = "client"
 required-features = ["http"]
 
+# The retry loop against a scripted raw server: what is re-sent, how long a
+# dribbling server holds a call, a dropped call, a client shared by tasks.
+[[test]]
+name = "retry_model"
+required-features = ["http"]
+
 # What the client records on its spans, through a capturing subscriber layer.
 # Its own binary, so the callsite interest cached by one test's subscriber
 # cannot hide another test's spans.
@@ -225,6 +231,12 @@ required-features = ["http"]
 # other test in the same binary would add to the counts.
 [[test]]
 name = "observer"
+required-features = ["http"]
+
+# `observer::set_global` raced by threads, and where usage goes with and
+# without a client's own observer. Its own binary for the same reason.
+[[test]]
+name = "observer_global"
 required-features = ["http"]
 
 # The vendored OpenAPI document against the live one; its one test is
