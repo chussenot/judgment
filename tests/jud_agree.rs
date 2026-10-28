@@ -571,7 +571,6 @@ fn a_number_key_in_tuning_is_judged_as_its_text() {
 /// written as a number is judged as the schema judges its text, save the
 /// classes already filed.
 #[test]
-#[ignore = "judgment-pry: lands with w2-reader"]
 fn a_key_written_as_a_number_is_judged_as_its_text() {
     let unexplained = report(
         NUMBER_KEYS
@@ -592,7 +591,6 @@ fn a_key_written_as_a_number_is_judged_as_its_text() {
 /// document: one key twice, which the reader refuses (the schema, given
 /// JSON, never sees the pair).
 #[test]
-#[ignore = "judgment-l47: lands with w2-reader"]
 fn a_key_written_as_text_and_as_a_number_is_refused_in_every_map() {
     let mut read = Vec::new();
     for (seed, value) in SEEDS.iter() {
