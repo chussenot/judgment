@@ -57,12 +57,13 @@ struct SentQuestion {
     criteria: Option<Criteria>,
 }
 
-/// A Choice's options keyed by name, or a Score's levels.
+/// A Choice's options keyed by name, or a Score's levels: a description may
+/// be `null` and a level an object.
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum Criteria {
-    Options(IndexMap<String, String>),
-    Levels(Vec<String>),
+    Options(IndexMap<String, Value>),
+    Levels(Vec<Value>),
 }
 
 impl Sent {
@@ -537,6 +538,115 @@ async fn the_triage_documents_go_round_the_loop_and_a_tuned_rubric_still_replays
 
     // And no run but the first spoke to the server.
     assert_eq!(server.received_requests().await.unwrap().len(), 7);
+}
+
+// ---- `jud lower` is the wire ---------------------------------------------------
+
+/// JSON with every object's keys in the order written: two of these are
+/// equal only when the order is too, which `Value` equality hides.
+#[derive(Deserialize, PartialEq, Debug)]
+#[serde(untagged)]
+enum Ordered {
+    Object(IndexMap<String, Ordered>),
+    Array(Vec<Ordered>),
+    Other(Value),
+}
+
+#[derive(Deserialize)]
+struct SentQuestions {
+    questions: Ordered,
+}
+
+/// The rubrics without images, each with its cases.
+const LOWERED: [(&str, &str); 6] = [
+    ("triage", "triage-cases"),
+    ("routing", "routing-cases"),
+    ("handoff", "handoff-cases"),
+    ("agent-mail", "agent-mail-cases"),
+    ("screening", "screening-cases"),
+    ("pairwise-judge", "pairwise-judge-cases"),
+];
+
+/// What `jud lower` prints is the `questions` the client sends, question
+/// for question and option for option in order: for the empty state and a
+/// case's state with options supplied in an unsorted order (`jud RUBRIC`),
+/// and for every case of a cases document (`jud record`).
+#[tokio::test]
+async fn jud_lower_prints_the_questions_the_client_sends() {
+    let example = |name: &str| format!("{ROOT}/examples/jud/{name}.jud");
+    for (rubric_name, cases_name) in LOWERED {
+        let (rubric, cases) = (example(rubric_name), example(cases_name));
+        let parsed =
+            judgment::jud::Rubric::parse(&std::fs::read_to_string(&rubric).unwrap()).unwrap();
+        let first = judgment::jud::Cases::parse(&std::fs::read_to_string(&cases).unwrap())
+            .unwrap()
+            .cases[0]
+            .state
+            .to_string();
+        let options: Map<String, Value> = parsed
+            .questions
+            .iter()
+            .filter(|(_, q)| q.options_from.is_some())
+            .map(|(id, _)| {
+                (
+                    id.clone(),
+                    json!({ "zz_supplied": "Z", "aa_supplied": null }),
+                )
+            })
+            .collect();
+        let options = Value::Object(options).to_string();
+        for state in ["{}", first.as_str()] {
+            let lowered = jud(
+                &["lower", &rubric, "--state", state, "--options", &options],
+                "",
+                &[],
+            );
+            assert_eq!(code(&lowered), 0, "{rubric_name}: {}", stderr(&lowered));
+            let printed: Ordered = serde_json::from_str(&stdout(&lowered)).unwrap();
+            let server = answering_server(1).await;
+            let uri = server.uri();
+            let sent = jud(
+                &[&rubric, "--options", &options],
+                state,
+                &[
+                    ("TYPESAFE_API_KEY", "test-key"),
+                    ("TYPESAFE_BASE_URL", &uri),
+                ],
+            );
+            assert_eq!(code(&sent), 0, "{rubric_name}: {}", stderr(&sent));
+            let request = &server.received_requests().await.unwrap()[0];
+            let on_the_wire: SentQuestions = request.body_json().unwrap();
+            assert_eq!(printed, on_the_wire.questions, "{rubric_name} with {state}");
+        }
+
+        // Per case: what `jud lower --cases` prints, what `jud record` sends.
+        let lowered = jud(&["lower", &rubric, "--cases", &cases], "", &[]);
+        assert_eq!(code(&lowered), 0, "{rubric_name}: {}", stderr(&lowered));
+        let mut printed: Vec<String> = stdout(&lowered)
+            .trim_start_matches("# ")
+            .split("\n# ")
+            .map(|block| {
+                let json = block.split_once('\n').unwrap().1;
+                format!("{:?}", serde_json::from_str::<Ordered>(json).unwrap())
+            })
+            .collect();
+        let dir = scratch("lower-record");
+        let server = answering_server(printed.len() as u64).await;
+        let out = record(&server, &rubric, &cases, &dir);
+        assert_eq!(code(&out), 0, "{rubric_name}: {}", stderr(&out));
+        // `record` may send the cases in any order; each request is one
+        // that `lower` printed.
+        let mut sent: Vec<String> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| format!("{:?}", r.body_json::<SentQuestions>().unwrap().questions))
+            .collect();
+        printed.sort();
+        sent.sort();
+        assert_eq!(printed, sent, "{rubric_name}");
+    }
 }
 
 // ---- the command line's guidance -----------------------------------------------
