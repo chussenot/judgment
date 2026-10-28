@@ -124,17 +124,23 @@ fn ecmascript(number: f64) -> String {
     if number == 0.0 {
         return "0".to_owned();
     }
-    let negative = number < 0.0;
-    // Rust's `{:e}` gives the shortest round-trip digits as `d.ddde±x`.
-    let sci = format!("{:e}", number.abs());
-    let (mantissa, exponent) = sci.split_once('e').unwrap_or((&sci, "0"));
+    // After the zero return above the sign alone decides; `is_sign_negative`
+    // leaves no `<`-vs-`<=` mutant that equality can never reach.
+    let negative = number.is_sign_negative();
+    // serde_json's shortest round-trip digits break a tie to the even digit,
+    // as ECMAScript does; Rust's `{:e}` rounds it up (RFC 8785 Appendix B).
+    let shortest = serde_json::Value::from(number.abs()).to_string();
+    let (mantissa, exponent) = shortest.split_once('e').unwrap_or((&shortest, "0"));
     let exponent: i64 = exponent.parse().unwrap_or(0);
-    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
-    let digits = digits.trim_end_matches('0');
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let all = format!("{whole}{fraction}");
+    let significant = all.trim_start_matches('0');
+    let leading = i64::try_from(all.len() - significant.len()).unwrap_or(0);
+    let digits = significant.trim_end_matches('0');
     let digits = if digits.is_empty() { "0" } else { digits };
     let digit_count = i64::try_from(digits.len()).unwrap_or(i64::MAX);
     // ECMAScript's `n`: the value is `digits × 10^(point − digit_count)`.
-    let point = exponent + 1;
+    let point = i64::try_from(whole.len()).unwrap_or(0) + exponent - leading;
     let mut out = String::new();
     if negative {
         out.push('-');
@@ -289,11 +295,9 @@ mod tests {
     }
 
     /// The Appendix B row where two shortest digit strings are equally near
-    /// the double (1424953923781206.25): ECMAScript takes the even one, `.2`;
-    /// Rust's shortest formatting takes `.3`, so `ecmascript` disagrees with
-    /// every other RFC 8785 implementation on such ties.
+    /// the double (1424953923781206.25): ECMAScript takes the even one, `.2`,
+    /// where Rust's `{:e}` would take `.3`.
     #[test]
-    #[ignore = "judgment-f2m (found by judgment-bsz.16.8): ecmascript() prints a shortest-digits tie as .3, the RFC and ECMAScript say .2"]
     fn rfc_8785_appendix_b_shortest_digit_tie_takes_the_even_digit() {
         let f = f64::from_bits(0x4314_3ff3_c1cb_0959);
         assert_eq!(to_string(&json!(f)), "1424953923781206.2");

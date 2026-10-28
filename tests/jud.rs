@@ -1842,10 +1842,9 @@ fn a_duplicate_key_is_refused_at_every_level_by_its_line() {
 /// A key is text whatever YAML reads it as (`docs/reference/jud-format.md`,
 /// Reading rules), so `2024` and `"2024"` are one key, written twice: a
 /// duplicate, to be refused. The YAML layer sees an integer and a string,
-/// two keys, and the reader keeps the last under the one text, silently
-/// dropping a label, a question, an option or an answer.
+/// two keys; kept as one text, the last would silently drop a label, a
+/// question, an option or an answer.
 #[test]
-#[ignore = "judgment-l47 (found by judgment-bsz.18.20): a key spelled as a number and as text collapses to one"]
 fn a_key_spelled_as_a_number_and_as_text_is_a_duplicate() {
     let read_as_one = [
         ("metadata.labels", with_line_after(DUP_RUBRIC, 4, "  labels: {2024: a, \"2024\": b}")),
@@ -1870,11 +1869,9 @@ fn a_key_spelled_as_a_number_and_as_text_is_a_duplicate() {
 
 /// A key is text whatever YAML reads it as, inside a question as in a
 /// state: a Choice rated `1` to `3`, instructions in numbered parts. The
-/// schema reads the keys as JSON does and takes these; the reader buffers a
-/// question by its `type` and then refuses the integer key ("expected a
-/// string key", at the question's line).
+/// schema reads the keys as JSON does and takes these, and so does the
+/// reader.
 #[test]
-#[ignore = "judgment-pry (found by judgment-bsz.18.20): a number key inside a question is refused"]
 fn a_number_key_inside_a_question_is_read_as_text() {
     let refused = [
         "{type: choice, instructions: rate it, criteria: {1: poor, 2: fair, 3: good}}",
@@ -1893,6 +1890,42 @@ fn a_number_key_inside_a_question_is_read_as_text() {
     })
     .collect::<Vec<_>>();
     assert!(refused.is_empty(), "{refused:#?}");
+}
+
+/// A question's `criteria` of the wrong shape for its type is refused at
+/// its path, naming the shape the type takes, not as a syntax error.
+#[test]
+fn criteria_of_the_wrong_shape_are_refused_at_their_path() {
+    for (q, says) in [
+        (
+            "{type: noul, instructions: x, criteria: [bad]}",
+            "a Noul's criteria are a map",
+        ),
+        (
+            "{type: choice, instructions: x, criteria: [bad]}",
+            "a Choice's criteria are its options, a map",
+        ),
+        (
+            "{type: score, instructions: x, criteria: {a: bad}}",
+            "a Score's criteria are its levels, a list",
+        ),
+        (
+            "{type: box, instructions: x, criteria: {a: bad}}",
+            "a Box takes no criteria",
+        ),
+    ] {
+        let text = format!(
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata: {{name: r, minor: 4}}\nspec:\n  questions:\n    q: {q}\n"
+        );
+        match Rubric::parse(&text) {
+            Err(jud::Error::Invalid { field, reason }) => {
+                assert_eq!(field, "spec.questions.q.criteria", "{q}");
+                assert!(reason.contains(says), "{q}: {reason}");
+            }
+            Err(other) => panic!("{q}: refused, but not at its path: {other}"),
+            Ok(_) => panic!("{q}: read"),
+        }
+    }
 }
 
 /// The options a case supplies are asked in the order written, before the
@@ -1995,5 +2028,149 @@ proptest::proptest! {
         let _ = Rubric::parse(&text);
         let _ = Cases::parse(&text);
         let _ = jud::parse_recording(&text);
+    }
+}
+
+/// bsz.19.7: an error from reading a rubric, cases or recording file names
+/// where (a path, a line, a field) and never what the document held. Every
+/// slot of the example documents, as a value and as a key, is made to hold a
+/// sentinel in a shape that is wrong for it; whatever the readers refuse, the
+/// error text does not carry the sentinel.
+mod untrusted_text {
+    use super::*;
+
+    const S: &str = "ZQ9SENTINELZQ9";
+
+    /// Every document `seed` becomes with the sentinel in one slot.
+    fn mutants(seed: &Value) -> Vec<Value> {
+        fn paths(v: &Value, at: &mut Vec<String>, out: &mut Vec<Vec<String>>) {
+            out.push(at.clone());
+            match v {
+                Value::Object(m) => {
+                    for (k, child) in m {
+                        at.push(k.clone());
+                        paths(child, at, out);
+                        at.pop();
+                    }
+                }
+                Value::Array(a) => {
+                    for (i, child) in a.iter().enumerate() {
+                        at.push(i.to_string());
+                        paths(child, at, out);
+                        at.pop();
+                    }
+                }
+                _ => {}
+            }
+        }
+        fn at_mut<'a>(v: &'a mut Value, p: &[String]) -> &'a mut Value {
+            p.iter().fold(v, |v, k| match v {
+                Value::Array(a) => &mut a[k.parse::<usize>().unwrap()],
+                _ => &mut v[k.as_str()],
+            })
+        }
+        let mut all = Vec::new();
+        paths(seed, &mut Vec::new(), &mut all);
+        let mut out = Vec::new();
+        for p in &all {
+            for wrong in [json!(S), json!([S]), json!({ S: S }), json!({ "x": S })] {
+                let mut d = seed.clone();
+                *at_mut(&mut d, p) = wrong;
+                out.push(d);
+            }
+            let mut d = seed.clone();
+            let slot = at_mut(&mut d, p);
+            if let Value::Object(m) = slot {
+                // As an unknown key, and as every known key renamed.
+                m.insert(S.to_owned(), json!(1));
+                out.push(d.clone());
+                let mut d = seed.clone();
+                if let Value::Object(m) = at_mut(&mut d, p) {
+                    let keys: Vec<String> = m.keys().cloned().collect();
+                    for k in keys {
+                        let v = m.remove(&k).unwrap();
+                        m.insert(format!("{S}{k}"), v);
+                    }
+                }
+                out.push(d);
+            }
+        }
+        out
+    }
+
+    fn seeds() -> Vec<Value> {
+        [
+            (EXAMPLES, "triage.jud"),
+            (EXAMPLES, "triage-cases.jud"),
+            (RECORDINGS, "close-account.jud"),
+        ]
+        .iter()
+        .map(|(dir, name)| value_of(&read(dir, name)))
+        .collect()
+    }
+
+    fn leaks(what: &str, doc: &Value, text: &str, found: &mut Vec<String>) {
+        if text.contains(S) {
+            found.push(format!("{what}: {text}  <= {doc}"));
+        }
+    }
+
+    #[test]
+    #[ignore = "judgment-ic8: found"]
+    fn no_reader_error_quotes_the_document() {
+        let mut found = Vec::new();
+        for seed in seeds() {
+            for doc in mutants(&seed) {
+                let text = doc.to_string();
+                if let Err(e) = jud::parse(&text) {
+                    leaks("parse", &doc, &e.to_string(), &mut found);
+                }
+                if let Err(e) = Rubric::parse(&text) {
+                    leaks("Rubric::parse", &doc, &e.to_string(), &mut found);
+                }
+                if let Err(e) = Cases::parse(&text) {
+                    leaks("Cases::parse", &doc, &e.to_string(), &mut found);
+                }
+                if let Err(e) = jud::parse_recording(&text) {
+                    leaks("parse_recording", &doc, &e.to_string(), &mut found);
+                }
+            }
+        }
+        found.sort();
+        found.dedup_by_key(|f| f.split("  <=").next().unwrap().to_owned());
+        assert!(
+            found.is_empty(),
+            "{} kinds of leak:\n{}",
+            found.len(),
+            found.join("\n")
+        );
+    }
+
+    /// The `.json` recording a `Replay` directory holds: serde's own message.
+    #[test]
+    #[ignore = "judgment-ic8: found"]
+    fn a_json_recording_error_quotes_nothing() {
+        let seed = serde_json::to_value(
+            jud::parse_recording(&read(RECORDINGS, "close-account.jud")).unwrap(),
+        )
+        .unwrap();
+        let dir = tempdir().join("untrusted-json");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut found = Vec::new();
+        for doc in mutants(&seed) {
+            std::fs::write(dir.join("r.json"), doc.to_string()).unwrap();
+            if let Err(e) = Replay::open(&dir) {
+                leaks("Replay::open", &doc, &e.to_string(), &mut found);
+            }
+        }
+        found.sort();
+        found.dedup_by_key(|f| f.split("  <=").next().unwrap().to_owned());
+        assert!(
+            found.is_empty(),
+            "{} kinds of leak:\n{}",
+            found.len(),
+            found.join("\n")
+        );
     }
 }

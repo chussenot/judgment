@@ -1247,6 +1247,88 @@ fn a_stdout_that_cannot_be_written_is_never_exit_0() {
     }
 }
 
+/// `jud ARGS` with `stdin`, only `env` among the crate's variables, and
+/// stdout on `/dev/full`, where every write fails with `ENOSPC`.
+#[cfg(target_os = "linux")]
+fn into_a_full_disk(args: &[&str], stdin: &str, env: &[(&str, &str)]) -> Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_jud"));
+    command
+        .args(args)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .env("XDG_CONFIG_HOME", config_home())
+        .stdin(Stdio::piped())
+        .stdout(
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open("/dev/full")
+                .unwrap(),
+        )
+        .stderr(Stdio::piped());
+    for name in own_variables() {
+        command.env_remove(name);
+    }
+    command.envs(env.iter().copied());
+    let mut child = command.spawn().unwrap();
+    let _ = child.stdin.take().unwrap().write_all(stdin.as_bytes());
+    child.wait_with_output().unwrap()
+}
+
+/// The commands whose whole output is one result, and `completion`, never
+/// exit 0 into a stdout that cannot be written either.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_result_that_cannot_be_written_is_never_exit_0() {
+    let recordings = support::RECORDINGS;
+    let recorded = r#"{"message": "This is the third time I'm writing. I was charged twice last month and nobody has refunded me. Fix it today or I cancel."}"#;
+    let out_dir = support::scratch("full-disk").join("dry");
+    for (args, stdin) in [
+        (vec!["completion", "bash"], ""),
+        (vec!["--replay", recordings, RUBRIC], recorded),
+        (vec!["eval", RUBRIC, CASES, "--replay", recordings], ""),
+        (
+            vec!["eval", RUBRIC, CASES, "--replay", recordings, "--json"],
+            "",
+        ),
+        (
+            vec![
+                "record",
+                RUBRIC,
+                CASES,
+                "--out",
+                out_dir.to_str().unwrap(),
+                "--dry-run",
+            ],
+            "",
+        ),
+    ] {
+        let out = into_a_full_disk(&args, stdin, &[]);
+        assert_ne!(out.status.code(), Some(0), "jud {args:?}: {}", stderr(&out));
+        assert!(
+            out.status.code().is_some(),
+            "jud {args:?}: no panic, no signal"
+        );
+    }
+}
+
+/// A run that was billed and then could not write its answer did not fail
+/// "before any call": it is not reported under the usage status (2).
+#[cfg(target_os = "linux")]
+#[ignore = "judgment-bsz.17.21: found"]
+#[tokio::test]
+async fn a_billed_answer_that_cannot_be_written_is_not_a_usage_error() {
+    let server = backend(200, answers(), 1).await;
+    let out = into_a_full_disk(
+        &[RUBRIC],
+        STATE,
+        &[
+            ("TYPESAFE_API_KEY", "test-key"),
+            ("TYPESAFE_BASE_URL", &server.uri()),
+        ],
+    );
+    assert_ne!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_ne!(out.status.code(), Some(2), "{}", stderr(&out));
+}
+
 /// A cases document refused at binding is one document, loaded and refused,
 /// not two.
 #[test]

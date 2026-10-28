@@ -1701,3 +1701,96 @@ fn a_dry_run_into_a_file_is_refused() {
         stderr(&out)
     );
 }
+
+/// `response` as an HTTP/1.1 response with `status`, closing the connection
+/// so a retry never reuses one the raw server is about to close.
+fn raw_response(status: &str, extra: &str, body: &str) -> Vec<u8> {
+    format!(
+        "HTTP/1.1 {status}\r\ncontent-type: application/json\r\nconnection: close\r\n\
+         {extra}content-length: {}\r\n\r\n{body}",
+        body.len()
+    )
+    .into_bytes()
+}
+
+/// `jud record` over the triage cases into `out` against the raw server at `url`.
+fn record_at(url: &str, out: &Path) -> Output {
+    jud(
+        &[
+            "record",
+            TRIAGE,
+            TRIAGE_CASES,
+            "--out",
+            out.to_str().unwrap(),
+        ],
+        "",
+        &[("TYPESAFE_API_KEY", "test-key"), ("TYPESAFE_BASE_URL", url)],
+    )
+}
+
+/// A server whose first attempt at every case fails (a 503, a 429 that says
+/// retry now, a reset after the request was read, a 200 cut short) slows
+/// `jud record` and does not stop it: every case is recorded after exactly
+/// two attempts. The reset and the cut body came after the server had read
+/// the whole request, so those cases were sent, and may be billed, twice:
+/// the trade-off `TransportRetry::Any`, jud's default, documents. Three
+/// failures in a row stop the run at that case with what came before on
+/// disk, and the rerun asks only the cases left.
+#[tokio::test]
+async fn a_flaky_server_slows_record_and_never_stops_it() {
+    use support::raw::{RawServer, Step};
+    let ok = Step::Write(raw_response("200 OK", "", &triage_answers().to_string()));
+    let faults = [
+        Step::Write(raw_response("503 Service Unavailable", "", "{}")),
+        Step::Write(raw_response(
+            "429 Too Many Requests",
+            "retry-after: 0\r\n",
+            "{}",
+        )),
+        Step::Reset,
+        Step::Write(
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 100\r\n\r\n{"
+                .to_vec(),
+        ),
+    ];
+    let scripts: Vec<Vec<Step>> = faults
+        .iter()
+        .cycle()
+        .take(TRIAGE_IDS.len())
+        .flat_map(|fault| [vec![fault.clone()], vec![ok.clone()]])
+        .collect();
+    let server = RawServer::start(scripts);
+    let out = scratch("record-flaky");
+    let run = record_at(&server.url, &out);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    assert_eq!(names(&out), triage_files());
+    let connections = server.stop();
+    assert_eq!(connections.len(), 2 * TRIAGE_IDS.len());
+    assert!(
+        connections.iter().all(|c| c.complete),
+        "every request was read whole"
+    );
+
+    // Two answers, then the third case fails three times: retries spent.
+    let failing = vec![Step::Write(raw_response(
+        "503 Service Unavailable",
+        "",
+        "{}",
+    ))];
+    let server = RawServer::start(vec![vec![ok.clone()], vec![ok.clone()], failing]);
+    let out = scratch("record-flaky");
+    let run = record_at(&server.url, &out);
+    assert_eq!(code(&run), 1, "{}", stderr(&run));
+    assert!(
+        stderr(&run).contains("stopped at case login-loop"),
+        "{}",
+        stderr(&run)
+    );
+    assert_eq!(names(&out), ["refund-angry.jud", "thanks.jud"]);
+    assert_eq!(server.stop().len(), 2 + 3);
+    let server = RawServer::start(vec![vec![ok]]);
+    let run = record_at(&server.url, &out);
+    assert_eq!(code(&run), 0, "{}", stderr(&run));
+    assert_eq!(names(&out), triage_files());
+    assert_eq!(server.stop().len(), TRIAGE_IDS.len() - 2);
+}

@@ -14,11 +14,8 @@
 //! questions it was sent.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::thread::JoinHandle;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use judgment::client::{HeaderName, HeaderValue, REQUEST_ID_HEADER};
@@ -29,6 +26,15 @@ use judgment::{
 use serde_json::json;
 use wiremock::matchers::{body_json, body_partial_json, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+// The client's target does not build the `jud` binary that `support/mod.rs`
+// names, so it takes the two modules it needs on their own.
+#[path = "support/raw.rs"]
+mod raw;
+#[path = "support/sinks.rs"]
+mod sinks;
+
+use raw::{RawServer, Step};
 
 options! {
     enum Department {
@@ -648,99 +654,115 @@ async fn transport_never_does_not_retry() {
 const TRUNCATED: &[u8] = b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
     content-length: 100\r\n\r\n{\"model\":";
 
-/// A raw HTTP/1.1 server that answers every request with `response`, byte
-/// for byte, then closes, counting the connections it accepts. wiremock
-/// cannot truncate a body or send one chunked, hence a thread over a std
-/// listener. Its accept loop polls, so it stops when `stop` is set or after
-/// 5 s, and a regression fails the test instead of hanging it.
-fn raw_server(
-    response: &'static [u8],
-) -> (String, Arc<AtomicUsize>, Arc<AtomicBool>, JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    listener.set_nonblocking(true).unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap());
-    let connections = Arc::new(AtomicUsize::new(0));
-    let stop = Arc::new(AtomicBool::new(false));
-    let (count, done) = (Arc::clone(&connections), Arc::clone(&stop));
-    let thread = std::thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while !done.load(Ordering::SeqCst) && Instant::now() < deadline {
-            match listener.accept() {
-                Ok((mut stream, _)) => {
-                    count.fetch_add(1, Ordering::SeqCst);
-                    stream.set_nonblocking(false).unwrap();
-                    stream
-                        .set_read_timeout(Some(Duration::from_secs(5)))
-                        .unwrap();
-                    read_request(&mut stream);
-                    let _ = stream.write_all(response);
-                    let _ = stream.flush();
-                    let _ = stream.shutdown(Shutdown::Both);
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(5));
-                }
-                Err(e) => panic!("accept: {e}"),
-            }
-        }
-    });
-    (url, connections, stop, thread)
+/// A raw server (`support/raw.rs`) that answers every request with
+/// `response`, byte for byte, then closes: wiremock cannot truncate a body
+/// or send one chunked.
+fn answering(response: &[u8]) -> RawServer {
+    RawServer::start(vec![vec![Step::Write(response.to_vec())]])
 }
 
-/// Read one request, head and body, so that closing the connection sends a
-/// clean end of stream rather than a reset over unread bytes.
-fn read_request(stream: &mut TcpStream) {
-    let mut buf = Vec::new();
-    let mut chunk = [0u8; 4096];
-    let mut wanted = None;
-    loop {
-        if let Some(total) = wanted
-            && buf.len() >= total
-        {
-            return;
-        }
-        let n = match stream.read(&mut chunk) {
-            Ok(0) | Err(_) => return,
-            Ok(n) => n,
-        };
-        buf.extend_from_slice(&chunk[..n]);
-        if wanted.is_none()
-            && let Some(end) = buf.windows(4).position(|w| w == b"\r\n\r\n")
-        {
-            let head = String::from_utf8_lossy(&buf[..end]).to_ascii_lowercase();
-            let body = head
-                .lines()
-                .find_map(|l| l.strip_prefix("content-length:"))
-                .and_then(|v| v.trim().parse::<usize>().ok())
-                .unwrap_or(0);
-            wanted = Some(end + 4 + body);
-        }
+/// The scripted server's own check: each connection follows its script, a
+/// stall is a stall, a reset reaches reqwest as a transport error after the
+/// request was read whole, and the next connection gets the next script.
+#[tokio::test]
+async fn the_raw_server_follows_a_script_per_connection() {
+    let ok = format!(
+        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{}",
+        noul_body().to_string().len(),
+        noul_body()
+    );
+    let server = RawServer::start(vec![
+        vec![
+            Step::Write(b"HTTP/1.1 200 OK\r\ncontent-length: 100\r\n\r\n{".to_vec()),
+            Step::Stall(Duration::from_millis(300)),
+            Step::Reset,
+        ],
+        vec![Step::Write(ok.into_bytes())],
+    ]);
+    let started = Instant::now();
+    let err = client_at(&server.url, RetryPolicy::none(), Duration::from_secs(2))
+        .system_one(&"s", &one_noul())
+        .await
+        .unwrap_err();
+    assert!(started.elapsed() >= Duration::from_millis(300), "the stall");
+    let mut cause: Option<&(dyn std::error::Error + 'static)> = Some(&err);
+    let reset = std::iter::from_fn(|| {
+        let now = cause?;
+        cause = now.source();
+        Some(now)
+    })
+    .filter_map(|e| e.downcast_ref::<std::io::Error>())
+    .any(|e| e.kind() == std::io::ErrorKind::ConnectionReset);
+    assert!(reset, "a reset, not an end of stream: {err:?}");
+    assert!(
+        matches!(err, Error::Transport { attempts: 1, .. }),
+        "{err:?}"
+    );
+    let response = client_at(&server.url, RetryPolicy::none(), Duration::from_secs(2))
+        .system_one(&"s", &one_noul())
+        .await
+        .unwrap();
+    assert_eq!(response.model, "jev-1.13.0");
+    let connections = server.stop();
+    assert_eq!(connections.len(), 2);
+    for c in &connections {
+        assert!(c.complete, "{c:?}");
+        assert!(c.request.starts_with(b"POST /v1/systemone "), "{c:?}");
+        assert!(c.request.ends_with(b"}"), "the body was read: {c:?}");
+    }
+}
+
+/// An empty script reads the request and closes: no response at all.
+#[tokio::test]
+async fn the_raw_server_closes_when_its_script_runs_out() {
+    let server = RawServer::start(vec![vec![]]);
+    let err = client_at(&server.url, RetryPolicy::none(), Duration::from_secs(2))
+        .system_one(&"s", &one_noul())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, Error::Transport { attempts: 1, .. }),
+        "{err:?}"
+    );
+    assert!(server.stop()[0].complete);
+}
+
+#[test]
+fn the_sink_scanner_refuses_canaries_controls_format_characters_and_length() {
+    sinks::assert_clean("plain", "HTTP 503: try later", &["CANARY"], 64);
+    for (text, max) in [
+        ("has CANARY-1 in it", 64),
+        ("a\nb", 64),
+        ("a\u{1b}[2Jb", 64),
+        ("a\u{202E}b", 64),
+        ("a\u{200B}b", 64),
+        ("too long", 4),
+    ] {
+        let refused = std::panic::catch_unwind(|| {
+            sinks::assert_clean("text", text, &["CANARY"], max);
+        });
+        assert!(refused.is_err(), "{text:?} passed");
     }
 }
 
 #[tokio::test]
 async fn a_truncated_body_is_retried_by_default_only() {
     for (transport, attempts) in [(TransportRetry::BeforeSend, 1), (TransportRetry::Any, 3)] {
-        let (url, connections, stop, thread) = raw_server(TRUNCATED);
+        let server = answering(TRUNCATED);
         let policy = RetryPolicy {
             transport,
             ..fast_retries(2)
         };
-        let err = client_at(&url, policy, Duration::from_secs(2))
+        let err = client_at(&server.url, policy, Duration::from_secs(2))
             .system_one(&"s", &one_noul())
             .await
             .unwrap_err();
-        stop.store(true, Ordering::SeqCst);
-        thread.join().unwrap();
+        let connections = server.stop().len();
         assert!(
             matches!(&err, Error::Transport { attempts: a, .. } if *a == attempts),
             "{transport:?}: {err:?}"
         );
-        assert_eq!(
-            connections.load(Ordering::SeqCst),
-            attempts as usize,
-            "{transport:?}"
-        );
+        assert_eq!(connections, attempts as usize, "{transport:?}");
     }
 }
 
@@ -772,22 +794,21 @@ fn observed(base_url: &str, retry: RetryPolicy, failures: &Arc<Failures>) -> Cli
 async fn a_cut_short_429_waits_as_told_and_is_one_failed_attempt() {
     const CUT: &[u8] = b"HTTP/1.1 429 Too Many Requests\r\ncontent-type: application/json\r\n\
         retry-after: 1\r\ncontent-length: 100\r\n\r\n{\"error\":";
-    let (url, connections, stop, thread) = raw_server(CUT);
+    let server = answering(CUT);
     let failures = Arc::new(Failures::default());
     let started = Instant::now();
-    let err = observed(&url, fast_retries(1), &failures)
+    let err = observed(&server.url, fast_retries(1), &failures)
         .system_one(&"s", &one_noul())
         .await
         .unwrap_err();
     let elapsed = started.elapsed();
-    stop.store(true, Ordering::SeqCst);
-    thread.join().unwrap();
+    let connections = server.stop().len();
     assert!(
         matches!(&err, Error::RateLimited { attempts: 2, retry_after: Some(wait), .. } if *wait == Duration::from_secs(1)),
         "{err:?}"
     );
     assert!(elapsed >= Duration::from_secs(1), "{elapsed:?}");
-    assert_eq!(connections.load(Ordering::SeqCst), 2);
+    assert_eq!(connections, 2);
     assert_eq!(*failures.0.lock().unwrap(), ["429", "429"]);
 }
 
@@ -861,18 +882,17 @@ async fn a_body_over_the_cap_is_refused_and_not_retried() {
     assert!(matches!(err, Error::Decode { .. }), "at the cap: {err:?}");
     server.verify().await;
 
-    let (url, connections, stop, thread) = raw_server(CHUNKED);
-    let err = client_at(&url, capped, Duration::from_secs(2))
+    let server = answering(CHUNKED);
+    let err = client_at(&server.url, capped, Duration::from_secs(2))
         .system_one(&"s", &one_noul())
         .await
         .unwrap_err();
-    stop.store(true, Ordering::SeqCst);
-    thread.join().unwrap();
+    let connections = server.stop().len();
     assert!(
         matches!(err, Error::ResponseTooLarge { limit: 16 }),
         "chunked: {err:?}"
     );
-    assert_eq!(connections.load(Ordering::SeqCst), 1, "not retried");
+    assert_eq!(connections, 1, "not retried");
 }
 
 /// The body is the fixture `tests/contract.rs` checks against the OpenAPI
@@ -3469,4 +3489,180 @@ fn content_encoding_is_the_clients_header() {
         matches!(&err, Error::ReservedHeader(h) if h == "content-encoding"),
         "{err:?}"
     );
+}
+
+/// bsz.19.2: whatever a server puts in a response, the error's message holds
+/// no control, line-break or invisible format character, so it cannot move a
+/// cursor, forge a log line or reorder text. The field keeps the string as sent.
+mod hostile_server_text {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn unfit(c: char) -> bool {
+        c.is_control()
+            || matches!(c, '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}'
+                | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}' | '\u{FEFF}')
+    }
+
+    fn text() -> impl Strategy<Value = String> {
+        prop::collection::vec(
+            prop_oneof![
+                any::<char>(),
+                prop::sample::select(vec![
+                    '\u{202E}', '\u{2066}', '\u{200B}', '\u{FEFF}', '\u{85}', '\u{1b}', '\n', '\r',
+                    '\u{2028}', '\u{7f}',
+                ]),
+            ],
+            0..40,
+        )
+        .prop_map(|v| v.into_iter().collect())
+    }
+
+    /// The body shapes error text is read from, with `s` in every slot.
+    fn bodies(s: &str) -> Vec<String> {
+        let issue = |loc: &str, msg: &str, kind: &str| {
+            json!({"detail": [{"loc": ["body", loc], "msg": msg, "type": kind}]}).to_string()
+        };
+        vec![
+            s.to_owned(),
+            json!(s).to_string(),
+            json!({"error": s}).to_string(),
+            json!({"message": s}).to_string(),
+            json!({"detail": s}).to_string(),
+            json!({"detail": {"error_type": s}}).to_string(),
+            json!({"code": s}).to_string(),
+            issue("x", s, "t"),
+            issue(s, "m", "t"),
+            issue("x", "m", s),
+        ]
+    }
+
+    #[test]
+    fn no_error_message_carries_an_unfit_character() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let server = rt.block_on(MockServer::start());
+        let c = client(&server, RetryPolicy::none());
+        let mut runner = proptest::test_runner::TestRunner::new(ProptestConfig {
+            cases: 48,
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        });
+        runner
+            .run(
+                &(
+                    text(),
+                    prop::sample::select(vec![400u16, 402, 403, 418, 422, 200]),
+                ),
+                |(s, status)| {
+                    for body in bodies(&s) {
+                        rt.block_on(async {
+                            server.reset().await;
+                            Mock::given(method("POST"))
+                                .respond_with(
+                                    ResponseTemplate::new(status).set_body_string(body.clone()),
+                                )
+                                .mount(&server)
+                                .await;
+                            let err = c.system_one(&"s", &one_noul()).await.unwrap_err();
+                            let shown = err.to_string();
+                            prop_assert!(
+                                !shown.chars().any(unfit),
+                                "{status} {body:?} -> {shown:?}"
+                            );
+                            Ok(())
+                        })?;
+                    }
+                    Ok(())
+                },
+            )
+            .unwrap();
+    }
+}
+
+/// bsz.19.15: a key `build` accepts is a key the wire carries as given
+/// (trimmed of the SDK's whitespace), and a key it refuses is never quoted,
+/// in the message or in `Debug`.
+mod api_key_agrees_with_the_wire {
+    use super::*;
+    use proptest::prelude::*;
+
+    const MARK: &str = "ZQ9KEY";
+
+    fn junk() -> impl Strategy<Value = String> {
+        prop_oneof![
+            prop::collection::vec(any::<u8>(), 0..8)
+                .prop_map(|b| String::from_utf8_lossy(&b).into_owned()),
+            "[ -~]{0,6}",
+            prop::collection::vec(
+                prop::sample::select(vec![
+                    ' ', '\t', '\r', '\n', '\u{1c}', '\u{a0}', '\u{feff}', '\u{85}', '\u{2028}',
+                    '\u{7f}', 'é', '\u{200b}',
+                ]),
+                0..4,
+            )
+            .prop_map(|v| v.into_iter().collect()),
+        ]
+    }
+
+    #[test]
+    fn accepted_keys_are_sent_as_given_and_refused_keys_are_not_quoted() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let server = rt.block_on(MockServer::start());
+        let mut runner = proptest::test_runner::TestRunner::new(ProptestConfig {
+            cases: 200,
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        });
+        runner
+            .run(
+                &(junk(), junk(), any::<bool>()),
+                |(pre, post, with_mark)| {
+                    let key = if with_mark {
+                        format!("{pre}{MARK}{post}")
+                    } else {
+                        format!("{pre}{post}")
+                    };
+                    let built = Client::builder()
+                        .api_key(key.clone())
+                        .base_url(server.uri())
+                        .retry(RetryPolicy::none())
+                        .build();
+                    let c = match built {
+                        Err(e) => {
+                            prop_assert!(
+                                !format!("{e} {e:?}").contains(MARK),
+                                "{key:?} quoted in {e:?}"
+                            );
+                            return Ok(());
+                        }
+                        Ok(c) => c,
+                    };
+                    prop_assert!(!format!("{c:?}").contains(MARK), "Debug quotes {key:?}");
+                    let sent = rt.block_on(async {
+                        server.reset().await;
+                        Mock::given(method("POST"))
+                            .respond_with(ResponseTemplate::new(500))
+                            .mount(&server)
+                            .await;
+                        let _ = c.system_one(&"s", &one_noul()).await;
+                        server.received_requests().await.unwrap()
+                    });
+                    let got = sent
+                        .first()
+                        .and_then(|r| r.headers.get("authorization"))
+                        .map(|v| v.as_bytes().to_vec());
+                    let trimmed = key.trim_matches(|c: char| {
+                        c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
+                    });
+                    prop_assert_eq!(
+                        got,
+                        Some(format!("Bearer {trimmed}").into_bytes()),
+                        "key {:?}",
+                        key
+                    );
+                    Ok(())
+                },
+            )
+            .unwrap();
+    }
 }

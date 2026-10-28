@@ -66,7 +66,7 @@ pub enum Error {
     /// key does not help, the account's access does. The hosted API answers
     /// 403 to a request without a `Bearer` key too; this client always
     /// sends one, so that means something in between stripped the header.
-    #[error("permission denied (403): {detail}{}", request_id_suffix(.request_id.as_deref()))]
+    #[error("permission denied (403): {}{}", shown(detail), request_id_suffix(.request_id.as_deref()))]
     PermissionDenied {
         /// The server's message, or the body truncated when it has none.
         detail: String,
@@ -79,7 +79,7 @@ pub enum Error {
     /// retried, and kept apart from
     /// [`Error::PermissionDenied`] because neither a new key nor the
     /// account's access fixes it: credit does.
-    #[error("payment required (402): {detail}{}", request_id_suffix(.request_id.as_deref()))]
+    #[error("payment required (402): {}{}", shown(detail), request_id_suffix(.request_id.as_deref()))]
     PaymentRequired {
         /// The server's message, or the body truncated when it has none.
         detail: String,
@@ -96,7 +96,7 @@ pub enum Error {
     /// answer to a `Content-Encoding` it does not take, fixed by sending the
     /// body plain (`ClientBuilder::zstd(false)`, feature `zstd`). Each issue's echoed `input` is
     /// dropped because it can be a piece of the state.
-    #[error("request rejected by the API ({status}): {detail}{}", request_id_suffix(.request_id.as_deref()))]
+    #[error("request rejected by the API ({status}): {}{}", shown(detail), request_id_suffix(.request_id.as_deref()))]
     InvalidRequest {
         /// HTTP status: 400, 413, 415 or 422.
         status: u16,
@@ -191,7 +191,7 @@ pub enum Error {
     /// ([`crate::answer`]), so only a known shape broken lands here. A 2xx
     /// that does not decode keeps its request id, as the Python SDK's
     /// validation error does, and is not retried: a 2xx is final.
-    #[error("could not decode API response: {source}{}", request_id_suffix(.request_id.as_deref()))]
+    #[error("could not decode API response: {}{}", shown(&source.to_string()), request_id_suffix(.request_id.as_deref()))]
     Decode {
         /// What serde could not read.
         #[source]
@@ -606,12 +606,36 @@ fn request_id_suffix(id: Option<&str>) -> String {
 
 /// `no body` for an empty or blank [`Error::Http`] body, so the message does
 /// not end on a dangling colon; the field keeps what the server sent.
-fn body_or_none(body: &str) -> &str {
+fn body_or_none(body: &str) -> String {
     if body.trim().is_empty() {
-        "no body"
+        "no body".to_owned()
     } else {
-        body
+        shown(body)
     }
+}
+
+/// A control character (C0, DEL, C1) or an invisible format one that can
+/// reorder or hide text in a log: line and paragraph separators, zero-width
+/// and bidi marks, embeddings, overrides and isolates, the BOM.
+pub(crate) fn is_unfit_char(c: char) -> bool {
+    c.is_control()
+        || matches!(c, '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}'
+            | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}' | '\u{FEFF}')
+}
+
+/// Server text as a message shows it: such characters written as escapes
+/// (`\n`, `\u{1b}`), so a hostile body cannot move the cursor, forge a log
+/// line or reorder what follows. The error's field keeps the string as sent.
+fn shown(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if is_unfit_char(c) {
+            out.extend(c.escape_default());
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// The server's-wait clause of a rate-limit message, empty when the server

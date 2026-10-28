@@ -761,7 +761,83 @@ pub(crate) fn check_scalars(text: &str, kind: &str) -> Result<()> {
             _ => Ok(()),
         }
     }
+    from_text::<UniqueKeys>(text)?;
     walk(kind, &from_text::<Value>(text)?, &mut Vec::new())
+}
+
+/// A document read only to refuse a key written twice once read as text:
+/// YAML sees `1` and `"1"` as two keys, the format one, and a map of text
+/// would keep the last silently. A key is its written text, so `01` and `1`
+/// are two keys.
+struct UniqueKeys;
+
+impl<'de> Deserialize<'de> for UniqueKeys {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        deserializer.deserialize_any(UniqueKeys)
+    }
+}
+
+impl<'de> serde::de::Visitor<'de> for UniqueKeys {
+    type Value = Self;
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a document")
+    }
+    fn visit_bool<E>(self, _: bool) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_i64<E>(self, _: i64) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_i128<E>(self, _: i128) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_u64<E>(self, _: u64) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_u128<E>(self, _: u128) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_f64<E>(self, _: f64) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_str<E>(self, _: &str) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_bytes<E>(self, _: &[u8]) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_unit<E>(self) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_none<E>(self) -> std::result::Result<Self, E> {
+        Ok(self)
+    }
+    fn visit_some<D: Deserializer<'de>>(self, d: D) -> std::result::Result<Self, D::Error> {
+        Self::deserialize(d)
+    }
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(
+        self,
+        mut seq: A,
+    ) -> std::result::Result<Self, A::Error> {
+        while seq.next_element::<Self>()?.is_some() {}
+        Ok(self)
+    }
+    fn visit_map<A: serde::de::MapAccess<'de>>(
+        self,
+        mut map: A,
+    ) -> std::result::Result<Self, A::Error> {
+        let mut seen = std::collections::HashSet::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if !seen.insert(key) {
+                // The key is not quoted: it can be someone's data.
+                return Err(serde::de::Error::custom(
+                    "duplicate mapping key: a key is text, so a number and the same number quoted are one key",
+                ));
+            }
+            map.next_value::<Self>()?;
+        }
+        Ok(self)
+    }
 }
 
 /// Refuse an id that is not a name (`docs/reference/jud-format.md`, Names): every
@@ -1069,6 +1145,30 @@ mod tests {
         parse(&rubric("  version: 3\n  labels: {2024: one}\n", "")).unwrap();
         parse("apiVersion: jud/v1.3\nkind: Cases\nmetadata:\n  name: c\nspec:\n  cases:\n    - state: {2024: revenue, true: yes}\n").unwrap();
         parse("apiVersion: jud/v1.3\nkind: Recording\nmetadata:\n  name: c\nspec:\n  elapsed_ms: 1\n  response:\n    model: m\n    answers:\n      s: {type: score, score: 0.2, confidence: 0.9, legend: {0: low, 1: high}, probabilities: {0: 0.8, 1: 0.2}}\n    usage: {input_tokens: 1, output_tokens: 2, cached_tokens: null}\n").unwrap();
+    }
+
+    /// A key is its written text: `2024` and `"2024"` are one key written
+    /// twice, refused at its line without quoting it; `01` and `1` are two
+    /// texts, both kept; `0x1` and `1` are the one integer YAML already
+    /// refuses as a duplicate.
+    #[test]
+    fn a_key_is_its_written_text() {
+        let labels = |labels: &str| {
+            format!(
+                "apiVersion: jud/v1.3\nkind: Rubric\nmetadata:\n  name: r\n  labels: {labels}\nspec:\n  questions:\n    n: {{type: noul, instructions: ok?}}\n"
+            )
+        };
+        let err = parse(&labels("{2024: aa, \"2024\": bb}")).unwrap_err();
+        assert!(
+            matches!(&err, Error::Syntax(m) if m.contains("duplicate") && m.contains("line 5,") && !m.contains("2024")),
+            "{err}"
+        );
+        let Document::Rubric(rubric) = parse(&labels("{01: aa, 1: bb}")).unwrap() else {
+            unreachable!()
+        };
+        let keys: Vec<&String> = rubric.labels.keys().collect();
+        assert_eq!(keys, ["01", "1"]);
+        assert!(parse(&labels("{0x1: aa, 1: bb}")).is_err());
     }
 
     /// An image's path is read as text, so a path is refused or read the same
