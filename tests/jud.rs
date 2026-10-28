@@ -1994,3 +1994,147 @@ proptest::proptest! {
         let _ = jud::parse_recording(&text);
     }
 }
+
+/// bsz.19.7: an error from reading a rubric, cases or recording file names
+/// where (a path, a line, a field) and never what the document held. Every
+/// slot of the example documents, as a value and as a key, is made to hold a
+/// sentinel in a shape that is wrong for it; whatever the readers refuse, the
+/// error text does not carry the sentinel.
+mod untrusted_text {
+    use super::*;
+
+    const S: &str = "ZQ9SENTINELZQ9";
+
+    /// Every document `seed` becomes with the sentinel in one slot.
+    fn mutants(seed: &Value) -> Vec<Value> {
+        fn paths(v: &Value, at: &mut Vec<String>, out: &mut Vec<Vec<String>>) {
+            out.push(at.clone());
+            match v {
+                Value::Object(m) => {
+                    for (k, child) in m {
+                        at.push(k.clone());
+                        paths(child, at, out);
+                        at.pop();
+                    }
+                }
+                Value::Array(a) => {
+                    for (i, child) in a.iter().enumerate() {
+                        at.push(i.to_string());
+                        paths(child, at, out);
+                        at.pop();
+                    }
+                }
+                _ => {}
+            }
+        }
+        fn at_mut<'a>(v: &'a mut Value, p: &[String]) -> &'a mut Value {
+            p.iter().fold(v, |v, k| match v {
+                Value::Array(a) => &mut a[k.parse::<usize>().unwrap()],
+                _ => &mut v[k.as_str()],
+            })
+        }
+        let mut all = Vec::new();
+        paths(seed, &mut Vec::new(), &mut all);
+        let mut out = Vec::new();
+        for p in &all {
+            for wrong in [json!(S), json!([S]), json!({ S: S }), json!({ "x": S })] {
+                let mut d = seed.clone();
+                *at_mut(&mut d, p) = wrong;
+                out.push(d);
+            }
+            let mut d = seed.clone();
+            let slot = at_mut(&mut d, p);
+            if let Value::Object(m) = slot {
+                // As an unknown key, and as every known key renamed.
+                m.insert(S.to_owned(), json!(1));
+                out.push(d.clone());
+                let mut d = seed.clone();
+                if let Value::Object(m) = at_mut(&mut d, p) {
+                    let keys: Vec<String> = m.keys().cloned().collect();
+                    for k in keys {
+                        let v = m.remove(&k).unwrap();
+                        m.insert(format!("{S}{k}"), v);
+                    }
+                }
+                out.push(d);
+            }
+        }
+        out
+    }
+
+    fn seeds() -> Vec<Value> {
+        [
+            (EXAMPLES, "triage.jud"),
+            (EXAMPLES, "triage-cases.jud"),
+            (RECORDINGS, "close-account.jud"),
+        ]
+        .iter()
+        .map(|(dir, name)| value_of(&read(dir, name)))
+        .collect()
+    }
+
+    fn leaks(what: &str, doc: &Value, text: &str, found: &mut Vec<String>) {
+        if text.contains(S) {
+            found.push(format!("{what}: {text}  <= {doc}"));
+        }
+    }
+
+    #[test]
+    #[ignore = "judgment-ic8: found"]
+    fn no_reader_error_quotes_the_document() {
+        let mut found = Vec::new();
+        for seed in seeds() {
+            for doc in mutants(&seed) {
+                let text = doc.to_string();
+                if let Err(e) = jud::parse(&text) {
+                    leaks("parse", &doc, &e.to_string(), &mut found);
+                }
+                if let Err(e) = Rubric::parse(&text) {
+                    leaks("Rubric::parse", &doc, &e.to_string(), &mut found);
+                }
+                if let Err(e) = Cases::parse(&text) {
+                    leaks("Cases::parse", &doc, &e.to_string(), &mut found);
+                }
+                if let Err(e) = jud::parse_recording(&text) {
+                    leaks("parse_recording", &doc, &e.to_string(), &mut found);
+                }
+            }
+        }
+        found.sort();
+        found.dedup_by_key(|f| f.split("  <=").next().unwrap().to_owned());
+        assert!(
+            found.is_empty(),
+            "{} kinds of leak:\n{}",
+            found.len(),
+            found.join("\n")
+        );
+    }
+
+    /// The `.json` recording a `Replay` directory holds: serde's own message.
+    #[test]
+    #[ignore = "judgment-ic8: found"]
+    fn a_json_recording_error_quotes_nothing() {
+        let seed = serde_json::to_value(
+            jud::parse_recording(&read(RECORDINGS, "close-account.jud")).unwrap(),
+        )
+        .unwrap();
+        let dir = tempdir().join("untrusted-json");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut found = Vec::new();
+        for doc in mutants(&seed) {
+            std::fs::write(dir.join("r.json"), doc.to_string()).unwrap();
+            if let Err(e) = Replay::open(&dir) {
+                leaks("Replay::open", &doc, &e.to_string(), &mut found);
+            }
+        }
+        found.sort();
+        found.dedup_by_key(|f| f.split("  <=").next().unwrap().to_owned());
+        assert!(
+            found.is_empty(),
+            "{} kinds of leak:\n{}",
+            found.len(),
+            found.join("\n")
+        );
+    }
+}

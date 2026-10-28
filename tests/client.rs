@@ -3490,3 +3490,179 @@ fn content_encoding_is_the_clients_header() {
         "{err:?}"
     );
 }
+
+/// bsz.19.2: whatever a server puts in a response, the error's message holds
+/// no control, line-break or invisible format character, so it cannot move a
+/// cursor, forge a log line or reorder text. The field keeps the string as sent.
+mod hostile_server_text {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn unfit(c: char) -> bool {
+        c.is_control()
+            || matches!(c, '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}'
+                | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}' | '\u{FEFF}')
+    }
+
+    fn text() -> impl Strategy<Value = String> {
+        prop::collection::vec(
+            prop_oneof![
+                any::<char>(),
+                prop::sample::select(vec![
+                    '\u{202E}', '\u{2066}', '\u{200B}', '\u{FEFF}', '\u{85}', '\u{1b}', '\n', '\r',
+                    '\u{2028}', '\u{7f}',
+                ]),
+            ],
+            0..40,
+        )
+        .prop_map(|v| v.into_iter().collect())
+    }
+
+    /// The body shapes error text is read from, with `s` in every slot.
+    fn bodies(s: &str) -> Vec<String> {
+        let issue = |loc: &str, msg: &str, kind: &str| {
+            json!({"detail": [{"loc": ["body", loc], "msg": msg, "type": kind}]}).to_string()
+        };
+        vec![
+            s.to_owned(),
+            json!(s).to_string(),
+            json!({"error": s}).to_string(),
+            json!({"message": s}).to_string(),
+            json!({"detail": s}).to_string(),
+            json!({"detail": {"error_type": s}}).to_string(),
+            json!({"code": s}).to_string(),
+            issue("x", s, "t"),
+            issue(s, "m", "t"),
+            issue("x", "m", s),
+        ]
+    }
+
+    #[test]
+    fn no_error_message_carries_an_unfit_character() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let server = rt.block_on(MockServer::start());
+        let c = client(&server, RetryPolicy::none());
+        let mut runner = proptest::test_runner::TestRunner::new(ProptestConfig {
+            cases: 48,
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        });
+        runner
+            .run(
+                &(
+                    text(),
+                    prop::sample::select(vec![400u16, 402, 403, 418, 422, 200]),
+                ),
+                |(s, status)| {
+                    for body in bodies(&s) {
+                        rt.block_on(async {
+                            server.reset().await;
+                            Mock::given(method("POST"))
+                                .respond_with(
+                                    ResponseTemplate::new(status).set_body_string(body.clone()),
+                                )
+                                .mount(&server)
+                                .await;
+                            let err = c.system_one(&"s", &one_noul()).await.unwrap_err();
+                            let shown = err.to_string();
+                            prop_assert!(
+                                !shown.chars().any(unfit),
+                                "{status} {body:?} -> {shown:?}"
+                            );
+                            Ok(())
+                        })?;
+                    }
+                    Ok(())
+                },
+            )
+            .unwrap();
+    }
+}
+
+/// bsz.19.15: a key `build` accepts is a key the wire carries as given
+/// (trimmed of the SDK's whitespace), and a key it refuses is never quoted,
+/// in the message or in `Debug`.
+mod api_key_agrees_with_the_wire {
+    use super::*;
+    use proptest::prelude::*;
+
+    const MARK: &str = "ZQ9KEY";
+
+    fn junk() -> impl Strategy<Value = String> {
+        prop_oneof![
+            prop::collection::vec(any::<u8>(), 0..8)
+                .prop_map(|b| String::from_utf8_lossy(&b).into_owned()),
+            "[ -~]{0,6}",
+            prop::collection::vec(
+                prop::sample::select(vec![
+                    ' ', '\t', '\r', '\n', '\u{1c}', '\u{a0}', '\u{feff}', '\u{85}', '\u{2028}',
+                    '\u{7f}', 'é', '\u{200b}',
+                ]),
+                0..4,
+            )
+            .prop_map(|v| v.into_iter().collect()),
+        ]
+    }
+
+    #[test]
+    fn accepted_keys_are_sent_as_given_and_refused_keys_are_not_quoted() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let server = rt.block_on(MockServer::start());
+        let mut runner = proptest::test_runner::TestRunner::new(ProptestConfig {
+            cases: 200,
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        });
+        runner
+            .run(
+                &(junk(), junk(), any::<bool>()),
+                |(pre, post, with_mark)| {
+                    let key = if with_mark {
+                        format!("{pre}{MARK}{post}")
+                    } else {
+                        format!("{pre}{post}")
+                    };
+                    let built = Client::builder()
+                        .api_key(key.clone())
+                        .base_url(server.uri())
+                        .retry(RetryPolicy::none())
+                        .build();
+                    let c = match built {
+                        Err(e) => {
+                            prop_assert!(
+                                !format!("{e} {e:?}").contains(MARK),
+                                "{key:?} quoted in {e:?}"
+                            );
+                            return Ok(());
+                        }
+                        Ok(c) => c,
+                    };
+                    prop_assert!(!format!("{c:?}").contains(MARK), "Debug quotes {key:?}");
+                    let sent = rt.block_on(async {
+                        server.reset().await;
+                        Mock::given(method("POST"))
+                            .respond_with(ResponseTemplate::new(500))
+                            .mount(&server)
+                            .await;
+                        let _ = c.system_one(&"s", &one_noul()).await;
+                        server.received_requests().await.unwrap()
+                    });
+                    let got = sent
+                        .first()
+                        .and_then(|r| r.headers.get("authorization"))
+                        .map(|v| v.as_bytes().to_vec());
+                    let trimmed = key.trim_matches(|c: char| {
+                        c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c)
+                    });
+                    prop_assert_eq!(
+                        got,
+                        Some(format!("Bearer {trimmed}").into_bytes()),
+                        "key {:?}",
+                        key
+                    );
+                    Ok(())
+                },
+            )
+            .unwrap();
+    }
+}
