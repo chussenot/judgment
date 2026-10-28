@@ -9,20 +9,23 @@ All notable changes to the `judgment` crate. The format follows
 ### Security
 
 - An `Error`'s message writes control, line-break and invisible format
-  characters from a server's text (the detail of a 402, 403 or 400, the body
-  of another status, a decode failure's reason) as escapes (`\n`,
+  characters from a server's text (the detail of a 402, a 403 or a rejected
+  request (400, 413, 415 or 422), the body of another status, a decode
+  failure's reason) as escapes (`\n`,
   `\u{1b}`), so a hostile response cannot forge a log line or move a
   cursor. The error's fields keep the string as sent.
 
 ### Fixed
 
-- Canonical JSON (`eval::canonical`) prints a double whose two shortest
-  digit strings are equally near it with the even last digit, as RFC 8785
-  and ECMAScript do: `1424953923781206.25` is now `1424953923781206.2`,
-  not `...206.3`. The fingerprint of a request, a recording or a `.jud`
-  document holding such a double changes value and now matches other
-  RFC 8785 tools; the known vectors on the format page hold none and do
-  not move. All 24 rows of RFC 8785 Appendix B are tested.
+- **Breaking** for a request, a recording or a `.jud` document holding a
+  double whose two shortest digit strings are equally near it: canonical
+  JSON (`eval::canonical`) prints the even last digit, as RFC 8785 and
+  ECMAScript do, so `1424953923781206.25` is now `1424953923781206.2`,
+  not `...206.3`. Such a fingerprint changes value and now matches other
+  RFC 8785 tools: record those requests again (`jud record --refresh`, or
+  a fresh `Recorder` run). The known vectors on the format page hold no
+  such double and do not move. All 24 rows of RFC 8785 Appendix B are
+  tested.
 - **Breaking** for a document the specification already refused: the
   `.jud` reader refuses a key written once as a number and once as text in
   the same map (`labels: {2024: a, "2024": b}`), as the duplicate key it
@@ -34,7 +37,7 @@ All notable changes to the `judgment` crate. The format follows
   specification and the schemas always did: a Choice's options
   (`criteria: {1: poor, 2: fair}`), an instructions object, `part_when`, a
   Score level object and a Noul criterion's description were refused with
-  "expected a string key". A question's `criteria` of the wrong shape for
+  an "expected a string" error. A question's `criteria` of the wrong shape for
   its type is now refused with its path rather than as a syntax error.
 
 ## [0.16.1] - 2026-10-28

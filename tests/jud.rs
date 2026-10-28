@@ -1892,6 +1892,42 @@ fn a_number_key_inside_a_question_is_read_as_text() {
     assert!(refused.is_empty(), "{refused:#?}");
 }
 
+/// A question's `criteria` of the wrong shape for its type is refused at
+/// its path, naming the shape the type takes, not as a syntax error.
+#[test]
+fn criteria_of_the_wrong_shape_are_refused_at_their_path() {
+    for (q, says) in [
+        (
+            "{type: noul, instructions: x, criteria: [bad]}",
+            "a Noul's criteria are a map",
+        ),
+        (
+            "{type: choice, instructions: x, criteria: [bad]}",
+            "a Choice's criteria are its options, a map",
+        ),
+        (
+            "{type: score, instructions: x, criteria: {a: bad}}",
+            "a Score's criteria are its levels, a list",
+        ),
+        (
+            "{type: box, instructions: x, criteria: {a: bad}}",
+            "a Box takes no criteria",
+        ),
+    ] {
+        let text = format!(
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata: {{name: r, minor: 4}}\nspec:\n  questions:\n    q: {q}\n"
+        );
+        match Rubric::parse(&text) {
+            Err(jud::Error::Invalid { field, reason }) => {
+                assert_eq!(field, "spec.questions.q.criteria", "{q}");
+                assert!(reason.contains(says), "{q}: {reason}");
+            }
+            Err(other) => panic!("{q}: refused, but not at its path: {other}"),
+            Ok(_) => panic!("{q}: read"),
+        }
+    }
+}
+
 /// The options a case supplies are asked in the order written, before the
 /// static ones (`docs/reference/jud-format.md`, Declarations): the order
 /// the model sees. Read through a `serde_json::Value` they were sorted
