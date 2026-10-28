@@ -813,6 +813,65 @@ mod tests {
         assert!(!again.contains("request_id"), "{again}");
     }
 
+    /// A Choice whose `choice` is not the argmax, or is missing from its
+    /// distribution (`verify` allows both): accuracy and the confusion matrix
+    /// read `choice`, Brier reads the distribution, and each does so
+    /// consistently whichever label is given.
+    #[test]
+    fn a_choice_that_disagrees_with_its_distribution_is_read_the_same_by_each_metric() {
+        let choice = |chosen: &str, dist: &[(&str, f64)]| Answer::Choice {
+            choice: chosen.into(),
+            probabilities: dist
+                .iter()
+                .map(|(k, p)| ((*k).to_owned(), Probability::new(*p).unwrap()))
+                .collect(),
+            confidence: Confidence::new(0.5).unwrap(),
+            extra: BTreeMap::new(),
+        };
+        let off_argmax = choice("billing", &[("billing", 0.4), ("technical", 0.6)]);
+        let missing = choice("sales", &[("billing", 0.4), ("technical", 0.6)]);
+        for (answer, chosen) in [(&off_argmax, "billing"), (&missing, "sales")] {
+            for label in ["billing", "technical", "sales"] {
+                let j = Judgment::of_answer(answer, Some(label));
+                assert_eq!(j.predicted, chosen);
+                assert_eq!(j.correct, Some(label == chosen), "{chosen} vs {label}");
+                let m = QuestionMetrics::summarise([&j], ECE_BINS);
+                assert_eq!(m.accuracy, Some(f64::from(u8::from(label == chosen))));
+                assert_eq!(m.confusion[label][chosen], 1);
+                // Brier is the distribution's against the label, whatever `choice` said.
+                let p_label = j.probabilities.get(label).copied().unwrap_or(0.0);
+                assert_eq!(j.p_expected, Some(p_label));
+                let sq: f64 = j
+                    .probabilities
+                    .iter()
+                    .map(|(k, p)| (p - f64::from(u8::from(k == label))).powi(2))
+                    .sum();
+                let off = if j.probabilities.contains_key(label) {
+                    0.0
+                } else {
+                    1.0
+                };
+                assert!((m.brier.unwrap() - (sq + off)).abs() < 1e-12);
+            }
+        }
+    }
+
+    /// Pinned: a Noul labelled something other than `yes` is graded as `no`.
+    #[test]
+    #[ignore = "judgment-q96: found"]
+    fn a_noul_label_other_than_yes_or_no_is_not_graded_as_no() {
+        let noul = Answer::Noul {
+            noul: Probability::new(0.3).unwrap(),
+            extra: BTreeMap::new(),
+        };
+        assert_ne!(
+            Judgment::of_answer(&noul, Some("maybe"))
+                .expected
+                .as_deref(),
+            Some("no")
+        );
+    }
+
     #[test]
     fn judgments_grade_each_primitive_and_metrics_summarise_them() {
         let choice = Answer::Choice {
