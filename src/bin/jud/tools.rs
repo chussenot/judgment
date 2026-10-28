@@ -369,3 +369,78 @@ pub(crate) fn lower(args: &Lower) -> Fallible<bool> {
     }
     Ok(true)
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+
+    use judgment::jud::Expect;
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::batch::units;
+
+    const RUBRIC: &str = "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    handoff:\n      type: noul\n      instructions: Is `state` asking for a person?\n      criteria: {true: asks, false: does not}\n";
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Direct(
+                "proptest-regressions/jud-tools.txt",
+            ))),
+            ..ProptestConfig::default()
+        })]
+        /// One turn rule, three readers (`Case::per_turn`, `batch::units` for
+        /// record and eval, `find_request` for check): every request `units`
+        /// asks is one `find_request` resolves to the same state and request,
+        /// and a `from_turn: n` label reads `i >= n` at turn `i`, never for null.
+        #[test]
+        fn the_readers_of_a_conversation_agree_on_its_turns(
+            len in 0usize..=6,
+            label in prop::option::of(prop::option::of(0u64..=6)),
+        ) {
+            let state: Vec<usize> = (0..len).collect();
+            let expect = match label {
+                None => "true".to_owned(),
+                Some(None) => "{from_turn: null}".to_owned(),
+                Some(Some(n)) => format!("{{from_turn: {n}}}"),
+            };
+            let text = format!(
+                "apiVersion: jud/v1\nkind: Cases\nmetadata:\n  name: c\n  minor: 4\nspec:\n  cases:\n    - id: chat\n      state: {state:?}\n      expect: {{handoff: {expect}}}\n    - id: whole\n      state: [{len}]\n      expect: {{handoff: true}}\n"
+            );
+            let (rubric, cases) = (Rubric::parse(RUBRIC).unwrap(), Cases::parse(&text).unwrap());
+            let bound = [Bound {
+                cases: &cases,
+                cases_base: PathBuf::new(),
+                rubric: &rubric,
+                rubric_base: PathBuf::new(),
+            }];
+            let asked = units(&cases);
+            let by_turn = label.is_some() && len > 0;
+            prop_assert_eq!(asked.len(), if by_turn { len } else { 1 } + 1);
+            for unit in &asked {
+                let (state, questions, _) = find_request(&bound, &unit.name)
+                    .unwrap_or_else(|| panic!("`{}` resolves to no case", unit.name))
+                    .unwrap();
+                prop_assert_eq!(&state, &unit.case.state);
+                prop_assert_eq!(
+                    serde_json::to_value(&questions).unwrap(),
+                    serde_json::to_value(unit.case.request(&rubric).unwrap()).unwrap()
+                );
+                if by_turn && unit.base != "whole" {
+                    let turn = unit.case.state.as_array().unwrap().len() - 1;
+                    let want = match label {
+                        Some(Some(n)) => turn as u64 >= n,
+                        _ => false,
+                    };
+                    prop_assert!(matches!(unit.case.expect["handoff"], Expect::Bool(b) if b == want));
+                }
+            }
+            // The lenient form (`find_request` doc): the turn names resolve
+            // even where `units` asks the conversation whole.
+            for turn in cases.cases[0].per_turn() {
+                let found = find_request(&bound, &format!("chat-turn-{}", turn.index)).unwrap().unwrap();
+                prop_assert_eq!(found.0, turn.case.state);
+            }
+        }
+    }
+}

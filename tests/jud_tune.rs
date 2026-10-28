@@ -418,6 +418,78 @@ fn out_writes_a_rubric_jud_check_accepts_and_leaves_the_input_alone() {
     assert_eq!(doc["spec"]["tuning"]["model"], json!("jev-1.13.0"));
 }
 
+/// Tuning is a function of the labelled answers: tuning its own output on the
+/// same cases and recordings gives the same gates, and neither run touches
+/// anything but the policy and the tuning block, so the questions fingerprint
+/// holds and every recording still replays.
+#[test]
+fn tuning_twice_is_idempotent_and_rewrites_only_the_policy() {
+    let dir = scratch("tune");
+    let input = write(&dir, "in.jud", &std::fs::read_to_string(TRIAGE).unwrap());
+    let (t1, t2) = (dir.join("t1.jud"), dir.join("t2.jud"));
+    for (from, to) in [(&input, &t1), (&t1, &t2)] {
+        let out = tune(
+            path_str(from),
+            TRIAGE_CASES,
+            RECORDINGS,
+            &["--out", path_str(to)],
+        );
+        assert_eq!(code(&out), 0, "{}", stderr(&out));
+    }
+    let read = |path: &Path| yaml(&std::fs::read_to_string(path).unwrap());
+    let (doc0, doc1, doc2) = (read(&input), read(&t1), read(&t2));
+    // Everything under spec but the policy and the tuning block is the input's.
+    let rest = |doc: &Value| {
+        let mut spec = doc["spec"].clone();
+        for key in ["policy", "tuning"] {
+            spec.as_object_mut().unwrap().remove(key);
+        }
+        // The minor is the writer's (a tuning block is minor 4) and a numeric
+        // `version` is written as its text (jud-format.md, metadata).
+        let mut metadata = doc["metadata"].clone();
+        metadata.as_object_mut().unwrap().remove("minor");
+        let version = metadata["version"].to_string().replace('"', "");
+        metadata["version"] = json!(version);
+        (doc["kind"].clone(), metadata, spec)
+    };
+    assert_eq!(rest(&doc0), rest(&doc1));
+    assert_eq!(rest(&doc1), rest(&doc2));
+    let gates = |doc: &Value| {
+        let mut policy = doc["spec"]["policy"].clone();
+        for gate in policy.as_object_mut().unwrap().values_mut() {
+            if let Some(gate) = gate.as_object_mut() {
+                gate.remove("note");
+            }
+        }
+        policy
+    };
+    assert_eq!(gates(&doc1), gates(&doc2), "a second tune moved a bar");
+    let (tuning1, tuning2) = (
+        doc1["spec"]["tuning"].clone(),
+        doc2["spec"]["tuning"].clone(),
+    );
+    let sans_time = |mut t: Value| {
+        t.as_object_mut().unwrap().remove("tuned_at");
+        t
+    };
+    assert_eq!(sans_time(tuning1), sans_time(tuning2));
+    // The questions hold, so the recordings still replay.
+    assert_eq!(
+        check_fingerprint(&[path_str(&t2)], "questions"),
+        check_fingerprint(&[path_str(&input)], "questions")
+    );
+    let replay = jud(
+        &["eval", path_str(&t2), TRIAGE_CASES, "--replay", RECORDINGS],
+        "",
+        &[],
+    );
+    assert!(
+        !stderr(&replay).contains("no recording"),
+        "{}",
+        stderr(&replay)
+    );
+}
+
 /// `--out` writes what the path names, as a write to it would: through a
 /// symlink, the file it names is replaced only once the whole rubric is
 /// written, the link is kept, and no temporary file is left beside either.
