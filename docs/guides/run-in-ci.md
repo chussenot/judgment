@@ -62,7 +62,7 @@ A change can break the labels in two ways. A label or a recording can change so 
 
 `--min-accuracy 0.9` holds every labelled question. `--min-accuracy desk=0.95` holds one, and the flag repeats. The bar holds the model's accuracy per question, as [Tune thresholds](tune-thresholds.md#2-hold-the-labels-with-a-gate) explains. The job fails for two different reasons, with two statuses:
 
-- **Status 3** means a question's accuracy is below its bar. The report is on stdout, and the message on stderr names the questions.
+- **Status 3** means a question's accuracy is below its bar. The report is on stdout, and the message on stderr names the questions. With `--fail-if-moved` on the command it also means the recordings answered with another model, or from another server, than the rubric's `tuning` names: the rubric was retuned since they were made, or they were refreshed on a new model, and either way its bars rest on other answers than the ones graded. Without the flag the report only says so, as a `warning:` line and a `moved` key.
 - **Status 1** means a case has no recording, because a case was added, its state changed or a question was edited, and nobody recorded the new request. The message names the cases:
 
 ```text

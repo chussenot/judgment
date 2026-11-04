@@ -223,6 +223,17 @@ pub(crate) fn decide<B: std::ops::Deref<Target = Backend>>(
     check_referenced(assets, state, &questions)?;
     let backend = open()?;
     let response = backend.answer(state, &questions, assets)?;
+    // The rubric's bars rest on the model and server its tuning names; an
+    // answer from another is read through them all the same, and said.
+    if let Some(moved) = crate::eval::Moved::detect(
+        rubric.policy.tuning.as_ref(),
+        std::slice::from_ref(&response.model),
+        &backend.server().into_iter().collect::<Vec<_>>(),
+    ) {
+        for line in moved.lines() {
+            crate::out::note!("jud: warning: {line}");
+        }
+    }
     let mut verdicts = rubric
         .apply(&questions, &response)
         .map_err(|e| Failure::Backend(format!("the answers do not fit the rubric: {e}")))?;
