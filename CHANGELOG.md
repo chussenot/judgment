@@ -17,6 +17,13 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Fixed
 
+- A response whose `Content-Length` declares more than will ever arrive no
+  longer has that much reserved before a byte of it comes: the body buffer
+  reserves at most 64 KiB up front, so a hostile length under a
+  `RetryPolicy::max_body_bytes` of `usize::MAX`, now documented as no cap,
+  cannot make the process abort on allocation. The retry loop's attempt
+  counter saturates, so `max_retries: u32::MAX` asks for a loop the budget
+  or the server ends, never an overflow (decision HD13).
 - **Breaking** for a request, a recording or a `.jud` document holding a
   double whose two shortest digit strings are equally near it: canonical
   JSON (`eval::canonical`) prints the even last digit, as RFC 8785 and
