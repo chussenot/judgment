@@ -20,6 +20,7 @@
     },
     "typesafe-ai": {
       "source": {
+        "ref": "v0.6.2",
         "repo": "typesafe-ai/skills",
         "source": "github"
       }
