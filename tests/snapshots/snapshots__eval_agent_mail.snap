@@ -24,6 +24,7 @@ expression: report
       "confidence_when_wrong": 0.804,
       "correct": 28,
       "ece": 0.06242424242424252,
+      "ece_probability": 0.06242424242424252,
       "gate": {
         "accuracy_when_acted": 0.8484848484848485,
         "acted": 33,
@@ -101,6 +102,7 @@ expression: report
       "confidence_when_wrong": 0.746923076923077,
       "correct": 20,
       "ece": 0.2078787878787878,
+      "ece_probability": 0.2078787878787878,
       "gate": {
         "accuracy_when_acted": 0.7878787878787878,
         "acted": 33,
@@ -226,6 +228,7 @@ expression: report
       "confidence_when_wrong": 0.75,
       "correct": 29,
       "ece": 0.1181818181818182,
+      "ece_probability": 0.1181818181818182,
       "gate": {
         "accuracy_when_acted": 0.9696969696969697,
         "acted": 33,

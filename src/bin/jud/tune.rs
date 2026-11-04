@@ -395,15 +395,6 @@ fn tune_confidence(
                     percent(settings.target_accuracy)
                 );
             }
-            if levels.is_some() {
-                // The table is the library's: a Score's answer is its most
-                // probable level there, where the gate acts on the level
-                // nearest the weighted score. They agree on a one-peaked
-                // answer and part on a spread one.
-                note!(
-                    "jud: {id}: the table reads the most probable level as the answer; the policy reads the level nearest the weighted score, which can differ"
-                );
-            }
             proposed.confidence = Some(row.bar);
             proposed_bar = Some(row.bar);
             notes.push(note);

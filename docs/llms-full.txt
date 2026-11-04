@@ -1185,21 +1185,21 @@ cases inbox-triage-cases: sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc56
 
 actionable
   labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)
-  brier 0.090, calibration error 0.144, confidence when right 0.92, when wrong 0.52
+  brier 0.090, calibration error 0.144 over the confidence, 0.144 over the answer's probability, confidence when right 0.92, when wrong 0.52
   outcomes, labelled/answered/right: yes 5/6/5, no 2/1/1
   majority yes, 5 of 7 (0.71)
   gate: acts on 7 of 7, defers 0, accuracy when acted 1.00
 
 desk
   labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)
-  brier 0.155, calibration error 0.151, confidence when right 0.76, when wrong 0.40
+  brier 0.155, calibration error 0.151 over the confidence, 0.234 over the answer's probability, confidence when right 0.76, when wrong 0.40
   outcomes, labelled/answered/right: billing 2/3/2, technical 2/2/2, account 1/1/1, none_of_these 2/1/1
   majority billing, 2 of 7 (0.29)
   gate: acts on 6 of 7, defers 1, accuracy when acted 1.00
 
 tone
   labelled 6, correct 6, accuracy 1.00 (95% interval 0.61 to 1.00)
-  brier 0.059, calibration error 0.202, confidence when right 0.80, when wrong -
+  brier 0.059, calibration error 0.202 over the confidence, 0.150 over the answer's probability, confidence when right 0.80, when wrong -
   outcomes, labelled/answered/right: calm 4/4/4, annoyed 1/1/1, angry 1/1/1
   majority calm, 4 of 6 (0.67)
   gate: acts on 7 of 7, defers 0, accuracy when acted 1.00
@@ -1313,7 +1313,6 @@ jud: warning: desk: 7 labelled cases, accuracy 0.86 (95% interval 0.49-0.97); a 
 jud: tone (score): 6 labelled cases, accuracy 1.00 (95% interval 0.61-1.00)
 jud: tone: propose confidence 0.00 (now 0.30): lowest bar at 95% accuracy; covers 6 of 6 labelled cases
 jud: tone: the proposed bar is 0, so the gate would defer nothing: the labelled answers are already at least 95% right with no bar
-jud: tone: the table reads the most probable level as the answer; the policy reads the level nearest the weighted score, which can differ
 jud: warning: tone: 6 labelled cases, accuracy 1.00 (95% interval 0.61-1.00); a bar read off so few cases is a guess with a number on it
 ```
 
@@ -1322,7 +1321,6 @@ Read these lines before you keep anything.
 - **`(now X)`** is the gate's current value. `actionable` stays at 0.55 and `desk` at 0.45: the cases say what the committed rubric already says. `tone` would move from 0.30 to 0.00.
 - **A proposed bar of 0** defers nothing. All six labelled `tone` answers are right, so the table has no reason to defer one, and the note says so. That is a result to weigh, not to paste.
 - **The warning** appears when the accuracy interval is wider than 0.2. Seven cases trigger it whatever the accuracy. A bar read off so few cases is a guess with a number on it; add cases before you trust it.
-- **A Score's note**, printed when a confidence bar is proposed for it, says the table reads the most probable level as the answer, where the policy reads the level nearest the weighted score. They agree on a one-peaked answer and part on a spread one.
 - **A strict gate** acts above its bar, and the table counts an answer at the bar as acting. The note counts the answers sitting exactly at the proposed bar when there are any, since the gate reads those the other way, and says it can happen when there are none.
 - **A gate with `bands`** gets its table and no proposal, and stays as written. It is also absent from the `labelled` count, which lists only the questions that were tuned and the cases each was read from.
 
@@ -2300,14 +2298,14 @@ cases shapes-cases: sha256:f4a368d49c556c625e4a6d74437947c6720bc5d9cc907e909cb8a
 
 circle_present
   labelled 40, correct 40, accuracy 1.00 (95% interval 0.91 to 1.00)
-  brier 0.001, calibration error 0.015, confidence when right 0.99, when wrong -
+  brier 0.001, calibration error 0.015 over the confidence, 0.015 over the answer's probability, confidence when right 0.99, when wrong -
   outcomes, labelled/answered/right: yes 30/30/30, no 10/10/10
   majority yes, 30 of 40 (0.75)
   gate: acts on 40 of 40, defers 0, accuracy when acted 1.00
 
 circle
   labelled 30, correct 28, accuracy 0.93 (95% interval 0.79 to 0.98)
-  brier -, calibration error 0.212, confidence when right 0.75, when wrong 0.49
+  brier -, calibration error 0.212 over the confidence, - over the answer's probability, confidence when right 0.75, when wrong 0.49
   mean IoU 0.80 (a box is right at or above its label's IoU bar)
   outcomes, labelled/answered/right: box 30/30/28
   majority box, 30 of 30 (1.00)
@@ -2616,14 +2614,14 @@ cases stamps-cases: sha256:471b7ae2709272937c5926304df1c7bcf8f366f68bd38cd1ee7a5
 
 stamp_present
   labelled 40, correct 40, accuracy 1.00 (95% interval 0.91 to 1.00)
-  brier 0.007, calibration error 0.040, confidence when right 0.96, when wrong -
+  brier 0.007, calibration error 0.040 over the confidence, 0.040 over the answer's probability, confidence when right 0.96, when wrong -
   outcomes, labelled/answered/right: yes 30/30/30, no 10/10/10
   majority yes, 30 of 40 (0.75)
   gate: acts on 40 of 40, defers 0, accuracy when acted 1.00
 
 stamp
   labelled 30, correct 24, accuracy 0.80 (95% interval 0.63 to 0.90)
-  brier -, calibration error 0.096, confidence when right 0.81, when wrong 0.81
+  brier -, calibration error 0.096 over the confidence, - over the answer's probability, confidence when right 0.81, when wrong 0.81
   mean IoU 0.65 (a box is right at or above its label's IoU bar)
   outcomes, labelled/answered/right: box 30/30/24
   majority box, 30 of 30 (1.00)
@@ -3418,7 +3416,7 @@ The `to ask` and `stale` lines appear only when there is a name to give. The mod
 ```text
 Grade a model's answers against the labelled cases.
 
-Answers every case from the configured backend, or from the recordings in DIR with --replay (no key, no network), and grades each against its expected answer: per question the accuracy with its 95% interval, the Brier score, the calibration error, how often the rubric's gate acts rather than defers and how often it is right when it acts, and every miss by the model. With --min-accuracy the command exits with status 3 when a question falls short, which makes it a CI check. Against a server eval keeps nothing: use `jud record` to keep the answers.
+Answers every case from the configured backend, or from the recordings in DIR with --replay (no key, no network), and grades each against its expected answer: per question the accuracy with its 95% interval, the Brier score, the calibration error over the confidence and over the answer's probability, how often the rubric's gate acts rather than defers and how often it is right when it acts, and every miss by the model. With --min-accuracy the command exits with status 3 when a question falls short, which makes it a CI check. Against a server eval keeps nothing: use `jud record` to keep the answers.
 
 Usage: jud eval [OPTIONS] <RUBRIC> <CASES>
 
@@ -5039,7 +5037,7 @@ The crate reports per question, from `eval::metrics`:
 
 - **Accuracy with a 95 % Wilson interval** ([Wilson 1927](https://doi.org/10.1080/01621459.1927.10502953)), because an accuracy on three labelled cases and one on three hundred read the same without it.
 - **The Brier score** ([Brier 1950](https://doi.org/10.1175/1520-0493(1950)078%3C0001:VOFEIT%3E2.0.CO;2)), in its multi-class form, the sum over the options of the squared difference between the probability and the outcome; the rustdoc states the form because other tools use another and the numbers are not comparable.
-- **Expected calibration error** ([Naeini, Cooper and Hauskrecht 2015](https://doi.org/10.1609/aaai.v29i1.9602)) over ten equal-width confidence bins: the gap between how confident the model was and how often it was right.
+- **Expected calibration error** ([Naeini, Cooper and Hauskrecht 2015](https://doi.org/10.1609/aaai.v29i1.9602)) over ten equal-width confidence bins: the gap between how confident the model was and how often it was right. Reported twice, under its own name each: over the wire's `confidence`, which the gates compare and whose meaning differs by server (TypeSafe's spread, Laya's one minus entropy), and over the probability of the predicted answer, which is what the model cards and the benchmarks grade and is comparable across primitives and servers.
 - **Mean confidence when right and when wrong**, which says whether the confidence separates the two at all.
 
 [Tune thresholds](../guides/tune-thresholds.md) reads them in practice.
@@ -5481,7 +5479,7 @@ flowchart LR
 
 **Keys.** A recording's `case` must be a name (`eval::is_name`) before `write_recording` or `read_recording` touches the file system, so an id from a document never joins a directory as a path. `request_hash` is FNV-1a 64 over a near-canonical rendering of the state and the questions, sixteen hex digits. It names recording files, so it must not move between runs, machines or toolchains, which the standard library's hasher does not promise. It stays because it names the committed recordings; the `sha256:` RFC 8785 fingerprint beside it is what a new tool computes, with the model left out. A recording also carries the server's base URL and an [RFC 3339](https://www.rfc-editor.org/rfc/rfc3339) timestamp, because an alias such as `jev-latest` moves. The timestamp is computed without a date dependency, through Howard Hinnant's civil-from-days algorithm.
 
-**Grading.** A Noul is `yes` at a probability of 0.5 or more, with `max(p, 1 − p)` standing in for the confidence the wire does not send; a Choice is graded by its option keys and a Score by its level indices as strings, the most probable level predicted. An `Answer::Unknown` is graded as a miss rather than dropped, because dropping it would raise the accuracy of a model whose answers could not be read: it predicts `<kind>`, which no option key equals, with probability zero on the label and confidence zero. A label outside the option set adds the missing `(1 − 0)²` term to that judgment's Brier; unlabelled judgments count in nothing.
+**Grading.** A Noul is `yes` at a probability of 0.5 or more, with `max(p, 1 − p)` standing in for the confidence the wire does not send; a Choice is graded by its option keys and a Score by its level indices as strings, the level nearest its weighted score predicted, as the policy reads it (decision HD4; it was the most probable level before). An `Answer::Unknown` is graded as a miss rather than dropped, because dropping it would raise the accuracy of a model whose answers could not be read: it predicts `<kind>`, which no option key equals, with probability zero on the label and confidence zero. A label outside the option set adds the missing `(1 − 0)²` term to that judgment's Brier; unlabelled judgments count in nothing.
 
 **Metrics.** The Brier score is the multi-class sum `Σ_i (p_i − y_i)²` against the one-hot truth, 0 perfect and 2 full confidence in the wrong option (Brier 1950); other tools halve it or report the binary form. The expected calibration error uses ten equal-width bins over the clamped confidence, a NaN read as zero, `Σ_b (n_b / n) · |mean confidence_b − accuracy_b|` over the non-empty bins (Naeini, Cooper and Hauskrecht 2015). The accuracy interval is Wilson's (1927), chosen over the normal approximation because it stays inside `[0, 1]` and does not collapse to a point at 0 of 3 or 3 of 3; it assumes independent observations. Percentiles are nearest-rank. The papers are cited in [Rubrics, cases and recordings](../concepts/rubrics-cases-recordings.md#the-metrics).
 
@@ -8045,7 +8043,7 @@ The subcommands are `src/bin/jud/record.rs`, `eval.rs` and `tune.rs`, with `batc
 
 ### Known limits, shipped on purpose
 
-- **A Score's table reads the most probable level; the policy reads the nearest.** The confidence table is the library's `gate_table`, which takes the most probable level as the answer. The policy acts on the level nearest the weighted score. They agree on an answer with one peak and part on a spread one. `jud tune` says so on stderr for every Score whose `confidence` bar it proposes.
+- **A Score's table reads the most probable level; the policy reads the nearest.** The confidence table is the library's `gate_table`, which takes the most probable level as the answer. The policy acts on the level nearest the weighted score. They agree on an answer with one peak and part on a spread one. `jud tune` says so on stderr for every Score whose `confidence` bar it proposes. Closed on 2026-11-04 by decision HD4: the grader reads the nearest level too, and the note is gone.
 - **A strict gate's sweep counts an answer at the bar as acting.** A strict gate acts above its bar. `jud tune` counts the answers sitting exactly at the proposed bar and says what a strict gate does with them when there are any, and otherwise says that one can sit there.
 - **A lowest bar of 0.0 is proposed when every labelled answer is already right.** The gate would then defer nothing. `jud tune` proposes it and says so, as it does for `tone` on the triage documents.
 - **A base URL with userinfo sends Basic auth.** With `https://user:pass@host` as the base URL the client sends those credentials as Basic auth instead of the API key. Every recording and message drops the userinfo, but the request still carries it.

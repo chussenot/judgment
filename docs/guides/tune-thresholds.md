@@ -29,21 +29,21 @@ cases inbox-triage-cases: sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc56
 
 actionable
   labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)
-  brier 0.090, calibration error 0.144, confidence when right 0.92, when wrong 0.52
+  brier 0.090, calibration error 0.144 over the confidence, 0.144 over the answer's probability, confidence when right 0.92, when wrong 0.52
   outcomes, labelled/answered/right: yes 5/6/5, no 2/1/1
   majority yes, 5 of 7 (0.71)
   gate: acts on 7 of 7, defers 0, accuracy when acted 1.00
 
 desk
   labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)
-  brier 0.155, calibration error 0.151, confidence when right 0.76, when wrong 0.40
+  brier 0.155, calibration error 0.151 over the confidence, 0.234 over the answer's probability, confidence when right 0.76, when wrong 0.40
   outcomes, labelled/answered/right: billing 2/3/2, technical 2/2/2, account 1/1/1, none_of_these 2/1/1
   majority billing, 2 of 7 (0.29)
   gate: acts on 6 of 7, defers 1, accuracy when acted 1.00
 
 tone
   labelled 6, correct 6, accuracy 1.00 (95% interval 0.61 to 1.00)
-  brier 0.059, calibration error 0.202, confidence when right 0.80, when wrong -
+  brier 0.059, calibration error 0.202 over the confidence, 0.150 over the answer's probability, confidence when right 0.80, when wrong -
   outcomes, labelled/answered/right: calm 4/4/4, annoyed 1/1/1, angry 1/1/1
   majority calm, 4 of 6 (0.67)
   gate: acts on 7 of 7, defers 0, accuracy when acted 1.00
@@ -157,7 +157,6 @@ jud: warning: desk: 7 labelled cases, accuracy 0.86 (95% interval 0.49-0.97); a 
 jud: tone (score): 6 labelled cases, accuracy 1.00 (95% interval 0.61-1.00)
 jud: tone: propose confidence 0.00 (now 0.30): lowest bar at 95% accuracy; covers 6 of 6 labelled cases
 jud: tone: the proposed bar is 0, so the gate would defer nothing: the labelled answers are already at least 95% right with no bar
-jud: tone: the table reads the most probable level as the answer; the policy reads the level nearest the weighted score, which can differ
 jud: warning: tone: 6 labelled cases, accuracy 1.00 (95% interval 0.61-1.00); a bar read off so few cases is a guess with a number on it
 ```
 
@@ -166,7 +165,6 @@ Read these lines before you keep anything.
 - **`(now X)`** is the gate's current value. `actionable` stays at 0.55 and `desk` at 0.45: the cases say what the committed rubric already says. `tone` would move from 0.30 to 0.00.
 - **A proposed bar of 0** defers nothing. All six labelled `tone` answers are right, so the table has no reason to defer one, and the note says so. That is a result to weigh, not to paste.
 - **The warning** appears when the accuracy interval is wider than 0.2. Seven cases trigger it whatever the accuracy. A bar read off so few cases is a guess with a number on it; add cases before you trust it.
-- **A Score's note**, printed when a confidence bar is proposed for it, says the table reads the most probable level as the answer, where the policy reads the level nearest the weighted score. They agree on a one-peaked answer and part on a spread one.
 - **A strict gate** acts above its bar, and the table counts an answer at the bar as acting. The note counts the answers sitting exactly at the proposed bar when there are any, since the gate reads those the other way, and says it can happen when there are none.
 - **A gate with `bands`** gets its table and no proposal, and stays as written. It is also absent from the `labelled` count, which lists only the questions that were tuned and the cases each was read from.
 

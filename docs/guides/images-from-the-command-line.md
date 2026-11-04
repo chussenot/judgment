@@ -291,14 +291,14 @@ cases stamps-cases: sha256:471b7ae2709272937c5926304df1c7bcf8f366f68bd38cd1ee7a5
 
 stamp_present
   labelled 40, correct 40, accuracy 1.00 (95% interval 0.91 to 1.00)
-  brier 0.007, calibration error 0.040, confidence when right 0.96, when wrong -
+  brier 0.007, calibration error 0.040 over the confidence, 0.040 over the answer's probability, confidence when right 0.96, when wrong -
   outcomes, labelled/answered/right: yes 30/30/30, no 10/10/10
   majority yes, 30 of 40 (0.75)
   gate: acts on 40 of 40, defers 0, accuracy when acted 1.00
 
 stamp
   labelled 30, correct 24, accuracy 0.80 (95% interval 0.63 to 0.90)
-  brier -, calibration error 0.096, confidence when right 0.81, when wrong 0.81
+  brier -, calibration error 0.096 over the confidence, - over the answer's probability, confidence when right 0.81, when wrong 0.81
   mean IoU 0.65 (a box is right at or above its label's IoU bar)
   outcomes, labelled/answered/right: box 30/30/24
   majority box, 30 of 30 (1.00)
