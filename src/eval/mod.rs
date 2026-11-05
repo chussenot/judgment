@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::answer::{Answer, BoxEdges, Confidence, Response, sanitize_server_str};
+use crate::answer::{Answer, BoxEdges, Confidence, Response, nearest_index, sanitize_server_str};
 use crate::asset::Assets;
 use crate::question::Questions;
 
@@ -417,8 +417,10 @@ impl Judgment {
         )
     }
 
-    /// Grade a wire answer as returned (a Choice by option key, a Score by level index as a
-    /// string, a Noul as `yes` or `no`); an application that names its levels uses [`Self::new`].
+    /// Grade a wire answer as returned (a Choice by option key, a Score by the index, as a
+    /// string, of the level nearest its weighted score, which is the level the policy acts on
+    /// ([`crate::Score::nearest_level`]), a Noul as `yes` or `no`); an application that names
+    /// its levels uses [`Self::new`].
     /// A Box has no label in words: it reads `box`, ungraded (`correct` is
     /// `None`), and is graded by [`Judgment::located`] against a labelled box.
     ///
@@ -470,6 +472,7 @@ impl Judgment {
                 true,
             ),
             Answer::Score {
+                score,
                 probabilities,
                 confidence,
                 ..
@@ -478,11 +481,10 @@ impl Judgment {
                     .iter()
                     .map(|(k, p)| (k.clone(), p.value()))
                     .collect();
-                let predicted = probs
-                    .iter()
-                    .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
-                    .map(|(k, _)| k.clone())
-                    .unwrap_or_default();
+                // The level the policy acts on: a spread answer's most
+                // probable level can be another, and a bar tuned on one
+                // reading would hold for something the gate never does.
+                let predicted = nearest_index(*score, probs.len()).to_string();
                 Self::new(
                     predicted,
                     expected.map(str::to_owned),

@@ -1549,27 +1549,15 @@ fn a_strict_gate_without_a_proposal_says_nothing_about_strictness() {
 
 // ---- a Score's two readings -----------------------------------------------------
 
+/// The table grades a Score by the level nearest its weighted score, the
+/// level the policy acts on (decision HD4), so a Score's bar needs no note
+/// about two readings: the proposal stands alone.
 #[test]
-fn a_score_bar_says_the_table_reads_the_most_probable_level() {
+fn a_score_bar_is_read_the_way_the_policy_acts_and_needs_no_note() {
     let out = tune_triage(&[]);
     let err = stderr(&out);
-    let note = "jud: tone: the table reads the most probable level as the answer; the policy reads the level nearest the weighted score, which can differ";
-    assert_eq!(err.matches(note).count(), 1, "{err}");
-    // It follows the proposal it qualifies, and only a Score's.
-    assert!(
-        err.find(note).unwrap() > err.find("jud: tone: propose confidence").unwrap(),
-        "{err}"
-    );
-    assert!(!err.contains("jud: desk: the table reads"), "{err}");
-    assert!(!err.contains("jud: actionable: the table reads"), "{err}");
-
-    // No bar proposed, nothing to qualify.
-    let out = tune_triage(&["--min-covered", "7"]);
-    assert!(
-        !stderr(&out).contains("the table reads the most probable level"),
-        "{}",
-        stderr(&out)
-    );
+    assert!(err.contains("jud: tone: propose confidence"), "{err}");
+    assert!(!err.contains("the table reads"), "{err}");
 }
 
 // ---- two files, one request ----------------------------------------------------

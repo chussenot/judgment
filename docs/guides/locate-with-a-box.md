@@ -172,14 +172,14 @@ cases shapes-cases: sha256:f4a368d49c556c625e4a6d74437947c6720bc5d9cc907e909cb8a
 
 circle_present
   labelled 40, correct 40, accuracy 1.00 (95% interval 0.91 to 1.00)
-  brier 0.001, calibration error 0.015, confidence when right 0.99, when wrong -
+  brier 0.001, calibration error 0.015 over the confidence, 0.015 over the answer's probability, confidence when right 0.99, when wrong -
   outcomes, labelled/answered/right: yes 30/30/30, no 10/10/10
   majority yes, 30 of 40 (0.75)
   gate: acts on 40 of 40, defers 0, accuracy when acted 1.00
 
 circle
   labelled 30, correct 28, accuracy 0.93 (95% interval 0.79 to 0.98)
-  brier -, calibration error 0.212, confidence when right 0.75, when wrong 0.49
+  brier -, calibration error 0.212 over the confidence, - over the answer's probability, confidence when right 0.75, when wrong 0.49
   mean IoU 0.80 (a box is right at or above its label's IoU bar)
   outcomes, labelled/answered/right: box 30/30/28
   majority box, 30 of 30 (1.00)

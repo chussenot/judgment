@@ -16,7 +16,7 @@ use std::process::ExitCode;
 
 use clap::{Args, ValueHint};
 use judgment::Question;
-use judgment::eval::{ECE_BINS, Judgment, QuestionMetrics};
+use judgment::eval::{ECE_BINS, Judgment, QuestionMetrics, metrics};
 use judgment::jud::{Rubric, Tuning, Verdict};
 use serde::Serialize;
 
@@ -32,7 +32,8 @@ use crate::recordings;
 /// Answers every case from the configured backend, or from the recordings in
 /// DIR with --replay (no key, no network), and grades each against its
 /// expected answer: per question the accuracy with its 95% interval, the Brier
-/// score, the calibration error, how often the rubric's gate acts rather than
+/// score, the calibration error over the confidence and over the answer's
+/// probability, how often the rubric's gate acts rather than
 /// defers and how often it is right when it acts, and every miss by the
 /// model. With --min-accuracy the command exits with status 3 when a question
 /// falls short, which makes it a CI check; --fail-if-moved does the same when
@@ -154,14 +155,17 @@ const TOLERANCE: f64 = 1e-9;
 ///     {
 ///       "id", "labelled", "correct",
 ///       "accuracy", "accuracy_interval95",   // [low, high], Wilson
-///       "brier", "ece",
+///       "brier", "ece",                   // ece over the wire's confidence
+///       "ece_probability",                // ece over the probability of the predicted
+///                                        // answer; comparable across primitives and
+///                                        // servers; null for a Box
 ///       "mean_iou",                       // a Box question's mean intersection
 ///                                        // over union with its labels; null else
 ///       "confidence_when_right", "confidence_when_wrong",
 ///                                        // all null while "labelled" is 0;
 ///                                        // all of these read the MODEL's answer
 ///                                        // (a Noul at 0.5, a Choice by its pick,
-///                                        // a Score by its most probable level)
+///                                        // a Score by the level nearest its weighted score)
 ///       "gate": { "acted", "deferred", "accuracy_when_acted" } | null,
 ///                                        // the POLICY's: what the gate did with
 ///                                        // the answers, see `GateCoverage`
@@ -305,7 +309,13 @@ struct QuestionReport {
     accuracy: Option<f64>,
     accuracy_interval95: Option<(f64, f64)>,
     brier: Option<f64>,
+    /// Over the wire's `confidence`, which the gates compare.
     ece: Option<f64>,
+    /// Over the probability of the predicted answer (a Noul's `max(p, 1 - p)`,
+    /// a Choice's or Score's probability of its pick): comparable across
+    /// primitives and servers, where the wire's `confidence` is TypeSafe's
+    /// spread on one and one minus entropy on another. `None` for a Box.
+    ece_probability: Option<f64>,
     /// A Box question's mean intersection over union with its labels.
     mean_iou: Option<f64>,
     confidence_when_right: Option<f64>,
@@ -409,7 +419,8 @@ const SIGNAL_MIN: usize = 10;
 /// requests that carry one: a Noul's yes or no at the gate's threshold (and
 /// `strict`), a Choice's option, a Score's level nearest to the weighted score.
 /// That is not the question's accuracy, which reads the model's answer (a Noul
-/// at 0.5, a Choice by its pick, a Score by its most probable level), so
+/// at 0.5, a Choice by its pick, a Score by the level nearest its weighted
+/// score), so
 /// moving a bar moves this number and leaves that one where it is. A deferred
 /// answer is not acted on and is in neither count.
 #[derive(Debug, Serialize)]
@@ -591,6 +602,7 @@ fn question_report(
         accuracy_interval95: metrics.accuracy_interval95,
         brier: metrics.brier,
         ece: metrics.ece,
+        ece_probability: ece_over_probability(judgments),
         mean_iou: metrics.mean_iou,
         confidence_when_right: metrics.confidence_when_right,
         confidence_when_wrong: metrics.confidence_when_wrong,
@@ -601,6 +613,16 @@ fn question_report(
         signals,
         fallback: rubric.policy.gates.get(id).and_then(|g| g.fallback.clone()),
     }
+}
+
+/// The calibration error over the probability of the predicted answer, over
+/// the labelled judgments that have a distribution (a Box has none).
+fn ece_over_probability(judgments: &[Judgment]) -> Option<f64> {
+    let pairs: Vec<(f64, bool)> = judgments
+        .iter()
+        .filter_map(|j| Some((*j.probabilities.get(&j.predicted)?, j.correct?)))
+        .collect();
+    (!pairs.is_empty()).then(|| metrics::expected_calibration_error(&pairs, ECE_BINS))
 }
 
 /// The outcomes a question offers, in its order, each with a Score level's
@@ -1030,9 +1052,10 @@ impl QuestionReport {
             )?;
             writeln!(
                 f,
-                "  brier {}, calibration error {}, confidence when right {}, when wrong {}",
+                "  brier {}, calibration error {} over the confidence, {} over the answer's probability, confidence when right {}, when wrong {}",
                 fixed(self.brier, 3),
                 fixed(self.ece, 3),
+                fixed(self.ece_probability, 3),
                 fixed(self.confidence_when_right, 2),
                 fixed(self.confidence_when_wrong, 2)
             )?;
@@ -1317,6 +1340,35 @@ mod tests {
             deferred,
             accuracy_when_acted: None,
         }
+    }
+
+    /// 100 Choices at (a 0.6, b 0.2, c 0.2) with the wire's confidence at
+    /// 0.40 (TypeSafe's spread), right 60 times: calibrated on the pick's
+    /// probability, twenty points off on the confidence.
+    #[test]
+    fn calibration_over_the_answer_probability_reads_the_pick_not_the_wire() {
+        use std::collections::BTreeMap;
+        let judgments: Vec<Judgment> = (0..100)
+            .map(|i| {
+                Judgment::new(
+                    "a".to_owned(),
+                    Some(if i < 60 { "a" } else { "b" }.to_owned()),
+                    0.40,
+                    BTreeMap::from([
+                        ("a".to_owned(), 0.6),
+                        ("b".to_owned(), 0.2),
+                        ("c".to_owned(), 0.2),
+                    ]),
+                    true,
+                )
+            })
+            .collect();
+        let over_wire = QuestionMetrics::summarise(&judgments, ECE_BINS)
+            .ece
+            .unwrap_or(f64::NAN);
+        let over_pick = ece_over_probability(&judgments).unwrap_or(f64::NAN);
+        assert!((over_wire - 0.20).abs() < 0.01, "{over_wire}");
+        assert!(over_pick < 0.02, "{over_pick}");
     }
 
     #[test]

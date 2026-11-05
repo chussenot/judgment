@@ -25,6 +25,7 @@
 
 use std::collections::BTreeMap;
 
+use judgment::eval::Judgment;
 use judgment::eval::canonical;
 use judgment::{
     Answer, BoundingBox, BoxEdges, Choice, Confidence, Error, Noul, Options, Probability,
@@ -1271,5 +1272,76 @@ proptest! {
         let px = BoxEdges::new(top, bottom, left, right).to_pixels(width, height);
         prop_assert!(px.left <= width && px.right <= width, "{px:?}");
         prop_assert!(px.top <= height && px.bottom <= height, "{px:?}");
+    }
+}
+
+/// A Score answer over `probabilities`, its `score` their weighted mean, as
+/// the wire sends it.
+fn score_answer(probabilities: &[f64]) -> judgment::Answer {
+    let keyed: serde_json::Map<String, Value> = probabilities
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (i.to_string(), json!(p)))
+        .collect();
+    let legend: serde_json::Map<String, Value> = (0..probabilities.len())
+        .map(|i| (i.to_string(), json!(format!("level {i}"))))
+        .collect();
+    serde_json::from_value(json!({
+        "type": "score", "score": weighted(probabilities), "legend": legend,
+        "probabilities": keyed, "confidence": 0.5
+    }))
+    .unwrap()
+}
+
+/// `Σ i · p_i`, the wire's `score`.
+#[allow(clippy::cast_precision_loss)]
+fn weighted(probabilities: &[f64]) -> f64 {
+    probabilities
+        .iter()
+        .enumerate()
+        .map(|(i, p)| i as f64 * p)
+        .sum()
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    /// Grading is equivariant under relabelling, away from the documented
+    /// ties: a Noul at `p` against yes predicts the opposite of `1 - p` for
+    /// every `p` but 0.5, which is yes both ways (`Judgment::noul`); a Score
+    /// with its levels reversed predicts the mirrored level, unless its
+    /// weighted score sits exactly between two levels, where half away from
+    /// zero is the rule both ways (`Score::nearest_level`). Decision HD4.
+    #[test]
+    fn grading_is_equivariant_under_relabelling_away_from_the_documented_ties(
+        hundredths in 0u32..=100,
+        weights in proptest::collection::vec(prop_oneof![Just(0.0f64), Just(0.25), Just(0.5)], 2..=10),
+    ) {
+        let p = f64::from(hundredths) / 100.0;
+        let yes = Judgment::noul(p, Some(true), true).predicted;
+        let flipped = Judgment::noul(1.0 - p, Some(true), true).predicted;
+        if hundredths == 50 {
+            prop_assert_eq!((yes.as_str(), flipped.as_str()), ("yes", "yes"));
+        } else {
+            prop_assert_ne!(yes, flipped);
+        }
+
+        let total: f64 = weights.iter().sum();
+        prop_assume!(total > 0.0);
+        let probabilities: Vec<f64> = weights.iter().map(|w| w / total).collect();
+        let reversed: Vec<f64> = probabilities.iter().rev().copied().collect();
+        let level = |answer: &judgment::Answer| -> usize {
+            Judgment::of_answer(answer, None).predicted.parse().unwrap()
+        };
+        let forward = level(&score_answer(&probabilities));
+        let backward = level(&score_answer(&reversed));
+        let score = weighted(&probabilities);
+        if (score.fract() - 0.5).abs() < 1e-9 {
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let away_from_zero = score.ceil() as usize;
+            prop_assert_eq!(forward, away_from_zero);
+        } else {
+            prop_assert_eq!(forward + backward, probabilities.len() - 1);
+        }
     }
 }

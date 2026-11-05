@@ -362,7 +362,7 @@ The `to ask` and `stale` lines appear only when there is a name to give. The mod
 ```text
 Grade a model's answers against the labelled cases.
 
-Answers every case from the configured backend, or from the recordings in DIR with --replay (no key, no network), and grades each against its expected answer: per question the accuracy with its 95% interval, the Brier score, the calibration error, how often the rubric's gate acts rather than defers and how often it is right when it acts, and every miss by the model. With --min-accuracy the command exits with status 3 when a question falls short, which makes it a CI check; --fail-if-moved does the same when the model or the server that answered is not the one the rubric's tuning names, a warning in the report otherwise. Against a server eval keeps nothing: use `jud record` to keep the answers.
+Answers every case from the configured backend, or from the recordings in DIR with --replay (no key, no network), and grades each against its expected answer: per question the accuracy with its 95% interval, the Brier score, the calibration error over the confidence and over the answer's probability, how often the rubric's gate acts rather than defers and how often it is right when it acts, and every miss by the model. With --min-accuracy the command exits with status 3 when a question falls short, which makes it a CI check; --fail-if-moved does the same when the model or the server that answered is not the one the rubric's tuning names, a warning in the report otherwise. Against a server eval keeps nothing: use `jud record` to keep the answers.
 
 Usage: jud eval [OPTIONS] <RUBRIC> <CASES>
 

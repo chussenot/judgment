@@ -18,6 +18,23 @@ All notable changes to the `judgment` crate. The format follows
   warning:` line on stderr. A rubric without a `tuning` block, or one that
   names neither, is unchanged.
 
+- `jud eval` reports the calibration error twice, under its own name each:
+  `ece` over the wire's `confidence`, which the gates compare, and
+  `ece_probability` over the probability of the predicted answer (a Noul's
+  `max(p, 1 - p)`, a Choice's or Score's probability of its pick), which
+  is comparable across primitives and across servers whose `confidence`
+  means different things; `null` for a Box. The text report names both.
+  Decision HD4.
+
+### Changed
+
+- A Score is graded by the level nearest its weighted score, the level the
+  policy acts on, where it was graded by its most probable level: a spread
+  answer's accuracy, misses and the bar `jud tune` proposes now hold for
+  what the gate does. `jud tune` no longer prints the note about the two
+  readings. `Judgment::of_answer` is the change; `Judgment::new` grades
+  whatever it is given. Decision HD4.
+
 ### Security
 
 - An `Error`'s message writes control, line-break and invisible format

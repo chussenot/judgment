@@ -24,6 +24,7 @@ expression: report
       "confidence_when_wrong": null,
       "correct": 40,
       "ece": 0.03950000000000012,
+      "ece_probability": 0.03950000000000012,
       "gate": {
         "accuracy_when_acted": 1.0,
         "acted": 40,
@@ -68,6 +69,7 @@ expression: report
       "confidence_when_wrong": 0.815,
       "correct": 24,
       "ece": 0.09633333333333322,
+      "ece_probability": null,
       "gate": {
         "accuracy_when_acted": 0.7931034482758621,
         "acted": 32,

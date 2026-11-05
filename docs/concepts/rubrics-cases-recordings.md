@@ -90,7 +90,7 @@ The crate reports per question, from `eval::metrics`:
 
 - **Accuracy with a 95 % Wilson interval** ([Wilson 1927](https://doi.org/10.1080/01621459.1927.10502953)), because an accuracy on three labelled cases and one on three hundred read the same without it.
 - **The Brier score** ([Brier 1950](https://doi.org/10.1175/1520-0493(1950)078%3C0001:VOFEIT%3E2.0.CO;2)), in its multi-class form, the sum over the options of the squared difference between the probability and the outcome; the rustdoc states the form because other tools use another and the numbers are not comparable.
-- **Expected calibration error** ([Naeini, Cooper and Hauskrecht 2015](https://doi.org/10.1609/aaai.v29i1.9602)) over ten equal-width confidence bins: the gap between how confident the model was and how often it was right.
+- **Expected calibration error** ([Naeini, Cooper and Hauskrecht 2015](https://doi.org/10.1609/aaai.v29i1.9602)) over ten equal-width confidence bins: the gap between how confident the model was and how often it was right. Reported twice, under its own name each: over the wire's `confidence`, which the gates compare and whose meaning differs by server (TypeSafe's spread, Laya's one minus entropy), and over the probability of the predicted answer, which is what the model cards and the benchmarks grade and is comparable across primitives and servers.
 - **Mean confidence when right and when wrong**, which says whether the confidence separates the two at all.
 
 [Tune thresholds](../guides/tune-thresholds.md) reads them in practice.

@@ -187,6 +187,18 @@ fn the_triage_cases_replayed_give_the_accuracies_and_briers_the_calibration_exam
     for (id, ece, right, wrong) in calibration {
         let q = question(&report, id);
         assert_eq!(format!("{:.3}", q["ece"].as_f64().unwrap()), ece, "{id}");
+        // Over the answer's probability: a Noul's is its confidence, so the
+        // two agree there; a Choice's or Score's is its pick's probability,
+        // a number of its own.
+        let over_probability = q["ece_probability"].as_f64().unwrap();
+        if id == "actionable" {
+            assert_eq!(format!("{over_probability:.3}"), ece, "{id}");
+        } else {
+            assert!(
+                (0.0..=1.0).contains(&over_probability),
+                "{id}: {over_probability}"
+            );
+        }
         assert_eq!(
             format!("{:.3}", q["confidence_when_right"].as_f64().unwrap()),
             right,
@@ -248,12 +260,14 @@ fn the_text_report_names_the_documents_and_each_question() {
     // One block per question, with the numbers the example prints.
     assert!(text.contains("labelled 7, correct 6, accuracy 0.86 (95% interval 0.49 to 0.97)"));
     assert!(text.contains("labelled 6, correct 6, accuracy 1.00"));
-    // The metrics line is brier, calibration error, then the two confidences,
-    // in that order (the numbers are derived in the JSON test above).
+    // The metrics line is brier, the calibration error over the confidence
+    // and over the answer's probability, then the two confidences, in that
+    // order (the confidence numbers are derived in the JSON test above; a
+    // Noul's two calibration errors are one number).
     for line in [
-        "brier 0.090, calibration error 0.144, confidence when right 0.92, when wrong 0.52",
-        "brier 0.155, calibration error 0.151, confidence when right 0.76, when wrong 0.40",
-        "brier 0.059, calibration error 0.202, confidence when right 0.80, when wrong -",
+        "brier 0.090, calibration error 0.144 over the confidence, 0.144 over the answer's probability, confidence when right 0.92, when wrong 0.52",
+        "brier 0.155, calibration error 0.151 over the confidence, 0.234 over the answer's probability, confidence when right 0.76, when wrong 0.40",
+        "brier 0.059, calibration error 0.202 over the confidence, 0.150 over the answer's probability, confidence when right 0.80, when wrong -",
     ] {
         assert!(text.contains(line), "{line}\n{text}");
     }
@@ -394,6 +408,7 @@ fn the_json_report_has_every_documented_key_and_no_other() {
             "confidence_when_wrong",
             "correct",
             "ece",
+            "ece_probability",
             "gate",
             "id",
             "labelled",
@@ -1203,12 +1218,12 @@ fn a_strict_gate_changes_the_verdict_at_exactly_its_bar() {
 }
 
 #[test]
-fn a_scores_gate_is_graded_by_the_level_the_policy_reads_and_not_the_most_probable_one() {
+fn a_score_is_graded_by_the_level_the_policy_reads_so_the_question_and_its_gate_agree() {
     // how-to-export (labelled calm, 0) is edited so that the model's most
     // probable level is still 0 (0.4) while the weighted score,
     // 0.35 + 2 * 0.25 = 0.85, is nearest to level 1, which is what the policy
-    // reads. The question's accuracy goes by the first, the gate's by the
-    // second.
+    // reads. The question's accuracy reads the same level (decision HD4), so
+    // the case is a miss for both.
     let dir = copy_dir(RECORDINGS);
     let file = dir.join("how-to-export.jud");
     let text = read(file.to_str().unwrap());
@@ -1222,7 +1237,8 @@ fn a_scores_gate_is_graded_by_the_level_the_policy_reads_and_not_the_most_probab
     let recordings = dir.to_str().unwrap();
 
     // The committed bar, 0.3, acts on all seven; six carry a tone label and
-    // the policy's level is right for five (not for how-to-export).
+    // the level is right for five (not for how-to-export), for the question
+    // as for the gate.
     let (gate, question) = gate_of(recordings, TRIAGE, "tone");
     assert_eq!(
         (gate["acted"].as_u64(), gate["deferred"].as_u64()),
@@ -1231,7 +1247,7 @@ fn a_scores_gate_is_graded_by_the_level_the_policy_reads_and_not_the_most_probab
     assert!(is_ratio(&gate["accuracy_when_acted"], 5, 6), "{gate}");
     assert_eq!(
         (question["labelled"].as_u64(), question["correct"].as_u64()),
-        (Some(6), Some(6))
+        (Some(6), Some(5))
     );
 
     // A bar of 0.85 defers refund-angry (0.84), close-account (0.80) and
@@ -1253,7 +1269,7 @@ fn a_scores_gate_is_graded_by_the_level_the_policy_reads_and_not_the_most_probab
         (Some(4), Some(3))
     );
     assert!(is_ratio(&gate["accuracy_when_acted"], 2, 3), "{gate}");
-    assert_eq!(question["correct"], 6);
+    assert_eq!(question["correct"], 5);
 }
 
 #[test]
