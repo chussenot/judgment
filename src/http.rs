@@ -143,7 +143,10 @@ pub struct RetryPolicy {
     /// attempt would carry the same body, and a failed status is that status
     /// with an empty body. Every body is decoded from that
     /// buffer, so an upstream, or a proxy answering in its place, cannot grow
-    /// the process without bound.
+    /// the process without bound. `usize::MAX` is no cap: whatever a server
+    /// declares in `Content-Length`, the buffer reserves at most 64 KiB
+    /// before the body arrives, so a cap above the machine's memory is safe
+    /// until that many bytes have really come.
     pub max_body_bytes: usize,
 }
 
@@ -358,7 +361,9 @@ pub async fn send_with_retries_paced(
     let started = tokio::time::Instant::now();
     let mut attempt: u32 = 0;
     loop {
-        attempt += 1;
+        // Saturating: `max_retries: u32::MAX` asks for a loop the budget or
+        // the server ends, never an overflow.
+        attempt = attempt.saturating_add(1);
         if let Some(pacer) = pacer {
             pacer.wait().await;
         }
@@ -474,12 +479,27 @@ enum BodyRead {
 }
 
 /// The body, refusing more than `limit` bytes, before a read when `Content-Length` says so.
+/// Most bytes the body buffer reserves before any arrive. The declared
+/// length is the server's claim: reserving it under a cap above memory
+/// (`usize::MAX` for no cap) would ask the allocator for what it lacks,
+/// which aborts the process.
+const PREALLOCATE_MAX: usize = 64 * 1024;
+
+/// What the body buffer reserves for a declared length: the length, up to
+/// [`PREALLOCATE_MAX`]; nothing for none or one that does not fit a `usize`.
+fn reservation(declared: Option<u64>) -> usize {
+    declared
+        .and_then(|n| usize::try_from(n).ok())
+        .unwrap_or(0)
+        .min(PREALLOCATE_MAX)
+}
+
 async fn read_body(mut resp: reqwest::Response, limit: usize) -> Result<String, BodyRead> {
     let declared = resp.content_length();
     if declared.is_some_and(|n| n > u64::try_from(limit).unwrap_or(u64::MAX)) {
         return Err(BodyRead::TooLarge);
     }
-    let mut buf = Vec::with_capacity(declared.and_then(|n| usize::try_from(n).ok()).unwrap_or(0));
+    let mut buf = Vec::with_capacity(reservation(declared));
     while let Some(chunk) = resp.chunk().await.map_err(BodyRead::Transport)? {
         if buf.len().saturating_add(chunk.len()) > limit {
             return Err(BodyRead::TooLarge);
@@ -556,6 +576,19 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
     use reqwest::header::HeaderValue;
+
+    /// A terabyte declared reserves 64 KiB, a hundred bytes a hundred, and
+    /// nothing declared nothing: the cap is what keeps a hostile length
+    /// from reaching the allocator.
+    #[test]
+    fn the_reservation_is_the_declared_length_up_to_64_kib() {
+        assert_eq!(reservation(None), 0);
+        assert_eq!(reservation(Some(100)), 100);
+        assert_eq!(reservation(Some(65_536)), 65_536);
+        assert_eq!(reservation(Some(65_537)), 65_536);
+        assert_eq!(reservation(Some(1 << 40)), 65_536);
+        assert_eq!(reservation(Some(u64::MAX)), 65_536);
+    }
 
     fn no_jitter() -> RetryPolicy {
         RetryPolicy {
