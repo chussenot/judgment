@@ -311,6 +311,60 @@ fn the_misses_name_the_case_what_was_expected_and_what_was_given() {
     );
 }
 
+/// A rubric tuned on one model and server, graded on another's answers:
+/// the report says so as a warning and a `moved` key, and under
+/// --fail-if-moved as status 3. The example rubric was tuned on its own
+/// recordings' model and server, so it carries no such key.
+#[test]
+fn answers_from_another_model_or_server_than_the_tuning_names_are_a_warning_and_under_a_flag_the_status()
+ {
+    let dir = scratch("moved");
+    let rubric = dir.join("triage.jud");
+    std::fs::write(
+        &rubric,
+        read(TRIAGE)
+            .replace("model: jev-1.13.0", "model: jev-1.12.0")
+            .replace(
+                "server: https://api.typesafe.ai",
+                "server: https://example.test",
+            ),
+    )
+    .unwrap();
+    let rubric = rubric.to_str().unwrap();
+    let out = eval(rubric, TRIAGE_CASES, &["--json"]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert_eq!(
+        report(&out)["moved"],
+        json!({
+            "tuned_model": "jev-1.12.0",
+            "tuned_server": "https://example.test",
+            "models": ["jev-1.13.0"],
+            "servers": ["https://api.typesafe.ai"]
+        })
+    );
+    let text = stdout(&eval(rubric, TRIAGE_CASES, &[]));
+    assert!(
+        text.contains("\nwarning: model tuned on jev-1.12.0, answered by jev-1.13.0\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains(
+            "\nwarning: server tuned on https://example.test, answered by https://api.typesafe.ai\n"
+        ),
+        "{text}"
+    );
+    let out = eval(rubric, TRIAGE_CASES, &["--fail-if-moved"]);
+    assert_eq!(code(&out), 3, "{}", stderr(&out));
+    assert_eq!(
+        stderr(&out),
+        "jud: model tuned on jev-1.12.0, answered by jev-1.13.0\n\
+         jud: server tuned on https://example.test, answered by https://api.typesafe.ai\n"
+    );
+    let out = triage(&["--json", "--fail-if-moved"]);
+    assert_eq!(code(&out), 0, "{}", stderr(&out));
+    assert!(report(&out).get("moved").is_none());
+}
+
 #[test]
 fn the_json_report_has_every_documented_key_and_no_other() {
     let report = report(&triage(&["--json", "--min-accuracy", "desk=0.5"]));

@@ -15,6 +15,20 @@ pub(crate) struct Found {
     pub recording: Recording,
 }
 
+/// The servers the recordings under `dir` name, distinct, in path order; a
+/// recording without one names none.
+pub(crate) fn servers(dir: &Path) -> Vec<String> {
+    let mut servers: Vec<String> = Vec::new();
+    for found in scan(dir) {
+        if let Some(server) = found.recording.server
+            && !servers.contains(&server)
+        {
+            servers.push(server);
+        }
+    }
+    servers
+}
+
 /// The recordings under `dir`, sorted by path. A file `Replay::open`
 /// already read cannot fail here; one that does is left out.
 pub(crate) fn scan(dir: &Path) -> Vec<Found> {

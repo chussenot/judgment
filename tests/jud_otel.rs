@@ -119,10 +119,11 @@ async fn a_call_is_exported_and_stdout_is_unchanged() {
         String::from_utf8_lossy(&traced.stderr)
     );
     assert_eq!(traced.stdout, plain.stdout);
-    assert!(
-        traced.stderr.is_empty(),
-        "{}",
-        String::from_utf8_lossy(&traced.stderr)
+    // Telemetry adds nothing to stderr: the one line is the run's own, the
+    // mock not being the server the rubric was tuned on.
+    assert_eq!(
+        String::from_utf8_lossy(&traced.stderr),
+        moved_server(&server.uri())
     );
 
     let (paths, bodies) = received(&collector).await;
@@ -177,7 +178,8 @@ async fn an_unreachable_collector_changes_nothing_but_one_stderr_line() {
     );
 }
 
-/// No endpoint, no telemetry: nothing on stderr either.
+/// No endpoint, no telemetry: nothing on stderr either, beyond the run's own
+/// line about the mock not being the server the rubric was tuned on.
 #[tokio::test]
 async fn without_an_endpoint_nothing_starts() {
     let server = backend(200, answers()).await;
@@ -187,5 +189,14 @@ async fn without_an_endpoint_nothing_starts() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert!(out.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8_lossy(&out.stderr),
+        moved_server(&server.uri())
+    );
+}
+
+/// The warning a run against `uri` prints: the triage rubric was tuned on
+/// the hosted API, and the mock answers with the model it names.
+fn moved_server(uri: &str) -> String {
+    format!("jud: warning: server tuned on https://api.typesafe.ai, answered by {uri}\n")
 }

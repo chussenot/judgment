@@ -82,7 +82,7 @@ You write the rubric and label the cases; the commands run the five steps.
 4. **Tune.** Sweep each Noul's threshold and read off the best F1; table each Choice's confidence bar against accuracy and coverage and read off the lowest bar that keeps the accuracy wanted; sweep each Score's levels. `jud tune` prints the tables and a proposal.
 5. **Write back.** Put the gates into `policy`, with the cases' fingerprint, the model, the server and the time in `tuning`. The next person to open the file sees what the numbers rest on. Paste the blocks `jud tune` prints, or let `jud tune --out` write the rubric to a new file.
 
-When the model version moves, run step 2 again into a directory of its own (`jud record --out NEW`), keeping the old answers for a comparison (below); `--refresh` writes over them. The questions do not change, so their fingerprint does not; the bars may, and the policy fingerprint shows it; `tuning` names the new model.
+When the model version moves, run step 2 again into a directory of its own (`jud record --out NEW`), keeping the old answers for a comparison (below); `--refresh` writes over them. The questions do not change, so their fingerprint does not; the bars may, and the policy fingerprint shows it; `tuning` names the new model. Until it does, `jud eval` and `jud RUBRIC` say so: a `warning:` line (and the report's `moved` key) names the model or server that answered against the one the bars were tuned on, and `jud eval --fail-if-moved` makes it exit status 3, for a job that must not grade one model's answers against another's bars.
 
 ## The metrics
 

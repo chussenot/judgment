@@ -8,6 +8,16 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `jud eval` says when the answers it grades came from another model or
+  server than the one the rubric's `tuning` block names: a `warning:` line
+  in the text report and a `moved` key in the JSON one (`tuned_model`,
+  `tuned_server`, and the `models` and `servers` that answered instead),
+  present only then. `--fail-if-moved` makes it exit status 3, so a job
+  that replays last month's recordings against a rubric retuned since
+  cannot pass by accident. `jud RUBRIC` prints the same as a `jud:
+  warning:` line on stderr. A rubric without a `tuning` block, or one that
+  names neither, is unchanged.
+
 - `jud eval` reports the calibration error twice, under its own name each:
   `ece` over the wire's `confidence`, which the gates compare, and
   `ece_probability` over the probability of the predicted answer (a Noul's
