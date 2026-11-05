@@ -99,14 +99,13 @@ fn run(args: &[&str], uri: &str) -> std::process::Output {
 
 #[tokio::test]
 async fn a_report_from_recordings_equals_the_report_from_the_live_run() {
-    let live_server = server(triage_answers(), 7).await;
-    let live = run(
-        &["eval", TRIAGE, TRIAGE_CASES, "--json"],
-        &live_server.uri(),
-    );
+    // One server for both runs: the report names the server that answered
+    // when it is not the one the rubric was tuned on, so two mocks on two
+    // ports would differ there and nowhere else.
+    let origin = server(triage_answers(), 14).await;
+    let live = run(&["eval", TRIAGE, TRIAGE_CASES, "--json"], &origin.uri());
     assert_eq!(code(&live), 0, "{}", stderr(&live));
 
-    let origin = server(triage_answers(), 7).await;
     let dir = scratch("fidelity");
     let recorded = run(
         &[

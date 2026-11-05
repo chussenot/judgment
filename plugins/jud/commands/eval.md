@@ -38,6 +38,10 @@ no file.
      over every labelled case, which no bar or fallback moves, and what
      would raise it (a fixed label, a sharper question, another model), with
      the arithmetic.
+   - A `moved` key: the answers came from another model or server than the
+     rubric's `tuning` names, so its bars rest on other answers than the
+     ones graded. Say so before any number, and offer `/jud:tune` (bars for
+     this model) or a fresh recording.
    - Compare the rubric's `spec.tuning.cases` with `cases.fingerprint`:
      equal means the bars were tuned on these very cases, so the gate
      numbers are optimistic. It says nothing about the recordings.

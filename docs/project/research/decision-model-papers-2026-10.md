@@ -1,8 +1,8 @@
 ---
 title: Decision-model papers, September and October 2026
-description: A reading, as of 2026-10-26, of the twenty papers paperswithcode lists under "Decision Model" (typed decisions from System One models such as Jev), grouped by what they study; the findings that recur across them (item accuracy does not predict use, in-sample bars, binary probabilities placed off 0.5, option order, mass on an unstated "unknown", decomposition, label leakage); and what each means for this crate, what it already does and the follow-up beads.
+description: A reading, as of 2026-10-26, of the twenty papers paperswithcode lists under "Decision Model" (typed decisions from System One models such as Jev) and a hallucination-detection study of 2026-10-27, grouped by what they study; the findings that recur across them (item accuracy does not predict use, in-sample bars, binary probabilities placed off 0.5, option order, mass on an unstated "unknown", decomposition, label leakage); and what each means for this crate, what it already does and the follow-up beads.
 status: current
-last_reviewed: 2026-10-27
+last_reviewed: 2026-11-04
 tags: [research, judgment, jev, calibration, evaluation, thresholds, position-bias, literature]
 ---
 
@@ -18,7 +18,7 @@ The method page [Decision Model](https://paperswithcode.co/methods/decision-mode
 
 ## Sources
 
-All twenty papers were read on 2026-10-26, from their arXiv abstract pages, or from their paperswithcode pages for the two without an arXiv number. **The full text of none was read.** Every number on this page is the authors' own, as the abstract gives it, and none was reproduced here. Bead `judgment-rwh` reads the five papers that bear most on the crate in full.
+All twenty papers were read on 2026-10-26, from their arXiv abstract pages, or from their paperswithcode pages for the two without an arXiv number. **The full text of none was read.** Every number on this page is the authors' own, as the abstract gives it, and none was reproduced here. Bead `judgment-rwh` reads the five papers that bear most on the crate in full. A twenty-first paper, on hallucination detection, was added on 2026-11-04 from its abstract and the tables it reports; it is the last row of the first table.
 
 ## The papers
 
@@ -30,6 +30,7 @@ All twenty papers were read on 2026-10-26, from their arXiv abstract pages, or f
 | Li, [Fast Models, Slow Evidence](https://arxiv.org/abs/2610.02267) | Laya and Jev compared on 11 decision points an agent harness makes (routing, tool choice, retrieval relevance, injection detection). 7,283 cases and 6,640 robustness variants, byte-identical inputs, paired tests, and an audit of the paper's own pipeline. | Jev is better on 9 of 11 decision points, by 10.8 to 46.0 points. Neither model beats chance at zero-shot model routing. **Laya changes 30% of its answers when the option order is reversed.** The self-audit corrects its own figures: a reported 23.9% saving was 4.3% once a pre-screen's cost was counted, and **thresholds set in-sample for a 5% miss rate missed up to 17% held out**. |
 | Porcedda, [Jev thinks "I don't know", but doesn't say it](https://arxiv.org/abs/2609.35342) | Sys1Cal-v1: True/False propositions whose probability is known by construction, asked through Noul, Choice and Score, scored by total variation distance from the true distribution. | Jev's Choice probabilities for A and not-A read as if they sum to 1, while some probability sits on an unstated third value, "unknown". Counting it moves median soft accuracy from 0.771 to 0.978. |
 | Zhuang et al., [DecisionPivot](https://arxiv.org/abs/2610.28522) | 48 tasks, 40,033 items. A core track of contrast groups (items that differ by one detail that changes the answer), checked by independent solvers, and a reference track of 35 public test sets. 40 decision models and 14 general models. | Two 27B models 2.6 points apart on the reference track score 70.1% and 44.2% on contrast groups. Perplexity Decider ranks the positive member of a pair above the negative in 92.3% of 2,400 pairs, but answers both right in only 74.1%: ranking the pair correctly does not mean deciding both correctly. |
+| [Decision Models as Judges for Hallucination Detection](https://arxiv.org/abs/2610.37229), 2026-10-27, a preprint not replicated | Five decision models against GPT-6-Sol as the reference judge on 9,852 samples, five kinds of hallucination, six datasets. | The result is per kind, not a verdict on decision models: Jev's balanced accuracy is 82.5% on context inconsistency and 80.7% on factual fabrication, but 69.0% on logical and 61.8% on instruction inconsistency. Across the five models ECE is 0.083 to 0.136, and `confidence` separates right answers from wrong ones at an AUROC of only 0.67 to 0.73; high-confidence errors remain. A cascade that escalates below a confidence bar gains 1.9 to 3.3 points on the factual and context kinds at 1.2 to 3.3% of the large model's cost, and nothing on the other two. The authors flag source confounding, one prompt per task and limited generalisation to deployment. |
 
 ### New models
 
@@ -69,7 +70,7 @@ All twenty papers were read on 2026-10-26, from their arXiv abstract pages, or f
    - In DecisionPivot, two models 2.6 points apart score 26 points apart on contrast groups.
    - In Fast Models, Slow Evidence, accuracy at the gate (58% against 98%) had been presented as end-to-end quality.
 2. **A bar tuned on the cases it is graded on looks better than it is.** A 5% target miss rate became 17% held out. JevAgentHarness fits a bar for each choice and loses 19 points without one.
-3. **A probability can rank items well and still sit in the wrong place against a fixed bar.** Jev's binary probabilities do; Deußer et al. tune each bar. "Calibrated" depends on the primitive.
+3. **A probability can rank items well and still sit in the wrong place against a fixed bar.** Jev's binary probabilities do; Deußer et al. tune each bar. "Calibrated" depends on the primitive. The hallucination study puts a number on confidence as a gate: an AUROC of 0.67 to 0.73 across five models, with ECE 0.083 to 0.136, so a confidence bar sorts right from wrong only weakly, whichever model answers.
 4. **Option order moves some models.** The rates on reversed or reordered options:
 
    | Model | Answers changed |
@@ -97,11 +98,10 @@ All twenty papers were read on 2026-10-26, from their arXiv abstract pages, or f
 
 | Gap | Evidence | Bead |
 |---|---|---|
-| `jud eval` does not say when it grades the cases the bars were tuned on. The rubric's `tuning.cases` names them, so the check is a comparison of fingerprints. | 5% → 17% (2610.02267) | `judgment-q1l` |
+| `jud eval` does not say when it grades the cases the bars were tuned on. The rubric's `tuning.cases` names them, so the check is a comparison of fingerprints. | 5% → 17% (2610.02267); accuracy on one task says little about another, 61.8% to 82.5% across five kinds of hallucination (2610.37229) | `judgment-q1l` |
 | Calibration is one number across primitives, read from the server's `confidence` rather than from the answer's probability, and a Brier score assumes a distribution that sums to 1. Sys1Cal's missing "unknown" share shows up there as miscalibration. | 2609.35342, 2609.37647 | evidence added to `judgment-bsz.20.14` and to the decision `judgment-bsz.21.4` (HD4) |
 | Gate and tune methodology: whether a bar is judged on the cases it was tuned on. | 2610.02267, 2610.21412 | evidence added to `judgment-bsz.21.14` (HD14) |
 | Cases cannot be grouped, so a near-identical pair is graded as two independent items. | 70.1% against 44.2% (2610.28522) | `judgment-xiv`, a `.jud` minor and a decision record |
-| [Compatible servers and models](compatible-servers-and-models.md) has no order-sensitivity column, and it lists neither d1's open weights nor the new open models. | Laya 30% (2610.02267) | `judgment-xbl` |
 
 ### What the crate should not do
 

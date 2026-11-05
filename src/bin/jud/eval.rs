@@ -17,7 +17,7 @@ use std::process::ExitCode;
 use clap::{Args, ValueHint};
 use judgment::Question;
 use judgment::eval::{ECE_BINS, Judgment, QuestionMetrics};
-use judgment::jud::{Rubric, Verdict};
+use judgment::jud::{Rubric, Tuning, Verdict};
 use serde::Serialize;
 
 use crate::EXIT_UNMET;
@@ -35,7 +35,9 @@ use crate::recordings;
 /// score, the calibration error, how often the rubric's gate acts rather than
 /// defers and how often it is right when it acts, and every miss by the
 /// model. With --min-accuracy the command exits with status 3 when a question
-/// falls short, which makes it a CI check. Against a server eval keeps
+/// falls short, which makes it a CI check; --fail-if-moved does the same when
+/// the model or the server that answered is not the one the rubric's tuning
+/// names, a warning in the report otherwise. Against a server eval keeps
 /// nothing: use `jud record` to keep the answers.
 #[derive(Args)]
 pub(crate) struct Eval {
@@ -57,6 +59,12 @@ pub(crate) struct Eval {
     /// labelled case does not meet its bar.
     #[arg(long, value_name = "[QUESTION=]ACCURACY", value_parser = parse_min_accuracy)]
     pub min_accuracy: Vec<MinAccuracy>,
+    /// Fail with status 3 when the model or the server that answered is not
+    /// the one the rubric's `tuning` block names. Without it the report says
+    /// so and the status is unchanged: the bars were tuned on another
+    /// model's answers, which is a warning, not a result.
+    #[arg(long)]
+    pub fail_if_moved: bool,
     /// Ask for long context on every call: both context limits raised to
     /// 262k tokens, whatever the configuration file says.
     ///
@@ -180,6 +188,10 @@ const TOLERANCE: f64 = 1e-9;
 ///                     "never_answered_min", "defers_most", "defers_nearly_all" },
 ///                                        // the thresholds the signals were read
 ///                                        // with, so a change to one shows
+///   "moved": {                           // only when the rubric's tuning names a model
+///     "tuned_model", "tuned_server",     // or a server (null for the one it does not)
+///     "models", "servers"                // and an answer came from another: those,
+///   },                                   // in the order seen
 ///   "min_accuracy": [                    // one per --min-accuracy check, [] without any
 ///     { "question": "desk" | null, "bar", "labelled", "accuracy", "met" }
 ///   ],
@@ -221,6 +233,10 @@ struct Report {
     requests: usize,
     /// The distinct models the responses named, in the order first seen.
     models: Vec<String>,
+    /// Answers from another model or server than the rubric was tuned on;
+    /// absent when `tuning` names neither, or none did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    moved: Option<Moved>,
     /// One entry per question of the rubric, in its order.
     questions: Vec<QuestionReport>,
     /// The `--min-accuracy` checks, in the order given.
@@ -511,6 +527,7 @@ impl Report {
             },
             requests: answered.len(),
             models,
+            moved: None,
             questions,
             min_accuracy,
             signal_rules: SignalRules::IN_USE,
@@ -823,6 +840,66 @@ fn checks(questions: &[QuestionReport], bar: &MinAccuracy) -> Vec<BarCheck> {
     }
 }
 
+/// Answers from another model or server than the one the rubric's `tuning`
+/// block names. The bars were tuned on that model's answers, so these are
+/// graded against bars that rest on something else: a warning in the
+/// report, and under `--fail-if-moved` the status, since a replay of old
+/// recordings against a rubric tuned since would otherwise pass unnoticed.
+#[derive(Debug, Serialize)]
+pub(crate) struct Moved {
+    /// What `tuning` names; `None` for the one it does not.
+    tuned_model: Option<String>,
+    tuned_server: Option<String>,
+    /// The models that answered and are not `tuned_model`, in the order seen.
+    models: Vec<String>,
+    /// The servers that answered and are not `tuned_server`, in the order seen.
+    servers: Vec<String>,
+}
+
+impl Moved {
+    /// `None` when `tuning` names neither a model nor a server, or every
+    /// answer came from what it names.
+    pub(crate) fn detect(
+        tuning: Option<&Tuning>,
+        models: &[String],
+        servers: &[String],
+    ) -> Option<Self> {
+        let tuning = tuning?;
+        let differing = |named: Option<&String>, seen: &[String]| -> Vec<String> {
+            named.map_or_else(Vec::new, |named| {
+                seen.iter().filter(|s| *s != named).cloned().collect()
+            })
+        };
+        let moved = Self {
+            models: differing(tuning.model.as_ref(), models),
+            servers: differing(tuning.server.as_ref(), servers),
+            tuned_model: tuning.model.clone(),
+            tuned_server: tuning.server.clone(),
+        };
+        (!moved.models.is_empty() || !moved.servers.is_empty()).then_some(moved)
+    }
+
+    /// One line per thing that moved, without a prefix: `model tuned on X,
+    /// answered by Y`. A name comes from a file or a server and is shown
+    /// as text (`out::plain`).
+    pub(crate) fn lines(&self) -> Vec<String> {
+        let line = |what: &str, named: &Option<String>, seen: &[String]| {
+            (!seen.is_empty()).then(|| {
+                let seen: Vec<String> = seen.iter().map(|s| out::plain(s)).collect();
+                format!(
+                    "{what} tuned on {}, answered by {}",
+                    out::plain(named.as_deref().unwrap_or("-")),
+                    seen.join(", ")
+                )
+            })
+        };
+        line("model", &self.tuned_model, &self.models)
+            .into_iter()
+            .chain(line("server", &self.tuned_server, &self.servers))
+            .collect()
+    }
+}
+
 /// `-` for a number that could not be computed, else `value` to `digits`.
 fn fixed(value: Option<f64>, digits: usize) -> String {
     value.map_or_else(|| "-".to_owned(), |v| format!("{v:.digits$}"))
@@ -854,6 +931,11 @@ impl Display for Report {
             many => write!(f, ", models {}", many.join(", "))?,
         }
         writeln!(f)?;
+        if let Some(moved) = &self.moved {
+            for line in moved.lines() {
+                writeln!(f, "warning: {line}")?;
+            }
+        }
 
         for q in &self.questions {
             writeln!(f)?;
@@ -1156,6 +1238,17 @@ fn evaluate(args: &Eval) -> Result<Report, Failure> {
         .into_iter()
         .partition(|a| a.unit.variant == Variant::Original);
     let mut report = Report::build(&loaded, &original, &args.min_accuracy);
+    // Under a replay the server is the recordings', which `Backend` does not
+    // say: the directory is read again for it.
+    let servers: Vec<String> = match &args.replay {
+        Some(dir) => recordings::servers(dir),
+        None => backend.server().into_iter().collect(),
+    };
+    report.moved = Moved::detect(
+        loaded.rubric.policy.tuning.as_ref(),
+        &report.models,
+        &servers,
+    );
     report.agreement = theirs
         .map(|(dir, theirs)| Agreement::build(&loaded, &original, &theirs, dir, args.confident_at));
     if args.perturb.any() {
@@ -1191,13 +1284,17 @@ pub(crate) fn run(args: &Eval) -> ExitCode {
     if let Err(failure) = render(&report, args.json).and_then(|text| out::result(&text)) {
         return failure.report();
     }
-    match report.unmet_line() {
-        Some(line) => {
-            out::note!("jud: {line}");
-            ExitCode::from(EXIT_UNMET)
-        }
-        None => ExitCode::SUCCESS,
+    let mut lines: Vec<String> = report.unmet_line().into_iter().collect();
+    if args.fail_if_moved {
+        lines.extend(report.moved.iter().flat_map(Moved::lines));
     }
+    if lines.is_empty() {
+        return ExitCode::SUCCESS;
+    }
+    for line in lines {
+        out::note!("jud: {line}");
+    }
+    ExitCode::from(EXIT_UNMET)
 }
 
 #[cfg(test)]

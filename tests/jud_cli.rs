@@ -105,6 +105,12 @@ async fn backend(status: u16, body: Value, expected_calls: u64) -> MockServer {
 
 const STATE: &str = r#"{"message": "Charged twice. Fix it today."}"#;
 
+/// The warning a run against `uri` prints: the triage rubric was tuned on
+/// the hosted API, and the mock answers with the model it names.
+fn moved_server(uri: &str) -> String {
+    format!("jud: warning: server tuned on https://api.typesafe.ai, answered by {uri}\n")
+}
+
 /// What a server sends in an error body is shown as text: an escape sequence
 /// in it would clear the screen or retitle the terminal.
 #[tokio::test]
@@ -157,7 +163,9 @@ async fn a_valid_rubric_and_state_print_one_verdict_per_question() {
     assert_eq!(verdicts["tone"]["label"], "angry");
     assert_eq!(verdicts["tone"]["index"], 2);
     assert_eq!(verdicts.as_object().unwrap().len(), 3);
-    assert!(stderr(&out).is_empty(), "{}", stderr(&out));
+    // The mock is not the server the rubric was tuned on, which the run
+    // says once, and nothing else.
+    assert_eq!(stderr(&out), moved_server(&server.uri()));
 }
 
 #[tokio::test]
@@ -461,7 +469,10 @@ async fn a_variable_jud_does_not_read_is_named_before_the_call() {
     );
     let warnings = stderr(&out);
     let lines: Vec<&str> = warnings.lines().collect();
-    assert_eq!(lines.len(), 2, "{warnings}");
+    // The two variables before the call, then the one line the call itself
+    // adds: the mock is not the server the rubric was tuned on.
+    assert_eq!(lines.len(), 3, "{warnings}");
+    assert_eq!(format!("{}\n", lines[2]), moved_server(&uri));
     for (line, name) in lines.iter().zip(["JUD_BASE_URL", "TYPESAFE_MODEL"]) {
         assert!(
             line.starts_with(&format!("jud: {name} is set but jud does not read it")),
@@ -602,7 +613,7 @@ async fn long_context_is_a_setting_of_the_file_and_a_flag_of_the_run() {
     assert_eq!(config["long_context_from"], "config_file");
     let out = jud(&[RUBRIC], STATE, &env, &home);
     assert!(out.status.success(), "{}", stderr(&out));
-    assert!(stderr(&out).is_empty(), "{}", stderr(&out));
+    assert_eq!(stderr(&out), moved_server(&uri));
 
     // The line before a run's first call names it: one case that the mock
     // answers, recorded into a fresh directory.
