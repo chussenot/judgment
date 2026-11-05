@@ -485,13 +485,21 @@ enum BodyRead {
 /// which aborts the process.
 const PREALLOCATE_MAX: usize = 64 * 1024;
 
+/// What the body buffer reserves for a declared length: the length, up to
+/// [`PREALLOCATE_MAX`]; nothing for none or one that does not fit a `usize`.
+fn reservation(declared: Option<u64>) -> usize {
+    declared
+        .and_then(|n| usize::try_from(n).ok())
+        .unwrap_or(0)
+        .min(PREALLOCATE_MAX)
+}
+
 async fn read_body(mut resp: reqwest::Response, limit: usize) -> Result<String, BodyRead> {
     let declared = resp.content_length();
     if declared.is_some_and(|n| n > u64::try_from(limit).unwrap_or(u64::MAX)) {
         return Err(BodyRead::TooLarge);
     }
-    let reserve = declared.and_then(|n| usize::try_from(n).ok()).unwrap_or(0);
-    let mut buf = Vec::with_capacity(reserve.min(PREALLOCATE_MAX));
+    let mut buf = Vec::with_capacity(reservation(declared));
     while let Some(chunk) = resp.chunk().await.map_err(BodyRead::Transport)? {
         if buf.len().saturating_add(chunk.len()) > limit {
             return Err(BodyRead::TooLarge);
@@ -568,6 +576,19 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
     use reqwest::header::HeaderValue;
+
+    /// A terabyte declared reserves 64 KiB, a hundred bytes a hundred, and
+    /// nothing declared nothing: the cap is what keeps a hostile length
+    /// from reaching the allocator.
+    #[test]
+    fn the_reservation_is_the_declared_length_up_to_64_kib() {
+        assert_eq!(reservation(None), 0);
+        assert_eq!(reservation(Some(100)), 100);
+        assert_eq!(reservation(Some(65_536)), 65_536);
+        assert_eq!(reservation(Some(65_537)), 65_536);
+        assert_eq!(reservation(Some(1 << 40)), 65_536);
+        assert_eq!(reservation(Some(u64::MAX)), 65_536);
+    }
 
     fn no_jitter() -> RetryPolicy {
         RetryPolicy {
