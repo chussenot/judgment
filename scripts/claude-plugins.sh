@@ -6,13 +6,14 @@
 # start or /reload-plugins), `typesafe` from TypeSafe's own marketplace
 # (github typesafe-ai/skills), whose `typesafe-ai` skill CLAUDE.md asks for
 # before touching the wire, and `ponytail` (github DietrichGebert/ponytail),
-# the less-code discipline CLAUDE.md asks for, pinned to the tag below so a
-# new release never changes a session's behaviour unseen: moving the pin
-# is an edit of PONYTAIL_REF here and of the same `ref` in
-# .claude/settings.json, together.
+# the less-code discipline CLAUDE.md asks for. Both are pinned to the tags
+# below so a new release never changes a session's behaviour unseen (the
+# typesafe skill shapes how rubrics are written as ponytail shapes code):
+# moving a pin is an edit of TYPESAFE_REF or PONYTAIL_REF here and of the
+# same `ref` in .claude/settings.json, together.
 #
 #   scripts/claude-plugins.sh install   add the marketplaces and install the plugins, user scope; idempotent
-#   scripts/claude-plugins.sh update    refresh the marketplaces and update the plugins (ponytail to its pin)
+#   scripts/claude-plugins.sh update    refresh the marketplaces and update the plugins (typesafe and ponytail to their pins)
 #
 # `.claude/settings.json` declares the same plugins for the project, which a
 # laptop's Claude Code installs on its own when the session is interactive;
@@ -27,6 +28,7 @@ set -eu
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 mode=${1:-install}
+TYPESAFE_REF=v0.6.2
 PONYTAIL_REF=v5.2.0
 # `owner/repo` is cloned over HTTPS, never probed over SSH first: a container
 # has no SSH key, and the proxy serves HTTPS.
@@ -60,7 +62,7 @@ has_marketplace() {
 case "$mode" in
   install)
     has_marketplace judgment || run marketplace add "$root" --scope user
-    has_marketplace typesafe-ai || run marketplace add typesafe-ai/skills --scope user
+    has_marketplace typesafe-ai || run marketplace add "typesafe-ai/skills#$TYPESAFE_REF" --scope user
     has_marketplace ponytail || run marketplace add "DietrichGebert/ponytail#$PONYTAIL_REF" --scope user
     run install jud@judgment --scope user -y
     run install typesafe@typesafe-ai --scope user -y

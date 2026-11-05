@@ -172,10 +172,12 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   hook names the tools `mise.toml` pins and the machine lacks: run `mise
   install` then, before a `mise exec` stops to compile them. `mise run
   plugins:install` does
-  the same on a laptop and `mise run plugins:update` moves `jud` and
-  `typesafe` to their latest and `ponytail` to its pin.
-- Ponytail is required: the plugin is pinned to a tag (`v5.2.0`, in
-  `.claude/settings.json` and `scripts/claude-plugins.sh`, moved together)
+  the same on a laptop and `mise run plugins:update` moves `jud` to its
+  latest and `typesafe` and `ponytail` to their pins (`v0.6.2` and
+  `v5.2.0`, in `.claude/settings.json` and `scripts/claude-plugins.sh`,
+  each moved in both together: a plugin that shapes how rubrics or code
+  are written is a release to review, not one to receive unseen).
+- Ponytail is required: the plugin is pinned to a tag as above
   and its discipline applies to every change here: no code the task does
   not need, the standard library and what the crate already has before a
   new dependency or abstraction, and the checks (verification, errors,
