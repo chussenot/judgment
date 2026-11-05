@@ -1577,7 +1577,7 @@ A change can break the labels in two ways. A label or a recording can change so 
 
 `--min-accuracy 0.9` holds every labelled question. `--min-accuracy desk=0.95` holds one, and the flag repeats. The bar holds the model's accuracy per question, as [Tune thresholds](tune-thresholds.md#2-hold-the-labels-with-a-gate) explains. The job fails for two different reasons, with two statuses:
 
-- **Status 3** means a question's accuracy is below its bar. The report is on stdout, and the message on stderr names the questions.
+- **Status 3** means a question's accuracy is below its bar. The report is on stdout, and the message on stderr names the questions. With `--fail-if-moved` on the command it also means the recordings answered with another model, or from another server, than the rubric's `tuning` names: the rubric was retuned since they were made, or they were refreshed on a new model, and either way its bars rest on other answers than the ones graded. Without the flag the report only says so, as a `warning:` line and a `moved` key.
 - **Status 1** means a case has no recording, because a case was added, its state changed or a question was edited, and nobody recorded the new request. The message names the cases:
 
 ```text
@@ -3418,7 +3418,7 @@ The `to ask` and `stale` lines appear only when there is a name to give. The mod
 ```text
 Grade a model's answers against the labelled cases.
 
-Answers every case from the configured backend, or from the recordings in DIR with --replay (no key, no network), and grades each against its expected answer: per question the accuracy with its 95% interval, the Brier score, the calibration error, how often the rubric's gate acts rather than defers and how often it is right when it acts, and every miss by the model. With --min-accuracy the command exits with status 3 when a question falls short, which makes it a CI check. Against a server eval keeps nothing: use `jud record` to keep the answers.
+Answers every case from the configured backend, or from the recordings in DIR with --replay (no key, no network), and grades each against its expected answer: per question the accuracy with its 95% interval, the Brier score, the calibration error, how often the rubric's gate acts rather than defers and how often it is right when it acts, and every miss by the model. With --min-accuracy the command exits with status 3 when a question falls short, which makes it a CI check; --fail-if-moved does the same when the model or the server that answered is not the one the rubric's tuning names, a warning in the report otherwise. Against a server eval keeps nothing: use `jud record` to keep the answers.
 
 Usage: jud eval [OPTIONS] <RUBRIC> <CASES>
 
@@ -3440,6 +3440,9 @@ Options:
 
       --min-accuracy <[QUESTION=]ACCURACY>
           Fail with status 3 when accuracy is below this, 0 to 1: `0.9` for every labelled question, `desk=0.95` for one. Repeatable. It is the model's accuracy per question, not the policy's. A question with no labelled case does not meet its bar
+
+      --fail-if-moved
+          Fail with status 3 when the model or the server that answered is not the one the rubric's `tuning` block names. Without it the report says so and the status is unchanged: the bars were tuned on another model's answers, which is a warning, not a result
 
       --long-context
           Ask for long context on every call: both context limits raised to 262k tokens, whatever the configuration file says.
@@ -4815,7 +4818,7 @@ The crate is 0.x on crates.io: a minor release may break, a patch release does n
 
 The `jud` command follows the crate's version, and its contract is what a script reads and what the command writes. A change to what an existing status, JSON key, file write or setting means, or removing one, is listed as breaking. An addition ships in a minor release, is listed under Added and joins the contract.
 
-- **Exit status.** 0, 1, 2 and 3, as [the command line reference](cli.md#exit-status) defines them. Status 3 is `jud eval`'s alone: the evaluation ran and a `--min-accuracy` bar was not met. Statuses 0, 1 and 2 keep their meaning.
+- **Exit status.** 0, 1, 2 and 3, as [the command line reference](cli.md#exit-status) defines them. Status 3 is `jud eval`'s alone: the evaluation ran and a `--min-accuracy` bar was not met, or, under `--fail-if-moved`, the model or the server that answered is not the one the rubric's `tuning` names. Statuses 0, 1 and 2 keep their meaning.
 - **Stdout.** The result goes to stdout and every diagnostic to stderr, with the one exception that [the command line reference](cli.md#exit-status) names: `jud check`'s refusals are lines of its result. The result is the verdict JSON of a run ([Verdicts](cli.md#verdicts)) and, for `jud eval --json`, the keys and types of [the JSON report](cli.md#the-json-report). `jud tune` prints the `policy` and `tuning` blocks of the `jud/v1` format, which hold under that format's own promises. The text of `jud eval`'s report, the tables and notes of `jud tune` and the progress of `jud record` are for a person: a script reads `--json` and the exit status.
 - **Files written.** Three commands write files and no other does: `jud record`, into its `--out` directory, `jud tune --out`, one rubric file, and `jud split`, two new cases files. None writes over a rubric or a cases document it was given, and `jud split` writes over no file at all; [the command line reference](cli.md#exit-status) states the rule.
 - **Configuration.** What the command reads, and in what order ([Configuration](configuration.md)), including which commands read `JUD_REPLAY`.
@@ -5031,7 +5034,7 @@ You write the rubric and label the cases; the commands run the five steps.
 4. **Tune.** Sweep each Noul's threshold and read off the best F1; table each Choice's confidence bar against accuracy and coverage and read off the lowest bar that keeps the accuracy wanted; sweep each Score's levels. `jud tune` prints the tables and a proposal.
 5. **Write back.** Put the gates into `policy`, with the cases' fingerprint, the model, the server and the time in `tuning`. The next person to open the file sees what the numbers rest on. Paste the blocks `jud tune` prints, or let `jud tune --out` write the rubric to a new file.
 
-When the model version moves, run step 2 again into a directory of its own (`jud record --out NEW`), keeping the old answers for a comparison (below); `--refresh` writes over them. The questions do not change, so their fingerprint does not; the bars may, and the policy fingerprint shows it; `tuning` names the new model.
+When the model version moves, run step 2 again into a directory of its own (`jud record --out NEW`), keeping the old answers for a comparison (below); `--refresh` writes over them. The questions do not change, so their fingerprint does not; the bars may, and the policy fingerprint shows it; `tuning` names the new model. Until it does, `jud eval` and `jud RUBRIC` say so: a `warning:` line (and the report's `moved` key) names the model or server that answered against the one the bars were tuned on, and `jud eval --fail-if-moved` makes it exit status 3, for a job that must not grade one model's answers against another's bars.
 
 ## The metrics
 

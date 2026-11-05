@@ -362,7 +362,7 @@ The `to ask` and `stale` lines appear only when there is a name to give. The mod
 ```text
 Grade a model's answers against the labelled cases.
 
-Answers every case from the configured backend, or from the recordings in DIR with --replay (no key, no network), and grades each against its expected answer: per question the accuracy with its 95% interval, the Brier score, the calibration error, how often the rubric's gate acts rather than defers and how often it is right when it acts, and every miss by the model. With --min-accuracy the command exits with status 3 when a question falls short, which makes it a CI check. Against a server eval keeps nothing: use `jud record` to keep the answers.
+Answers every case from the configured backend, or from the recordings in DIR with --replay (no key, no network), and grades each against its expected answer: per question the accuracy with its 95% interval, the Brier score, the calibration error, how often the rubric's gate acts rather than defers and how often it is right when it acts, and every miss by the model. With --min-accuracy the command exits with status 3 when a question falls short, which makes it a CI check; --fail-if-moved does the same when the model or the server that answered is not the one the rubric's tuning names, a warning in the report otherwise. Against a server eval keeps nothing: use `jud record` to keep the answers.
 
 Usage: jud eval [OPTIONS] <RUBRIC> <CASES>
 
@@ -384,6 +384,9 @@ Options:
 
       --min-accuracy <[QUESTION=]ACCURACY>
           Fail with status 3 when accuracy is below this, 0 to 1: `0.9` for every labelled question, `desk=0.95` for one. Repeatable. It is the model's accuracy per question, not the policy's. A question with no labelled case does not meet its bar
+
+      --fail-if-moved
+          Fail with status 3 when the model or the server that answered is not the one the rubric's `tuning` block names. Without it the report says so and the status is unchanged: the bars were tuned on another model's answers, which is a warning, not a result
 
       --long-context
           Ask for long context on every call: both context limits raised to 262k tokens, whatever the configuration file says.
