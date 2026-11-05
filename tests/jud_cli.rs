@@ -847,6 +847,29 @@ fn a_zero_timeout_is_a_configuration_error() {
     assert!(out.status.success(), "{}", stderr(&out));
 }
 
+/// The largest `timeout_secs` there is neither panics nor underflows: the
+/// file is accepted and a run against a server that answers is one call.
+#[tokio::test]
+async fn the_largest_timeout_is_accepted_and_the_call_is_made() {
+    let server = backend(200, answers(), 1).await;
+    let home = config_home();
+    std::fs::write(
+        home.join("jud/config.yaml"),
+        "timeout_secs: 18446744073709551615\n",
+    )
+    .unwrap();
+    let out = jud(
+        &[RUBRIC],
+        STATE,
+        &[
+            ("TYPESAFE_API_KEY", "test-key"),
+            ("TYPESAFE_BASE_URL", &server.uri()),
+        ],
+        &home,
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+}
+
 #[test]
 fn a_blank_api_key_in_the_configuration_file_is_not_set() {
     let home = config_home();

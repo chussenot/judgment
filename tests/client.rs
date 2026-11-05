@@ -766,6 +766,104 @@ async fn a_truncated_body_is_retried_by_default_only() {
     }
 }
 
+/// A hostile `Content-Length` under a cap of `usize::MAX` (no cap) cannot
+/// make the client reserve it: a terabyte declared and nine bytes sent is
+/// a truncated body after one attempt, and the process is still here.
+#[tokio::test]
+async fn a_declared_length_is_not_reserved_up_front_under_no_cap() {
+    const HUGE: &[u8] = b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+        content-length: 1099511627776\r\n\r\n{\"model\":";
+    let server = answering(HUGE);
+    let policy = RetryPolicy {
+        max_body_bytes: usize::MAX,
+        ..RetryPolicy::none()
+    };
+    let err = client_at(&server.url, policy, Duration::from_secs(2))
+        .system_one(&"s", &one_noul())
+        .await
+        .unwrap_err();
+    assert_eq!(server.stop().len(), 1);
+    assert!(
+        matches!(&err, Error::Transport { attempts: 1, .. }),
+        "{err:?}"
+    );
+}
+
+/// A server that always fails and says retry now, under a policy that
+/// never gives up on its own: the budget ends the loop, every attempt is
+/// counted, and the count is the connections the server saw. With a finite
+/// count, exactly that many retries, and no floor on the wait between them.
+#[tokio::test]
+async fn retry_after_zero_is_bounded_by_the_budget_and_counted() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503).insert_header("retry-after", "0"))
+        .mount(&server)
+        .await;
+    let unbounded = RetryPolicy {
+        max_retries: u32::MAX,
+        budget: Some(Duration::from_millis(200)),
+        ..fast_retries(0)
+    };
+    let started = Instant::now();
+    let err = client(&server, unbounded)
+        .system_one(&"s", &one_noul())
+        .await
+        .unwrap_err();
+    let elapsed = started.elapsed();
+    assert!(elapsed < Duration::from_secs(3), "{elapsed:?}");
+    let received = server.received_requests().await.unwrap().len();
+    assert!(
+        matches!(&err, Error::Http { status: 503, attempts, .. }
+            if usize::try_from(*attempts).unwrap() == received),
+        "{err:?}, {received} received"
+    );
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(503).insert_header("retry-after", "0"))
+        .expect(6)
+        .mount(&server)
+        .await;
+    let err = client(&server, fast_retries(5))
+        .system_one(&"s", &one_noul())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            Error::Http {
+                status: 503,
+                attempts: 6,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+}
+
+/// A per-attempt timeout of zero is not refused by the builder: the one
+/// attempt is a transport failure that is a timeout and nothing is
+/// retried; whether the request reached the server first is reqwest's
+/// timing, not a promise. `jud` refuses `timeout_secs: 0` in its file
+/// instead, naming the field (`tests/jud_cli.rs`).
+#[tokio::test]
+async fn a_zero_timeout_is_one_timed_out_attempt() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
+        .mount(&server)
+        .await;
+    let err = client_at(&server.uri(), RetryPolicy::none(), Duration::ZERO)
+        .system_one(&"s", &one_noul())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::Transport { attempts: 1, source } if source.is_timeout()),
+        "{err:?}"
+    );
+}
+
 /// Every failed attempt a client's own observer is told about.
 #[derive(Default)]
 struct Failures(std::sync::Mutex<Vec<String>>);
