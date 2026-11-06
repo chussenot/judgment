@@ -76,8 +76,8 @@ pub(crate) struct Record {
     #[arg(long)]
     pub long_context: bool,
     /// The perturbed requests to record beside each case, as `jud eval`
-    /// asks them: `CASE.swapped.jud`, `CASE.toned.jud`, or with
-    /// `--swap=joint` both orders in `CASE.jud`.
+    /// asks them: `CASE.swapped.jud`, `CASE.toned.jud`, `CASE.injected.jud`,
+    /// or with `--swap=joint` both orders in `CASE.jud`.
     #[command(flatten)]
     pub perturb: crate::perturb::PerturbArgs,
 }

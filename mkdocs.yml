@@ -22,7 +22,7 @@ nav:
       - Label cases: guides/label-cases.md
       - Record, replay and test: guides/record-replay-and-test.md
       - Tune thresholds: guides/tune-thresholds.md
-      - Test a judge for position and tone bias: guides/test-a-judge-for-position-and-tone-bias.md
+      - Test a judge for position, tone and injection bias: guides/test-a-judge-for-position-and-tone-bias.md
       - Run in CI: guides/run-in-ci.md
       - Run in a container: guides/run-in-a-container.md
       - Use the Claude Code plugin: guides/use-the-claude-code-plugin.md
