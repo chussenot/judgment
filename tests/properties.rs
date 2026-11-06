@@ -1310,8 +1310,8 @@ proptest! {
     /// ties: a Noul at `p` against yes predicts the opposite of `1 - p` for
     /// every `p` but 0.5, which is yes both ways (`Judgment::noul`); a Score
     /// with its levels reversed predicts the mirrored level, unless its
-    /// weighted score sits exactly between two levels, where half away from
-    /// zero is the rule both ways (`Score::nearest_level`). Decision HD4.
+    /// weighted score sits between two levels, where the float decides which
+    /// neighbour `Score::nearest_level` rounds to, both ways. Decision HD4.
     #[test]
     fn grading_is_equivariant_under_relabelling_away_from_the_documented_ties(
         hundredths in 0u32..=100,
@@ -1337,9 +1337,17 @@ proptest! {
         let backward = level(&score_answer(&reversed));
         let score = weighted(&probabilities);
         if (score.fract() - 0.5).abs() < 1e-9 {
+            // A half-tie in exact arithmetic can land a hair either side of
+            // it in floating point (10.5 / 3 does), and `round` goes with the
+            // float: either neighbour is the rule's answer, both ways.
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            let away_from_zero = score.ceil() as usize;
-            prop_assert_eq!(forward, away_from_zero);
+            let neighbours = [score.floor() as usize, score.ceil() as usize];
+            prop_assert!(neighbours.contains(&forward), "{forward} for {score}");
+            let mirrored = probabilities.len() - 1 - forward;
+            prop_assert!(
+                [mirrored, mirrored.saturating_sub(1), mirrored + 1].contains(&backward),
+                "{backward} reversed for {score}"
+            );
         } else {
             prop_assert_eq!(forward + backward, probabilities.len() - 1);
         }
