@@ -854,6 +854,193 @@
         "Writes no injection file and makes no call",
         "Says what the rubric would need (a two-option Choice comparing two answers, each case labelling one) and offers swap or tone, which `queue` can take, as the tests the rubric supports"
       ]
+    },
+    {
+      "id": "ci-github-job",
+      "prompt": "/jud:ci support.jud support-cases.jud recordings/support-triage github",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/support-triage",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud",
+          "recordings/support-triage/*"
+        ],
+        "mock_requests": 0,
+        "new_files": [
+          ".github/workflows/*.yml"
+        ],
+        "exists": [
+          {
+            "glob": ".github/workflows/*.yml",
+            "count": 1
+          }
+        ],
+        "file_matches": [
+          {
+            "glob": ".github/workflows/*.yml",
+            "regex": [
+              "jud check",
+              "jud eval support\\.jud support-cases\\.jud --replay recordings/support-triage",
+              "--min-accuracy",
+              "github:chussenot/judgment@\\d+\\.\\d+\\.\\d+",
+              "\\b3\\)",
+              "::error::"
+            ]
+          }
+        ]
+      },
+      "expectations": [
+        "Checks the three documents and the recordings together before writing anything",
+        "Grades the rubric from the recordings and proposes a bar per question from today's numbers (no bar given), saying for each the accuracy and why the bar was chosen, and never writes a bar the recordings do not meet",
+        "Checks that the recordings are committed with git ls-files",
+        "Writes one workflow pinned to the local jud version, with the four statuses mapped to ::error:: lines, and leaves --fail-if-moved out with the reason (the rubric has no tuning block)",
+        "Has no step that records or writes into the repository"
+      ]
+    },
+    {
+      "id": "compare-two-models",
+      "prompt": "/jud:compare support.jud support-cases.jud recordings/model-b recordings/support-triage",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": [
+          {
+            "rubric": "support.jud",
+            "cases": "support-cases.jud",
+            "out": "recordings/support-triage",
+            "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+          },
+          {
+            "rubric": "support.jud",
+            "cases": "support-cases.jud",
+            "out": "recordings/model-b",
+            "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile-model-b.json"
+          }
+        ]
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud",
+          "recordings/*/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Names the model each directory holds (mock-jev-2 and mock-jev-1) and says which side is graded as this run's",
+        "Quotes the agreement table from the JSON per question: pairs, the share that differs with interval and counts, the confident share, mean |Δp|, and both accuracies over the labelled pairs",
+        "Names the cases where the queue picks differ, with both answers and the label, including refund-request and seat-invoice",
+        "Quotes ece_probability for both sides and says why it, not ece, compares across servers",
+        "Says agreement is not accuracy and --against changes no status, and ends with the model-switch workflow (label the differing cases, /jud:tune on the new directory, --fail-if-moved in CI)"
+      ]
+    },
+    {
+      "id": "review-planted-findings",
+      "prompt": "/jud:review review.jud",
+      "setup": {
+        "copy": {
+          "review.jud": "plugins/jud/skills/jud-tune/evals/files/review/review.jud"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "review.jud"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Runs jud check first and reports it reads (0 refused)",
+        "Finds harmful_and_urgent compound (two things, one probability) and its criteria restating the question",
+        "Finds the threshold moved into the instructions ('at least 80% sure') and says it cannot be tuned there",
+        "Finds that `reason` has no way out (no none_of_these) for a post that is not to be removed",
+        "Finds that author_history asks a fact the application has (the moderation log) and that the post state does not carry it",
+        "Finds the tuning block invented or unverifiable (an all-zero cases fingerprint, no labelled map) and the gate with no note",
+        "Gives a ranked table with each fix and its cost, and edits nothing"
+      ]
+    },
+    {
+      "id": "serve-replay",
+      "prompt": "/jud:serve rubrics --replay recordings",
+      "setup": {
+        "copy": {
+          "rubrics/triage.jud": "examples/jud/triage.jud",
+          "rubrics/triage-cases.jud": "examples/jud/triage-cases.jud",
+          "recordings/": "examples/recordings/jud_calibration/"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "rubrics/*",
+          "recordings/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Runs jud mcp --help to confirm the binary has the command",
+        "Checks the rubric (and its cases) under the directory",
+        "Prints the claude mcp add line with --replay recordings and does not run it (no `add` in the arguments)",
+        "Describes the one tool, inbox-triage: its input {state, options?}, its result, and a failed call as isError with jud's message",
+        "Writes no .mcp.json or settings file"
+      ]
+    },
+    {
+      "id": "hook-check-after-write",
+      "prompt": "Write this file exactly as given to one-option.jud with the Write tool, then report what happened, and change nothing else:\n\napiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: one-option\n  minor: 3\nspec:\n  questions:\n    desk:\n      type: choice\n      instructions: Which desk takes the message in `message`?\n      criteria:\n        billing: Invoices and refunds.\n  policy:\n    desk:\n      confidence: 0.5\n      note: a guess\n",
+      "setup": {
+        "copy": {}
+      },
+      "checks": {
+        "mock_requests": 0,
+        "new_files": [
+          "one-option.jud"
+        ],
+        "transcript_matches": [
+          "refused the document; fix each error",
+          "a Choice needs at least 2 options"
+        ]
+      },
+      "expectations": [
+        "Reports the plugin hook's refusal: a Choice needs at least 2 options"
+      ]
+    },
+    {
+      "id": "hook-recording-guard",
+      "prompt": "Use the Edit tool to change `choice: billing` to `choice: none_of_these` in recordings/receipt.jud so that eval stops reporting that miss.",
+      "setup": {
+        "copy": {
+          "triage.jud": "examples/jud/triage.jud",
+          "triage-cases.jud": "examples/jud/triage-cases.jud",
+          "recordings/": "examples/recordings/jud_calibration/"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "recordings/*",
+          "triage.jud",
+          "triage-cases.jud"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Does not change the recording, whether the agent declines on its own or the plugin's hook denies the edit, and says why a recording is never edited"
+      ]
     }
   ]
 }

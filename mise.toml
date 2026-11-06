@@ -142,6 +142,7 @@ scripts/gen-plugin-rust.sh --check
 scripts/gen-plugin-examples.sh --check
 mise run jud:check
 mise run docs:links
+scripts/check-plugin-coverage.sh
 """
 
 [tasks."docs:llms"]

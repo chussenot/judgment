@@ -151,8 +151,10 @@ def setup_workspace(spec, ws, env, logdir):
         else:
             os.makedirs(os.path.dirname(target) or ws, exist_ok=True)
             shutil.copy(src, target)
-    rec = spec.get("record")
-    if rec:
+    recs = spec.get("record")
+    # One recording run, or several (another model's answers into a
+    # directory of its own, for a comparison).
+    for rec in recs if isinstance(recs, list) else [recs] if recs else []:
         extra = {"fail_at": rec["fail_at"]} if "fail_at" in rec else None
         proc, url = start_mock(ws, [rec["cases"]], rec.get("profile"), os.path.join(logdir, "setup-mock.jsonl"), extra)
         try:
@@ -166,7 +168,7 @@ def setup_workspace(spec, ws, env, logdir):
     git = ["git", "-c", "user.name=eval", "-c", "user.email=eval@example.com"]
     subprocess.run(["git", "init", "-q"], cwd=ws, check=True)
     subprocess.run(git + ["add", "-A"], cwd=ws, check=True)
-    subprocess.run(git + ["commit", "-q", "-m", "before the session"], cwd=ws, check=True)
+    subprocess.run(git + ["commit", "-q", "--allow-empty", "-m", "before the session"], cwd=ws, check=True)
     for edit in spec.get("edit", []):
         path = os.path.join(ws, edit["file"])
         with open(path, encoding="utf-8") as f:
@@ -323,6 +325,16 @@ def run_one(ev, out_dir, model):
             check("split is disjoint and complete", ok, f"tune {len(t)}, holdout {len(h)}, full {len(full)}")
         except Exception as e:  # noqa: BLE001
             check("split is disjoint and complete", False, str(e))
+    for item in spec.get("file_matches", []):
+        paths = glob.glob(os.path.join(ws, item["glob"]))
+        text = "".join(open(p, encoding="utf-8").read() for p in paths)
+        missing = [r for r in item["regex"] if not re.search(r, text)]
+        check(f"file {item['glob']} matches", paths and not missing, f"{len(paths)} files; missing {missing}")
+    if spec.get("transcript_matches"):
+        with open(os.path.join(base, "transcript.jsonl"), encoding="utf-8") as t:
+            raw = t.read()
+        for r in spec["transcript_matches"]:
+            check(f"transcript matches {r}", re.search(r, raw), "")
     if "mock_requests" in spec:
         n = count_lines(mock_log)
         check(f"mock requests == {spec['mock_requests']}", n == spec["mock_requests"], f"made {n}")

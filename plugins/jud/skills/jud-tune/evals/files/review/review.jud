@@ -1,0 +1,43 @@
+# Moderation for a community forum's posts. Written last quarter; the bars
+# came from a tuning run (see spec.tuning).
+apiVersion: jud/v1
+kind: Rubric
+metadata:
+  name: forum-moderation
+  minor: 3
+  description: Whether a forum post is removed, and why.
+spec:
+  questions:
+    harmful_and_urgent:
+      type: noul
+      instructions: >-
+        Is the post in `post` harmful and does it need a moderator within the
+        hour? Answer yes only if you are at least 80% sure.
+      criteria:
+        true: harmful and urgent
+        false: not harmful and urgent
+    reason:
+      type: choice
+      instructions: Why would the post in `post` be removed?
+      criteria:
+        spam: Advertising or repeated links.
+        harassment: Attacks on a person.
+        off_topic: Unrelated to the forum.
+    author_history:
+      type: score
+      instructions: >-
+        How many of the author's earlier posts were removed by moderators?
+      criteria: [none, one, a few, many]
+  policy:
+    harmful_and_urgent:
+      threshold: 0.5
+    reason:
+      confidence: 0.7
+      note: tuned
+    author_history:
+      confidence: 0.5
+      note: a starting point
+  tuning:
+    cases: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    model: jev-latest
+    tuned_at: "2026-08-01T00:00:00Z"

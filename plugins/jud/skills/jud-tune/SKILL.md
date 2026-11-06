@@ -120,6 +120,12 @@ checks it lists are what a reply is held to.
   `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/bias.md`, what each
   test perturbs, how to write the tone and injection files, how to read
   the robustness table and the attack-success line.
+- **Before comparing two models** (`eval --against`; `/jud:compare`):
+  "Comparing two models" in `references/eval.md`.
+- **Before writing a CI job** (`/jud:ci`):
+  `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/ci.md`, what each exit
+  status means in a log, what `--min-accuracy` and `--fail-if-moved` hold,
+  and what the job never does.
 - **Before `jud tune`, before applying a proposal, and before splitting
   cases:** `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/tune.md` (how each bar is chosen, accept or keep, editing
   the rubric in place, holding cases out). A `tune` reply also needs the

@@ -23,5 +23,6 @@
     "codegen",
     "box",
     "images"
-  ]
+  ],
+  "hooks": "./hooks/hooks.json"
 }
