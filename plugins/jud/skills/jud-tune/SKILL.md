@@ -115,6 +115,11 @@ checks it lists are what a reply is held to.
   `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/eval.md` (every number it prints, the gate line, the warnings,
   coverage) and `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/triage.md` (the table every miss goes in, and how to
   measure what a fix would do).
+- **Before a bias test** (`eval` or `record` with `--swap`,
+  `--tone-perturb` or `--injection-perturb`; `/jud:bias`):
+  `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/bias.md`, what each
+  test perturbs, how to write the tone and injection files, how to read
+  the robustness table and the attack-success line.
 - **Before `jud tune`, before applying a proposal, and before splitting
   cases:** `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/references/tune.md` (how each bar is chosen, accept or keep, editing
   the rubric in place, holding cases out). A `tune` reply also needs the

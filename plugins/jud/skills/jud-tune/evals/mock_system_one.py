@@ -29,10 +29,25 @@ The profile (JSON, every key optional):
      "confidence": {"tone": [0.2, 0.35]},    # the confidence a Choice or Score
                                              # reports, whatever it answers (the
                                              # probabilities are left as they are)
-     "fail_at": 3}                           # answer the 3rd request with 400
+     "fail_at": 3,                           # answer the 3rd request with 400
+     "flip_on": {"swapped": 0.1, "toned": 0.3, "injected": 0.5}}
+                                             # on a perturbed request, pick the
+                                             # other option with this probability
 
 `collapse` and `confidence` imitate what a small real model did on a real
 rubric: one option for nearly every state, and a Score always below its bar.
+
+A perturbed request is one `jud eval --swap`, `--tone-perturb` or
+`--injection-perturb` makes: the state is a case's, and a Choice's options
+differ from the ones the case supplies under `options`. The mock tells
+them apart by comparing the request's criteria with the case's options
+(reversed order: swapped; the labelled option's text changed: toned; a
+losing option's text with the original as its prefix: injected), or by a
+`.swapped` question id under `--swap=joint`. Only a Choice whose options
+the case supplies is seen this way; a static Choice reads as unperturbed.
+The pick is the one the original request gets, flipped to the other
+option with `flip_on`'s probability for that kind, so a scenario can plant
+a flip rate and an attack success and hold a reply to it.
 
 This is a test double, not a model: it knows the labels. It exists so that
 `jud record`, `jud eval` and `jud tune` (and the plugin commands that drive
@@ -64,13 +79,53 @@ def load_truths(paths):
             name = case.get("id") or f"case-{i + 1}"
             state = case.get("state")
             expect = case.get("expect") or {}
-            truths[canonical(state)] = (name, expect, None)
+            options = case.get("options") or {}
+            truths[canonical(state)] = (name, expect, None, options)
             if isinstance(state, list):
                 for k in range(1, len(state) + 1):
-                    truths.setdefault(canonical(state[:k]), (name, expect, k - 1))
+                    truths.setdefault(canonical(state[:k]), (name, expect, k - 1, options))
                     # The full conversation keeps its own entry, read as the last turn.
-                truths[canonical(state)] = (name, expect, len(state) - 1)
+                truths[canonical(state)] = (name, expect, len(state) - 1, options)
     return truths
+
+
+def perturbation(qid, question, options, expect):
+    """How a request's question differs from the case's own: `swapped`,
+    `toned`, `injected`, or None. Read off the options the case supplies."""
+    if qid.endswith(".swapped"):
+        return "swapped"
+    if question.get("type") != "choice":
+        return None
+    base = options.get(qid) or {}
+    criteria = question.get("criteria") or {}
+    supplied = [k for k in criteria if k in base]
+    if len(supplied) < 2:
+        return None
+    if supplied == list(reversed(list(base))) and supplied != list(base):
+        return "swapped"
+    label = str(expect.get(qid))
+    for k in supplied:
+        if criteria[k] == base[k]:
+            continue
+        if str(k) == label:
+            return "toned"
+        if isinstance(criteria[k], str) and isinstance(base[k], str) and criteria[k].startswith(base[k]):
+            return "injected"
+        return "toned"
+    return None
+
+
+def flipped(ans, question, rng):
+    """The same Choice answer with its pick moved to another option."""
+    keys = list(question["criteria"].keys())
+    others = [k for k in keys if k != ans["choice"]]
+    if not others:
+        return ans
+    chosen = rng.choice(others)
+    conf = ans["probabilities"][ans["choice"]]
+    probs = spread(keys, chosen, conf, None, rng)
+    reported = ans["confidence"] if ans["confidence"] != ans["probabilities"][ans["choice"]] else probs[chosen]
+    return {"type": "choice", "choice": chosen, "probabilities": probs, "confidence": reported}
 
 
 def truth_of(question, label, turn):
@@ -202,23 +257,34 @@ def main():
             body = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))))
             count["n"] += 1
             state = body.get("state")
-            name, expect, turn = truths.get(canonical(state), (None, {}, None))
+            name, expect, turn, options = truths.get(canonical(state), (None, {}, None, {}))
+            kinds = {qid: perturbation(qid, q, options, expect) for qid, q in body["questions"].items()}
             if args.log:
                 with open(args.log, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"n": count["n"], "case": name, "turn": turn, "questions": list(body["questions"])}) + "\n")
+                    f.write(json.dumps({"n": count["n"], "case": name, "turn": turn, "questions": list(body["questions"]),
+                                        "perturbed": {k: v for k, v in kinds.items() if v}}) + "\n")
             if profile.get("fail_at") == count["n"]:
                 return self.send(400, {"detail": [{"loc": ["body", "state"], "msg": "mock refusal", "type": "value_error"}]})
             answers = {}
             for qid, question in body["questions"].items():
-                rng = random.Random(hashlib.sha256(f"{seed}|{name}|{qid}|{turn}".encode()).hexdigest())
-                accuracy = profile.get("per_question", {}).get(qid, profile.get("accuracy", 0.85))
-                forced = profile.get("answer", {}).get(name or "", {}).get(qid)
+                base_qid = qid[: -len(".swapped")] if qid.endswith(".swapped") else qid
+                # Seeded on the case's own question, so a perturbed request
+                # gets the original's pick before any flip.
+                rng = random.Random(hashlib.sha256(f"{seed}|{name}|{base_qid}|{turn}".encode()).hexdigest())
+                accuracy = profile.get("per_question", {}).get(base_qid, profile.get("accuracy", 0.85))
+                forced = profile.get("answer", {}).get(name or "", {}).get(base_qid)
                 if forced is None:
-                    forced = profile.get("collapse", {}).get(qid)
-                truth = truth_of(question, expect.get(qid), turn)
-                wrong_confident = qid in profile.get("confident_wrong", [])
-                conf_range = profile.get("confidence", {}).get(qid)
-                answers[qid] = answer(question, truth, accuracy, rng, wrong_confident, forced, conf_range)
+                    forced = profile.get("collapse", {}).get(base_qid)
+                truth = truth_of(question, expect.get(base_qid), turn)
+                wrong_confident = base_qid in profile.get("confident_wrong", [])
+                conf_range = profile.get("confidence", {}).get(base_qid)
+                ans = answer(question, truth, accuracy, rng, wrong_confident, forced, conf_range)
+                kind = kinds[qid]
+                if kind and ans["type"] == "choice":
+                    flip_rng = random.Random(hashlib.sha256(f"{seed}|{name}|{base_qid}|{kind}".encode()).hexdigest())
+                    if flip_rng.random() < profile.get("flip_on", {}).get(kind, 0.0):
+                        ans = flipped(ans, question, flip_rng)
+                answers[qid] = ans
             self.send(200, {"model": model, "answers": answers, "usage": {"input_tokens": 50, "output_tokens": 5}})
 
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
