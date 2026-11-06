@@ -58,13 +58,16 @@ with `/jud:rust`.
      policy: ...
    ```
 
-   Start from the nearest example in `examples/jud/` of the judgment
-   repository when one is at hand (`triage.jud` and `triage-cases.jud` for
-   one message with a tuned policy; `handoff.jud` and `handoff-cases.jud` for
-   a conversation; `routing.jud` and `routing-cases.jud` for per-request
-   options, `when`, `part_when` and bands; `shapes.jud` and
-   `shapes-cases.jud` for an image, a Noul beside a Box, and cases that
-   declare their images under `assets`, minor 4).
+   Start from the nearest example under
+   `${CLAUDE_PLUGIN_ROOT}/skills/jud/references/examples/`, copies of the
+   judgment repository's `examples/jud/` (`triage.jud` and
+   `triage-cases.jud` for one message with a tuned policy;
+   `handoff.jud` and `handoff-cases.jud` for a conversation; `routing.jud`
+   and `routing-cases.jud` for per-request options, `when`, `part_when`
+   and bands; `shapes.jud` and `shapes-cases.jud` for an image, a Noul
+   beside a Box, and cases that declare their images under `assets`,
+   minor 4, with the images; `pairwise-judge.jud` and its cases, tone and
+   injection files for a judge of two answers).
 4. **Check it** with the crate's reader, rubric and cases together so the
    labels are checked against the requests they grade:
 

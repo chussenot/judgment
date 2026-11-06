@@ -1,6 +1,6 @@
 ---
 description: Grade a .jud rubric's recorded answers against its labelled cases (jud eval), explain accuracy, calibration and the gates, and triage every miss into label, question, bar, coverage or model
-argument-hint: "<rubric> <cases> [recordings dir] [--min-accuracy X] [live]"
+argument-hint: "<rubric> <cases> [recordings dir] [--min-accuracy X] [--fail-if-moved] [live]"
 ---
 
 Grade this rubric on its cases and say what to change:
@@ -27,7 +27,7 @@ no file.
    live `eval` spends one call per case and keeps nothing. Say that, and
    offer `/jud:record`.
 3. **Grade.** Run `jud.sh eval <rubric> <cases> --replay <dir> --json`
-   (with any `--min-accuracy` given). Use the JSON for every number you
+   (with any `--min-accuracy` and `--fail-if-moved` given). Use the JSON for every number you
    quote; run it once more without `--json` only if you want the text
    layout.
    - Exit 3: a `--min-accuracy` bar was not met. That is a finding, not a
@@ -41,7 +41,11 @@ no file.
    - A `moved` key: the answers came from another model or server than the
      rubric's `tuning` names, so its bars rest on other answers than the
      ones graded. Say so before any number, and offer `/jud:tune` (bars for
-     this model) or a fresh recording.
+     this model) or a fresh recording. With `--fail-if-moved` it is also
+     status 3, the CI gate for a rubric retuned since its recordings: report
+     it as the `--min-accuracy` status is reported, a finding.
+   - Quote both calibration errors as `eval.md` says: `ece` for the bar,
+     `ece_probability` across models or servers.
    - Compare the rubric's `spec.tuning.cases` with `cases.fingerprint`:
      equal means the bars were tuned on these very cases, so the gate
      numbers are optimistic. It says nothing about the recordings.
@@ -74,9 +78,7 @@ no file.
    `majority` beside the accuracy, and put each of the question's
    `signals` (`no_better_than_majority`, `collapsed`, `never_answered`,
    `defers_most`, `defers_nearly_all`)
-   first in its line, as the skill says. A `jud` whose report has no
-   `outcomes` predates them: then count the labels from the cases document,
-   and the answers from `misses` plus the right ones.
+   first in its line, as the skill says.
 6. **Triage every miss.** Read the case's state and note and the question's
    criteria, then put the miss in one row of the skill's triage table. A
    Score miss is printed as level indices; map them to level names first.

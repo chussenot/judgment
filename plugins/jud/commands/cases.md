@@ -11,7 +11,9 @@ $ARGUMENTS
 Follow the jud skill: read `${CLAUDE_PLUGIN_ROOT}/skills/jud/SKILL.md` and
 its `references/format.md` first, in particular the sections on cases. Then:
 
-1. Read the rubric. List its questions, each primitive, each Choice's options
+1. Read the rubric, and the nearest cases example under
+   `${CLAUDE_PLUGIN_ROOT}/skills/jud/references/examples/` for the shape
+   (the skill's step 3 says which). List its questions, each primitive, each Choice's options
    (and whether they come with the request), each Score's levels, each Box's
    image reference, and every `when` or `part_when`, because a label is only
    valid for a question the case's request actually asks.

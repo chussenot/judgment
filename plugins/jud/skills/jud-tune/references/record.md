@@ -30,12 +30,15 @@ files, so this is where a bad path first shows. Read the plan and say:
   model; `jev-latest` is an alias, and the recordings will name the version
   that answered. A rubric with a Box needs Jev 1.14 or later: on the
   hosted API `jev-latest` and `jev-preview` both point to `jev-1.14.0`
-  (as of 2026-10-25), and a model pinned to `jev-1.13.0` refuses every
+  (as of 2026-11-06), and a model pinned to `jev-1.13.0` refuses every
   such request, one failed call per case (observed on 2026-10-15 as a
   400 with a bare `Invalid request.`, while `jev-latest` was 1.13).
   Bars tuned on one release stay meaningful only on it, so pin the
   version (`model: jev-1.14.0`) rather than an alias that moves when the
-  next release ships; `jev-preview` can move ahead of `jev-latest`. Images
+  next release ships; `jev-preview` can move ahead of `jev-latest`. When
+  the rubric's `tuning` block names a model and this run's differs, say
+  before the call that every `eval` of these recordings will read `moved`
+  until the rubric is retuned on them (`/jud:tune`). Images
   alone (a Noul, a Choice or a Score about one) are answered by Jev 1.13
   and later.
 - **Whether a key is set.** A missing one stops the run before the first
@@ -48,12 +51,10 @@ files, so this is where a bad path first shows. Read the plan and say:
   `base_url` on `127.0.0.1` or `localhost`) costs no money but wall time:
   quote the `time:` line. A hosted backend's cost is the calls.
 
-A `jud` that refuses `--dry-run` as unknown predates it: count by hand
-then. The requests are one per case, `len(state)` for a conversation
-labelled with `from_turn`; `jud.sh check RUBRIC CASES DIR/*.jud` says which
+Beside the plan, `jud.sh check RUBRIC CASES DIR/*.jud` says which
 recordings still answer (`fingerprint matches`) and which are stale
-(`differs`); `jud.sh config` names the backend, the model and the key's
-source; `spec.elapsed_ms` in a recording gives the pace.
+(`differs`), `jud.sh config` names the backend, the model and the key's
+source, and `spec.elapsed_ms` in a recording gives the pace.
 
 Say the cost to the user before the `record` call: as the Bash call's
 description, which shows on the call, and as text just before it,

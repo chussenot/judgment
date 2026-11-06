@@ -25,6 +25,11 @@ written:
 
 - Write the script's path out in full every time. Do not set a shell
   variable or `cd` first. Below, `jud.sh` is short for that path.
+- The script says on stderr, once per command, when the `jud` it found is
+  older than the pages here describe (`jud.sh: jud X is older than ...`).
+  Then a flag or a JSON key a page names may be missing: say so in the
+  reply with the install line the script printed, and go on with what the
+  binary has. Never count by hand what a newer `jud` would print.
 - Run one `jud` command per Bash call, with nothing chained before or after
   it (`;`, `&&`, `|`, `echo $?`) and no redirection into a file. The tool
   result shows stdout, stderr and a non-zero exit status.
@@ -71,6 +76,7 @@ This decides the order of everything else, so know it first.
 | Anything under `questions` (instructions, criteria, options, levels, `when`) | no, for every case that asks it | one call per case |
 | An image's bytes (resized, re-encoded, replaced), under a case's or the rubric's `assets` | no, for every case that sends it: a recording is keyed by each image's digest as well as the state | one call per such case; a `path` that moves while the bytes stay costs nothing |
 | A label's `iou_at_least`, or the box in a label | yes: labels are never sent | none |
+| A rewrite in a `--tone-perturb` file or a note in an `--injection-perturb` file | yes for the case as written; no for that case's `.toned.jud` or `.injected.jud`, which is a request of its own | one call per changed entry; record with the flags you evaluate with |
 | The model (`model` in `jud config`) | the old answers still replay, but they are the old model's | a full record into a new directory (`record --out NEW`), then `eval --replay NEW --against OLD` to see where it answers differently before labelling; `--refresh` writes over the old answers |
 
 A state over the model's context (`max_tokens_exceeded`, 400, from the

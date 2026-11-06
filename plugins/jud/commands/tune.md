@@ -117,4 +117,7 @@ project, as the skill says, never beside the rubric.
 9. **Reply** as "What the reply contains" says, for `tune`.
 
 Never write a `tuning` block, a fingerprint or a model that `tune` did not
-print. Never use `--out` onto the rubric itself.
+print. Never use `--out` onto the rubric itself. After `apply`, say that
+`eval` now compares every recording with the block's model and server and
+reads `moved` for any other: a later recording on a new model is retuned,
+not edited into the block.

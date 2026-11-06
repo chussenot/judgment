@@ -67,6 +67,15 @@ Per question:
 - **`brier`, `calibration error`, `confidence when right, when wrong`.** Read
   these as one question: does the model's confidence separate its right
   answers from its wrong ones? A bar can only defer what it can tell apart.
+  `calibration error` is printed twice, and the JSON has two keys: `ece`,
+  over the wire's `confidence`, the number the gates compare, and
+  `ece_probability`, over the probability of the predicted answer (a
+  Noul's `max(p, 1 - p)`, a Choice's or Score's probability of its pick;
+  `null` for a Box). Quote `ece` for a question about a bar; quote
+  `ece_probability` when comparing models or servers, since it means the
+  same thing across primitives and across servers whose `confidence` does
+  not (Laya, Ollama). A gap between the two on one server says its
+  `confidence` is not the pick's probability.
   - When right 0.85 and wrong 0.45: a bar between them will work.
   - When right 0.80 and wrong 0.78: no bar helps. The fix is in the question
     or the cases, not the policy.
@@ -117,6 +126,22 @@ never sent, so no bar or fallback can raise it; only a fixed label, a
 sharper question or another model can. When a question falls short, say what
 would raise it, with the arithmetic (with 50 of 60 right, relabelling one
 case gives 51 of 60, 0.85, still short of 0.9, which needs 54).
+
+`--fail-if-moved` is the second CI gate: status 3 when the model or the
+server that answered is not the one the rubric's `tuning` block names.
+Without the flag the report only says so, as a `warning:` line in the
+text and a `moved` key in the JSON (`tuned_model`, `tuned_server`, and the
+`models` and `servers` that answered), present only then. Read it before
+any number: the bars were tuned on another model's answers, so the gate
+numbers describe a policy nobody measured on these recordings. The way
+out is `/jud:tune` on these recordings (the block then names this model)
+or a recording on the tuned model; never an edit to the block.
+
+Under a replay `eval` prints one `jud: warning:` line per request that two
+files in the directory record, naming both, as `record` and `tune` do: the
+report answers from one of them by name order, so pass the warning on and
+name the stale file (`record --refresh` leaves an old file under another
+name beside the new one).
 
 A Choice whose options are the answers being compared (a pairwise judge)
 can also be tested for bias: `eval --swap` asks each case again with the

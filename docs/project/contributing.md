@@ -77,6 +77,7 @@ Generated, never edited by hand:
 |---|---|---|
 | `docs/reference/cli.md` | `scripts/gen-cli-reference.sh`, from the binary's `--help` | the same script with `--check`, in `mise run docs:check` |
 | `plugins/jud/skills/jud/references/format.md` | `scripts/gen-plugin-format.sh`, from `docs/reference/jud-format.md` | the same, `--check` |
+| `plugins/jud/skills/jud/references/examples/` | `scripts/gen-plugin-examples.sh`, from `examples/jud/` (the documents the `jud` skill starts from, with the shapes images) | the same, `--check` |
 | `docs/llms.txt`, `docs/llms-full.txt` | `scripts/gen-llms-txt.sh` | the same, `--check` |
 | `docs/demo.cast` | `scripts/record_demo.sh` (`mise run demo`), from the example recordings | a pre-bump hook re-records it |
 | `examples/jud/images/page-*.png`, `examples/jud/stamps-cases.jud` | `scripts/gen-document-pages.py`, from one seed | nothing: the committed pages are the ones `examples/recordings/stamps/` was recorded on, and a redrawn page is a request nobody recorded (`tests/jud.rs` fails) |
