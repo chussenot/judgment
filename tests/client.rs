@@ -842,25 +842,32 @@ async fn retry_after_zero_is_bounded_by_the_budget_and_counted() {
     );
 }
 
-/// A per-attempt timeout of zero is not refused by the builder: the one
-/// attempt is a transport failure that is a timeout and nothing is
-/// retried; whether the request reached the server first is reqwest's
-/// timing, not a promise. `jud` refuses `timeout_secs: 0` in its file
-/// instead, naming the field (`tests/jud_cli.rs`).
+/// A per-attempt timeout of zero is not refused by the builder, and it is
+/// one attempt either way: a transport failure that is a timeout, or an
+/// answer when the server on localhost got there first, which is reqwest's
+/// timing and not a promise. Nothing is retried in either case. `jud`
+/// refuses `timeout_secs: 0` in its file instead, naming the field
+/// (`tests/jud_cli.rs`).
 #[tokio::test]
-async fn a_zero_timeout_is_one_timed_out_attempt() {
+async fn a_zero_timeout_is_one_attempt_timed_out_or_answered() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(200).set_body_json(noul_body()))
         .mount(&server)
         .await;
-    let err = client_at(&server.uri(), RetryPolicy::none(), Duration::ZERO)
+    let result = client_at(&server.uri(), RetryPolicy::none(), Duration::ZERO)
         .system_one(&"s", &one_noul())
-        .await
-        .unwrap_err();
+        .await;
+    match &result {
+        Ok(_) => {}
+        Err(err) => assert!(
+            matches!(err, Error::Transport { attempts: 1, source } if source.is_timeout()),
+            "{err:?}"
+        ),
+    }
     assert!(
-        matches!(&err, Error::Transport { attempts: 1, source } if source.is_timeout()),
-        "{err:?}"
+        server.received_requests().await.unwrap().len() <= 1,
+        "nothing is retried"
     );
 }
 
