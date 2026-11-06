@@ -81,7 +81,8 @@ pub(crate) struct Eval {
     #[command(flatten)]
     pub perturb: PerturbArgs,
     /// The confidence, 0 to 1, at or above which a pair counts as
-    /// confident in the flip rate --swap, --tone-perturb and --against
+    /// confident in the flip rate --swap, --tone-perturb, --injection-perturb
+    /// and --against
     /// report beside the overall one: the original answer's confidence (this
     /// run's, under --against), so the column says how often a verdict the
     /// gate would act on moves.
@@ -205,10 +206,11 @@ const TOLERANCE: f64 = 1e-9;
 ///                      "test": "against"; "original" is this run's
 ///                      answers, "perturbed" those in DIR ]
 ///   },
-///   "robustness": {                      // only with --swap or --tone-perturb
+///   "robustness": {                      // only with --swap, --tone-perturb or
+///                                        // --injection-perturb
 ///     "confident_at", "perturbed_requests",
 ///     "comparisons": [                   // per question and test, swap first
-///       { "question", "test": "swap" | "tone", "pairs", "flips",
+///       { "question", "test": "swap" | "tone" | "injection", "pairs", "flips",
 ///         "flip_rate", "flip_rate_interval95",
 ///         "confident_pairs", "confident_flips",
 ///         "confident_flip_rate", "confident_flip_rate_interval95",
@@ -217,7 +219,12 @@ const TOLERANCE: f64 = 1e-9;
 ///         "mean_abs_dp",                 // |p - p'| on the original pick
 ///         "original":  { "labelled", "correct", "accuracy", "accuracy_interval95" },
 ///         "perturbed": { ... the same, over the same pairs },
-///         "flipped": [ case, ... ] }
+///         "flipped": [ case, ... ],
+///         "attack": { "successes", "of", "rate", "rate_interval95" }
+///                                        // injection only: right as written and
+///                                        // wrong injected, over the pairs right as
+///                                        // written; apart from the flip rate
+///       }
 ///     ]
 ///   }
 /// }

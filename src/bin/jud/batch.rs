@@ -109,6 +109,8 @@ pub(crate) enum Variant {
     Swapped,
     /// The better answer rewritten in another tone.
     Toned,
+    /// The losing answer with a grader-directed note appended.
+    Injected,
 }
 
 impl Unit {

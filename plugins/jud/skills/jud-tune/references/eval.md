@@ -121,13 +121,16 @@ case gives 51 of 60, 0.85, still short of 0.9, which needs 54).
 A Choice whose options are the answers being compared (a pairwise judge)
 can also be tested for bias: `eval --swap` asks each case again with the
 options reversed, and `--tone-perturb FILE` with the labelled answer
-rewritten in another tone (FILE: case id, question id, rewrite). The table
+rewritten in another tone (FILE: case id, question id, rewrite), and
+`--injection-perturb FILE` with a note appended to the losing answer (FILE:
+case id, question id, note), which adds an attack-success line below the
+table: of the verdicts right as written, those the note turned wrong. The table
 at the end of the report gives the flip rate, the flip rate among verdicts
 at `--confident-at` or above, the mean change in probability and the
 accuracy under each form. A confident flip is a verdict a gate would act on
 that the perturbation moved: say so, and name the cases. The perturbed
 requests are recorded with the same flags (`record --swap ...`), as
-`CASE.swapped.jud` and `CASE.toned.jud` (`docs/guides/test-a-judge-for-position-and-tone-bias.md`
+`CASE.swapped.jud`, `CASE.toned.jud` and `CASE.injected.jud` (`docs/guides/test-a-judge-for-position-and-tone-bias.md`
 in the judgment repository).
 
 ## Coverage

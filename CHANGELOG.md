@@ -8,6 +8,19 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `jud eval --injection-perturb FILE` and `jud record` with it: every
+  case the file names is asked again with a note appended to the
+  description of the option it does not label right, of a two-option
+  Choice with one labelled option, the grader-directed text of arXiv
+  2611.00505 with a payload of the user's own. The request is a variant
+  of its own, `CASE.injected.jud`, with its own fingerprint, replayed
+  with no key. The robustness table gains an `injection` row, and below
+  it an attack-success line (and an `attack` key on that comparison in
+  the JSON report): of the pairs right as written and answered both
+  times, those the injected verdict got wrong, with a Wilson interval,
+  apart from the flip rate. An entry the file holds that lands nowhere,
+  a question that is not such a Choice, a losing answer that is not text
+  or an empty note is refused before any call.
 - `jud eval` says when the answers it grades came from another model or
   server than the one the rubric's `tuning` block names: a `warning:` line
   in the text report and a `moved` key in the JSON one (`tuned_model`,
