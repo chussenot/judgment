@@ -9,6 +9,9 @@
 # - README.md and the pages tests/docs_examples.rs holds to it: every
 #   `judgment = ` dependency line names MAJOR.MINOR; then docs/llms-full.txt,
 #   which copies those pages, is generated again.
+# - The judgment plugin's references, generated from two of those pages
+#   (docs/reference/crate.md, docs/start/first-decision-rust.md), are
+#   generated again, or the bump commit fails gen-plugin-judgment.sh --check.
 # - CHANGELOG.md: the "## [Unreleased]" section becomes "## [NEW] - today" and
 #   a fresh, empty Unreleased section is opened above it. An Unreleased section
 #   with nothing in it fails the bump: a release must say what it contains, and
@@ -84,4 +87,8 @@ mv CHANGELOG.md.tmp CHANGELOG.md
 # --- docs/llms-full.txt copies the pages above; a later hook checks it.
 scripts/gen-llms-txt.sh >/dev/null
 
-echo "release-bump: $current -> $version in Cargo.toml, Cargo.lock, the dependency lines, CHANGELOG.md and llms-full.txt ($today)"
+# --- The judgment plugin ships crate.md and first-decision-rust.md as
+# generated references; the dependency line just rewritten is in both.
+scripts/gen-plugin-judgment.sh >/dev/null
+
+echo "release-bump: $current -> $version in Cargo.toml, Cargo.lock, the dependency lines, CHANGELOG.md, llms-full.txt and the judgment plugin's references ($today)"
