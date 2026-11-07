@@ -6,6 +6,8 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-07
+
 ### Added
 
 - A second Claude Code plugin, `judgment` (0.1.0), in the same
