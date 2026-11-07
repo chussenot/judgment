@@ -174,7 +174,7 @@ def main():
         dest_dir = os.path.join(ws, "images") if "/images/" in rel else os.path.join(ws, "files")
         os.makedirs(dest_dir, exist_ok=True)
         shutil.copy(src, dest_dir)
-    prompt = task["prompt"].replace("OUT/", "").replace("FILES/", "files/")
+    prompt = task["prompt"].replace("OUT/", "./").replace("FILES/", "files/")
     config_dir = os.path.join(out, "claude-config")
     if args.mode == "without":
         os.makedirs(config_dir)

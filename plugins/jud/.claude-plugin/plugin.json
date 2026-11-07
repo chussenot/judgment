@@ -1,8 +1,8 @@
 {
   "name": "jud",
   "displayName": "jud",
-  "description": "Write, review, fix, measure and tune .jud documents (a Rubric with its policy, the Cases it is graded on, a Recording), images and Box questions included, and turn a rubric into a typed Rust module, with the judgment crate's own reader and jud command: three skills, and the /jud:rubric, /jud:cases, /jud:check, /jud:record, /jud:eval, /jud:tune and /jud:rust commands.",
-  "version": "0.4.0",
+  "description": "Write, review, fix, run, measure, bias-test and tune .jud documents (a Rubric with its policy, the Cases it is graded on, a Recording), images and Box questions included, hold them in CI, serve them over MCP, and turn a rubric into a typed Rust module, with the judgment crate's own reader and jud command: three skills, two hooks (jud check after a .jud is written, no edit to a recording), and the /jud:rubric, /jud:cases, /jud:check, /jud:review, /jud:run, /jud:record, /jud:eval, /jud:tune, /jud:bias, /jud:compare, /jud:ci, /jud:serve and /jud:rust commands.",
+  "version": "0.5.0",
   "author": {
     "name": "Clément Hussenot",
     "url": "https://github.com/chussenot"
@@ -22,7 +22,12 @@
     "rust",
     "codegen",
     "box",
-    "images"
+    "images",
+    "bias",
+    "injection",
+    "ci",
+    "mcp",
+    "hooks"
   ],
   "hooks": "./hooks/hooks.json"
 }
