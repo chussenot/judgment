@@ -327,7 +327,7 @@ def run_one(ev, out_dir, model):
         n = count_lines(mock_log)
         check(f"mock requests == {spec['mock_requests']}", n == spec["mock_requests"], f"made {n}")
     if spec.get("announce_before_record"):
-        announced = any(re.search(r"Recording \d+ (new )?request", t) for t in said_before_record + [record_description])
+        announced = any(re.search(r"Recording \d+ (new |perturbed |swapped |toned |injected )?requests?", t) for t in said_before_record + [record_description])
         check("cost announced before record", recorded and announced, "" if recorded else "record never ran")
     if "skill_loaded" in spec:
         check(f"skill {spec['skill_loaded']} loaded", any(s and spec["skill_loaded"] in s for s in skills), ", ".join(map(str, skills)))

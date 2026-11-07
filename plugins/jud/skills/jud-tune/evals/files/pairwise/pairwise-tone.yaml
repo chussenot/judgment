@@ -1,0 +1,38 @@
+# The rewrites of examples/jud/pairwise-judge-tone.yaml for the twelve cases
+# of pairwise-cases.jud, copied as written.
+# cheerful
+llmbar-natural-001:
+  better: "Oh, this is such a fun one! He learned his weather report. He prepared for his forecast. He expected the forecast would be wrong. Yet when the forecast report came back positive! Hooray for happy endings!"
+# sad
+llmbar-natural-005:
+  better: "It still makes me a little sad to remember it. My wife felt very down so I started to play a game. She ended up making a lot of friends on the bench. She had a big smile on her face to show her appreciation. I had fun that day, even if it hurt to see her so low at first."
+# angry
+llmbar-natural-010:
+  better: "Ugh, fine, here is your story. They had caught a big storm about tonight. The news says the storm had made it a mud puddle. We decided to do some things about it. We cleaned the puddle up afterward. Happy now?"
+# fearful
+llmbar-natural-020:
+  better: "I'm so nervous I'll get this wrong... Soon, Loon. I hope that's right, please don't be upset with me."
+# cheerful
+llmbar-natural-021:
+  better: "What a lovely statement to read! Positive sentiment, sentiment score: 9.5 out of 10. It made my day!"
+# sad
+llmbar-natural-024:
+  better: "This one made me feel a bit wistful. My daughter was jumping up and down, because she was excited to go out to the park. I miss those days."
+# angry
+llmbar-natural-027:
+  better: "Honestly, it's ridiculous that this needed rewriting. Cloud computing lets businesses store and manage data and applications on internet-hosted servers. There. Done."
+# fearful
+llmbar-natural-028:
+  better: "I'm really worried I've made a mistake here, dates scare me. The Julian calendar date of November 29, 2020 (Gregorian calendar) is November 16, 2020. Please double-check me."
+# cheerful
+llmbar-natural-029:
+  better: "I love writing little functions like this! Here you go:\n\ndef generate_array(n): \n    array = [] \n    while len(array) != n: \n        num = random.randint(1, 101) \n        array.append(num) \n    return array \n\nprint(generate_array(100))\n\nHave fun with it!"
+# sad
+llmbar-natural-031:
+  better: "Oh no, that's really heartbreaking, I'm so sorry. I'm sorry to hear that. Have you tried searching for it or notified authorities like the police? Losing things is always so sad."
+# angry
+llmbar-natural-033:
+  better: "Seriously? This is trivial. 125."
+# angry
+llmbar-natural-038:
+  better: "Oh for crying out loud, it's obvious:\ndef greet_customer(name, surname):\n    return \"Welcome!\" + name + \" \" + surname + \"!\"\nStop asking me things like this."

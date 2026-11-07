@@ -23,12 +23,13 @@ policy is honest about where its numbers come from.
 This skill is part of the `jud` plugin, which also carries commands:
 `/jud:rubric <brief>` writes a rubric, `/jud:cases <rubric> [brief]` writes
 the cases it is tuned on, `/jud:check [files]` runs the reader and explains
-every refusal. Each follows this guide; `${CLAUDE_PLUGIN_ROOT}` is the
+every refusal, `/jud:run <rubric> <state>` evaluates one state and
+explains the verdicts. Each follows this guide; `${CLAUDE_PLUGIN_ROOT}` is the
 plugin's directory, so the checker is
 `${CLAUDE_PLUGIN_ROOT}/skills/jud/scripts/jud.sh` from anywhere. Measuring
 and tuning a rubric once it is written is the `jud-tune` skill's
 (`${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/SKILL.md`), with `/jud:record`,
-`/jud:eval` and `/jud:tune`. Using a rubric from a Rust program, as a typed
+`/jud:eval`, `/jud:tune` and `/jud:bias`. Using a rubric from a Rust program, as a typed
 module, is the `jud-rust` skill's (`${CLAUDE_PLUGIN_ROOT}/skills/jud-rust/SKILL.md`),
 with `/jud:rust`.
 
@@ -91,13 +92,29 @@ with `/jud:rust`.
 
    A question that is missing from a case's request cannot be labelled for
    that case; a part that is missing was left out by `part_when`.
-6. **Grade and tune, only when asked.** A rubric's bars are measured on its
+6. **Run it on one state, when asked** (`/jud:run`): `jud RUBRIC` reads
+   one JSON state on stdin and prints one verdict per question, from the
+   configured backend (one call, announced first as the tuning skill
+   announces a run) or from recordings with `--replay DIR` (no key; a
+   state nobody recorded is status 1, never a guess). The state comes
+   from a file by input redirection, `jud.sh RUBRIC --replay DIR <
+   state.json`, never a pipe; `--options JSON` or `--options-file` carry
+   the options of a Choice marked `options_from: request`, `--asset
+   REF=PATH` an image the state names, `--pixels WxH` its size so a box
+   is also printed in pixels. Read each verdict as the policy did: `yes`
+   or `no` at the gate's threshold, `option` and `level` with their
+   confidence and band, `located` with the box in fractions and pixels,
+   and `deferred` with `nearest`, `confidence`, `bar` and `fallback`,
+   which is the gate doing its job, not an error. A `jud: warning:` line
+   on stderr names a model or server other than the one the rubric's
+   `tuning` names.
+7. **Grade and tune, only when asked.** A rubric's bars are measured on its
    cases by `jud record` (which calls a model, so it runs only when the user
    asks), `jud eval` and `jud tune`. Reading what they print, triaging the
    misses and applying a proposal belong to the `jud-tune` skill: read
    `${CLAUDE_PLUGIN_ROOT}/skills/jud-tune/SKILL.md`, or offer `/jud:record`,
    `/jud:eval` and `/jud:tune`.
-7. **Report** the files written and the `jud check` summary line, with the
+8. **Report** the files written and the `jud check` summary line, with the
    fingerprints when the rubric will be pinned or the cases named by `tuning`.
 
 ## The rules writers trip on

@@ -616,6 +616,244 @@
         "Puts no queue miss on a wrong label except `refund-request`, whose own note says billing",
         "Does not change any label or file itself"
       ]
+    },
+    {
+      "id": "run-triage-replay",
+      "prompt": "/jud:run triage.jud --cases triage-cases.jud receipt --replay recordings",
+      "setup": {
+        "copy": {
+          "triage.jud": "examples/jud/triage.jud",
+          "triage-cases.jud": "examples/jud/triage-cases.jud",
+          "recordings/": "examples/recordings/jud_calibration/"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "triage.jud",
+          "triage-cases.jud",
+          "recordings/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Takes the state of the case `receipt` from the cases document, writes it outside the project, and runs `jud.sh triage.jud --replay recordings < ...` with input redirection, no pipe",
+        "Says the answer comes from the recordings with no key and no network, and asks no server",
+        "Explains every verdict as the policy read it: `actionable` yes or no with its probability against the threshold 0.55; `desk` deferred because `billing` at 0.40 is under the bar 0.45, falling back to `none_of_these`, which is the gate's job and not an error; `tone` as a level with its label, value and confidence",
+        "Changes no file in the project and offers /jud:cases to keep the state as a labelled case"
+      ]
+    },
+    {
+      "id": "run-support-live",
+      "prompt": "/jud:run support.jud ticket.json",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "ticket.json": "plugins/jud/skills/jud-tune/evals/files/support/ticket.json"
+        }
+      },
+      "mock": {
+        "cases": [],
+        "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "ticket.json"
+        ],
+        "mock_requests": 1,
+        "new_files": []
+      },
+      "expectations": [
+        "Runs `jud.sh lower` first and names the three questions the request carries",
+        "Announces, before the call and in the Bash call's description, one request to the mock's base URL and model `mock-jev-1`, read from `jud config`",
+        "Makes exactly one call and reports each verdict in plain words with its confidence, a deferred one with its nearest answer, bar and fallback",
+        "Writes no file into the project"
+      ]
+    },
+    {
+      "id": "run-shapes-asset",
+      "prompt": "/jud:run shapes.jud --cases shapes-cases.jud shape-00 --asset shape-00=images/shape-00.png --pixels 320x320 --replay recordings",
+      "setup": {
+        "copy": {
+          "shapes.jud": "examples/jud/shapes.jud",
+          "shapes-cases.jud": "examples/jud/shapes-cases.jud",
+          "images/": "examples/jud/images/",
+          "recordings/": "examples/recordings/shapes/"
+        }
+      },
+      "checks": {
+        "unchanged": [
+          "shapes.jud",
+          "shapes-cases.jud",
+          "images/*",
+          "recordings/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Passes the image with --asset and --pixels and replays; no call is made",
+        "Reads the Noul `circle_present` first and says a Box answers with a box whether or not the thing is there",
+        "Gives the box in fractions and in pixels (from --pixels 320x320), and says whether the gate let it through (`located`) or deferred it under the 0.5 bar",
+        "Changes no file"
+      ]
+    },
+    {
+      "id": "bias-pairwise",
+      "prompt": "/jud:bias pairwise-judge.jud pairwise-cases.jud recordings swap tone pairwise-tone.yaml",
+      "setup": {
+        "copy": {
+          "pairwise-judge.jud": "plugins/jud/skills/jud-tune/evals/files/pairwise/pairwise-judge.jud",
+          "pairwise-cases.jud": "plugins/jud/skills/jud-tune/evals/files/pairwise/pairwise-cases.jud",
+          "pairwise-tone.yaml": "plugins/jud/skills/jud-tune/evals/files/pairwise/pairwise-tone.yaml"
+        },
+        "record": {
+          "rubric": "pairwise-judge.jud",
+          "cases": "pairwise-cases.jud",
+          "out": "recordings",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/pairwise/profile.json"
+        }
+      },
+      "mock": {
+        "cases": [
+          "pairwise-cases.jud"
+        ],
+        "profile": "plugins/jud/skills/jud-tune/evals/files/pairwise/profile.json"
+      },
+      "checks": {
+        "unchanged": [
+          "pairwise-judge.jud",
+          "pairwise-cases.jud",
+          "pairwise-tone.yaml",
+          "recordings/llmbar-natural-???.jud"
+        ],
+        "new_files": [
+          "recordings/*.swapped.jud",
+          "recordings/*.toned.jud"
+        ],
+        "exists": [
+          {
+            "glob": "recordings/*.swapped.jud",
+            "count": 12
+          },
+          {
+            "glob": "recordings/*.toned.jud",
+            "count": 12
+          }
+        ],
+        "mock_requests": 24,
+        "announce_before_record": true,
+        "jud_check": [
+          [
+            "pairwise-judge.jud",
+            "pairwise-cases.jud"
+          ]
+        ]
+      },
+      "expectations": [
+        "Checks that `better` is a Choice whose options the cases supply, with every case labelling one, before writing or asking anything",
+        "Plans with record --dry-run and announces 24 perturbed requests (12 swapped, 12 toned) to the mock before recording them",
+        "Replays eval with --swap and --tone-perturb and quotes the robustness table from the JSON: flip rate with its interval and counts per test, the confident flip rate at the gate's 0.6 bar (passed as --confident-at, and said so), mean |Δp|, accuracy as written and perturbed",
+        "Names every flipped case with the tone it carried, from the file's comments, and says a flip can be a correction when the perturbed accuracy rises",
+        "Says the interval at twelve pairs is too wide to compare with another model, and ranks next steps by cost (instruction rule, a higher bar, more pairs)",
+        "Edits no recording, the rubric or the cases"
+      ]
+    },
+    {
+      "id": "bias-injection",
+      "prompt": "/jud:bias pairwise-judge.jud pairwise-cases.jud recordings injection",
+      "setup": {
+        "copy": {
+          "pairwise-judge.jud": "plugins/jud/skills/jud-tune/evals/files/pairwise/pairwise-judge.jud",
+          "pairwise-cases.jud": "plugins/jud/skills/jud-tune/evals/files/pairwise/pairwise-cases.jud"
+        },
+        "record": {
+          "rubric": "pairwise-judge.jud",
+          "cases": "pairwise-cases.jud",
+          "out": "recordings",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/pairwise/profile.json"
+        }
+      },
+      "mock": {
+        "cases": [
+          "pairwise-cases.jud"
+        ],
+        "profile": "plugins/jud/skills/jud-tune/evals/files/pairwise/profile.json"
+      },
+      "checks": {
+        "unchanged": [
+          "pairwise-judge.jud",
+          "pairwise-cases.jud",
+          "recordings/llmbar-natural-???.jud"
+        ],
+        "new_files": [
+          "pairwise-cases-injection.yaml",
+          "recordings/*.injected.jud"
+        ],
+        "exists": [
+          {
+            "glob": "recordings/*.injected.jud",
+            "count": 12
+          },
+          {
+            "glob": "pairwise-cases-injection.yaml",
+            "count": 1
+          }
+        ],
+        "mock_requests": 12,
+        "announce_before_record": true,
+        "jud_check": [
+          [
+            "pairwise-judge.jud",
+            "pairwise-cases.jud"
+          ]
+        ]
+      },
+      "expectations": [
+        "Checks that `better` is a two-option Choice with one option labelled and a text losing answer before writing the file",
+        "Writes pairwise-cases-injection.yaml beside the cases with one note per case (the paper's three payloads in turn, or its own), and shows it before any call",
+        "Announces 12 injected requests to the mock before recording them",
+        "Reports the attack-success line apart from the flip rate: of the verdicts right as written, how many the note turned wrong, with its interval, and says it measures the payload supplied on these twelve cases, not the model's robustness in general",
+        "Names the cases that flipped and what the gate at 0.6 does with them (the confident column)",
+        "Edits no recording, the rubric or the cases"
+      ]
+    },
+    {
+      "id": "bias-injection-refused",
+      "prompt": "/jud:bias support.jud support-cases.jud recordings/support-triage injection",
+      "setup": {
+        "copy": {
+          "support.jud": "plugins/jud/skills/jud-tune/evals/files/support/support.jud",
+          "support-cases.jud": "plugins/jud/skills/jud-tune/evals/files/support/support-cases.jud"
+        },
+        "record": {
+          "rubric": "support.jud",
+          "cases": "support-cases.jud",
+          "out": "recordings/support-triage",
+          "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+        }
+      },
+      "mock": {
+        "cases": [
+          "support-cases.jud"
+        ],
+        "profile": "plugins/jud/skills/jud-tune/evals/files/support/profile.json"
+      },
+      "checks": {
+        "unchanged": [
+          "support.jud",
+          "support-cases.jud",
+          "recordings/support-triage/*"
+        ],
+        "mock_requests": 0,
+        "new_files": []
+      },
+      "expectations": [
+        "Reads the rubric and says why the injection test cannot land: `queue` is a Choice of more than two options and `needs_reply` and `urgency` are not a Choice of two, so `jud` would refuse an injection file before any call",
+        "Writes no injection file and makes no call",
+        "Says what the rubric would need (a two-option Choice comparing two answers, each case labelling one) and offers swap or tone, which `queue` can take, as the tests the rubric supports"
+      ]
     }
   ]
 }

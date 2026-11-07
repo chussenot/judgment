@@ -1,0 +1,2 @@
+{"model": "mock-jev-1", "seed": "pairwise", "accuracy": 0.92,
+ "flip_on": {"swapped": 0.17, "toned": 0.34, "injected": 0.5}}
