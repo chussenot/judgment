@@ -140,6 +140,7 @@ scripts/gen-cli-reference.sh --check
 scripts/gen-plugin-format.sh --check
 scripts/gen-plugin-rust.sh --check
 scripts/gen-plugin-examples.sh --check
+scripts/gen-plugin-judgment.sh --check
 mise run jud:check
 mise run docs:links
 scripts/check-plugin-coverage.sh
@@ -160,6 +161,7 @@ set -eu
 scripts/gen-plugin-format.sh
 scripts/gen-plugin-rust.sh
 scripts/gen-plugin-examples.sh
+scripts/gen-plugin-judgment.sh
 """
 
 [tasks."docs:links"]

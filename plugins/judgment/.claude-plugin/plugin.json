@@ -1,0 +1,14 @@
+{
+  "name": "judgment",
+  "displayName": "judgment",
+  "description": "Use the judgment crate from Rust: ask a System One model typed questions and act on calibrated answers with its guarantees intact (the judgment skill and /judgment:integrate), test the code that does with no key and no network (judgment-test and /judgment:test), and observe and pace its calls (judgment-observe and /judgment:observe). The jud plugin covers .jud rubrics and the jud command.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Clément Hussenot",
+    "url": "https://github.com/chussenot"
+  },
+  "homepage": "https://github.com/chussenot/judgment/blob/main/docs/guides/use-the-claude-code-plugin.md",
+  "repository": "https://github.com/chussenot/judgment",
+  "license": "MIT",
+  "keywords": ["judgment", "rust", "typesafe", "system-one", "calibration", "testing", "observability", "opentelemetry"]
+}

@@ -1,0 +1,103 @@
+{
+  "skill_name": "judgment",
+  "about": "Each eval runs one prompt through `claude -p --plugin-dir plugins/judgment` in a fresh copy of files/app/ (a support service: a triage decision with one test and a planted bug, and a batch job that fans out calls with no pacer and counts tokens by hand). run.py then runs `cargo test` with no key and a base URL on a closed port, and `cargo clippy -D warnings`, and checks the files. `new_files` are regexes over paths; any other new file fails the run. `expectations` are graded by a reader of the reply, the transcript and the workspace.",
+  "evals": [
+    {
+      "id": "integrate-escalation",
+      "prompt": "/judgment:integrate Add src/escalation.rs with a function that decides, for a customer message in state[\"message\"] and the customer's plan in state[\"plan\"] (\"free\", \"pro\" or \"enterprise\", from our billing system), whether to escalate to a senior agent: escalate when the message is angry or threatens to cancel, and always for enterprise customers who report an outage. Wire nothing into main.rs.",
+      "checks": {
+        "exists": [{"glob": "src/escalation.rs"}],
+        "unchanged": ["src/main.rs", "src/triage.rs", "src/batch.rs"],
+        "file_matches": [
+          {"glob": "src/escalation.rs", "regex": ["Questions::new\\(\\)", "Fake::new\\(\\)", "#\\[tokio::test\\]", "is_yes\\("], "absent": ["noul\\(\\s*\"[a-z_]*(plan|enterprise)", "Client::from_env"]}
+        ],
+        "min_tests": 4,
+        "skill_loaded": "judgment",
+        "new_files": ["src/escalation\\.rs"]
+      },
+      "expectations": [
+        "Keeps the plan out of the questions: the code reads state[\"plan\"] and decides `enterprise` itself; the model is asked only what needs judgment (angry or threatening to cancel; reports an outage), as separate atomic questions",
+        "Every bar is a named value with a comment saying it is a guess until measured; no threshold in the instructions",
+        "Handles errors by group and never maps an unfit answer to a decision",
+        "Writes Fake-backed tests for each branch (angry, cancel threat, enterprise outage, a pro outage that does not escalate) and reports cargo test and clippy as run",
+        "Says main.rs was left alone and gives the call the caller would add"
+      ]
+    },
+    {
+      "id": "integrate-should-be-rubric",
+      "prompt": "/judgment:integrate Add src/refunds.rs: decide whether a refund request in state[\"message\"] can be auto-approved. Our ops team retunes the confidence bar every week from last week's tickets and does not want a code release for it.",
+      "checks": {
+        "exists": [{"glob": "src/refunds.rs"}],
+        "unchanged": ["src/main.rs", "src/triage.rs", "src/batch.rs"],
+        "skill_loaded": "judgment",
+        "new_files": ["src/refunds\\.rs", ".*\\.jud"]
+      },
+      "expectations": [
+        "Says the weekly retune is what a .jud rubric is for (bars as data, tuned with jud tune, no release) and offers /jud:rubric and /jud:rust, or writes the code so the bar is read from configuration rather than compiled in",
+        "Whatever it writes builds, is tested with Fake, and keeps the bar out of the instructions"
+      ]
+    },
+    {
+      "id": "test-triage-bug",
+      "prompt": "/judgment:test src/triage.rs",
+      "checks": {
+        "changed": ["src/triage.rs"],
+        "file_matches": [
+          {"glob": "src/**/*.rs", "regex": ["Fake::new\\(\\)", "calls\\(\\)"], "absent": ["Client::from_env\\(\\)[^\\n]*\\n[^\\n]*#\\[tokio::test\\]"]}
+        ],
+        "min_tests": 4,
+        "skill_loaded": "judgment-test",
+        "new_files": ["tests/.*\\.rs"]
+      },
+      "expectations": [
+        "Lists the branches of `route` and tests each: below the 0.7 confidence bar (Person), urgent (Page), a plain desk, each desk option",
+        "Finds the planted bug: an `UnknownOption` error is turned into a Billing route, which hides a server answering an option it was not offered; says so as a finding about the code, and tests the refusal (an unfit answer built directly) rather than the default",
+        "Asserts on the request through Fake::calls() (the state and the question ids sent)",
+        "Runs cargo test and reports the tests by name; calls no real API"
+      ]
+    },
+    {
+      "id": "observe-batch",
+      "prompt": "/judgment:observe src/batch.rs pacer 4",
+      "checks": {
+        "changed": ["src/batch.rs"],
+        "file_matches": [
+          {"glob": "src/**/*.rs", "regex": ["Pacer::new\\(4\\)", "Paced::new\\(", "impl\\s+(judgment::)?(observer::)?Observer\\s+for"], "absent": ["total_tokens\\s*\\+="]}
+        ],
+        "skill_loaded": "judgment-observe",
+        "new_files": ["src/[a-z_]+\\.rs", "tests/.*\\.rs"]
+      },
+      "expectations": [
+        "Bounds the fan-out with one Pacer shared by the client (ClientBuilder::pacer) and a Paced backend, sized 4, and says a 429's wait now pauses every call",
+        "Replaces the hand token count with an Observer (on_usage or on_call), and says what it removed",
+        "Tests the pacer with a paused tokio clock or the observer's counts, and reports cargo test and clippy as run"
+      ]
+    },
+    {
+      "id": "natural-flaky-tests",
+      "prompt": "Our CI is red half the time: the test I just added to src/triage.rs calls the real TypeSafe API and fails without a key or when it rate-limits. Fix the tests so they never need a key or the network, and keep what they check.",
+      "setup": {
+        "edit": [
+          {
+            "file": "src/triage.rs",
+            "old": "    #[tokio::test]\n    async fn a_confident_billing_message_goes_to_billing()",
+            "new": "    #[tokio::test]\n    async fn an_outage_pages_technical() -> Result<(), Box<dyn std::error::Error>> {\n        let client = judgment::Client::from_env()?;\n        let state = serde_json::json!({ \"message\": \"The API has been down for an hour and we launch today.\" });\n        assert_eq!(route(&client, &state).await?, Route::Page(Desk::Technical));\n        Ok(())\n    }\n\n    #[tokio::test]\n    async fn a_confident_billing_message_goes_to_billing()"
+          }
+        ]
+      },
+      "checks": {
+        "changed": ["src/triage.rs"],
+        "file_matches": [
+          {"glob": "src/triage.rs", "regex": ["an_outage_pages_technical|outage", "Route::Page\\(Desk::Technical\\)"], "absent": ["#\\[tokio::test\\]\\s*\\n\\s*async fn an_outage_pages_technical[^}]*Client::from_env"]}
+        ],
+        "skill_loaded": "judgment-test",
+        "new_files": ["tests/.*\\.rs"]
+      },
+      "expectations": [
+        "Replaces the live call with a Fake scripting an urgent technical answer, so the test still holds that an outage pages technical",
+        "Offers, as an #[ignore] test or a Recorder/Replay pair, the way to keep a check against the real model without CI needing a key, and says which command the user runs by hand",
+        "Runs cargo test with no key and reports it passing"
+      ]
+    }
+  ]
+}

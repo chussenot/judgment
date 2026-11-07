@@ -160,8 +160,8 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   committing `.env`, `cargo publish` and `bd edit` (it opens an editor and
   hangs). In a cloud session `session-start.sh` installs the tools
   (`mise.cloud.toml`, pinned release URLs), imports the beads from the
-  committed export, installs the three Claude Code plugins
-  (`scripts/claude-plugins.sh`: `jud` from the checkout, `typesafe` from
+  committed export, installs the four Claude Code plugins
+  (`scripts/claude-plugins.sh`: `jud` and `judgment` from the checkout, `typesafe` from
   `typesafe-ai/skills`, `ponytail` from `DietrichGebert/ponytail`, since a
   cloud session never installs what `.claude/settings.json` declares) and
   caps the mbx cache (`gc.max_total_size`, the session disk is a fixed
@@ -172,7 +172,7 @@ The README says why; `docs/` says how; the rustdoc is the reference.
   hook names the tools `mise.toml` pins and the machine lacks: run `mise
   install` then, before a `mise exec` stops to compile them. `mise run
   plugins:install` does
-  the same on a laptop and `mise run plugins:update` moves `jud` to its
+  the same on a laptop and `mise run plugins:update` moves `jud` and `judgment` to their
   latest and `typesafe` and `ponytail` to their pins (`v0.6.2` and
   `v5.2.0`, in `.claude/settings.json` and `scripts/claude-plugins.sh`,
   each moved in both together: a plugin that shapes how rubrics or code

@@ -65,6 +65,7 @@ case "$mode" in
     has_marketplace typesafe-ai || run marketplace add "typesafe-ai/skills#$TYPESAFE_REF" --scope user
     has_marketplace ponytail || run marketplace add "DietrichGebert/ponytail#$PONYTAIL_REF" --scope user
     run install jud@judgment --scope user -y
+    run install judgment@judgment --scope user -y
     run install typesafe@typesafe-ai --scope user -y
     run install ponytail@ponytail --scope user -y
     ;;
@@ -73,6 +74,7 @@ case "$mode" in
     run marketplace update typesafe-ai
     run marketplace update ponytail
     run update jud@judgment -y
+    run update judgment@judgment -y
     run update typesafe@typesafe-ai -y
     run update ponytail@ponytail -y
     log "a running session sees the update after /reload-plugins or at its next start"

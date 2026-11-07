@@ -95,6 +95,7 @@ jobs:
       - run: scripts/gen-plugin-format.sh --check
       - run: scripts/gen-plugin-rust.sh --check
       - run: scripts/gen-plugin-examples.sh --check
+      - run: scripts/gen-plugin-judgment.sh --check
       - run: cargo run -q --features cli --bin jud -- check examples/jud/*.jud examples/recordings/jud_calibration/*.jud
       - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
