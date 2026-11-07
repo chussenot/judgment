@@ -2,7 +2,8 @@
   "enabledPlugins": {
     "jud@judgment": true,
     "ponytail@ponytail": true,
-    "typesafe@typesafe-ai": true
+    "typesafe@typesafe-ai": true,
+    "judgment@judgment": true
   },
   "extraKnownMarketplaces": {
     "judgment": {

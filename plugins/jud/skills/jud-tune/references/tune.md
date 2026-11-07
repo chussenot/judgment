@@ -184,7 +184,10 @@ held-out number on 2 billing cases says little about billing.
    question, and warns on stderr when one half lacks a label the other has:
    pass that warning on. It refuses to write over a file; never delete one
    to make room without the user's say. `--every N` holds out every Nth
-   case when the user wants another share. The states are unchanged, so
+   case when the user wants another share. `--rubric RUBRIC` reads the
+   labels as the rubric reads them (a Score level written as `0` and as
+   `calm` is one level) and lists them in its order: pass it whenever the
+   rubric is at hand. The states are unchanged, so
    the recordings already in DIR answer both halves and nothing is
    re-recorded.
 2. Tune on the tuning set and apply.

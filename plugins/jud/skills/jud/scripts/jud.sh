@@ -10,6 +10,9 @@
 # stderr saying so, so a page's flag that it refuses is explained and not a
 # mystery. POSIX sh only.
 set -eu
+# ponytail: the pages describe --fail-if-moved, ece_probability and
+# --injection-perturb, unreleased past 0.16.1; raise JUD_MIN to the release
+# that ships them when it is cut (a dev build still reports 0.16.1).
 JUD_MIN=0.16.1
 
 older_than_min() {

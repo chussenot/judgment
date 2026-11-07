@@ -81,6 +81,8 @@ Per question:
     or the cases, not the policy.
   - `-` for "when wrong" means no misses, so nothing was learned about what a
     miss looks like.
+  - In the JSON these are `confidence_when_right` and
+    `confidence_when_wrong`, `null` where the text prints `-`.
 - **`gate: acts on x of n, defers d, accuracy when acted p`.** This is the
   policy's operating point on these cases: how often it decides by itself,
   and how often that decision is right. Deferring sends the case to the
@@ -156,7 +158,43 @@ accuracy under each form. A confident flip is a verdict a gate would act on
 that the perturbation moved: say so, and name the cases. The perturbed
 requests are recorded with the same flags (`record --swap ...`), as
 `CASE.swapped.jud`, `CASE.toned.jud` and `CASE.injected.jud` (`docs/guides/test-a-judge-for-position-and-tone-bias.md`
-in the judgment repository).
+in the judgment repository). `references/bias.md` is the page for running
+and reading them.
+
+The thresholds a signal is raised at are in the JSON's `signal_rules`
+(`min_answers` 10, `collapse_share` 0.8, `collapse_margin` 0.2,
+`never_answered_min` 3, `defers_most` 0.5, `defers_nearly_all` 0.9).
+Quote them when you explain why a signal was or was not raised, and never
+raise one yourself on fewer answers than `min_answers`.
+
+## Comparing two models
+
+`eval --replay NEW --against OLD` sets every answer beside the one `OLD`
+recorded for the same request (another model's, recorded into a
+directory of its own) and adds an `agreement` block to the JSON and a
+table to the text, per question: the pairs, how often the two picks
+differ, the same among the answers at `--confident-at` or above (this
+run's confidence), the mean |Δp| between the probability each put on this
+run's pick, and each side's accuracy over the labelled pairs (`-` with no
+label). A Box has no pick and is left out.
+
+- **Agreement is not accuracy.** Two models can agree and both be wrong,
+  so `--against` never gates and never changes the status, and it needs
+  no label: it is the check to run when the model changes, before any
+  case is labelled. The cases that differ are the ones to label first.
+- **Every case as written needs a recording in `OLD`**, as under
+  `--replay`; a missing one stops the run, naming the directory and the
+  cases, before anything is asked. A recording is found by its request's
+  fingerprint, which leaves the model out, so another model's recordings
+  of the same rubric and cases are found.
+- **Calibration across servers**: quote `ece_probability` for both sides
+  (a second `eval --replay OLD --json`), not `ece`, whose `confidence`
+  may mean different things on two servers.
+- **The bars rest on one of them.** The rubric's `tuning` names the model
+  its bars were read from; `moved` says which side that is not. After a
+  switch: label the differing cases, `/jud:tune` on the new directory,
+  then `--fail-if-moved` in CI once the block names it. `/jud:compare`
+  runs this.
 
 ## Coverage
 

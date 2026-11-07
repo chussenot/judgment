@@ -8,6 +8,37 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- A second Claude Code plugin, `judgment` (0.1.0), in the same
+  marketplace, for the crate's Rust API beneath or without a rubric: the
+  `judgment` skill and `/judgment:integrate` (typed questions, the call,
+  the typed read, errors by what fixes them, a backend chosen), the
+  `judgment-test` skill and `/judgment:test` (`Fake`, `Recorder` and
+  `Replay`, wiremock, no real API), and the `judgment-observe` skill and
+  `/judgment:observe` (`Observer`, `OtelObserver`, `Pacer` and `Paced`).
+  Its reference pages are eight of the crate's documentation pages,
+  generated into it by `scripts/gen-plugin-judgment.sh` and checked in CI;
+  `plugins/judgment/evals/` battle-tests it in a fixture crate with no key
+  and no network.
+- The Claude Code plugin (now 0.5.0) covers the rest of the `jud`
+  command: `/jud:run` evaluates one state and explains every verdict,
+  `/jud:bias` runs `--swap`, `--tone-perturb` and `--injection-perturb` on
+  a judge (writing the perturbation files when none is given, with a
+  `jud-tune` page on how), `/jud:compare` sets two models' recordings side
+  by side with `--against`, `/jud:ci` writes the job that holds the labels,
+  `/jud:review` reads a rubric and its cases for what the reader cannot
+  see, and `/jud:serve` registers a directory of rubrics with `jud mcp`.
+  Two hooks check every `.jud` the agent writes and deny an edit to a
+  recording. The tuning pages name both calibration errors,
+  `--fail-if-moved` and the `moved` key, and drop the Score note `jud tune`
+  no longer prints; `jud.sh` says once when the binary is older than the
+  pages describe; the example documents the skills start from ship in the
+  plugin (`scripts/gen-plugin-examples.sh`, checked in CI); and
+  `scripts/check-plugin-coverage.sh`, run by `mise run docs:check`, lists
+  what the binary offers and no plugin page names. The mock System One
+  server answers perturbed requests with a set flip rate, and twelve new
+  headless scenarios hold the commands to it; the plugin guide records the
+  rounds.
+
 - `jud eval --injection-perturb FILE` and `jud record` with it: every
   case the file names is asked again with a note appended to the
   description of the option it does not label right, of a two-option

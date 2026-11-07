@@ -1,8 +1,8 @@
 ---
 title: Use the Claude Code plugin
-description: How to install the jud plugin from this repository's marketplace, write a rubric and its cases with /jud:rubric and /jud:cases, check them with /jud:check, and measure and tune them with /jud:record, /jud:eval and /jud:tune, and turn a rubric into a typed Rust module with /jud:rust; what the three skills know that the reader and the numbers cannot say.
+description: How to install the jud plugin from this repository's marketplace, write, review and check a rubric and its cases (/jud:rubric, /jud:cases, /jud:review, /jud:check), run it on one state (/jud:run), measure, bias-test and tune it (/jud:record, /jud:eval, /jud:bias, /jud:compare, /jud:tune), hold it in CI (/jud:ci), serve it over MCP (/jud:serve) and turn it into a typed Rust module (/jud:rust); what the three skills and the two hooks do, and how each was battle-tested.
 status: current
-last_reviewed: 2026-10-25
+last_reviewed: 2026-11-07
 tags: [judgment, jud, skill, agent, claude-code, how-to]
 ---
 
@@ -23,7 +23,7 @@ Or interactively: `/plugin marketplace add chussenot/judgment`, then `/plugin in
 
 Two things happen on install that are easy to mistake for a fault. The skills and commands load when a Claude Code session starts, so a session that installs the plugin does not see them: start a new one, or run `/reload-plugins`. And `--scope project` writes `enabledPlugins` into the project's `.claude/settings.json`, which Claude Code rewrites in its own key order, so a checked-in settings file shows a diff that moves keys and changes no setting; review it before committing.
 
-In this repository the plugin is installed for you: `mise run plugins:install` adds the checkout as a marketplace and installs `jud` from it in place, with TypeSafe's `typesafe` plugin and the pinned `ponytail` plugin beside it, and a cloud session's start hook does the same ([Contributing](../project/contributing.md#cloud-sessions)); `mise run plugins:update` moves them along.
+In this repository the plugin is installed for you: `mise run plugins:install` adds the checkout as a marketplace and installs `jud` and `judgment` from it in place, with TypeSafe's `typesafe` plugin and the pinned `ponytail` plugin beside it, and a cloud session's start hook does the same ([Contributing](../project/contributing.md#cloud-sessions)); `mise run plugins:update` moves them along.
 
 ## The commands
 
@@ -32,9 +32,15 @@ In this repository the plugin is installed for you: `mise run plugins:install` a
 | `/jud:rubric <brief>` | Writes a Rubric from a brief, or revises one at a path: narrow questions with criteria, a policy with a `note` per gate and no invented `tuning`, every deviation from the brief explained, checked with the reader before it is handed over. |
 | `/jud:cases <rubric> [brief]` | Writes the Cases a rubric is tuned on: real states covering every outcome, labels only for what each case is sure about, a `note` on the hard ones, bound to the rubric and checked, with a count of cases per outcome so the gaps are visible. |
 | `/jud:check [files]` | Runs the reader over the files given, or every `.jud` under the project, cases bound to their rubric and recordings verified, and explains every refusal; fixes only when asked, and in the document rather than around it. |
+| `/jud:review <rubric> [cases] [dir]` | Reads for what the reader cannot see: a compound question, a Choice with no way out, a threshold moved into the instructions, a fact the state does not carry, a `tuning` block no run is behind, labels copied from a recording, thin outcomes. A ranked table with each fix and its cost; edits nothing. |
+| `/jud:run <rubric> <state>` | Runs `jud RUBRIC` on one state (a file, inline JSON or a case), from recordings or the configured backend after saying so, with `--options`, `--asset` and `--pixels`; shows the request with `jud lower` first and explains every verdict as the policy read it, the deferred ones included. |
 | `/jud:record <rubric> <cases> [dir]` | Runs `jud record` after telling you, in a message of its own, how many requests it will spend (only those the directory does not already answer), to which backend and model. Stops with what to set when no key is set, and never asks for the key. |
 | `/jud:eval <rubric> <cases> [dir]` | Grades the recordings with `jud eval --replay`, counts the labels per outcome, and puts every miss in one cause: a wrong label, an ambiguous question, a fact the model cannot see, overlapping outcomes, a coverage gap, the bar's job or the model. It proposes each fix with its cost and changes no file. Explains stale recordings rather than working around them. |
 | `/jud:tune <rubric> <cases> <dir> [apply] [holdout]` | Runs `jud tune`, decides gate by gate whether to take the proposal, and shows the coverage a lower target would buy. It refuses a bar of 0 on a handful of cases and a bar that absorbs a wrong label. With `apply` it edits the rubric in place, keeping comments and the notes that still hold, and shows each gate before and after. With `holdout` it tunes on three quarters of the cases and reports the rest as the numbers to expect. |
+| `/jud:bias <rubric> <cases> <dir> [swap] [tone] [injection]` | Tests a Choice judge with `--swap`, `--tone-perturb` and `--injection-perturb`: checks the question can take each test before anything is written or asked, writes the tone or injection file when none is given, announces the perturbed requests, and reads the flip rates, the confident flip rate at the gate's own bar and the attack success. |
+| `/jud:compare <rubric> <cases> <dir A> <dir B>` | Sets two models' recordings side by side with `jud eval --against`: where the picks differ, the confident share, how far the probabilities move, both accuracies and both calibration errors, which side the bars were tuned on, and the model-switch workflow. Never a gate. |
+| `/jud:ci [documents] [github \| sh]` | Writes the job that holds the labels: `jud check` over every document, `jud eval --replay` with the bars today's recordings meet and `--fail-if-moved` when the rubric names a model, the four statuses mapped to log lines, a pinned `jud`. Never a step that records. |
+| `/jud:serve <dir> [--replay DIR] [add]` | Checks the `jud` has `mcp` (a build with the feature) and every rubric under the directory reads, then prints the `claude mcp add` line, and runs it only with `add`. |
 | `/jud:rust <rubric> [out.rs] [embed]` | Writes the rubric as a small Rust module: an enum per Choice and Score, a `Located` verdict per Box, a `Decision` struct and one `decide(backend, model, state)` call (with the request's `Assets` when the rubric looks at an image), with the rubric read through `include_str!` so its requests are what `jud lower` sends and a retune needs no regeneration. It compiles the module, runs its test and clippy before handing it over, and replies with the `Cargo.toml` and `mod` lines and a usage example. |
 
 The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric, typed questions with thresholds, labelled cases, or questions written in code that should become a document. The `jud-rust` skill loads when a task is about using a rubric from Rust ("call screening.jud from my service with real types"). The `jud-tune` skill loads when a task is about how well a rubric works: its accuracy, why a decision came out wrong, its thresholds or its recordings ("our rubric sends too many tickets to the wrong queue, fix the thresholds"). Neither needs the word "jud" in the request.
@@ -48,10 +54,11 @@ The `jud` skill loads on its own whenever a task touches a `.jud` file, a rubric
 | `skills/jud/references/examples/` | The example documents the skill starts from (triage, handoff, routing, shapes with its images, the pairwise judge with its tone and injection files), copies of [`examples/jud/`](../../examples/jud/) made by `scripts/gen-plugin-examples.sh`, so a user without the checkout has them; CI checks the copies. |
 | `skills/jud/scripts/jud.sh` | Runs the `jud` command: one on `PATH`, else one built from a judgment checkout. Says on stderr when that binary is older than the pages describe (`JUD_MIN` in the script), and runs it anyway. |
 | `skills/jud-tune/SKILL.md` | The tuning guide's core, loaded whenever the skill triggers: how to run the commands, what each edit costs and which ones make recordings stale, what never to do, what a reply must contain, and which page under `references/` to read before each step. |
-| `skills/jud-tune/references/` | The rest of the tuning guide, read when a step needs it so a task that only records does not load how to tune: `record.md` (counting a run's calls before it spends them), `eval.md` (what every `jud eval` number means, how many cases a bar needs, coverage), `triage.md` (the table every miss goes in), `tune.md` (how `jud tune` chooses a bar, accept or keep, applying in place, holding cases out). A SKILL.md over 500 lines is refused by a pre-commit hook. |
+| `skills/jud-tune/references/` | The rest of the tuning guide, read when a step needs it so a task that only records does not load how to tune: `record.md` (counting a run's calls before it spends them), `eval.md` (what every `jud eval` number means, how many cases a bar needs, coverage, comparing two models), `triage.md` (the table every miss goes in), `tune.md` (how `jud tune` chooses a bar, accept or keep, applying in place, holding cases out), `bias.md` (the three bias tests, writing their files, reading the table), `ci.md` (what a job holds and what each status means). A SKILL.md over 500 lines is refused by a pre-commit hook. |
 | `skills/jud-rust/SKILL.md` | The Rust guide: what the generated module is and why the rubric stays its source, the naming rules from `.jud` keys to Rust identifiers, the mapping per primitive and declaration, how to wire and verify it. |
 | `skills/jud-rust/references/` | The three modules the skill copies its shape from, with their rubrics: copies of `examples/jud/triage.rs`, `routing.rs` and `shapes.rs` (a Noul and a Box over an image), which `cargo test` compiles and runs (`examples/jud_typed.rs`); `scripts/gen-plugin-rust.sh --check` keeps the copies equal. |
-| `commands/rubric.md`, `cases.md`, `check.md`, `record.md`, `eval.md`, `tune.md`, `rust.md` | The seven commands, each a page of instructions that follows its skill. |
+| `commands/*.md` | The thirteen commands, each a page of instructions that follows its skill. |
+| `hooks/` | Two hooks, declared in `.claude-plugin/plugin.json`: after an Edit or Write of a `.jud` file, `check-after-write.sh` reads it with `jud check` and hands any refusal to the agent; before one, `guard-recording.sh` denies a change to a file that reads `kind: Recording`, since a recording is what a model said. Both are POSIX sh and fail open when no `jud` is found; `disableAllHooks` in the user's settings turns them off. |
 | `skills/jud/evals/` | The seven tasks the authoring skill was tested on, the seventh an image rubric with a Box over five parcel photos and their annotator's boxes (`files/images/`), and `run.py`, which runs one task with the skill or without it and checks what was written. |
 | `skills/jud-tune/evals/` | The battle test of the tuning commands: the scenarios, the support fixture with its planted wrong labels, a mock System One server and the runner (below). |
 
@@ -172,6 +179,24 @@ JUD=target/debug/jud python3 plugins/jud/skills/jud-tune/evals/run.py --out /tmp
 
 `--only ID ...` runs some, and `--model` picks the model. Each scenario's `reply.md`, `transcript.jsonl` and `checks.json` land under `--out`. Grading the prose expectations is left to a reader.
 
+### The 0.5 commands
+
+`/jud:run`, `/jud:bias`, `/jud:compare`, `/jud:ci`, `/jud:review`, `/jud:serve` and the two hooks were battle-tested the way the tuning commands were: one prompt per scenario through `claude -p --plugin-dir plugins/jud`, in the same harness (`skills/jud-tune/evals/run.py`) and against the same mock. For the bias tests the mock learned to tell a swapped, toned or injected request from the case's own options and to flip its pick at a profile's rate (`flip_on`), so a scenario plants a flip rate and an attack success on a twelve-pair LLMBar fixture (`files/pairwise/`) and holds the reply to it. The harness gained a check on a written file's content and on the transcript, which is where a hook's output and a denial show.
+
+The twelve scenarios cover:
+
+- one state from recordings, from the mock live, and an image with `--asset` and `--pixels`;
+- swap and tone on the pairwise fixture, the injection test with the payload file written by the command, and an injection test the rubric cannot take;
+- two models' recordings side by side, a CI job for the support fixture, a review of a rubric with seven planted defects, and the MCP registration line;
+- a `.jud` with a defect written through the post-write hook, and an edit to a recording the guard denies.
+
+| Round | Scenarios | Scripted checks | What the round changed |
+|---|---|---|---|
+| 1 | 12 | 72 of 75 | both bias runs announced `Recording 24 perturbed requests ...` and the check's pattern did not read `perturbed`: the pattern was widened; `/jud:bias` reads the shipped examples with the Read tool (a `head` was denied); the hook scenario's empty workspace could not be committed, so the harness commits an empty one |
+| 2 | 12 | 79 of 79 | none needed; `/jud:compare` was reworded before it, to say `--confident-at` takes one value for the run, after its reply fell back to 0.5 |
+
+Graded by reading each reply against its expectations: every number the bias, compare and CI replies quote is the JSON's; the injection reply keeps the attack success apart from the flip rate and says it measures the payload supplied; the review names all seven planted defects (a compound question, criteria that restate it, a threshold in the instructions, a Choice with no way out, a fact the state does not carry, an invented `tuning` block, a gate with no note) and edits nothing; the CI job pins the local `jud`, sets each bar at the low end of today's interval and leaves `--fail-if-moved` out because the rubric names no model; and the recording guard's deny reason is in the transcript of the run that tried. The [regression on 0.5](#the-regression-on-05) then ran every scenario once more on the final pages.
+
 ### The Rust skill
 
 `/jud:rust` was battle-tested the same way: one prompt per scenario through `claude -p --plugin-dir plugins/jud`, in a fresh git workspace holding a small Rust application (`skills/jud-rust/evals/files/app/`, with `clippy::pedantic`, `unwrap_used` and `expect_used` on). The allow-list is the plugin's script, `cargo`, file edits and a few read-only commands. No scenario calls a backend.
@@ -215,6 +240,49 @@ JUD=target/debug/jud python3 plugins/jud/skills/jud-rust/evals/run.py --out /tmp
 ```
 
 The scenarios share one target directory under `--out`; `--reference` runs the harness on the repository's own modules instead of the skill's output.
+
+### The regression on 0.5
+
+Every scenario of the three skills was run once more on the final pages, on Sonnet 5.5: the 27 tuning scenarios (the 15 of the rounds above and the 12 of 0.5), the seven authoring tasks with the skill, and the nine Rust scenarios.
+
+| Skill | Scenarios | Passed on the first run | After one rerun |
+|---|---|---|---|
+| `jud-tune`, with the 0.5 commands | 27 | 27 | |
+| `jud` (authoring) | 7 | 6 | 7 |
+| `jud-rust` | 9 | 7 | 9 |
+
+The three misses were not the pages: an authoring task whose prompt names its output by a bare file name wrote the repair beside its inputs (the harness now writes `./NAME`), and two Rust runs chained a second command into one Bash call, which the allow-list denied, a slip each run's rerun did not repeat. No reply or written file in the regression contradicted the 0.5 pages; the hooks fired only where a document was refused or a recording was edited.
+
+## The judgment plugin
+
+`plugins/judgment/` is a second plugin in the same marketplace, for the crate's Rust API beneath or without a rubric. Install it as the `jud` plugin is installed, with `judgment@judgment`.
+
+| What | Invoked as |
+|---|---|
+| The `judgment` skill: questions and typed handles, the typed read, `Response::verify`, the error groups by what fixes them, the client and its retries, choosing a backend | loads when Rust code calls or should call the crate |
+| Write the code for a decision, with its tests, compiled and linted; bars someone moves without a release go into a `.jud` rubric the module loads at run time | `/judgment:integrate <brief>` |
+| The `judgment-test` skill: `Fake` for every branch, `Fake::calls`, an unfit answer built directly, `Recorder` and `Replay`, wiremock, never a real API; a test that exposes a bug in the code is kept, `#[ignore = "bug: ..."]`, and reported | loads when a task is about testing, mocking or replaying calls |
+| Write and run the tests a call site needs | `/judgment:test <file> [record]` |
+| The `judgment-observe` skill: `Observer` and `CallReport`, `OtelObserver` and the GenAI attributes, `Pacer` and `Paced` | loads when a task is about metrics, cost, tracing or many calls at once |
+| Wire an observer and a pacer, and test the counts | `/judgment:observe <module> [otel] [pacer N]` |
+
+Its reference pages are eight of this documentation's pages ([The crate](../reference/crate.md), [How judgment works](../concepts/how-judgment-works.md), [Configure a backend](configure-a-backend.md), [Patterns](patterns.md), [Your first decision in Rust](../start/first-decision-rust.md), [Record, replay and test](record-replay-and-test.md), [Export to OpenTelemetry](export-to-opentelemetry.md), [Bound a stream of calls](bound-a-stream.md)), generated into the plugin by `scripts/gen-plugin-judgment.sh` and checked in CI, so the plugin cannot teach what the crate no longer does. What to ask a System One model and how to shape its state, for any client, stays the `typesafe` plugin's.
+
+It was battle-tested in `plugins/judgment/evals/`: a fixture support service (a triage decision with one test and a planted bug that turns an off-list option into a route, and a batch job that fans out with no pacer and counts tokens by hand), five scenarios through `claude -p --plugin-dir plugins/judgment`, each run then held to `cargo test` with no key and the base URL on a closed port, `cargo clippy -D warnings` under pedantic lints, and checks on what was written.
+
+| Round | Scripted checks | What the round changed |
+|---|---|---|
+| 1 | 43 of 49 | scenarios now build under a package name of their own (two concurrent builds of one name in one target directory ran each other's tests); the observer check accepts `OtelObserver`; a test that exposes a bug in the code is kept as `#[ignore = "bug: ..."]` so the suite stays green |
+| 2 | 46 of 49 | `/judgment:integrate` puts bars that move without a release into a rubric itself rather than stopping to ask; the harness mounts a module the user asked not to wire in, to count its tests; the pacer check accepts a named constant |
+| 3 | 49 of 49, each scenario on its last run | `/judgment:integrate` checks the rubric it writes with `jud check` when one is on PATH |
+
+The replies were read against each scenario's expectations: the escalation module keeps the plan in code and asks three atomic Nouls, each bar a named guess; the triage tests cover each branch, the request through `Fake::calls`, and name the planted bug with its one-line fix; the observe run wires one pacer into the client and a `Paced` backend and replaces the hand token count with `OtelObserver`; and the flaky-test run replaces the live call with a `Fake` and keeps a real-model check as an `#[ignore]` test.
+
+To run them again, with `claude` logged in:
+
+```sh
+python3 plugins/judgment/evals/run.py --out /tmp/judgment-evals --jobs 3
+```
 
 ## Next
 

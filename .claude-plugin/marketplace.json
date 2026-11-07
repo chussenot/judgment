@@ -9,7 +9,12 @@
     {
       "name": "jud",
       "source": "./plugins/jud",
-      "description": "Write, review, fix, measure and tune .jud documents (Rubric, Cases, Recording), images and Box questions included, and turn a rubric into a typed Rust module, with the judgment crate's reader and jud command: the jud, jud-tune and jud-rust skills and the /jud:rubric, /jud:cases, /jud:check, /jud:record, /jud:eval, /jud:tune and /jud:rust commands."
+      "description": "Write, review, fix, run, measure, bias-test and tune .jud documents (Rubric, Cases, Recording), images and Box questions included, hold them in CI, serve them over MCP, and turn a rubric into a typed Rust module, with the judgment crate's reader and jud command: the jud, jud-tune and jud-rust skills, two hooks, and the /jud:rubric, /jud:cases, /jud:check, /jud:review, /jud:run, /jud:record, /jud:eval, /jud:tune, /jud:bias, /jud:compare, /jud:ci, /jud:serve and /jud:rust commands."
+    },
+    {
+      "name": "judgment",
+      "source": "./plugins/judgment",
+      "description": "Use the judgment crate from Rust: typed questions and calibrated answers with its guarantees intact, tests with no key and no network, and observed, paced calls: the judgment, judgment-test and judgment-observe skills and the /judgment:integrate, /judgment:test and /judgment:observe commands."
     }
   ]
 }

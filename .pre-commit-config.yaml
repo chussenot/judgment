@@ -75,7 +75,7 @@ repos:
         name: a plugin skill's SKILL.md stays under 500 lines
         entry: scripts/check-skill-length.sh
         language: script
-        files: ^plugins/jud/skills/[^/]+/SKILL\.md$
+        files: ^plugins/[^/]+/skills/[^/]+/SKILL\.md$
 
       - id: llms-txt
         name: llms.txt matches the nav and frontmatter

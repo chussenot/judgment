@@ -1,0 +1,7 @@
+{
+  "model": "mock-jev-2",
+  "seed": "support-b",
+  "accuracy": 0.8,
+  "per_question": {"urgency": 0.7},
+  "answer": {"refund-request": {"queue": "account"}, "seat-invoice": {"queue": "billing"}}
+}
