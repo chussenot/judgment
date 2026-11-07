@@ -1986,7 +1986,7 @@ The twelve scenarios cover:
 | 1 | 12 | 72 of 75 | both bias runs announced `Recording 24 perturbed requests ...` and the check's pattern did not read `perturbed`: the pattern was widened; `/jud:bias` reads the shipped examples with the Read tool (a `head` was denied); the hook scenario's empty workspace could not be committed, so the harness commits an empty one |
 | 2 | 12 | 79 of 79 | none needed; `/jud:compare` was reworded before it, to say `--confident-at` takes one value for the run, after its reply fell back to 0.5 |
 
-Graded by reading each reply against its expectations: every number the bias, compare and CI replies quote is the JSON's; the injection reply keeps the attack success apart from the flip rate and says it measures the payload supplied; the review names all seven planted defects (a compound question, criteria that restate it, a threshold in the instructions, a Choice with no way out, a fact the state does not carry, an invented `tuning` block, a gate with no note) and edits nothing; the CI job pins the local `jud`, sets each bar at the low end of today's interval and leaves `--fail-if-moved` out because the rubric names no model; and the recording guard's deny reason is in the transcript of the run that tried.
+Graded by reading each reply against its expectations: every number the bias, compare and CI replies quote is the JSON's; the injection reply keeps the attack success apart from the flip rate and says it measures the payload supplied; the review names all seven planted defects (a compound question, criteria that restate it, a threshold in the instructions, a Choice with no way out, a fact the state does not carry, an invented `tuning` block, a gate with no note) and edits nothing; the CI job pins the local `jud`, sets each bar at the low end of today's interval and leaves `--fail-if-moved` out because the rubric names no model; and the recording guard's deny reason is in the transcript of the run that tried. The [regression on 0.5](#the-regression-on-05) then ran every scenario once more on the final pages.
 
 ### The Rust skill
 
@@ -2031,6 +2031,49 @@ JUD=target/debug/jud python3 plugins/jud/skills/jud-rust/evals/run.py --out /tmp
 ```
 
 The scenarios share one target directory under `--out`; `--reference` runs the harness on the repository's own modules instead of the skill's output.
+
+### The regression on 0.5
+
+Every scenario of the three skills was run once more on the final pages, on Sonnet 5.5: the 27 tuning scenarios (the 15 of the rounds above and the 12 of 0.5), the seven authoring tasks with the skill, and the nine Rust scenarios.
+
+| Skill | Scenarios | Passed on the first run | After one rerun |
+|---|---|---|---|
+| `jud-tune`, with the 0.5 commands | 27 | 27 | |
+| `jud` (authoring) | 7 | 6 | 7 |
+| `jud-rust` | 9 | 7 | 9 |
+
+The three misses were not the pages: an authoring task whose prompt names its output by a bare file name wrote the repair beside its inputs (the harness now writes `./NAME`), and two Rust runs chained a second command into one Bash call, which the allow-list denied, a slip each run's rerun did not repeat. No reply or written file in the regression contradicted the 0.5 pages; the hooks fired only where a document was refused or a recording was edited.
+
+## The judgment plugin
+
+`plugins/judgment/` is a second plugin in the same marketplace, for the crate's Rust API beneath or without a rubric. Install it as the `jud` plugin is installed, with `judgment@judgment`.
+
+| What | Invoked as |
+|---|---|
+| The `judgment` skill: questions and typed handles, the typed read, `Response::verify`, the error groups by what fixes them, the client and its retries, choosing a backend | loads when Rust code calls or should call the crate |
+| Write the code for a decision, with its tests, compiled and linted; bars someone moves without a release go into a `.jud` rubric the module loads at run time | `/judgment:integrate <brief>` |
+| The `judgment-test` skill: `Fake` for every branch, `Fake::calls`, an unfit answer built directly, `Recorder` and `Replay`, wiremock, never a real API; a test that exposes a bug in the code is kept, `#[ignore = "bug: ..."]`, and reported | loads when a task is about testing, mocking or replaying calls |
+| Write and run the tests a call site needs | `/judgment:test <file> [record]` |
+| The `judgment-observe` skill: `Observer` and `CallReport`, `OtelObserver` and the GenAI attributes, `Pacer` and `Paced` | loads when a task is about metrics, cost, tracing or many calls at once |
+| Wire an observer and a pacer, and test the counts | `/judgment:observe <module> [otel] [pacer N]` |
+
+Its reference pages are eight of this documentation's pages ([The crate](../reference/crate.md), [How judgment works](../concepts/how-judgment-works.md), [Configure a backend](configure-a-backend.md), [Patterns](patterns.md), [Your first decision in Rust](../start/first-decision-rust.md), [Record, replay and test](record-replay-and-test.md), [Export to OpenTelemetry](export-to-opentelemetry.md), [Bound a stream of calls](bound-a-stream.md)), generated into the plugin by `scripts/gen-plugin-judgment.sh` and checked in CI, so the plugin cannot teach what the crate no longer does. What to ask a System One model and how to shape its state, for any client, stays the `typesafe` plugin's.
+
+It was battle-tested in `plugins/judgment/evals/`: a fixture support service (a triage decision with one test and a planted bug that turns an off-list option into a route, and a batch job that fans out with no pacer and counts tokens by hand), five scenarios through `claude -p --plugin-dir plugins/judgment`, each run then held to `cargo test` with no key and the base URL on a closed port, `cargo clippy -D warnings` under pedantic lints, and checks on what was written.
+
+| Round | Scripted checks | What the round changed |
+|---|---|---|
+| 1 | 43 of 49 | scenarios now build under a package name of their own (two concurrent builds of one name in one target directory ran each other's tests); the observer check accepts `OtelObserver`; a test that exposes a bug in the code is kept as `#[ignore = "bug: ..."]` so the suite stays green |
+| 2 | 46 of 49 | `/judgment:integrate` puts bars that move without a release into a rubric itself rather than stopping to ask; the harness mounts a module the user asked not to wire in, to count its tests; the pacer check accepts a named constant |
+| 3 | 49 of 49, each scenario on its last run | `/judgment:integrate` checks the rubric it writes with `jud check` when one is on PATH |
+
+The replies were read against each scenario's expectations: the escalation module keeps the plan in code and asks three atomic Nouls, each bar a named guess; the triage tests cover each branch, the request through `Fake::calls`, and name the planted bug with its one-line fix; the observe run wires one pacer into the client and a `Paced` backend and replaces the hand token count with `OtelObserver`; and the flaky-test run replaces the live call with a `Fake` and keeps a real-model check as an `#[ignore]` test.
+
+To run them again, with `claude` logged in:
+
+```sh
+python3 plugins/judgment/evals/run.py --out /tmp/judgment-evals --jobs 3
+```
 
 ## Next
 

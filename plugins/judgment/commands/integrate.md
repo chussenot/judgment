@@ -22,16 +22,27 @@ with the Write and Edit tools.
    goes in the state; each thing that needs judgment is one question. Say
    which is which, and what the caller must add to the state when a
    question's evidence is not there yet (then leave that question out).
-3. **Write the module**: the `options!` enums, a `questions()` that builds
+3. **Where the bars live.** When the brief says someone will move a bar
+   without a release (ops retunes it, a weekly review sets it), write the
+   questions and the policy as a `.jud` rubric (the `jud` plugin's
+   `/jud:rubric` rules; the crate's `jud` feature) and a module that
+   loads it at run time with `judgment::jud::Rubric::parse` and asks through
+   `Rubric::lower` and `Rubric::apply`, so a retune is a file edit. This
+   is the command's call to make, not a question to stop on: build it,
+   and say in the reply why the bars are in a file. Check the rubric with
+   `jud check` when a `jud` is on PATH (the `jud` plugin's
+   `skills/jud/scripts/jud.sh` finds one), and say when none was found.
+   Otherwise bars are named constants.
+4. **Write the module**: the `options!` enums, a `questions()` that builds
    them with their handles, one `async fn decide(backend: &impl SystemOne,
    state: &Value) -> judgment::Result<Decision>` (or the shape the
    project's code already has), every bar a named constant with a comment
    saying it is a guess until measured, a `match` that lists every
    variant, and the errors handled by group (step 6 of the skill).
-4. **Write the test** beside it, with `Fake`: one per branch the code has
+5. **Write the test** beside it, with `Fake`: one per branch the code has
    (each option, below each bar, a missing answer), as the testing skill
    says.
-5. **Verify**: `cargo test` and `cargo clippy --all-targets -- -D
+6. **Verify**: `cargo test` and `cargo clippy --all-targets -- -D
    warnings` in the user's crate when it has a lock file and the module is
    mounted; otherwise in a throwaway crate outside the project (the
    session's scratchpad or `/tmp/judgment-integrate-<module>/`, written
@@ -39,5 +50,5 @@ with the Write and Edit tools.
    or `judgment = "0.16"`, `serde_json`, `tokio` with `macros` and `rt`,
    and the user's `[lints]`, ending in an empty `[workspace]`), mounting
    the module with `#[path = "<absolute path>"]`. Fix until both pass.
-6. **Reply** as the skill's "Reply" says, and offer `/jud:rubric` when the
+7. **Reply** as the skill's "Reply" says, and offer `/jud:rubric` when the
    bars will be tuned by someone other than the code's author.

@@ -27,8 +27,11 @@ Never a test that calls a real API.
    say the command the user runs with a key, and that the directory is
    committed. Never run the `#[ignore]` test here.
 4. **Run** `cargo test` (the user's crate with a lock file; else a
-   throwaway crate outside the project, as `/judgment:integrate` step 5
+   throwaway crate outside the project, as `/judgment:integrate` step 6
    builds it) and `cargo clippy --all-targets -- -D warnings`. Fix the
-   tests until both pass; a failure that is the code's is reported, not
-   hidden.
+   tests until both pass. A test that fails because the code is wrong
+   (a bug the test exposes) is kept and marked `#[ignore = "bug: <what
+   the code does wrong>; remove once fixed"]`, so the suite stays green
+   and the bug stays visible; the reply names it as a finding with the
+   fix, and the code is changed only when the user asks.
 5. **Reply** as the skill's "Reply" says.

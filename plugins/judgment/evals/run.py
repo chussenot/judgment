@@ -57,7 +57,10 @@ def setup_workspace(ws, spec):
     shutil.copytree(APP, ws)
     manifest = os.path.join(ws, "Cargo.toml")
     with open(manifest, encoding="utf-8") as f:
-        text = f.read().replace("JUDGMENT_PATH", REPO)
+        # A package name of its own: scenarios share one target directory,
+        # and two concurrent builds of one name overwrite each other's binaries.
+        name = "app_" + re.sub(r"[^a-z0-9]", "_", os.path.basename(os.path.dirname(ws)))
+        text = f.read().replace("JUDGMENT_PATH", REPO).replace('name = "app"', f'name = "{name}"')
     with open(manifest, "w", encoding="utf-8") as f:
         f.write(text)
     for edit in spec.get("edit", []):
@@ -155,13 +158,29 @@ def run_one(ev, out_dir, model):
             check(f"{item['glob']} lacks /{r}/", paths and not re.search(r, text), "")
     # The crate builds, its tests pass with no key and no network, and it
     # is lint-clean under the fixture's pedantic lints.
+    # A module the user asked not to wire in is compiled in a copy of the
+    # workspace that mounts it, so its tests are counted and linted too.
+    crate = ws
+    if spec.get("mount"):
+        crate = os.path.join(base, "mounted")
+        shutil.rmtree(crate, ignore_errors=True)
+        shutil.copytree(ws, crate, ignore=shutil.ignore_patterns(".git", "target"))
+        main_rs = os.path.join(crate, "src", "main.rs")
+        with open(main_rs, encoding="utf-8") as f:
+            text = f.read()
+        # At the end, after the file's inner doc comment and its items; a
+        # module the run already declared is not declared twice.
+        mounts = "".join(f"\n#[allow(dead_code)]\nmod {m};\n" for m in spec["mount"]
+                         if not re.search(rf"^\s*(pub\s+)?mod\s+{m}\s*;", text, re.M))
+        with open(main_rs, "w", encoding="utf-8") as f:
+            f.write(text + mounts)
     if spec.get("cargo", True):
-        code, tail, full = cargo(["test", "--quiet"], ws, env)
-        passed = sum(int(m) for m in re.findall(r"test result: ok\. (\d+) passed", full))
+        code, tail, full = cargo(["test", "--quiet"], crate, env)
+        passed = sum(int(m) for m in re.findall(r"test result: \w+\. (\d+) passed", full))
         check("cargo test passes with no key and no network", code == 0, tail)
         if "min_tests" in spec:
             check(f"at least {spec['min_tests']} tests ran", passed >= spec["min_tests"], f"{passed} passed")
-        code, tail, _ = cargo(["clippy", "--quiet", "--all-targets", "--", "-D", "warnings"], ws, env)
+        code, tail, _ = cargo(["clippy", "--quiet", "--all-targets", "--", "-D", "warnings"], crate, env)
         check("cargo clippy -D warnings", code == 0, tail)
     if "skill_loaded" in spec:
         check(f"skill {spec['skill_loaded']} loaded", any(s and spec["skill_loaded"] in s for s in skills), ", ".join(map(str, skills)))

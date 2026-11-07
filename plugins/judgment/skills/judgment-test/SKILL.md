@@ -84,7 +84,10 @@ model moves. A live check is an `#[ignore]` test run by hand.
 6. **Run them**: `cargo test` in the user's crate when it has a lock file;
    otherwise in a throwaway crate outside the project that mounts the
    module with `#[path = "..."]`. Report the tests that ran and passed by
-   name. A test you did not run is not handed over.
+   name. A test you did not run is not handed over. A test that exposes a
+   bug in the code under test is kept, marked `#[ignore = "bug: ..."]`
+   with what the code does wrong, and reported as a finding with the fix:
+   a red suite hides every later failure behind the known one.
 
 ## Never
 

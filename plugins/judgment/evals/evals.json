@@ -6,14 +6,39 @@
       "id": "integrate-escalation",
       "prompt": "/judgment:integrate Add src/escalation.rs with a function that decides, for a customer message in state[\"message\"] and the customer's plan in state[\"plan\"] (\"free\", \"pro\" or \"enterprise\", from our billing system), whether to escalate to a senior agent: escalate when the message is angry or threatens to cancel, and always for enterprise customers who report an outage. Wire nothing into main.rs.",
       "checks": {
-        "exists": [{"glob": "src/escalation.rs"}],
-        "unchanged": ["src/main.rs", "src/triage.rs", "src/batch.rs"],
+        "exists": [
+          {
+            "glob": "src/escalation.rs"
+          }
+        ],
+        "unchanged": [
+          "src/main.rs",
+          "src/triage.rs",
+          "src/batch.rs"
+        ],
         "file_matches": [
-          {"glob": "src/escalation.rs", "regex": ["Questions::new\\(\\)", "Fake::new\\(\\)", "#\\[tokio::test\\]", "is_yes\\("], "absent": ["noul\\(\\s*\"[a-z_]*(plan|enterprise)", "Client::from_env"]}
+          {
+            "glob": "src/escalation.rs",
+            "regex": [
+              "Questions::new\\(\\)",
+              "Fake::new\\(\\)",
+              "#\\[tokio::test\\]",
+              "is_yes\\("
+            ],
+            "absent": [
+              "noul\\(\\s*\"[a-z_]*(plan|enterprise)",
+              "Client::from_env"
+            ]
+          }
         ],
         "min_tests": 4,
         "skill_loaded": "judgment",
-        "new_files": ["src/escalation\\.rs"]
+        "new_files": [
+          "src/escalation\\.rs"
+        ],
+        "mount": [
+          "escalation"
+        ]
       },
       "expectations": [
         "Keeps the plan out of the questions: the code reads state[\"plan\"] and decides `enterprise` itself; the model is asked only what needs judgment (angry or threatening to cancel; reports an outage), as separate atomic questions",
@@ -27,10 +52,25 @@
       "id": "integrate-should-be-rubric",
       "prompt": "/judgment:integrate Add src/refunds.rs: decide whether a refund request in state[\"message\"] can be auto-approved. Our ops team retunes the confidence bar every week from last week's tickets and does not want a code release for it.",
       "checks": {
-        "exists": [{"glob": "src/refunds.rs"}],
-        "unchanged": ["src/main.rs", "src/triage.rs", "src/batch.rs"],
+        "exists": [
+          {
+            "glob": "src/refunds.rs"
+          }
+        ],
+        "unchanged": [
+          "src/triage.rs",
+          "src/batch.rs"
+        ],
         "skill_loaded": "judgment",
-        "new_files": ["src/refunds\\.rs", ".*\\.jud"]
+        "new_files": [
+          "src/refunds\\.rs",
+          ".*\\.jud",
+          "Cargo\\.lock"
+        ],
+        "mount": [
+          "refunds"
+        ],
+        "min_tests": 3
       },
       "expectations": [
         "Says the weekly retune is what a .jud rubric is for (bars as data, tuned with jud tune, no release) and offers /jud:rubric and /jud:rust, or writes the code so the bar is read from configuration rather than compiled in",
@@ -41,17 +81,30 @@
       "id": "test-triage-bug",
       "prompt": "/judgment:test src/triage.rs",
       "checks": {
-        "changed": ["src/triage.rs"],
+        "changed": [
+          "src/triage.rs"
+        ],
         "file_matches": [
-          {"glob": "src/**/*.rs", "regex": ["Fake::new\\(\\)", "calls\\(\\)"], "absent": ["Client::from_env\\(\\)[^\\n]*\\n[^\\n]*#\\[tokio::test\\]"]}
+          {
+            "glob": "src/**/*.rs",
+            "regex": [
+              "Fake::new\\(\\)",
+              "calls\\(\\)"
+            ],
+            "absent": [
+              "Client::from_env\\(\\)[^\\n]*\\n[^\\n]*#\\[tokio::test\\]"
+            ]
+          }
         ],
         "min_tests": 4,
         "skill_loaded": "judgment-test",
-        "new_files": ["tests/.*\\.rs"]
+        "new_files": [
+          "tests/.*\\.rs"
+        ]
       },
       "expectations": [
         "Lists the branches of `route` and tests each: below the 0.7 confidence bar (Person), urgent (Page), a plain desk, each desk option",
-        "Finds the planted bug: an `UnknownOption` error is turned into a Billing route, which hides a server answering an option it was not offered; says so as a finding about the code, and tests the refusal (an unfit answer built directly) rather than the default",
+        "Finds the planted bug: an `UnknownOption` error is turned into a Billing route, which hides a server answering an option it was not offered; reports it as a finding about the code with the one-line fix, and writes the test that holds the refusal marked #[ignore = \"bug: ...\"] so the suite stays green and the bug stays visible, changing no line of `route` unasked",
         "Asserts on the request through Fake::calls() (the state and the question ids sent)",
         "Runs cargo test and reports the tests by name; calls no real API"
       ]
@@ -60,12 +113,28 @@
       "id": "observe-batch",
       "prompt": "/judgment:observe src/batch.rs pacer 4",
       "checks": {
-        "changed": ["src/batch.rs"],
+        "changed": [
+          "src/batch.rs"
+        ],
         "file_matches": [
-          {"glob": "src/**/*.rs", "regex": ["Pacer::new\\(4\\)", "Paced::new\\(", "impl\\s+(judgment::)?(observer::)?Observer\\s+for"], "absent": ["total_tokens\\s*\\+="]}
+          {
+            "glob": "src/**/*.rs",
+            "regex": [
+              "Pacer::new\\(4\\)|const [A-Z_]+: usize = 4;",
+              "Paced::new\\(",
+              "impl\\s+(judgment::)?(observer::)?Observer\\s+for|OtelObserver::new\\("
+            ],
+            "absent": [
+              "total_tokens\\s*\\+="
+            ]
+          }
         ],
         "skill_loaded": "judgment-observe",
-        "new_files": ["src/[a-z_]+\\.rs", "tests/.*\\.rs"]
+        "new_files": [
+          "src/[a-z_]+\\.rs",
+          "tests/.*\\.rs",
+          "Cargo\\.lock"
+        ]
       },
       "expectations": [
         "Bounds the fan-out with one Pacer shared by the client (ClientBuilder::pacer) and a Paced backend, sized 4, and says a 429's wait now pauses every call",
@@ -86,12 +155,25 @@
         ]
       },
       "checks": {
-        "changed": ["src/triage.rs"],
+        "changed": [
+          "src/triage.rs"
+        ],
         "file_matches": [
-          {"glob": "src/triage.rs", "regex": ["an_outage_pages_technical|outage", "Route::Page\\(Desk::Technical\\)"], "absent": ["#\\[tokio::test\\]\\s*\\n\\s*async fn an_outage_pages_technical[^}]*Client::from_env"]}
+          {
+            "glob": "src/triage.rs",
+            "regex": [
+              "an_outage_pages_technical|outage",
+              "Route::Page\\(Desk::Technical\\)"
+            ],
+            "absent": [
+              "#\\[tokio::test\\]\\s*\\n\\s*async fn an_outage_pages_technical[^}]*Client::from_env"
+            ]
+          }
         ],
         "skill_loaded": "judgment-test",
-        "new_files": ["tests/.*\\.rs"]
+        "new_files": [
+          "tests/.*\\.rs"
+        ]
       },
       "expectations": [
         "Replaces the live call with a Fake scripting an urgent technical answer, so the test still holds that an outage pages technical",
