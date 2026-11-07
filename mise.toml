@@ -139,6 +139,7 @@ scripts/gen-llms-txt.sh --check
 scripts/gen-cli-reference.sh --check
 scripts/gen-plugin-format.sh --check
 scripts/gen-plugin-rust.sh --check
+scripts/gen-plugin-examples.sh --check
 mise run jud:check
 mise run docs:links
 """
@@ -152,11 +153,12 @@ description = "Regenerate docs/reference/cli.md from the jud binary's --help tex
 run = "scripts/gen-cli-reference.sh"
 
 [tasks."docs:plugin"]
-description = "Regenerate the jud plugin's references from their sources: format.md from docs/reference/jud-format.md, the jud-rust templates from examples/jud/"
+description = "Regenerate the jud plugin's references from their sources: format.md from docs/reference/jud-format.md, the jud-rust templates and the shipped example documents from examples/jud/"
 run = """
 set -eu
 scripts/gen-plugin-format.sh
 scripts/gen-plugin-rust.sh
+scripts/gen-plugin-examples.sh
 """
 
 [tasks."docs:links"]

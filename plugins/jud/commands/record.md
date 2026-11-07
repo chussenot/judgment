@@ -34,8 +34,7 @@ tool.
    ask and the stale ones it would replace, the backend and model with the
    model's source, whether a key is set, and the time at the pace of the
    recordings already there. Take every count and name in the
-   announcement from it. A `jud` that refuses `--dry-run` predates it:
-   then count by hand as `references/record.md` says.
+   announcement from it.
 4. **Name what made recordings stale.** When the plan lists stale ones,
    find what changed: `git diff -- <rubric> <cases>` as written (no `-C`,
    no `cd`), or `git log -p -1 -- <rubric>` for a committed change. Name it

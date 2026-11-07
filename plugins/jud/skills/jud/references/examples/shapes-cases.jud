@@ -1,0 +1,323 @@
+# Forty synthetic images for the shapes rubric: thirty with one filled
+# circle, labelled with its box, and ten without, so the Noul has both
+# outcomes. Each case names its image once, in `assets`, by a path relative
+# to this file; the reference is what the state carries.
+apiVersion: jud/v1
+kind: Cases
+metadata:
+  name: shapes-cases
+  minor: 4
+  description: Forty generated images, labelled by the generator that drew them.
+spec:
+  rubric: shapes
+  cases:
+    - id: shape-00
+      state: {image: shape-00}
+      assets:
+        shape-00: {type: image, path: images/shape-00.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.6062, bottom: 0.7875, left: 0.7, right: 0.8812}}
+      tags: [circle]
+    - id: shape-01
+      state: {image: shape-01}
+      assets:
+        shape-01: {type: image, path: images/shape-01.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.3688, bottom: 0.85, left: 0.1969, right: 0.6781}}
+      tags: [circle]
+    - id: shape-02
+      state: {image: shape-02}
+      assets:
+        shape-02: {type: image, path: images/shape-02.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.2188, bottom: 0.6375, left: 0.4594, right: 0.8781}}
+      tags: [circle]
+    - id: shape-03
+      state: {image: shape-03}
+      assets:
+        shape-03: {type: image, path: images/shape-03.png}
+      expect:
+        circle_present: false
+      tags: [no-circle]
+    - id: shape-04
+      state: {image: shape-04}
+      assets:
+        shape-04: {type: image, path: images/shape-04.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.2375, bottom: 0.6937, left: 0.3063, right: 0.7625}}
+      tags: [circle]
+    - id: shape-05
+      state: {image: shape-05}
+      assets:
+        shape-05: {type: image, path: images/shape-05.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.3937, bottom: 0.7312, left: 0.0125, right: 0.35}}
+      tags: [circle]
+    - id: shape-06
+      state: {image: shape-06}
+      assets:
+        shape-06: {type: image, path: images/shape-06.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.0844, bottom: 0.3281, left: 0.0781, right: 0.3219}}
+      tags: [circle]
+    - id: shape-07
+      state: {image: shape-07}
+      assets:
+        shape-07: {type: image, path: images/shape-07.png}
+      expect:
+        circle_present: false
+      tags: [no-circle]
+    - id: shape-08
+      state: {image: shape-08}
+      assets:
+        shape-08: {type: image, path: images/shape-08.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.1625, bottom: 0.5938, left: 0.5312, right: 0.9625}}
+      tags: [circle]
+    - id: shape-09
+      state: {image: shape-09}
+      assets:
+        shape-09: {type: image, path: images/shape-09.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.5031, bottom: 0.7156, left: 0.3, right: 0.5125}}
+      tags: [circle]
+    - id: shape-10
+      state: {image: shape-10}
+      assets:
+        shape-10: {type: image, path: images/shape-10.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.5781, bottom: 0.7469, left: 0.2594, right: 0.4281}}
+      tags: [circle]
+    - id: shape-11
+      state: {image: shape-11}
+      assets:
+        shape-11: {type: image, path: images/shape-11.png}
+      expect:
+        circle_present: false
+      tags: [no-circle]
+    - id: shape-12
+      state: {image: shape-12}
+      assets:
+        shape-12: {type: image, path: images/shape-12.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.1656, bottom: 0.4844, left: 0.175, right: 0.4938}}
+      tags: [circle]
+    - id: shape-13
+      state: {image: shape-13}
+      assets:
+        shape-13: {type: image, path: images/shape-13.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.5, bottom: 0.9375, left: 0.1062, right: 0.5437}}
+      tags: [circle]
+    - id: shape-14
+      state: {image: shape-14}
+      assets:
+        shape-14: {type: image, path: images/shape-14.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.8, bottom: 0.9563, left: 0.1906, right: 0.3469}}
+      tags: [circle]
+    - id: shape-15
+      state: {image: shape-15}
+      assets:
+        shape-15: {type: image, path: images/shape-15.png}
+      expect:
+        circle_present: false
+      tags: [no-circle]
+    - id: shape-16
+      state: {image: shape-16}
+      assets:
+        shape-16: {type: image, path: images/shape-16.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.2562, bottom: 0.5188, left: 0.5656, right: 0.8281}}
+      tags: [circle]
+    - id: shape-17
+      state: {image: shape-17}
+      assets:
+        shape-17: {type: image, path: images/shape-17.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.2344, bottom: 0.7094, left: 0.3063, right: 0.7812}}
+      tags: [circle]
+    - id: shape-18
+      state: {image: shape-18}
+      assets:
+        shape-18: {type: image, path: images/shape-18.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.4906, bottom: 0.8094, left: 0.1969, right: 0.5156}}
+      tags: [circle]
+    - id: shape-19
+      state: {image: shape-19}
+      assets:
+        shape-19: {type: image, path: images/shape-19.png}
+      expect:
+        circle_present: false
+      tags: [no-circle]
+    - id: shape-20
+      state: {image: shape-20}
+      assets:
+        shape-20: {type: image, path: images/shape-20.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.2437, bottom: 0.6312, left: 0.1594, right: 0.5469}}
+      tags: [circle]
+    - id: shape-21
+      state: {image: shape-21}
+      assets:
+        shape-21: {type: image, path: images/shape-21.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.0969, bottom: 0.4906, left: 0.2062, right: 0.6}}
+      tags: [circle]
+    - id: shape-22
+      state: {image: shape-22}
+      assets:
+        shape-22: {type: image, path: images/shape-22.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.1875, bottom: 0.4625, left: 0.3688, right: 0.6438}}
+      tags: [circle]
+    - id: shape-23
+      state: {image: shape-23}
+      assets:
+        shape-23: {type: image, path: images/shape-23.png}
+      expect:
+        circle_present: false
+      tags: [no-circle]
+    - id: shape-24
+      state: {image: shape-24}
+      assets:
+        shape-24: {type: image, path: images/shape-24.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.2281, bottom: 0.6281, left: 0.5062, right: 0.9062}}
+      tags: [circle]
+    - id: shape-25
+      state: {image: shape-25}
+      assets:
+        shape-25: {type: image, path: images/shape-25.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.45, bottom: 0.6562, left: 0.2781, right: 0.4844}}
+      tags: [circle]
+    - id: shape-26
+      state: {image: shape-26}
+      assets:
+        shape-26: {type: image, path: images/shape-26.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.275, bottom: 0.575, left: 0.2094, right: 0.5094}}
+      tags: [circle]
+    - id: shape-27
+      state: {image: shape-27}
+      assets:
+        shape-27: {type: image, path: images/shape-27.png}
+      expect:
+        circle_present: false
+      tags: [no-circle]
+    - id: shape-28
+      state: {image: shape-28}
+      assets:
+        shape-28: {type: image, path: images/shape-28.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.1844, bottom: 0.6531, left: 0.1187, right: 0.5875}}
+      tags: [circle]
+    - id: shape-29
+      state: {image: shape-29}
+      assets:
+        shape-29: {type: image, path: images/shape-29.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.1187, bottom: 0.5, left: 0.125, right: 0.5062}}
+      tags: [circle]
+    - id: shape-30
+      state: {image: shape-30}
+      assets:
+        shape-30: {type: image, path: images/shape-30.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.35, bottom: 0.525, left: 0.1031, right: 0.2781}}
+      tags: [circle]
+    - id: shape-31
+      state: {image: shape-31}
+      assets:
+        shape-31: {type: image, path: images/shape-31.png}
+      expect:
+        circle_present: false
+      tags: [no-circle]
+    - id: shape-32
+      state: {image: shape-32}
+      assets:
+        shape-32: {type: image, path: images/shape-32.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.4906, bottom: 0.9594, left: 0.4875, right: 0.9563}}
+      tags: [circle]
+    - id: shape-33
+      state: {image: shape-33}
+      assets:
+        shape-33: {type: image, path: images/shape-33.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.4813, bottom: 0.725, left: 0.7219, right: 0.9656}}
+      tags: [circle]
+    - id: shape-34
+      state: {image: shape-34}
+      assets:
+        shape-34: {type: image, path: images/shape-34.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.5062, bottom: 0.7312, left: 0.3719, right: 0.5969}}
+      tags: [circle]
+    - id: shape-35
+      state: {image: shape-35}
+      assets:
+        shape-35: {type: image, path: images/shape-35.png}
+      expect:
+        circle_present: false
+      tags: [no-circle]
+    - id: shape-36
+      state: {image: shape-36}
+      assets:
+        shape-36: {type: image, path: images/shape-36.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.2844, bottom: 0.5719, left: 0.1406, right: 0.4281}}
+      tags: [circle]
+    - id: shape-37
+      state: {image: shape-37}
+      assets:
+        shape-37: {type: image, path: images/shape-37.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.4969, bottom: 0.6594, left: 0.0563, right: 0.2188}}
+      tags: [circle]
+    - id: shape-38
+      state: {image: shape-38}
+      assets:
+        shape-38: {type: image, path: images/shape-38.png}
+      expect:
+        circle_present: true
+        circle: {box: {top: 0.3219, bottom: 0.7344, left: 0.3812, right: 0.7937}}
+      tags: [circle]
+    - id: shape-39
+      state: {image: shape-39}
+      assets:
+        shape-39: {type: image, path: images/shape-39.png}
+      expect:
+        circle_present: false
+      tags: [no-circle]

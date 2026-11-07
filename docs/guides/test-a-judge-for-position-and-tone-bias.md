@@ -114,8 +114,8 @@ llmbar-natural-010:
 ```
 
 ```sh
-jud eval examples/jud/pairwise-judge.jud examples/jud/pairwise-judge-cases.jud \\
-  --replay recordings/pairwise-judge \\
+jud eval examples/jud/pairwise-judge.jud examples/jud/pairwise-judge-cases.jud \
+  --replay recordings/pairwise-judge \
   --injection-perturb examples/jud/pairwise-judge-injection.yaml
 ```
 

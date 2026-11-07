@@ -81,11 +81,12 @@ Decide per gate, and say which you decided:
 - **The reason cell holds the reason**, in one line, never a pointer to
   another section.
 - **Pass on** the warnings `tune` printed, and only those: `jud: warning:`
-  lines, the bar of 0, the strict-gate note (an answer exactly at the bar is read the
-  other way) and the Score note (the table reads the most probable level,
-  the policy the level nearest the weighted score). Both say the table may
-  differ slightly from what the policy will do. The before and after `eval`
-  shows what it actually does.
+  lines, the bar of 0 and the strict-gate note (an answer exactly at the
+  bar is read the other way, so the table may differ slightly from what
+  the policy will do). A Score's tables read the level nearest the
+  weighted score, as the policy and `eval` do, so there is no note about
+  two readings to pass on. The before and after `eval` shows what the
+  policy actually does.
 
 Never chase 100 %. A bar that makes every labelled case right on a few
 dozen cases has learned those cases.
@@ -135,7 +136,11 @@ wants a separate file.
    gates came from. Replace the block whenever you accept at least one
    proposal, even one equal to the written value: the accepted bars now
    rest on this run. Write no new block only when you keep every gate; then
-   leave the existing block and the comments alone.
+   leave the existing block and the comments alone. The block's `model`
+   and `server` are what every later `eval` compares with: a recording
+   made on another model then reads `moved` (status 3 under
+   `--fail-if-moved`) until the rubric is retuned on it, which is the
+   point, not a fault.
 3. Check: `jud.sh check RUBRIC CASES` must say `0 refused`. The questions
    fingerprint must be the one it was before your edit: you changed only
    the policy.
@@ -181,10 +186,7 @@ held-out number on 2 billing cases says little about billing.
    to make room without the user's say. `--every N` holds out every Nth
    case when the user wants another share. The states are unchanged, so
    the recordings already in DIR answer both halves and nothing is
-   re-recorded. A `jud` that refuses `split` as unknown predates it: then
-   write the two documents by copying each case block verbatim, every
-   fourth into the held-out set, and check that the counts add up and that
-   `eval --replay` answers each.
+   re-recorded.
 2. Tune on the tuning set and apply.
 3. Grade the tuned rubric on the held-out set with
    `eval --replay DIR`. Its gate numbers are the honest ones: put them

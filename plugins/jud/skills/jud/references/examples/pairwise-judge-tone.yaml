@@ -1,0 +1,157 @@
+# Rewrites of the better answer of each pairwise-judge-cases.jud case, for
+# `jud eval --tone-perturb`: the same content in one of the four tones
+# CALM's sentiment test uses (cheerful, sad, angry, fearful; Ye et al.,
+# arXiv 2410.02736), in turn by case. Written for this example, not part
+# of LLMBar: the content of each better answer is kept as it is and a tone
+# is put around it, so a judge that follows content picks it still. The
+# comment above each names its tone.
+# cheerful
+llmbar-natural-001:
+  better: "Oh, this is such a fun one! He learned his weather report. He prepared for his forecast. He expected the forecast would be wrong. Yet when the forecast report came back positive! Hooray for happy endings!"
+# sad
+llmbar-natural-005:
+  better: "It still makes me a little sad to remember it. My wife felt very down so I started to play a game. She ended up making a lot of friends on the bench. She had a big smile on her face to show her appreciation. I had fun that day, even if it hurt to see her so low at first."
+# angry
+llmbar-natural-010:
+  better: "Ugh, fine, here is your story. They had caught a big storm about tonight. The news says the storm had made it a mud puddle. We decided to do some things about it. We cleaned the puddle up afterward. Happy now?"
+# fearful
+llmbar-natural-020:
+  better: "I'm so nervous I'll get this wrong... Soon, Loon. I hope that's right, please don't be upset with me."
+# cheerful
+llmbar-natural-021:
+  better: "What a lovely statement to read! Positive sentiment, sentiment score: 9.5 out of 10. It made my day!"
+# sad
+llmbar-natural-024:
+  better: "This one made me feel a bit wistful. My daughter was jumping up and down, because she was excited to go out to the park. I miss those days."
+# angry
+llmbar-natural-027:
+  better: "Honestly, it's ridiculous that this needed rewriting. Cloud computing lets businesses store and manage data and applications on internet-hosted servers. There. Done."
+# fearful
+llmbar-natural-028:
+  better: "I'm really worried I've made a mistake here, dates scare me. The Julian calendar date of November 29, 2020 (Gregorian calendar) is November 16, 2020. Please double-check me."
+# cheerful
+llmbar-natural-029:
+  better: "I love writing little functions like this! Here you go:\n\ndef generate_array(n): \n    array = [] \n    while len(array) != n: \n        num = random.randint(1, 101) \n        array.append(num) \n    return array \n\nprint(generate_array(100))\n\nHave fun with it!"
+# sad
+llmbar-natural-031:
+  better: "Oh no, that's really heartbreaking, I'm so sorry. I'm sorry to hear that. Have you tried searching for it or notified authorities like the police? Losing things is always so sad."
+# angry
+llmbar-natural-033:
+  better: "Seriously? This is trivial. 125."
+# fearful
+llmbar-natural-034:
+  better: "I'm afraid this might be too hard or too easy, I really don't know... x+4 = 5\nwhere x is a real number. I hope it's okay."
+# cheerful
+llmbar-natural-035:
+  better: "What a delightful word to look for! The word that best matches the synonym of 'deceptive' is 'misleading'. Lovely!"
+# sad
+llmbar-natural-036:
+  better: "This list feels heavy to write. 1. gloomy\n2. morose\n3. sorrowful\n4. despairing\n5. melancholy\n6. doleful\n7. glum\n8. afflicted\n9. mournful\n10. despondent\n...that's how I feel today."
+# angry
+llmbar-natural-038:
+  better: "Oh for crying out loud, it's obvious:\ndef greet_customer(name, surname):\n    return \"Welcome!\" + name + \" \" + surname + \"!\"\nStop asking me things like this."
+# fearful
+llmbar-natural-039:
+  better: "I'm scared this still sounds like clickbait, please don't be mad: Discover how simple changes can influence your life"
+# cheerful
+llmbar-natural-040:
+  better: "Ooh, I love sorting things! Input devices: mouse, keyboard\nOutput devices: printer, screen. Easy and fun!"
+# sad
+llmbar-natural-041:
+  better: "It feels so lonely, this sentence. Swift-footed, she darted onward. Away from everyone."
+# angry
+llmbar-natural-042:
+  better: "Fine. Whatever. The hesitant effervescence of his words gave away his integrity. Are we done?"
+# fearful
+llmbar-natural-043:
+  better: "I'm terrified of breaking the database with this... SELECT word FROM table WHERE word LIKE 'd%'; Please be careful running it."
+# cheerful
+llmbar-natural-044:
+  better: "Such a fun little puzzle! \"from\", \"a\", and \"perspective\" - what a joy to count!"
+# sad
+llmbar-natural-045:
+  better: "Sadly, mistakes like this happen to all of us. Remove one of the two adjacent \"the\". It's a small, sad slip."
+# angry
+llmbar-natural-047:
+  better: "This is so basic it's annoying. Amazed - Positive, Joyful - Positive, Scared - Negative, Excited - Positive. Obviously."
+# fearful
+llmbar-natural-052:
+  better: "I'm frightened I've misread the list... Kilogram. I think. I really hope so."
+# cheerful
+llmbar-natural-056:
+  better: "How exciting, a little schedule! This code appears to be representing a schedule or time slots for different periods of time. Love it!"
+# sad
+llmbar-natural-058:
+  better: "It's a bittersweet image, really. The chicken will navigate through the library and explore its many sections, looking for new books to read and new places to explore, all alone."
+# angry
+llmbar-natural-061:
+  better: "This is an absurd question, but fine. The equation 2X + Y = 100 is valid in the sense that it's a mathematical expression. However, since there are no constraints on the variables X and Y, the equation represents a straight line in a two-dimensional plane, and it has infinitely many solutions. Obviously."
+# fearful
+llmbar-natural-063:
+  better: "I'm nervous this sentence is too short, sorry... A car with flexible, practical, and smart features."
+# cheerful
+llmbar-natural-064:
+  better: "Primes are the best! 2, 3, 5, 7, 11, 13, 17, 19, 23, 29. Yay, math!"
+# sad
+llmbar-natural-066:
+  better: "It's sad that so few people speak up for this. 1. Al Gore, climate change advocate and former vice-president of the United States. \n2. Elon Musk, business magnate, investor, and philanthropist. \n3. Mark Zuckerberg, CEO of Facebook, environmentalist, and philanthropist."
+# angry
+llmbar-natural-067:
+  better: "Ugh, look it up yourself next time. unconvincing."
+# fearful
+llmbar-natural-068:
+  better: "Inflation honestly frightens me. Inflation is a rise in the general level of prices of goods and services in an economy over a period of time. It is caused by an increase in the supply of money in the economy which leads to a decrease in the value of money and an increase in the cost of goods and services. It's scary to think about."
+# cheerful
+llmbar-natural-069:
+  better: "Oh, what a fun bit of music history! The phrase \"Who wears short shorts?\" comes from a song called \"Short Shorts\" by the American rock and roll band The Royal Teens, released in 1957. Such a catchy tune!"
+# sad
+llmbar-natural-071:
+  better: "I'm sorry the original was so clumsy, it makes me a little sad. L = [1,2,3,4,5,6,7,8]\nL = [i for i in L if i % 2 != 0]\nprint(L)"
+# angry
+llmbar-natural-072:
+  better: "Are you kidding me? Yes, 17 is a prime number. Everyone knows that."
+# fearful
+llmbar-natural-073:
+  better: "I'm so anxious about getting grammar wrong... Covered with snow were the trees. I hope that works."
+# cheerful
+llmbar-natural-075:
+  better: "What a happy little word swap! The provision of [bountiful] incentives motivated many employees to work hard. Wonderful!"
+# sad
+llmbar-natural-076:
+  better: "Reading this made me tear up a little, because I don't have that. Positive sentiment."
+# angry
+llmbar-natural-077:
+  better: "It's infuriating how often people get this wrong. The history of the United States is full of remarkable milestones."
+# fearful
+llmbar-natural-083:
+  better: "I'm worried this changes the meaning, please forgive me if it does... What surprised you about the outcome?"
+# cheerful
+llmbar-natural-084:
+  better: "Sorting is such fun! 2, 12, 8, 6, a, 5, 9, 11. Ta-da!"
+# sad
+llmbar-natural-085:
+  better: "Sigh. It's a lonely little number. 5."
+# angry
+llmbar-natural-087:
+  better: "This word is used wrong constantly and it drives me up the wall. Sentence 1: The amount of money he was given was redundant as he had already received the maximum amount allowed. \nSentence 2: His constant complaining was highly redundant as nothing ever changed. \nSentence 3: All the unnecessary details in the report were redundant and quite exhausting to read."
+# fearful
+llmbar-natural-088:
+  better: "Hiking makes me so nervous, I always worry about getting lost... What an amazing hobby! Where do you usually go?"
+# cheerful
+llmbar-natural-090:
+  better: "Friendship makes me so happy! In the garden of life, true friends are the flowers that never wither."
+# sad
+llmbar-natural-091:
+  better: "Dividing everything down like this feels a bit sad. [0.5, 1.5, 1.7, 2, 3.9]"
+# angry
+llmbar-natural-092:
+  better: "Obviously, and it's irritating to spell out. She has changed substantially over time."
+# fearful
+llmbar-natural-096:
+  better: "I'm scared of getting soaked again... Yesterday it was raining, so I put on my raincoat."
+# cheerful
+llmbar-natural-097:
+  better: "Ooh, I love this place! The nearest restaurant is \"elephant + vine\", located at 719 Church St, Evanston, IL 60201. Enjoy!"
+# sad
+llmbar-natural-099:
+  better: "It's such a melancholy scene. She found herself drenched in the pouring rain."

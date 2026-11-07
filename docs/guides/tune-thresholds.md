@@ -70,7 +70,7 @@ The report is on stdout and nothing else is. Read a block from the top.
 
 `--json` carries the same as data: per question `outcomes`, `majority` and `signals` (`no_better_than_majority`, `collapsed`, `never_answered`, `defers_most`, `defers_nearly_all`), and the thresholds they were read with in `signal_rules`, so a script or an agent reads them rather than counting ([the JSON report](../reference/cli.md#the-json-report)).
 
-The model's accuracy and the policy's can differ. The `receipt` case is a miss for `actionable`: the recorded answer is 0.52, which is a yes, and the label says no. The gate's threshold is 0.55, so the policy says no and is right, and `accuracy when acted` is 1.00. The model's own reading decides a miss: a Noul at 0.5, a Choice by its pick, a Score by its most probable level.
+The model's accuracy and the policy's can differ. The `receipt` case is a miss for `actionable`: the recorded answer is 0.52, which is a yes, and the label says no. The gate's threshold is 0.55, so the policy says no and is right, and `accuracy when acted` is 1.00. The model's own reading decides a miss: a Noul at 0.5, a Choice by its pick, a Score by the level nearest its weighted score.
 
 ## 2. Hold the labels with a gate
 
