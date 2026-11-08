@@ -42,6 +42,12 @@ pre_bump_hooks = [
     "cargo test --all-features",
     "scripts/check-frontmatter.sh docs",
     "scripts/gen-llms-txt.sh --check",
+    # The plugins' generated files, which CI checks too: a page the bump
+    # rewrote is a source of some of them.
+    "scripts/gen-plugin-format.sh --check",
+    "scripts/gen-plugin-rust.sh --check",
+    "scripts/gen-plugin-examples.sh --check",
+    "scripts/gen-plugin-judgment.sh --check",
     "cargo package --list --allow-dirty",
 ]
 

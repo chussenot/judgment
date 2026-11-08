@@ -13,7 +13,7 @@ cargo new first-decision && cd first-decision
 
 ```toml
 [dependencies]
-judgment = { version = "0.16", features = ["jud"] }
+judgment = { version = "0.17", features = ["jud"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt"] }
 ```
