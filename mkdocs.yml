@@ -68,6 +68,7 @@ nav:
       - Research:
           - System One client libraries: project/research/system-one-client-libraries.md
           - Compatible servers and models: project/research/compatible-servers-and-models.md
+          - The official TypeSafe SDKs' releases, read for wire changes: project/research/typesafe-sdk-releases.md
           - Compared with the other Rust clients: project/research/client-comparison.md
           - System One models on Google Cloud: project/research/system-one-on-google-cloud.md
           - StartLux-Decision v1.1 27B AutoThink: project/research/startlux-decision-27b-autothink.md
