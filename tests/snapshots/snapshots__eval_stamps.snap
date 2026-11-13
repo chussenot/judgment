@@ -3,6 +3,24 @@ source: tests/snapshots.rs
 expression: report
 ---
 {
+  "calibration": {
+    "buckets": [
+      {
+        "bucket": "noul:2",
+        "ece_probability": 0.03950000000000012,
+        "gap": -0.03950000000000031,
+        "labelled": 40,
+        "options": "2",
+        "primitive": "noul",
+        "questions": [
+          "stamp_present"
+        ]
+      }
+    ],
+    "ece_probability": 0.03950000000000012,
+    "ece_probability_macro": 0.03950000000000012,
+    "labelled": 40
+  },
   "cases": {
     "count": 40,
     "fingerprint": "sha256:471b7ae2709272937c5926304df1c7bcf8f366f68bd38cd1ee7a5434d49babfe",

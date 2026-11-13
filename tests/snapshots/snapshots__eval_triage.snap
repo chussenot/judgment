@@ -3,6 +3,46 @@ source: tests/snapshots.rs
 expression: report
 ---
 {
+  "calibration": {
+    "buckets": [
+      {
+        "bucket": "noul:2",
+        "ece_probability": 0.14428571428571435,
+        "gap": 0.004285714285714337,
+        "labelled": 7,
+        "options": "2",
+        "primitive": "noul",
+        "questions": [
+          "actionable"
+        ]
+      },
+      {
+        "bucket": "choice:3-5",
+        "ece_probability": 0.23428571428571426,
+        "gap": -0.07714285714285707,
+        "labelled": 7,
+        "options": "3-5",
+        "primitive": "choice",
+        "questions": [
+          "desk"
+        ]
+      },
+      {
+        "bucket": "score:3-5",
+        "ece_probability": 0.15,
+        "gap": -0.1499999999999999,
+        "labelled": 6,
+        "options": "3-5",
+        "primitive": "score",
+        "questions": [
+          "tone"
+        ]
+      }
+    ],
+    "ece_probability": 0.1775,
+    "ece_probability_macro": 0.1761904761904762,
+    "labelled": 20
+  },
   "cases": {
     "count": 7,
     "fingerprint": "sha256:d752d8066b2067b299512b2d3153ca0aeaed0284589dc5624039aed1abd895b6",
