@@ -10,7 +10,7 @@
 //! ```
 //!
 //! `JUDGMENT_LIVE_PROFILE` names the server (`typesafe`, `laya`, `autojev`,
-//! `openrouter`, `liquid`, `ollaya` or `generic`, the default): where servers differ, a status code or a
+//! `openrouter`, `liquid`, `ollaya`, `gs1` or `generic`, the default): where servers differ, a status code or a
 //! limit, the behaviour is asserted for the server it was observed on and
 //! printed for the others ([`Profile`]). Every body a test reads raw is
 //! checked against the vendored OpenAPI document, and the answer is printed
@@ -116,6 +116,14 @@ enum Profile {
     /// each model has a context of its own that bounds the options and the
     /// state.
     Ollaya,
+    /// BIGAI's GS1 runtime (`gs1 serve`), on `http://127.0.0.1:8000` under
+    /// the alias `GS1` by default (`mise run live:gs1`). Its model card
+    /// (<https://huggingface.co/bigai/GS1-4B>) names `POST /v1/systemone`
+    /// and `GET /v1/models`, the three text primitives, and a Score as the
+    /// expected zero-based level with its level probabilities, which
+    /// [`a_score_is_the_expected_zero_based_level`] asserts. Nothing of it
+    /// has been observed yet, so every other difference is printed.
+    Gs1,
     /// Any other server: outcomes are printed, and only what the crate needs
     /// of every server is asserted.
     Generic,
@@ -131,13 +139,14 @@ enum Limit {
 }
 
 impl Profile {
-    const NAMES: [(&'static str, Self); 7] = [
+    const NAMES: [(&'static str, Self); 8] = [
         ("typesafe", Self::Typesafe),
         ("laya", Self::Laya),
         ("autojev", Self::Autojev),
         ("openrouter", Self::OpenRouter),
         ("liquid", Self::Liquid),
         ("ollaya", Self::Ollaya),
+        ("gs1", Self::Gs1),
         ("generic", Self::Generic),
     ];
 
@@ -213,7 +222,12 @@ impl Profile {
         match self {
             Self::Liquid => Some("does not exist"),
             Self::Ollaya => Some("MODEL_NOT_FOUND"),
-            Self::Typesafe | Self::Laya | Self::Autojev | Self::OpenRouter | Self::Generic => None,
+            Self::Typesafe
+            | Self::Laya
+            | Self::Autojev
+            | Self::OpenRouter
+            | Self::Gs1
+            | Self::Generic => None,
         }
     }
 
@@ -225,7 +239,7 @@ impl Profile {
             | (Self::Autojev, Limit::Options256 | Limit::Levels11 | Limit::Levels1)
             | (Self::Liquid | Self::Ollaya, _) => Some(422),
             (Self::Typesafe | Self::Laya | Self::Autojev, _) => Some(200),
-            (Self::OpenRouter | Self::Generic, _) => None,
+            (Self::OpenRouter | Self::Gs1 | Self::Generic, _) => None,
         }
     }
 
@@ -235,7 +249,7 @@ impl Profile {
             Self::Typesafe => Some(400),
             Self::Laya | Self::Liquid => Some(422),
             Self::Autojev | Self::Ollaya => Some(200),
-            Self::OpenRouter | Self::Generic => None,
+            Self::OpenRouter | Self::Gs1 | Self::Generic => None,
         }
     }
 
@@ -247,7 +261,7 @@ impl Profile {
             Self::Typesafe => Some(400),
             Self::Laya => Some(413),
             Self::Liquid | Self::Ollaya => Some(422),
-            Self::Autojev | Self::OpenRouter | Self::Generic => None,
+            Self::Autojev | Self::OpenRouter | Self::Gs1 | Self::Generic => None,
         }
     }
 }
@@ -451,6 +465,75 @@ async fn the_three_primitives_round_trip_through_typed_handles() {
         severity.value,
         severity.nearest_label()
     );
+}
+
+/// A Score's `score` is the expected zero-based level: each level's index,
+/// counted from zero, weighted by its probability. TypeSafe's reference
+/// says so (the "probability-weighted expected score", each level "its
+/// position from zero") and GS1's model card says the same ("the expected
+/// zero-based rubric level and its full probability distribution"). The
+/// crate reads `Score::value` and `Score::probabilities` on that
+/// definition: `nearest_level` rounds the value to an index, and the
+/// probabilities are in level order.
+///
+/// The card's own example is asked. The value, the distribution and their
+/// difference are printed for every server, and asserted on the profiles
+/// whose documentation states the definition. A failure carries the request
+/// and the answer as they went over the wire: that pair is the record to
+/// file under `docs/project/verification/`, and the fix is not in
+/// `Score`'s reading until a maintainer has seen it.
+#[tokio::test]
+#[ignore = "needs a live server: JUDGMENT_LIVE_BASE_URL"]
+async fn a_score_is_the_expected_zero_based_level() {
+    // The server rounds the score and each probability: on 2026-11-13 the
+    // hosted API answered 1.98 beside a distribution whose weighted sum is
+    // 1.99. Rounding to two decimals can move the two apart by 0.02 on
+    // three levels; a one-based reading would be off by 1.
+    const TOLERANCE: f64 = 0.025;
+    let state = "A customer was charged twice and requests an urgent refund.";
+    let mut q = Questions::new();
+    let urgency = q
+        .score(
+            "urgency",
+            "Rate the urgency of handling this ticket.",
+            ["Routine", "Soon", "Immediate"],
+        )
+        .unwrap();
+    let model = requested_model();
+    let response = client().system_one(&state, &q).await.unwrap();
+    let request = serde_json::to_string(&Request::new(&state, &model, &q)).unwrap();
+    let answer = serde_json::to_string(&response.answers["urgency"]).unwrap();
+    let read = response.get(&urgency).unwrap();
+
+    assert_eq!(
+        read.probabilities.len(),
+        3,
+        "one probability per level: sent {request}, answered {answer}"
+    );
+    let total = sum(read.probabilities.iter().map(|p| p.value()));
+    assert!(
+        (total - 1.0).abs() < 0.01,
+        "the level distribution sums to 1 within rounding: sent {request}, answered {answer}"
+    );
+    let expected = sum((0u8..)
+        .zip(&read.probabilities)
+        .map(|(i, p)| f64::from(i) * p.value()));
+    let off = (read.value - expected).abs();
+    eprintln!(
+        "score: {} said {:.4}; the expected zero-based level of its distribution is {expected:.4} (off by {off:.4}); nearest level {} ({})",
+        response.model,
+        read.value,
+        read.nearest_level(),
+        read.nearest_label()
+    );
+    if matches!(*PROFILE, Profile::Typesafe | Profile::Gs1) {
+        assert!(
+            off <= TOLERANCE,
+            "the score is not the expected zero-based level of the distribution beside it \
+             ({:.4} against {expected:.4}): sent {request}, answered {answer}",
+            read.value
+        );
+    }
 }
 
 #[tokio::test]

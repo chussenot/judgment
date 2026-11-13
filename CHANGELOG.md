@@ -6,6 +6,22 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `mise run live:gs1` runs the ignored live tests against a local GS1
+  server, BIGAI's `gs1 serve` (<https://huggingface.co/bigai/GS1-4B>), on
+  `GS1_URL` (default `http://127.0.0.1:8000`) under the alias `GS1` (or
+  `GS1_MODEL`), with a new `gs1` profile; when no server answers
+  `GET /v1/models` the task says so and skips with status 0. A new live
+  test, `a_score_is_the_expected_zero_based_level`, asks the card's own
+  Score example and holds the answer's `score` to the weighted sum of its
+  level probabilities, levels counted from zero, on the `gs1` and
+  `typesafe` profiles, printing it on the others; a failure carries the
+  request and the answer as sent. The hosted API met it on 2026-11-13
+  (1.98 beside 1.99, each rounded to two decimals). No GS1 server was
+  run: the runtime's repository answered 404 that day. `Score`'s reading
+  is unchanged.
+
 ### Security
 
 - The lockfile takes `rmcp` 3.10.0, past RUSTSEC-2026-0462 (before 3.9.0
