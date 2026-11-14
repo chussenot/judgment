@@ -2,7 +2,7 @@
 title: Compatible servers and models
 description: The servers and models that speak the System One wire as of 2026-10-06, hosted and local, what the Jev Decision Index 0.2.1 says about how close the open ones are to Jev, what each one's limits and confidence semantics mean for a consumer of this crate, and which the crate has been run against or should be next; and OpenAI's Decisions API, generally available on 2026-10-22, which answers the same three kinds of question on a wire of its own; and, added on 2026-11-04, how much each model's answers move when its options are reordered, Liquid's open weights, llama.cpp's server, and the models of the autumn papers that have no server row yet.
 status: current
-last_reviewed: 2026-11-04
+last_reviewed: 2026-11-13
 tags: [research, judgment, typesafe, jev, compatibility, calibration, ollama, laya, cloudflare, clef, openai]
 ---
 
@@ -147,6 +147,20 @@ Read on 2026-10-25 from OpenAI's developer documentation: the [Decisions guide](
 - **The policy does not carry over.** `confidence` is not documented, so a bar tuned on Jev means nothing until it is refit on labelled cases. That is the advice OpenAI's own guide gives, and the work `jud tune` does, with `jud eval --against` to compare the answers first.
 
 None of this is a reason to build the adapter before someone asks for it. The `.jud` format is untouched: its questions are the System One wire's shape ([decision 0014](../decisions/0014-a-file-format-for-rubrics-cases-and-recordings.md)). The word decisions says nothing about the wire: Perplexity's Decisions API takes TypeSafe's primitives, Liquid serves `/v1/systemone` under a `/decisions` path, OpenRouter serves the same body at `/api/alpha/decisions`, and OpenAI's Decisions API speaks a wire of its own.
+
+## A specification for the wire: Open System One
+
+Read on 2026-11-13 from [the repository](https://github.com/opensystemoneorg/opensystemone) (`README.md`, `SPEC.md`, `CHANGELOG.md`, and the releases `openapi/2026-11-07.json` and `openapi/2026-11-12.json`) and [its site](https://opensystemone.org). Open System One is an OpenAPI description of the wire, published apart from any vendor by Bkper, whose AI gateway is the one implementation its site lists. It is a week old: the first dated release is 2026-11-07, three more followed by 2026-11-12, one of them marked breaking (the path is no longer fixed at `/v1/systemone`; a client takes the endpoint URL as configuration). It says of itself that "a valid TypeSafe request is a valid SystemOneRequest", and that a release must not change TypeSafe's request or answer shapes.
+
+It adds two things to TypeSafe's wire. Nine more core question types (`text`, `number`, `date`, `time`, `datetime`, `duration`, `list`, `estimate`, `forecast`), which no server this crate has been run against serves. And **extension types**: a type outside the core list is named `owner:type`, a lowercase owner, a colon and a lowercase name (`^[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9_-]*$`, `acme:rank` say), and the specification constrains nothing in such a question or its answer but that name. A server refuses a type it does not serve with a 400, `unsupported_question_type`; a client "SHOULD tolerate" an answer type it does not know and "MAY skip" it.
+
+What the crate does with an extension type today, pinned by two tests and designed by neither (`an_open_system_one_extension_answer_is_kept_whole_and_refused_under_an_asked_question` in `tests/client.rs`, `an_open_system_one_extension_type_is_refused_in_a_rubric_and_kept_in_a_recording` in `tests/jud.rs`):
+
+- **It cannot ask one.** `Questions` builds the four kinds, `questions` is a reserved body field, and a rubric whose question has another `type` is refused by the schema and by the reader, with the type as written, the four kinds and the line.
+- **It keeps one it is sent.** An extension answer under an id nobody asked decodes as `Answer::Unknown` with the owner's fields as they came, and stays whole through the client, a `Recorder`'s file, a `Replay` of it and a `Recording` document, which writes `type: acme:rank` back and reads it back equal.
+- **It refuses one under an asked question**, by the type's name, as it refuses an answer of any other kind (`Error::AnswerTypeMismatch`, not retried, nothing recorded). That is stricter than the specification's "MAY skip", and deliberate: a response is held to the questions sent.
+
+So nothing is dropped without a word, and nothing here needs deciding until a server the crate is used with serves an extension type: asking one would be a new kind of question, a `.jud` minor and a decision record.
 
 ## Open questions
 
