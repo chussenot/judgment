@@ -1228,6 +1228,38 @@ async fn a_body_that_does_not_decode_keeps_the_request_id() {
 }
 
 #[tokio::test]
+async fn a_bad_answer_in_a_2xx_is_named_by_its_question() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header(REQUEST_ID_HEADER, "req_bad")
+                .set_body_json(json!({
+                    "model": "jev-1.14.0",
+                    "answers": {
+                        "ok": { "type": "noul", "noul": 0.9 },
+                        "urgency": { "type": "score", "score": 1.0 },
+                    },
+                    "usage": { "input_tokens": 1, "output_tokens": 1 },
+                })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let err = client(&server, fast_retries(3))
+        .system_one(&"s", &one_noul())
+        .await
+        .unwrap_err();
+    assert!(matches!(&err, Error::Decode { .. }), "{err:?}");
+    let message = err.to_string();
+    assert!(
+        message.starts_with(r#"could not decode API response: answer "urgency": missing field `"#),
+        "{message}"
+    );
+    assert!(message.ends_with(" [request_id req_bad]"), "{message}");
+}
+
+#[tokio::test]
 async fn the_models_list_carries_the_request_id_on_errors() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))

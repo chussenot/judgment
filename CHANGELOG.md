@@ -22,6 +22,19 @@ All notable changes to the `judgment` crate. The format follows
   run: the runtime's repository answered 404 that day. `Score`'s reading
   is unchanged.
 
+### Changed
+
+- A decode error names the answer it failed on. `Error::Decode`'s message
+  for a response with one bad answer was serde's field and a column in the
+  body (``missing field `legend` at line 1 column 4032``), which says
+  nothing of which of forty questions it was. It now leads with the
+  question id (``answer "urgency": missing field `legend` at line 1 column
+  4032``), in a client's error, on `jud`'s stderr and for a recording that
+  does not read. The id is the server's text, so it is escaped and
+  cut to 64 characters as its other strings are. A body that is not JSON,
+  or whose `answers` is not an object, keeps serde's own words; the
+  variant and its fields do not change.
+
 ### Fixed
 
 - The `jud` plugin's two hooks say only what is true. The recording guard
