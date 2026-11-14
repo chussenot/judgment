@@ -22,6 +22,20 @@ All notable changes to the `judgment` crate. The format follows
   run: the runtime's repository answered 404 that day. `Score`'s reading
   is unchanged.
 
+### Fixed
+
+- The `jud` plugin's two hooks say only what is true. The recording guard
+  escapes the path in its deny: a quote or a backslash in it made the JSON
+  unreadable, so the host saw no decision and the edit of the recording went
+  through, and without `jq` such a path was not read at all. The post-write
+  hook no longer builds `jud` from a checkout when none is on `PATH` (it
+  says nothing, as documented), and reports a refusal only when `jud check`
+  counted one: a build that failed inside the hook's 20 seconds, or a `jud`
+  that failed for a reason of its own, was handed to the agent as "refused
+  the document" with the compiler's errors. `jud.sh` reads `JUD_NO_BUILD`
+  for it. `tests/plugin_hooks.rs` runs both hooks as processes, the first
+  tests either has.
+
 ### Security
 
 - The lockfile takes `rmcp` 3.10.0, past RUSTSEC-2026-0462 (before 3.9.0

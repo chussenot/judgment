@@ -334,6 +334,12 @@ required-features = ["cli"]
 name = "jud_perturb"
 required-features = ["cli"]
 
+# The jud plugin's two hooks as processes, with the crate's own `jud` as the
+# reader the post-write hook calls.
+[[test]]
+name = "plugin_hooks"
+required-features = ["cli"]
+
 # `jud split` (decision 0022).
 [[test]]
 name = "jud_split"
