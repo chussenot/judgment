@@ -68,11 +68,41 @@ fn the_rust_tutorial_holds_its_three_examples_in_order() {
     );
 }
 
-/// Every dependency line a page shows pins the minor Cargo.toml declares.
+/// Every `judgment = "X.Y"` and `judgment = { version = "X.Y"` in `text`,
+/// at the start of a line or inside a sentence: the line and the version.
+fn dependency_pins(text: &str) -> Vec<(&str, &str)> {
+    let mut pins = Vec::new();
+    for line in text.lines() {
+        let mut rest = line;
+        while let Some(at) = rest.find("judgment = ") {
+            rest = &rest[at + "judgment = ".len()..];
+            let quoted = rest.strip_prefix("{ version = ").unwrap_or(rest);
+            let version = quoted
+                .strip_prefix('"')
+                .and_then(|after| after.split('"').next())
+                .unwrap_or_default();
+            let numbers: Vec<&str> = version.split('.').collect();
+            let is_a_minor = numbers.len() == 2
+                && numbers
+                    .iter()
+                    .all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+            if is_a_minor {
+                pins.push((line, version));
+            }
+        }
+    }
+    pins
+}
+
+/// Every dependency line shown anywhere pins the minor Cargo.toml declares:
+/// in the README, in a page under `docs/` and in a page of a plugin, where a
+/// skill hands the line to an agent that writes it into a user's manifest.
+/// `scripts/release-bump.sh` rewrites the same lines in the same places;
+/// keep the two together.
 #[test]
 fn the_dependency_line_names_this_minor() {
     let minor = format!(
-        "\"{}.{}\"",
+        "{}.{}",
         env!("CARGO_PKG_VERSION_MAJOR"),
         env!("CARGO_PKG_VERSION_MINOR")
     );
@@ -82,22 +112,41 @@ fn the_dependency_line_names_this_minor() {
         "docs/reference/crate.md",
         "docs/start/first-decision-rust.md",
     ] {
-        let text = page(path);
-        let lines: Vec<&str> = text
-            .lines()
-            .filter(|l| l.trim_start().starts_with("judgment = "))
-            .collect();
         assert!(
-            !lines.is_empty(),
+            !dependency_pins(&page(path)).is_empty(),
             "{path} shows a `judgment = ` dependency line"
         );
-        for line in lines {
-            assert!(
-                line.contains(&minor),
-                "{path} pins another version than {minor}: {line}"
-            );
+    }
+    let mut pages = markdown_pages();
+    // The package ships without `plugins/` (`exclude` in Cargo.toml).
+    let plugins = Path::new(ROOT).join("plugins");
+    if plugins.is_dir() {
+        markdown_under(&plugins, &mut pages);
+    }
+    let mut stale = Vec::new();
+    for path in pages {
+        let text = std::fs::read_to_string(&path).unwrap();
+        let rel = path.strip_prefix(ROOT).unwrap().display().to_string();
+        for (line, version) in dependency_pins(&text) {
+            if version != minor {
+                stale.push(format!("{rel}: {}", line.trim()));
+            }
         }
     }
+    assert!(
+        stale.is_empty(),
+        "these pages pin another version than {minor}:\n{}",
+        stale.join("\n")
+    );
+}
+
+#[test]
+fn a_dependency_pin_is_found_wherever_a_line_holds_it() {
+    let text = "judgment = \"0.17\"\n   judgment = { version = \"0.14\", features = [\"jud\"] }\n\
+                or `judgment = \"0.16\"`, `serde_json`\njudgment = \"X.Y\"\njudgment = { path = \"..\" }\n\
+                judgment = \"0.17.1\"";
+    let versions: Vec<&str> = dependency_pins(text).into_iter().map(|(_, v)| v).collect();
+    assert_eq!(versions, ["0.17", "0.14", "0.16"]);
 }
 
 /// Every `<!-- file: PATH -->` comment before a fence names a file whose
@@ -136,19 +185,21 @@ fn every_document_on_a_page_is_the_file_it_names() {
 }
 
 fn markdown_pages() -> Vec<PathBuf> {
-    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-        for entry in std::fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                walk(&path, out);
-            } else if path.extension().is_some_and(|e| e == "md") {
-                out.push(path);
-            }
+    let mut out = vec![Path::new(ROOT).join("README.md")];
+    markdown_under(&Path::new(ROOT).join("docs"), &mut out);
+    out
+}
+
+/// Every `.md` file under `dir`, added to `out`.
+fn markdown_under(dir: &Path, out: &mut Vec<PathBuf>) {
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            markdown_under(&path, out);
+        } else if path.extension().is_some_and(|e| e == "md") {
+            out.push(path);
         }
     }
-    let mut out = vec![Path::new(ROOT).join("README.md")];
-    walk(&Path::new(ROOT).join("docs"), &mut out);
-    out
 }
 
 /// The fence after `<!-- transcript: LABEL -->` on a page.

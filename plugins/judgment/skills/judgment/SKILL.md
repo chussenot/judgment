@@ -64,8 +64,12 @@ thresholds someone will want to move without a release.
      outside 2 to 10 levels, an empty or duplicate id, before anything is
      sent.
 4. **Pick the backend.** `judgment::Client::from_env()?` reads
-   `TYPESAFE_API_KEY` and `TYPESAFE_BASE_URL`; `Client::builder()` sets
-   the key, base URL, model, timeout, `RetryPolicy`, observer and pacer.
+   `TYPESAFE_API_KEY` and nothing else, and calls the hosted API: the
+   library does not read `TYPESAFE_BASE_URL` (the `jud` command does), so
+   in an environment set up for another server it would send that
+   server's key to TypeSafe. For any server but the hosted API, read the
+   URL yourself and pass it: `Client::builder().base_url(url)`, which
+   also sets the key, model, timeout, `RetryPolicy`, observer and pacer.
    `references/configure-a-backend.md` says how to point it at the hosted
    API, OpenRouter, Liquid, Ollama, laya-serve or Clef, and what differs
    between them (whose `confidence` means what, question limits, which

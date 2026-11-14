@@ -19,7 +19,7 @@ workflow.
 | Test | Backend | Why |
 |---|---|---|
 | Every branch of the code that reads an answer | `Fake` | Scripted answers, checked against the questions exactly as a server's are: a `Fake` cannot answer an option the question does not offer, so a test cannot pass on an answer production would refuse. |
-| The request the code sends (questions, state, options, images) | `Fake::calls()` | Every call the fake received, to assert on. |
+| The request the code sends (the state, the model, the question ids in order, each image's digest) | `Fake::calls()` | Every call the fake received, to assert on. A `Call` holds no question's text and no Choice's options: assert those on the `Questions` the code builds, before the call. |
 | What a real model answered, replayed in CI | `Recorder` once with a key, then `Replay` | A recording is keyed by the request's fingerprint (the state, the questions, each image's digest): a request nobody recorded fails, never guesses, so a changed prompt cannot pass on an old answer. |
 | Code that drives the `Client` itself (its retry handling, a fallback on `RateLimited`, a timeout) | the real `Client` against wiremock | The status, the headers and the body a server sends; `Client::builder().base_url(server.uri())`. |
 

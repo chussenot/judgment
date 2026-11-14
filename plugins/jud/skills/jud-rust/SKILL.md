@@ -173,15 +173,17 @@ the template:
    `async` and returns a `Result`. The program needs, in `Cargo.toml`:
 
    ```toml
-   judgment = { version = "0.14", features = ["jud"] }
+   judgment = { version = "0.17", features = ["jud"] }
    serde = { version = "1", features = ["derive"] }
    serde_json = "1"
    tokio = { version = "1", features = ["macros", "rt"] }  # or the program's runtime
    ```
 
-   0.14 is the first version with a Box question and images; a module
-   without either builds from 0.11 on, and takes the crate's line the
-   program already has. The default `http` feature gives `judgment::Client`. A program that only
+   The line names the crate's current minor, the one the reference
+   modules are compiled against; in 0.x a line that names a minor takes
+   only that minor. A program that already has a `judgment` line keeps
+   it: a Box question and images need 0.14 or later, a module without
+   either builds from 0.11 on. The default `http` feature gives `judgment::Client`. A program that only
    replays or uses `Fake` can turn it off; when the program's `judgment`
    line turns default features off, say that the example's `Client` needs
    `http`. Add `mod <module>;` to `main.rs` or `lib.rs` only when asked;
