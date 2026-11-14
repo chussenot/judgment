@@ -10,7 +10,7 @@
 //! ```
 //!
 //! `JUDGMENT_LIVE_PROFILE` names the server (`typesafe`, `laya`, `autojev`,
-//! `openrouter`, `liquid`, `ollaya` or `generic`, the default): where servers differ, a status code or a
+//! `openrouter`, `liquid`, `ollaya`, `vercel` or `generic`, the default): where servers differ, a status code or a
 //! limit, the behaviour is asserted for the server it was observed on and
 //! printed for the others ([`Profile`]). Every body a test reads raw is
 //! checked against the vendored OpenAPI document, and the answer is printed
@@ -116,6 +116,14 @@ enum Profile {
     /// each model has a context of its own that bounds the options and the
     /// state.
     Ollaya,
+    /// Vercel AI Gateway's TypeSafe-compatible API, base URL
+    /// `https://ai-gateway.vercel.sh/typesafe`, with Google's
+    /// `google/gemini-decision-1` by default (`mise run live:vercel`). Its
+    /// documentation gives this route text and image inputs; nothing of it
+    /// has been observed yet, so every difference is printed and only what
+    /// every server owes is asserted, as on [`Profile::Generic`]. A run's
+    /// findings are pinned here.
+    Vercel,
     /// Any other server: outcomes are printed, and only what the crate needs
     /// of every server is asserted.
     Generic,
@@ -131,22 +139,24 @@ enum Limit {
 }
 
 impl Profile {
-    const NAMES: [(&'static str, Self); 7] = [
+    const NAMES: [(&'static str, Self); 8] = [
         ("typesafe", Self::Typesafe),
         ("laya", Self::Laya),
         ("autojev", Self::Autojev),
         ("openrouter", Self::OpenRouter),
         ("liquid", Self::Liquid),
         ("ollaya", Self::Ollaya),
+        ("vercel", Self::Vercel),
         ("generic", Self::Generic),
     ];
 
     /// The hosts whose calls are billed, so that a run against one without
     /// a profile stops before it asks, and the profile each takes.
-    const BILLED: [(&'static str, &'static str); 3] = [
+    const BILLED: [(&'static str, &'static str); 4] = [
         ("api.typesafe.ai", "typesafe"),
         ("openrouter.ai", "openrouter"),
         ("api.liquid.ai", "liquid"),
+        ("ai-gateway.vercel.sh", "vercel"),
     ];
 
     /// `JUDGMENT_LIVE_PROFILE`, or [`Profile::Generic`] when it is unset,
@@ -213,7 +223,12 @@ impl Profile {
         match self {
             Self::Liquid => Some("does not exist"),
             Self::Ollaya => Some("MODEL_NOT_FOUND"),
-            Self::Typesafe | Self::Laya | Self::Autojev | Self::OpenRouter | Self::Generic => None,
+            Self::Typesafe
+            | Self::Laya
+            | Self::Autojev
+            | Self::OpenRouter
+            | Self::Vercel
+            | Self::Generic => None,
         }
     }
 
@@ -225,7 +240,7 @@ impl Profile {
             | (Self::Autojev, Limit::Options256 | Limit::Levels11 | Limit::Levels1)
             | (Self::Liquid | Self::Ollaya, _) => Some(422),
             (Self::Typesafe | Self::Laya | Self::Autojev, _) => Some(200),
-            (Self::OpenRouter | Self::Generic, _) => None,
+            (Self::OpenRouter | Self::Vercel | Self::Generic, _) => None,
         }
     }
 
@@ -235,7 +250,7 @@ impl Profile {
             Self::Typesafe => Some(400),
             Self::Laya | Self::Liquid => Some(422),
             Self::Autojev | Self::Ollaya => Some(200),
-            Self::OpenRouter | Self::Generic => None,
+            Self::OpenRouter | Self::Vercel | Self::Generic => None,
         }
     }
 
@@ -247,7 +262,7 @@ impl Profile {
             Self::Typesafe => Some(400),
             Self::Laya => Some(413),
             Self::Liquid | Self::Ollaya => Some(422),
-            Self::Autojev | Self::OpenRouter | Self::Generic => None,
+            Self::Autojev | Self::OpenRouter | Self::Vercel | Self::Generic => None,
         }
     }
 }

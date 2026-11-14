@@ -2,7 +2,7 @@
 title: Configure a backend
 description: How to point the jud command, the examples and the crate's client at the hosted TypeSafe API, at Jev through OpenRouter, at Liquid's decision models, at Ollama on your machine, at laya-serve, at Clef on Workers AI, at any other server that speaks the wire, or at a model on Google Cloud; and what each local server does differently from the hosted API.
 status: current
-last_reviewed: 2026-10-18
+last_reviewed: 2026-11-13
 tags: [judgment, jud, configuration, typesafe, openrouter, liquid, ollama, laya, clef, cloudflare, google-cloud, how-to]
 ---
 
@@ -71,6 +71,25 @@ What differs from the hosted API, from live runs on both models ([Against Liquid
 - **Cost.** Every response carries `usage.cost` in US dollars, read into `Usage::cost`.
 
 `mise run live:liquid` runs the live tests against it with `LIQUID_API_KEY` from `.env`, `LIQUID_MODEL=d1-ultra` for the other model.
+
+## Gemini Decision 1 through Vercel AI Gateway
+
+Vercel AI Gateway serves Google's Gemini Decision 1 behind TypeSafe's wire since 2026-11-11: its TypeSafe-compatible API is `POST https://ai-gateway.vercel.sh/typesafe/v1/systemone`, so the base URL is `https://ai-gateway.vercel.sh/typesafe`, the model is `google/gemini-decision-1`, and the key is an AI Gateway key.
+
+```sh
+export TYPESAFE_BASE_URL=https://ai-gateway.vercel.sh/typesafe
+export TYPESAFE_API_KEY=...  # an AI Gateway key (Vercel's AI_GATEWAY_API_KEY), not a TypeSafe one
+jud rubric.jud < state.json  # with `model: google/gemini-decision-1` in the configuration file
+```
+
+What Vercel documents, in [its announcement](https://vercel.com/changelog/gemini-decision-1-now-available-on-ai-gateway) and on [the page for the route](https://vercel.com/docs/ai-gateway/sdks-and-apis/typesafe), both read on 2026-11-13; no live run has confirmed any of it yet:
+
+- **Inputs.** This route takes text and images. The model also reads PDF documents, audio and video, but only through Vercel's AI SDK, not over this wire.
+- **Questions.** Vercel's examples ask a Noul and a Choice. Whether a Score or a Box is answered on this route is not stated: ask one before a rubric relies on it.
+- **Limits and prices.** Vercel bills a request by its tokens at the model's rates, which are on its models page. The crate holds none of them, and none of the model's limits: it checks its own bounds before a call and reports what the server refuses.
+- **Another wire beside it.** The gateway also serves `POST /v1/decisions`, OpenAI's Decisions shape, which is a different body ([Compatible servers and models](../project/research/compatible-servers-and-models.md)); the base URL above is the one that takes this crate's requests.
+
+`mise run live:vercel` runs the live tests against it with `AI_GATEWAY_API_KEY` from `.env`, `AI_GATEWAY_MODEL` for another model the gateway serves on this route; no run is recorded yet.
 
 ## Ollama on your machine
 
