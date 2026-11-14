@@ -8,6 +8,17 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Fixed
 
+- The `jud` plugin's two hooks say only what is true. The recording guard
+  escapes the path in its deny: a quote or a backslash in it made the JSON
+  unreadable, so the host saw no decision and the edit of the recording went
+  through, and without `jq` such a path was not read at all. The post-write
+  hook no longer builds `jud` from a checkout when none is on `PATH` (it
+  says nothing, as documented), and reports a refusal only when `jud check`
+  counted one: a build that failed inside the hook's 20 seconds, or a `jud`
+  that failed for a reason of its own, was handed to the agent as "refused
+  the document" with the compiler's errors. `jud.sh` reads `JUD_NO_BUILD`
+  for it. `tests/plugin_hooks.rs` runs both hooks as processes, the first
+  tests either has.
 - Three pages showed a `judgment = ` line for another minor than the
   crate's. The image guide's line for the `multipart` feature named 0.13,
   which does not have the feature (it came in 0.14), so the line as copied
