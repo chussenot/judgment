@@ -1797,6 +1797,110 @@ async fn an_unknown_kind_under_an_asked_question_fails_the_call_and_is_not_recor
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Open System One (<https://github.com/opensystemoneorg/opensystemone>,
+/// first released on 2026-11-07) names a type outside its core list
+/// `owner:type`, `acme:rank` say, and constrains nothing in such a question
+/// or its answer but that name. What the client does with one today, pinned
+/// here and not designed here:
+///
+/// * It cannot ask one. [`Questions`] builds the four kinds, and `questions`
+///   is a reserved body field, so an extra field cannot carry one either.
+/// * An extension answer under an id nobody asked is kept whole, the colon
+///   and the owner's fields included: through the client, into a
+///   [`Recorder`]'s file, and out of a [`Replay`] of that file.
+/// * Under an asked question it fails the call by the type's name, as an
+///   answer of any other kind does, on the first attempt, and nothing is
+///   recorded.
+#[tokio::test]
+async fn an_open_system_one_extension_answer_is_kept_whole_and_refused_under_an_asked_question() {
+    let extension = json!({
+        "type": "acme:rank",
+        "ranking": ["b", "a"],
+        "scores": { "a": 0.2, "b": 0.8 }
+    });
+    let asked_one = CallOptions::default()
+        .extra(
+            "questions",
+            json!({ "rank": { "type": "acme:rank", "instructions": "Rank the answers." } }),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&asked_one, Error::ReservedField(name) if name == "questions"),
+        "{asked_one:?}"
+    );
+
+    let dir = std::env::temp_dir().join(format!(
+        "judgment-an_open_system_one_extension_answer-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    let kept = dir.join("kept");
+    let refused = dir.join("refused");
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "gateway-1",
+            "answers": { "x": { "type": "noul", "noul": 0.75 }, "rank": extension },
+            "usage": { "input_tokens": 3, "output_tokens": 0 }
+        })))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let state = json!("s");
+
+    // Nobody asked `rank`: the answer is kept.
+    let q = one_noul();
+    let answered = Recorder::new(client(&server, fast_retries(2)), &kept)
+        .answer(&state, "gateway-1", &q)
+        .await
+        .unwrap();
+    let rank = &answered.answers["rank"];
+    assert!(matches!(rank, Answer::Unknown(_)), "{rank:?}");
+    assert_eq!(rank.kind(), "acme:rank");
+    assert_eq!(serde_json::to_value(rank).unwrap(), extension);
+    let file = std::fs::read_dir(&kept)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .next()
+        .unwrap();
+    let recorded: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap();
+    assert_eq!(recorded["response"]["answers"]["rank"], extension);
+    let replayed = Replay::open(&kept)
+        .unwrap()
+        .answer(&state, "gateway-1", &q)
+        .await
+        .unwrap();
+    assert_eq!(replayed.answers, answered.answers);
+
+    // `rank` was asked, as a Noul: the call fails once, by name.
+    let mut q = one_noul();
+    q.noul("rank", "?", None).unwrap();
+    let err = Recorder::new(client(&server, fast_retries(2)), &refused)
+        .answer(&state, "gateway-1", &q)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            Error::AnswerTypeMismatch { id, expected: "noul", actual, .. }
+                if id == "rank" && actual == "acme:rank"
+        ),
+        "{err:?}"
+    );
+    assert!(err.is_unfit());
+    assert_eq!(
+        err.to_string(),
+        "answer \"rank\" is a acme:rank but a noul was requested"
+    );
+    assert_eq!(
+        std::fs::read_dir(&refused).map_or(0, Iterator::count),
+        0,
+        "nothing is recorded"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A choice over [`Department`] and a four-level Score, and the body of a
 /// response that answers both as asked.
 fn choice_and_score() -> (Questions, serde_json::Value) {
