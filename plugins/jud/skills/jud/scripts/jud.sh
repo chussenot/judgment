@@ -37,6 +37,12 @@ if command -v jud >/dev/null 2>&1; then
   fi
   exec jud "$@"
 fi
+# A caller with seconds to spare (the plugin's post-write hook) sets
+# JUD_NO_BUILD: no `jud` on PATH is then the answer, never a build.
+if [ -n "${JUD_NO_BUILD:-}" ]; then
+  echo "jud.sh: no jud on PATH" >&2
+  exit 2
+fi
 here=$(cd "$(dirname "$0")" && pwd)
 for root in "${JUDGMENT_DIR:-}" "${CLAUDE_PROJECT_DIR:-}" "$here/../../../../.." "$PWD"; do
   [ -n "$root" ] || continue
