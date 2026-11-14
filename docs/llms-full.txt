@@ -7479,9 +7479,9 @@ Found while checking what `judgment` lacks. Each was read from source. The first
 1. **The recording guard fails open on some paths.** `plugins/jud/hooks/guard-recording.sh` writes the file path into its deny JSON unescaped, so a quote or a backslash in the path makes the decision unreadable and the edit goes through. No test runs either hook script.
 2. **The post-write hook can report a compiler's errors as a refused document.** With no `jud` on `PATH` it falls through to `cargo run` inside a hook the host stops at 20 seconds, and any output with `error` lines is reported as "refused the document".
 3. **A non-finite number in the state is sent as `null`**, with no error on either side. TypeSafe's request rules refuse one, and its Python SDK sends it as a string since 0.7.4.
-4. **Two plugin pages say what the crate does not do.** The `judgment` skill says `Client::from_env()` reads `TYPESAFE_BASE_URL`; it reads the key only, so code written from the skill in an OpenRouter environment sends that key to the hosted API. The test skill says `Fake::calls()` shows the questions and options; a `Call` holds question ids. And `/judgment:integrate` pins `judgment = "0.16"`, a line the release script does not cover.
+4. **Two plugin pages say what the crate does not do.** The `judgment` skill says `Client::from_env()` reads `TYPESAFE_BASE_URL`; it reads the key only, so code written from the skill in an OpenRouter environment sends that key to the hosted API. The test skill says `Fake::calls()` shows the questions and options; a `Call` holds question ids. And three pages pin an old `judgment`, lines the release script does not cover: `/judgment:integrate` 0.16, the `jud-rust` skill 0.14, and the image guide 0.13 for a feature that came in 0.14.
 5. **`jud RUBRIC` and `jud mcp` send a request with no questions** when every `when` fails for a state, where `jud record`, `eval` and `tune` refuse it before any call with status 2.
-6. **An error's `kind` never reads a nested `error.code`**, though one verified server's envelope has one.
+6. **An error's `kind` never reads a nested `error.code`.** One verified server's envelope has the field, null in what it sent. The Open System One specification puts its three standard reasons there (`unsupported_question_type`, `unsupported_parameter`, `refused`), beside an `error.type` that is always `invalid_request_error`, so a caller of such a server cannot tell a refusal from a bad request.
 7. **A decode error does not name the answer it failed on**: serde's line and column, no question id.
 8. **A transport failure's message omits its cause**, in the library's text and on `jud`'s stderr.
 9. **"The key is quoted by no error" holds only while no server echoes it**: a 400, 402, 403, 404 or 5xx body is quoted, and no test has a server echo the key.
@@ -7496,13 +7496,15 @@ Found while checking what `judgment` lacks. Each was read from source. The first
 
 Ranked by what a user of `judgment` gains. **SMALL** fits the field watch's rules; **ASK** would change public API, the command's behaviour or output, the format, a dependency or the scope, or needs more than half a day, so it is a question for the maintainer and not a change.
 
+Rows 5 and 13 were first labelled SMALL. Each was checked against its source again before any code was written, and each turned out to need a decision, for the reason its row gives. Rows 1, 4 and 6 were implemented, each in a pull request of its own.
+
 | # | Opportunity | Evidence | Lens | Effort | Label |
 |---|---|---|---|---|---|
 | 1 | Harden the `jud` plugin's two hooks and test them as processes: escape the path in the guard's JSON; never build inside the post-write hook | `iu2u` (hooks tested as processes, a decided answer inside the host timeout); items 1 and 2 above | plugins | 3 h | SMALL |
 | 2 | Refuse a request with no questions in `jud RUBRIC` and `jud mcp`, as the case commands do | `system2`, `jevlin`, `openkind-core` refuse it before the call; item 5 | jud | 1 h | ASK: an exit status changes |
 | 3 | Check the state before sending: non-finite numbers, nesting past 64 levels, a scalar state | TypeSafe's request rules; `typesafe-system-one` and `system2` refuse a scalar state; item 3 | crate, jud | 6 to 8 h | ASK: a call that went out is refused |
 | 4 | Name the question in a decode error | `typesafe-system-one`, `sc-decision-schema` (a dotted path); item 7 | crate, jud | 2 h | SMALL |
-| 5 | Read a nested `error.code` as the error's kind | `system-one-client`; one verified server's envelope; item 6 | crate | 1 h | SMALL |
+| 5 | Read a nested `error.code` as the error's kind | `system-one-client`; the Open System One specification; item 6 | crate | 1 h | ASK: the envelope that has a string `code` has a `type` too, so the code must win over it, which changes what `kind` holds |
 | 6 | Correct the plugin pages and hold the pinned version to the crate's | all five other clients read `TYPESAFE_BASE_URL` in the library; item 4 | plugins | 1 h | SMALL |
 | 7 | Reach the server the host was configured with: an exact endpoint, and a client with no key | `jev`, `jev-driver`, `system-one-client`, `openkind-client`, `allama-systemone`, `polyc-judgment-systemone`, `ontomark-jev`, `agentscope-extensions-judge` | crate, jud | 6 h | ASK: new builder methods and a configuration key |
 | 8 | A `Fake` that can fail and answer differently on the next call; an error's group as a value | `typesafe-client`, `agentscope-extensions-judge`, `ontomark-jev`, `polyc-judgment-systemone` | crate, plugins | 5 h | ASK: new public items |
@@ -7510,7 +7512,7 @@ Ranked by what a user of `judgment` gains. **SMALL** fits the field watch's rule
 | 10 | Tell the calling agent how to read a verdict: MCP server instructions, one sentence per tool | `iu2u` | plugins | 1 to 2 h | ASK: changes what `jud mcp` returns |
 | 11 | Paired counts and a sign test under `jud eval --against` | `cev-server`'s paired gate | jud | 3 to 4 h | ASK: new `--json` keys |
 | 12 | A transport failure that says why | `llm-wires`, `systemone`; item 8 | crate, jud | 1 to 2 h | SMALL, and open as bead `judgment-7yf` |
-| 13 | Probe the recordings directory before the first call | `system2`; a paid answer is lost to an unwritable directory | crate, jud | 1 to 2 h | SMALL |
+| 13 | Probe the recordings directory before the first call | `system2`; a paid answer is lost to an unwritable directory | crate, jud | 1 to 2 h | ASK: an exit status changes, from 1 after a paid call to 2 before any |
 | 14 | Redact the client's own key from quoted server text | `gaise-provider-typesafe`, `sc-decision-systemone`, `polyc-judgment-systemone`; item 9 | crate | 2 h | ASK: an option of the open decision `judgment-bsz.21.11` |
 | 15 | Warn when a question refers to something the state does not have | `jev-driver` | crate, jud, plugins | 4 h | ASK: a new function and a new line of output |
 | 16 | A documented path for a host with its own transport: a guide, a `wasm32` check, then the body type outside `http` | `yoagent-workers`, `allama-systemone`, `ontomark-jev`, `systemone-core`; item 10 | crate | 3 h, then over half a day | SMALL for the guide and the check, ASK for the API |
