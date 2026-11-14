@@ -188,7 +188,10 @@ pub enum Error {
     /// The body (or a recording) was not the JSON shape the API documents:
     /// the API changed, the base URL points at something else, or the file
     /// is corrupt. Decoding tolerates what the API may add
-    /// ([`crate::answer`]), so only a known shape broken lands here. A 2xx
+    /// ([`crate::answer`]), so only a known shape broken lands here. A bad
+    /// answer is named by its question id before what serde says of it
+    /// (`answer "urgency": missing field ...`), the id escaped and cut as
+    /// every string of the server's is. A 2xx
     /// that does not decode keeps its request id, as the Python SDK's
     /// validation error does, and is not retried: a 2xx is final.
     #[error("could not decode API response: {}{}", shown(&source.to_string()), request_id_suffix(.request_id.as_deref()))]
