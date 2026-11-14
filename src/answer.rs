@@ -41,6 +41,8 @@
 //!   returns the rest; the crate is stricter here.
 //! * A known kind still decodes strictly: `{"type": "noul", "noul": 1.2}`,
 //!   a missing or non-string `type` and a non-object are [`Error::Decode`].
+//!   In a response the error names the answer: its question id, then
+//!   serde's words.
 //! * An absent or `null` `usage`, or count in it, is zero ([`Usage`]).
 //! * Undocumented top-level fields are kept in [`Response::extra`], and
 //!   those inside an answer in that answer's `extra` (Laya's `action`), both
@@ -577,7 +579,13 @@ impl From<KnownAnswer> for Answer {
 /// `kunobi-jev` accepts it, since JSON leaves duplicate keys undefined.
 impl<'de> Deserialize<'de> for Answer {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let raw = Value::deserialize(deserializer)?;
+        Self::from_raw(Value::deserialize(deserializer)?)
+    }
+}
+
+impl Answer {
+    /// An answer from its buffered JSON: the dispatch on `type`.
+    fn from_raw<E: de::Error>(raw: Value) -> Result<Self, E> {
         let Value::Object(object) = &raw else {
             return Err(de::Error::invalid_type(
                 unexpected(&raw),
@@ -598,6 +606,39 @@ impl<'de> Deserialize<'de> for Answer {
             )),
         }
     }
+}
+
+/// The `answers` object, with the question id put before what serde says of
+/// a bad answer: serde names a field and a place in the body, never which
+/// of forty answers it was reading. The id is the server's text, so it is
+/// escaped and cut as every such string is ([`sanitize_server_str`]). Each
+/// answer is buffered first, so a body cut short keeps serde's own message.
+fn answers_by_id<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<String, Answer>, D::Error> {
+    struct ById;
+
+    impl<'de> de::Visitor<'de> for ById {
+        type Value = BTreeMap<String, Answer>;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("a map")
+        }
+
+        fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut answers = BTreeMap::new();
+            while let Some(id) = map.next_key::<String>()? {
+                let raw: Value = map.next_value()?;
+                let answer = Answer::from_raw::<A::Error>(raw).map_err(|e| {
+                    de::Error::custom(format_args!("answer \"{}\": {e}", sanitize_server_str(&id)))
+                })?;
+                answers.insert(id, answer);
+            }
+            Ok(answers)
+        }
+    }
+
+    deserializer.deserialize_map(ById)
 }
 
 /// What serde calls `value` in an "invalid type" message. A string is named
@@ -705,6 +746,7 @@ pub struct Response {
     pub model: String,
     /// One answer per question id; an unknown kind is [`Answer::Unknown`],
     /// which [`Response::verify`] refuses under an asked question.
+    #[serde(deserialize_with = "answers_by_id")]
     pub answers: BTreeMap<String, Answer>,
     /// Token accounting; zero for whatever the server did not report, and
     /// written back as those zeros: the OpenAPI document requires `usage`
@@ -1501,6 +1543,70 @@ mod tests {
     /// Decode `body`'s JSON text, the way the client decodes a reply.
     fn decode<T: serde::de::DeserializeOwned>(body: &Value) -> serde_json::Result<T> {
         serde_json::from_str(&body.to_string())
+    }
+
+    #[test]
+    fn a_decode_error_names_the_answer_it_failed_on() {
+        let failure = |answers: Value| {
+            decode::<Response>(&json!({ "model": "jev-1.14.0", "answers": answers }))
+                .unwrap_err()
+                .to_string()
+        };
+        let good = json!({ "type": "noul", "noul": 0.9 });
+
+        // serde names a field and a place in the body; the id says which
+        // answer, and only that one.
+        let err = failure(json!({ "spam": good, "urgency": { "type": "score", "score": 1.0 } }));
+        assert!(
+            err.starts_with(r#"answer "urgency": missing field `"#),
+            "{err}"
+        );
+        assert!(err.contains(" at line 1 column "), "{err}");
+        assert!(!err.contains("spam"), "{err}");
+
+        let err = failure(json!({ "spam": { "type": "noul", "noul": 1.2 }, "urgency": good }));
+        assert!(err.starts_with(r#"answer "spam": "#), "{err}");
+        let err = failure(json!({ "urgency": 3 }));
+        assert!(
+            err.starts_with(
+                r#"answer "urgency": invalid type: integer `3`, expected an answer object"#
+            ),
+            "{err}"
+        );
+        let err = failure(json!({ "urgency": { "noul": 0.9 } }));
+        assert!(
+            err.starts_with(r#"answer "urgency": missing field `type`"#),
+            "{err}"
+        );
+
+        // The id is the server's text: escaped and cut, as its other strings are.
+        let err = failure(json!({ format!("a\nb{}", "x".repeat(10_000)): 3 }));
+        assert!(err.starts_with(r#"answer "a\nbxxx"#), "{err}");
+        assert!(
+            !err.contains('\n') && err.len() < 200,
+            "{} bytes: {err}",
+            err.len()
+        );
+
+        // What is not one answer's failure keeps serde's own words.
+        let err = failure(json!([]));
+        assert!(
+            err.starts_with("invalid type: sequence, expected a map"),
+            "{err}"
+        );
+        let cut = r#"{"model":"m","answers":{"spam":{"type":"noul","noul":"#;
+        let err = serde_json::from_str::<Response>(cut)
+            .unwrap_err()
+            .to_string();
+        assert!(err.starts_with("EOF while parsing"), "{err}");
+    }
+
+    #[test]
+    fn the_last_of_two_answers_under_one_id_wins() {
+        let twice = r#"{"model":"m","answers":{"a":{"type":"noul","noul":0.1},"a":{"type":"noul","noul":0.9}}}"#;
+        let r: Response = serde_json::from_str(twice).unwrap();
+        assert_eq!(r.answers.len(), 1);
+        assert!(matches!(&r.answers["a"], Answer::Noul { noul, .. } if noul.value() > 0.5));
     }
 
     #[test]
