@@ -46,6 +46,23 @@ All notable changes to the `judgment` crate. The format follows
   the document" with the compiler's errors. `jud.sh` reads `JUD_NO_BUILD`
   for it. `tests/plugin_hooks.rs` runs both hooks as processes, the first
   tests either has.
+- Three pages showed a `judgment = ` line for another minor than the
+  crate's. The image guide's line for the `multipart` feature named 0.13,
+  which does not have the feature (it came in 0.14), so the line as copied
+  did not resolve. The `jud-rust` skill named 0.14 and `/judgment:integrate`
+  0.16, so a module an agent wrote from either was built against an old
+  crate. All three name 0.17, `tests/docs_examples.rs` now holds every such
+  line in the README, under `docs/` and under `plugins/` to the crate's
+  minor, wherever it sits in a line, and `scripts/release-bump.sh` rewrites
+  the same lines: it covered four pages, which is how the others went
+  stale.
+- Two statements in the `judgment` plugin's skills that the crate does not
+  bear out. The `judgment` skill said `Client::from_env()` reads
+  `TYPESAFE_BASE_URL`; it reads the key only and calls the hosted API, so
+  code written from the skill in an environment set up for another server
+  would have sent that server's key to TypeSafe. The `judgment-test` skill
+  said `Fake::calls()` shows the questions and the options; a `Call` holds
+  the state, the model, the question ids and each image's digest.
 
 ### Security
 

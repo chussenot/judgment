@@ -6,9 +6,9 @@
 #
 # - Cargo.toml: the [package] version.
 # - Cargo.lock: the crate's own entry, through cargo, never by hand.
-# - README.md and the pages tests/docs_examples.rs holds to it: every
-#   `judgment = ` dependency line names MAJOR.MINOR; then docs/llms-full.txt,
-#   which copies those pages, is generated again.
+# - README.md, docs/ and plugins/, the pages tests/docs_examples.rs holds to
+#   it: every `judgment = ` dependency line names MAJOR.MINOR; then
+#   docs/llms-full.txt, which copies the pages under docs/, is generated again.
 # - The judgment plugin's references, generated from two of those pages
 #   (docs/reference/crate.md, docs/start/first-decision-rust.md), are
 #   generated again, or the bump commit fails gen-plugin-judgment.sh --check.
@@ -47,12 +47,16 @@ cargo update --workspace --quiet
 
 # --- The dependency lines, major.minor only (a caret requirement, so a patch
 # release changes nothing a reader must copy): `judgment = "X.Y"` and
-# `judgment = { version = "X.Y", ... }`, in every page that shows one. The
-# list is the one tests/docs_examples.rs checks; keep the two together.
+# `judgment = { version = "X.Y", ... }`, wherever the README, a page under
+# docs/ or a page of a plugin shows one, at the start of a line or inside a
+# sentence. tests/docs_examples.rs holds the same lines in the same places
+# to the crate's minor; keep the two together.
 grep -q '^judgment = "[0-9]*\.[0-9]*"$' README.md || die 'README.md has no judgment = "X.Y" install line'
 for page in README.md docs/start/install.md docs/reference/crate.md docs/start/first-decision-rust.md; do
   [ -f "$page" ] || die "$page is gone; update this list and tests/docs_examples.rs together"
-  sed -E '/^judgment = /s/"[0-9]+\.[0-9]+"/"'"${version%.*}"'"/' "$page" > "$page.tmp"
+done
+grep -rlE --include='*.md' 'judgment = (\{ version = )?"[0-9]+\.[0-9]+"' README.md docs plugins | while IFS= read -r page; do
+  sed -E 's/(judgment = (\{ version = )?)"[0-9]+\.[0-9]+"/\1"'"${version%.*}"'"/g' "$page" > "$page.tmp"
   mv "$page.tmp" "$page"
 done
 

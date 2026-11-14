@@ -2220,7 +2220,7 @@ async fn run() -> judgment::Result<()> {
 Base64 in the JSON body costs a third more bytes than the file, and nothing else: the same image sent either way costs the same input tokens and is answered the same. When the bytes matter (many images, a slow link), the `multipart` feature sends them as the `multipart/form-data` body TypeSafe recommends for images: a first part named `request` holds the JSON body with each asset as `{type: image, part}` in place of its base64, then one part per image under its media type.
 
 ```toml
-judgment = { version = "0.13", features = ["multipart"] }
+judgment = { version = "0.17", features = ["multipart"] }
 ```
 
 ```rust ignore
