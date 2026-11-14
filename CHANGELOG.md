@@ -6,6 +6,18 @@ All notable changes to the `judgment` crate. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- The lockfile takes `rmcp` 3.10.0, past RUSTSEC-2026-0462 (before 3.9.0
+  its Streamable HTTP clients read a response body into memory with no
+  limit, so a hostile MCP server could exhaust the host's memory). The
+  crate was not exposed: `jud mcp` is an MCP server over stdio, and the
+  `mcp` feature compiles `rmcp`'s `server` and `transport-io` features
+  only, never the HTTP clients. The `jud` binaries built from this
+  lockfile carry the corrected release all the same, and
+  `cargo deny check advisories` passes again. A library consumer's own
+  lockfile resolves `rmcp` on its next `cargo update`.
+
 ## [0.17.0] - 2026-11-07
 
 ### Added
