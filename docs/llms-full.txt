@@ -7343,6 +7343,54 @@ All twenty papers were read on 2026-10-26, from their arXiv abstract pages, or f
 
 **For this crate.** The injection test is `jud eval --injection-perturb` ([Test a judge for position, tone and injection bias](../../guides/test-a-judge-for-position-and-tone-bias.md)), with the paper's three payloads as the example file and its attack-success definition as the reported rate; it measures the payload supplied and nothing more. The calibration result is one more reason the report carries `ece_probability` beside `ece`.
 
+## Two preprints of November, read on 2026-11-13
+
+Both post-date everything above. Both are preprints at their first version, neither is peer reviewed, every number is the authors' own, and nothing in either has been reproduced by this crate.
+
+### Readout design under one protocol
+
+"Small Heads, Strong Decisions: A Controlled Study of Typed-Decision Models" (Rastogi, [arXiv 2611.15592](https://arxiv.org/abs/2611.15592), submitted 2026-11-11, version 1), read from the paper's HTML text; its appendices were read in summary only.
+
+**What was measured.** Each open typed-decision model so far changed its readout, its backbone, its data and its recipe together, so nobody could say which mattered. The author re-implements five readouts, the part that turns the backbone's hidden states into a score per option, and trains them under one protocol: a small cosine head of his own (0.5M parameters), Clef's joint schema head (27M), the bilinear head of Decision 1.0 and 2.0, the learned letter readout of Decision 3.0, and Nimble's readout of the language model's own next-token logits at the answer letters (no new parameters). Accuracy, expected calibration error over 15 bins and log loss are reported before and after temperature scaling.
+
+**On what data.** One backbone for the comparison, Qwen3-0.6B, with a rank-32 LoRA; fifteen public English training sources (137,497 rows: BoolQ, SST-5, SNLI, MNLI, Banking77, CLINC150, SQuAD 2.0 and others); the same recipe, a learning-rate sweep per head and one seed. In-domain accuracy is over those sources' test splits. Held-out accuracy is over four sets never trained on (AG News, DBpedia-14, QASC, the English Belebele) and a transfer set of 1,046 questions. Larger Qwen3 backbones and Gemma 4 are run for the cosine head only.
+
+**What it finds.**
+
+- **The readout barely matters in-domain.** All five reach 81.3 to 82.0% on Qwen3-0.6B, and the 0.5M-parameter head matches the 27M-parameter one at half its inference time.
+- **Held out, they spread from 76.1 to 79.4%**, and the lead of the letter readout comes from one set, Belebele, where the paper traces it to the answer letters themselves: 76.1% with uppercase letters as option codes, 59.3% with symbols.
+- **One prompt for all of a state's questions matches one prompt per question** (81.9% in-domain against 82.0%), at 1.6 times the inference speed and 2.1 to 2.5 times the training speed.
+- **The backbone is where the accuracy is.** Qwen3-0.6B to Qwen3-4B adds 4 points in-domain (82.0 to 85.9) and 11 held out (78.0 to 88.9). Base, instruct and thinking checkpoints tie.
+- **On calibration**, a temperature per question type "cannot correct a source that is over-confident while another of the same type is under-confident".
+
+**Limits the paper states.** One seed, so its intervals are test-set noise and not seed noise; some runs diverged at the default learning rate and were rerun lower; the readouts were compared under a shared joint prompt that the released models do not all use. The code is promised, not yet published.
+
+**For this crate.** Nothing to change. It is evidence for two things the crate already assumes. A Choice's option keys are read by the model, so a key that hints at place or rank is a variable: [the bias guide](../../guides/test-a-judge-for-position-and-tone-bias.md) asks for keys that say nothing about place. And a server may answer a request's questions from one prompt or from one each, at the same accuracy on this evidence. Under one prompt the answers are not independent of each other, which is why `jud eval --swap` asks the reversed order in a request of its own unless told otherwise.
+
+### Per-bucket recalibration of an open model
+
+"Recalibrating a Typed-Decision Model in an Afternoon: A Hands-On Recipe for Laya's Confidence Scores" (Khan and Misri, Intel, [arXiv 2611.16499](https://arxiv.org/abs/2611.16499), submitted 2026-11-12, version 1), read from the paper's full text.
+
+**What was measured.** The calibration of the released Laya checkpoint, pooled and by bucket, and what a refit of its temperatures does. A bucket is Laya's own grouping of items by question type and number of options: `choice:2`, `choice:3-5`, `choice:6-10`, `choice:11+`, `score:3-5`, `noul:2`. Confidence is the top probability, expected calibration error is over ten equal-width bins, and the macro value is the unweighted mean of the buckets' errors. The recipe is five steps (measure, diagnose, fit, validate, deploy) in about 130 lines of numpy, with standard methods.
+
+**On what data.** 1,065 synthetic items with labels written by a language model, in seven evaluation sets from one generator: 681 in `choice:3-5`, 270 in `choice:11+`, 89 in `score:3-5`, 25 in `noul:2`. A check of where the refit helps runs on 33 checkpoints, all scored on that one pool.
+
+**What it finds.**
+
+- **The pooled error hides the buckets'.** 0.073 pooled against 0.143 as the mean over buckets (0.127 to 0.184). The twelve-option bucket is over-confident by 0.22 and the three-to-five-option bucket under-confident by 0.05, and they cancel.
+- **One global temperature makes the pooled error worse** (0.173). A cross-fitted temperature per bucket brings the mean to 0.073, to 0.089 with ten labelled items a bucket, and to 0.099 when one of the seven sets is held out.
+- **Most of the gain is in separating the buckets, not in refitting.** A gate aimed at 10% error answers 46.3% of items after the refit (10.5% wrong) against 6.9% on the published confidences, but one cut-off per bucket on the published confidences answers 45.4%.
+- **Laya's `confidence` field is not its top probability.** For a Choice and a Score it is one minus normalised entropy; read as a probability it has an error of 0.307, against 0.072 for the top probability.
+- **The stored temperature of the twelve-option bucket, 0.1006, is clamped to 0.5 at run time.**
+
+**Limits the paper states.** Fit and test share one generator and one labeller, so "these are findings about these checkpoints and this data"; two of the four buckets are too small to tell from chance.
+
+**For this crate.** Three things, none a change of course.
+
+- **Recalibration stays out** ([below](#what-the-crate-should-not-do)): it rewrites a model's output. What the paper shows to matter most, one cut-off per bucket, is what a `.jud` policy already is: one gate per question, fitted by `jud tune`.
+- **The measurement is worth having.** `jud eval` reports one calibration error per question; a breakdown by the paper's buckets, with the pooled value and the mean beside it, is bead `judgment-8f2`.
+- **It is a second, independent measurement of why the report carries `ece_probability` beside `ece`**: on Laya the wire's `confidence` has an error of 0.307 where the answer's probability has 0.072.
+
 ## What recurs
 
 1. **Accuracy on single items does not predict how a model behaves in use.** The evidence comes from three papers:
