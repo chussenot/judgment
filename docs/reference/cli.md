@@ -2,7 +2,7 @@
 title: The jud command line
 description: Every command, flag, argument and environment variable of the jud binary, with each command's help text as the binary prints it, the verdict JSON a run writes, the report jud eval prints and its JSON keys, what jud record, jud tune and jud split write, and the exit status.
 status: current
-last_reviewed: 2026-10-28
+last_reviewed: 2026-11-13
 tags: [judgment, jud, cli, record, eval, tune, split, reference]
 ---
 
@@ -448,12 +448,16 @@ N requests, model MODEL
 
 QUESTION
   labelled L, correct C, accuracy A (95% interval LOW to HIGH)
-  brier B, calibration error E, confidence when right R, when wrong W
+  brier B, calibration error E over the confidence, P over the answer's probability, confidence when right R, when wrong W
   mean IoU I (a box is right at or above its label's IoU bar)
   outcomes, labelled/answered/right: OUTCOME L/A/R, OUTCOME L/A/R
   majority OUTCOME, M of L (SHARE)
   gate: acts on A of T, defers D, accuracy when acted X
   warning: SIGNAL
+
+calibration by bucket, over the answer's probability (N labelled answers)
+  pooled P, mean of the B buckets M
+  BUCKET  labelled L, calibration error P, gap G
 
 model misses (N)
   QUESTION  CASE: expected E, predicted P, confidence C
@@ -477,6 +481,7 @@ A report holds three things that are not the same number: what the model got rig
   - `collapsed: the model answered OUTCOME on N of L labelled cases; …` when one answer takes at least 0.8 of the labelled answers and at least 0.2 more than the largest share any label has.
   - `never answered: OUTCOME (N labelled), …; …` when an outcome at least 3 labels name is never the model's answer on a labelled case. A skewed set hides this from `collapsed`: a model that always says `yes` to a set that is 88 % `yes` answers one outcome only 0.12 more often than the labels name it.
   - `the gate defers D of T: they fall back to FALLBACK` (or `nothing acts on them` without a fallback) when the gate defers at least 0.5 of the answers it sees (`defers_most`) or at least 0.9 (`defers_nearly_all`); one of the two, never both.
+- **The calibration by bucket.** The labelled answers of every question that have a distribution (a Box has none), grouped by the question's primitive and the band its number of options falls in: `noul:2`, then `choice:2`, `choice:3-5`, `choice:6-10`, `choice:11+`, then `score:` and the same bands, each only when it holds an answer. A Choice whose options come with each request is counted by the options of each case, so one question can be in two buckets. Each line has the bucket's labelled answers, its calibration error over the answer's probability, and its `gap`: the mean probability of the answers given minus their accuracy, above zero when the model is over-confident and below when it is under-confident. `pooled` is the same error over all of them at once, and the mean counts each bucket once whatever its size. One number over everything can hide two errors that point in opposite directions; the buckets and their bands are those of [arXiv 2611.16499](https://arxiv.org/abs/2611.16499), which measured 0.073 pooled against a mean of 0.143 over the buckets of one open model. The section is printed when there are two buckets or more: with one, the three numbers are the question's own. A bucket of a few answers says little, as a question of a few answers does.
 - **The misses.** `model misses` lists the model's own readings that the labels call wrong, one line per miss: question, case, expected, predicted and the model's confidence in what it predicted, which for a Noul is the larger of p and 1 - p. A Noul is `yes` or `no`, a Choice is an option key and a Score is a level index; a Box's miss says the overlap it reached instead, `a box at IoU I with the label`. A miss is not the policy's: a Noul answered 0.52 is a miss against a `false` label, and a gate at 0.55 says no and is right.
 
 ### The JSON report
@@ -503,7 +508,8 @@ A report holds three things that are not the same number: what the model got rig
 | `questions[].accuracy_interval95` | array of two numbers or `null` | The 95 % Wilson interval, low then high. |
 | `questions[].brier` | number or `null` | The mean Brier score; `null` for a Box, which has no distribution. |
 | `questions[].mean_iou` | number or `null` | A Box question's mean intersection over union with its labels; `null` for any other primitive. |
-| `questions[].ece` | number or `null` | The expected calibration error, over ten bins. |
+| `questions[].ece` | number or `null` | The expected calibration error over the wire's `confidence`, over ten bins. |
+| `questions[].ece_probability` | number or `null` | The same error over the probability of the predicted answer; `null` for a Box, which has no distribution. |
 | `questions[].confidence_when_right` | number or `null` | `null` when no labelled answer was right. |
 | `questions[].confidence_when_wrong` | number or `null` | `null` when no labelled answer was wrong. |
 | `questions[].gate` | object or `null` | The policy's gate at work; `null` when the policy has none for the question. |
@@ -541,6 +547,18 @@ A report holds three things that are not the same number: what the model got rig
 | `signal_rules.never_answered_min` | integer | The fewest labels an outcome needs for `never_answered`: 3. |
 | `signal_rules.defers_most` | number | The deferred share for `defers_most`: 0.5. |
 | `signal_rules.defers_nearly_all` | number | The deferred share for `defers_nearly_all`: 0.9. |
+| `calibration` | object | The calibration error by bucket ([the text report](#the-text-report)); always present. |
+| `calibration.labelled` | integer | The labelled answers that have a distribution, every question pooled. |
+| `calibration.ece_probability` | number or `null` | The error over all of them, as `questions[].ece_probability` is over one question's; `null` with none. |
+| `calibration.ece_probability_macro` | number or `null` | The unweighted mean of the buckets' errors; `null` with no bucket. |
+| `calibration.buckets` | array of objects | The buckets that hold an answer: Noul, Choice, Score, each by band of options. |
+| `calibration.buckets[].bucket` | string | `PRIMITIVE:OPTIONS`, `choice:3-5` say. |
+| `calibration.buckets[].primitive` | string | `noul`, `choice` or `score`. |
+| `calibration.buckets[].options` | string | The band the number of options falls in: `2`, `3-5`, `6-10` or `11+`. |
+| `calibration.buckets[].questions` | array of strings | The questions with an answer in the bucket, in the rubric's order. |
+| `calibration.buckets[].labelled` | integer | Its labelled answers. |
+| `calibration.buckets[].ece_probability` | number | Its calibration error over the answer's probability. |
+| `calibration.buckets[].gap` | number | The mean probability of the answers given minus their accuracy: above zero is over-confident. |
 | `agreement` | object | Only with `--against` ([Agreement with another model](#agreement-with-another-model)); absent otherwise. |
 | `agreement.against` | string | The directory the other answers came from, as given. |
 | `agreement.models` | array of strings | The distinct models its recordings name, in the order first seen. |

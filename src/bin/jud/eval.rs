@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Args, ValueHint};
+use indexmap::IndexMap;
 use judgment::Question;
 use judgment::eval::{ECE_BINS, Judgment, QuestionMetrics, metrics};
 use judgment::jud::{Rubric, Tuning, Verdict};
@@ -193,6 +194,15 @@ const TOLERANCE: f64 = 1e-9;
 ///                     "never_answered_min", "defers_most", "defers_nearly_all" },
 ///                                        // the thresholds the signals were read
 ///                                        // with, so a change to one shows
+///   "calibration": {                     // every question's labelled answers that
+///     "labelled",                        // have a distribution, by bucket: the
+///     "ece_probability",                 // error over all of them pooled, null
+///     "ece_probability_macro",           // with none, and the unweighted mean of
+///     "buckets": [                       // the buckets' errors, see `Calibration`
+///       { "bucket", "primitive", "options", "questions",
+///         "labelled", "ece_probability", "gap" }
+///     ]
+///   },
 ///   "moved": {                           // only when the rubric's tuning names a model
 ///     "tuned_model", "tuned_server",     // or a server (null for the one it does not)
 ///     "models", "servers"                // and an answer came from another: those,
@@ -254,6 +264,8 @@ struct Report {
     min_accuracy: Vec<BarCheck>,
     /// The thresholds the signals were read with.
     signal_rules: SignalRules,
+    /// The calibration error by kind of question and number of options.
+    calibration: Calibration,
     /// What `--against` measured; absent without it.
     #[serde(skip_serializing_if = "Option::is_none")]
     agreement: Option<Agreement>,
@@ -518,10 +530,19 @@ impl Report {
     /// every labelled judgment, the gate's coverage, the misses, and each
     /// `--min-accuracy` check. Pure: nothing is asked, nothing is printed.
     fn build(loaded: &Loaded, answered: &[Answered], bars: &[MinAccuracy]) -> Self {
-        let questions: Vec<QuestionReport> = batch::by_question(&loaded.rubric, answered)
+        let by_question = batch::by_question(&loaded.rubric, answered);
+        let questions: Vec<QuestionReport> = by_question
             .iter()
             .map(|(id, judgments)| question_report(&loaded.rubric, id, judgments, answered))
             .collect();
+        let calibration = Calibration::of(by_question.iter().flat_map(|(id, judgments)| {
+            let primitive = loaded
+                .rubric
+                .questions
+                .get(id)
+                .map_or("unknown", |q| q.question.kind());
+            judgments.iter().map(move |j| (primitive, id.as_str(), j))
+        }));
         let min_accuracy = bars
             .iter()
             .flat_map(|bar| checks(&questions, bar))
@@ -549,6 +570,7 @@ impl Report {
             questions,
             min_accuracy,
             signal_rules: SignalRules::IN_USE,
+            calibration,
             agreement: None,
             robustness: None,
         }
@@ -630,6 +652,158 @@ fn ece_over_probability(judgments: &[Judgment]) -> Option<f64> {
         .filter_map(|j| Some((*j.probabilities.get(&j.predicted)?, j.correct?)))
         .collect();
     (!pairs.is_empty()).then(|| metrics::expected_calibration_error(&pairs, ECE_BINS))
+}
+
+/// The calibration error by bucket: the labelled answers of every question
+/// that have a distribution (a Box has none), grouped by the question's
+/// primitive and its number of options, with the error over all of them
+/// pooled beside the unweighted mean of the buckets' errors.
+///
+/// One number over everything can hide two errors that point in opposite
+/// directions: a model over-confident on a twelve-option Choice and
+/// under-confident on a three-option one has a pooled error near zero. The
+/// buckets and their bands are those of arXiv 2611.16499, which measured
+/// 0.073 pooled against 0.143 as the mean over buckets on one open model.
+/// The error is [`ece_over_probability`]'s, over the probability of the
+/// answer given, which is comparable across primitives and servers.
+#[derive(Debug, Serialize)]
+struct Calibration {
+    /// Labelled answers with a distribution, every question pooled.
+    labelled: usize,
+    /// The calibration error over all of them; `None` with none.
+    ece_probability: Option<f64>,
+    /// The mean of the buckets' errors, each bucket counted once whatever
+    /// its size; `None` with no bucket.
+    ece_probability_macro: Option<f64>,
+    /// The buckets that hold an answer: Noul, Choice, Score, each by band.
+    buckets: Vec<CalibrationBucket>,
+}
+
+/// One bucket of [`Calibration`].
+#[derive(Debug, Serialize)]
+struct CalibrationBucket {
+    /// `primitive:options`, `choice:3-5` say.
+    bucket: String,
+    primitive: &'static str,
+    /// The band the number of options falls in ([`option_band`]).
+    options: &'static str,
+    /// The questions with an answer here, in the rubric's order. A Choice
+    /// whose options come with each request can be in several buckets.
+    questions: Vec<String>,
+    labelled: usize,
+    ece_probability: f64,
+    /// Mean probability of the answer given, minus accuracy: above zero is
+    /// over-confident, below is under-confident. The error has no sign.
+    gap: f64,
+}
+
+/// The option-count bands of arXiv 2611.16499, which are the open Laya
+/// model's own: 2, 3 to 5, 6 to 10, 11 or more. A distribution has at least
+/// two entries (the builder and the reader refuse fewer options).
+const fn option_band(options: usize) -> &'static str {
+    match options {
+        0..=2 => "2",
+        3..=5 => "3-5",
+        6..=10 => "6-10",
+        _ => "11+",
+    }
+}
+
+impl Calibration {
+    /// Over `(primitive, question id, judgment)` in the rubric's order.
+    fn of<'a>(judgments: impl Iterator<Item = (&'static str, &'a str, &'a Judgment)>) -> Self {
+        const PRIMITIVES: [&str; 3] = ["noul", "choice", "score"];
+        const BANDS: [&str; 4] = ["2", "3-5", "6-10", "11+"];
+        type Bucket<'a> = (Vec<(f64, bool)>, Vec<&'a str>);
+        let mut grouped: IndexMap<(&'static str, &'static str), Bucket<'a>> = IndexMap::new();
+        let mut pooled: Vec<(f64, bool)> = Vec::new();
+        for (primitive, id, judgment) in judgments {
+            let (Some(p), Some(correct)) = (
+                judgment.probabilities.get(&judgment.predicted),
+                judgment.correct,
+            ) else {
+                continue;
+            };
+            pooled.push((*p, correct));
+            let key = (primitive, option_band(judgment.probabilities.len()));
+            let (pairs, questions) = grouped.entry(key).or_default();
+            pairs.push((*p, correct));
+            if !questions.contains(&id) {
+                questions.push(id);
+            }
+        }
+        let rank = |names: &[&str], name: &str| names.iter().position(|n| *n == name);
+        grouped.sort_by(|a, _, b, _| {
+            (rank(&PRIMITIVES, a.0), rank(&BANDS, a.1))
+                .cmp(&(rank(&PRIMITIVES, b.0), rank(&BANDS, b.1)))
+        });
+        let buckets: Vec<CalibrationBucket> = grouped
+            .into_iter()
+            .map(|((primitive, options), (pairs, questions))| {
+                let n = float(pairs.len());
+                let mean_p = pairs.iter().map(|(p, _)| p).sum::<f64>() / n;
+                let accuracy = float(pairs.iter().filter(|(_, correct)| *correct).count()) / n;
+                CalibrationBucket {
+                    bucket: format!("{primitive}:{options}"),
+                    primitive,
+                    options,
+                    questions: questions.into_iter().map(str::to_owned).collect(),
+                    labelled: pairs.len(),
+                    ece_probability: metrics::expected_calibration_error(&pairs, ECE_BINS),
+                    gap: mean_p - accuracy,
+                }
+            })
+            .collect();
+        let macro_mean = (!buckets.is_empty())
+            .then(|| buckets.iter().map(|b| b.ece_probability).sum::<f64>() / float(buckets.len()));
+        Self {
+            labelled: pooled.len(),
+            ece_probability: (!pooled.is_empty())
+                .then(|| metrics::expected_calibration_error(&pooled, ECE_BINS)),
+            ece_probability_macro: macro_mean,
+            buckets,
+        }
+    }
+}
+
+/// A count as a divisor: counts here are of labelled answers, far below 2^52.
+#[allow(clippy::cast_precision_loss)]
+const fn float(n: usize) -> f64 {
+    n as f64
+}
+
+impl Display for Calibration {
+    /// The section of the text report, for two buckets or more: with one,
+    /// the pooled error, the mean and the bucket's are the same number.
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "calibration by bucket, over the answer's probability ({} labelled answer{})",
+            self.labelled,
+            plural(self.labelled)
+        )?;
+        writeln!(
+            f,
+            "  pooled {}, mean of the {} buckets {}",
+            fixed(self.ece_probability, 3),
+            self.buckets.len(),
+            fixed(self.ece_probability_macro, 3)
+        )?;
+        let width = self
+            .buckets
+            .iter()
+            .map(|b| b.bucket.len())
+            .max()
+            .unwrap_or(0);
+        for b in &self.buckets {
+            writeln!(
+                f,
+                "  {:<width$}  labelled {}, calibration error {:.3}, gap {:+.3}",
+                b.bucket, b.labelled, b.ece_probability, b.gap
+            )?;
+        }
+        Ok(())
+    }
 }
 
 /// The outcomes a question offers, in its order, each with a Score level's
@@ -969,6 +1143,11 @@ impl Display for Report {
         for q in &self.questions {
             writeln!(f)?;
             q.fmt_block(f)?;
+        }
+
+        if self.calibration.buckets.len() > 1 {
+            writeln!(f)?;
+            write!(f, "{}", self.calibration)?;
         }
 
         writeln!(f)?;
@@ -1330,6 +1509,118 @@ pub(crate) fn run(args: &Eval) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A labelled answer over `options` options that put `p` on its pick.
+    fn answer(options: usize, p: f64, right: bool) -> Judgment {
+        let rest = (1.0 - p) / float(options - 1);
+        let probabilities = (0..options)
+            .map(|i| (format!("o{i}"), if i == 0 { p } else { rest }))
+            .collect();
+        let expected = if right { "o0" } else { "o1" };
+        Judgment::new(
+            "o0".to_owned(),
+            Some(expected.to_owned()),
+            p,
+            probabilities,
+            true,
+        )
+    }
+
+    /// What arXiv 2611.16499 measured on one open model, in miniature: a
+    /// twelve-option Choice answered at 0.8 and right six times in ten, a
+    /// three-option one answered at 0.8 and always right. Pooled, twenty
+    /// answers at 0.8 are right sixteen times and the error is zero; by
+    /// bucket it is 0.2 twice, with gaps of opposite sign.
+    #[test]
+    fn two_opposite_errors_cancel_when_pooled_and_show_by_bucket() {
+        let many: Vec<Judgment> = (0..10).map(|i| answer(12, 0.8, i < 6)).collect();
+        let few: Vec<Judgment> = (0..10).map(|_| answer(3, 0.8, true)).collect();
+        let calibration = Calibration::of(
+            many.iter()
+                .map(|j| ("choice", "topic", j))
+                .chain(few.iter().map(|j| ("choice", "desk", j))),
+        );
+        assert_eq!(calibration.labelled, 20);
+        assert!(calibration.ece_probability.is_some_and(|e| e.abs() < 1e-9));
+        assert!(
+            calibration
+                .ece_probability_macro
+                .is_some_and(|e| (e - 0.2).abs() < 1e-9)
+        );
+        let [few, many] = calibration.buckets.as_slice() else {
+            panic!("{:?}", calibration.buckets)
+        };
+        assert_eq!(
+            (few.bucket.as_str(), few.labelled, &few.questions),
+            ("choice:3-5", 10, &vec!["desk".to_owned()]),
+            "the bands are in order, whatever order the questions came in"
+        );
+        assert_eq!(
+            (many.bucket.as_str(), many.labelled, &many.questions),
+            ("choice:11+", 10, &vec!["topic".to_owned()])
+        );
+        for (bucket, gap) in [(few, -0.2), (many, 0.2)] {
+            assert!((bucket.ece_probability - 0.2).abs() < 1e-9, "{bucket:?}");
+            assert!((bucket.gap - gap).abs() < 1e-9, "{bucket:?}");
+        }
+        let text = calibration.to_string();
+        assert!(
+            text.contains("pooled 0.000, mean of the 2 buckets 0.200"),
+            "{text}"
+        );
+        assert!(text.contains("choice:3-5  labelled 10, calibration error 0.200, gap -0.200"));
+        assert!(text.contains("choice:11+  labelled 10, calibration error 0.200, gap +0.200"));
+    }
+
+    /// The bands are 2, 3 to 5, 6 to 10 and 11 or more; a Noul comes before
+    /// a Choice and a Score after; an answer with no label or no
+    /// distribution (a Box) is in no bucket; and no answer is no number.
+    #[test]
+    fn buckets_are_the_primitive_and_the_band_of_the_option_count() {
+        for (options, band) in [
+            (2, "2"),
+            (3, "3-5"),
+            (5, "3-5"),
+            (6, "6-10"),
+            (10, "6-10"),
+            (11, "11+"),
+            (255, "11+"),
+        ] {
+            assert_eq!(option_band(options), band, "{options}");
+        }
+        let score = answer(3, 0.9, true);
+        let choice = answer(6, 0.9, true);
+        let noul = Judgment::noul(0.9, Some(true), true);
+        let unlabelled = Judgment::noul(0.9, None, true);
+        let located = Judgment::located(
+            &judgment::BoxEdges::new(0.1, 0.5, 0.1, 0.5),
+            None,
+            0.5,
+            Some(0.9),
+        );
+        let calibration = Calibration::of(
+            [
+                ("score", "tone", &score),
+                ("choice", "desk", &choice),
+                ("noul", "urgent", &noul),
+                ("noul", "urgent", &unlabelled),
+                ("box", "stamp", &located),
+            ]
+            .into_iter(),
+        );
+        let names: Vec<&str> = calibration
+            .buckets
+            .iter()
+            .map(|b| b.bucket.as_str())
+            .collect();
+        assert_eq!(names, ["noul:2", "choice:6-10", "score:3-5"]);
+        assert_eq!(calibration.labelled, 3);
+
+        let none = Calibration::of(std::iter::empty());
+        assert_eq!(none.labelled, 0);
+        assert!(none.ece_probability.is_none() && none.ece_probability_macro.is_none());
+        assert!(none.buckets.is_empty());
+    }
 
     fn count(outcome: &str, labelled: usize, predicted: usize) -> OutcomeCount {
         OutcomeCount {
