@@ -8,6 +8,17 @@ All notable changes to the `judgment` crate. The format follows
 
 ### Added
 
+- `mise run live:vercel` runs the ignored live tests against Vercel AI
+  Gateway's TypeSafe-compatible API (`https://ai-gateway.vercel.sh/typesafe`,
+  Google's `google/gemini-decision-1`, on the gateway since 2026-11-11, or
+  `AI_GATEWAY_MODEL`) with `AI_GATEWAY_API_KEY`, under a new `vercel`
+  profile. The profile pins nothing yet: no run against the gateway is
+  recorded, so it prints where servers differ and asserts what every
+  server owes, and an unprofiled run against `ai-gateway.vercel.sh` stops
+  before it asks. `docs/guides/configure-a-backend.md` says how to point
+  `jud` and the client at the gateway and what Vercel documents of the
+  route (text and image inputs). The client needed no change, and holds
+  none of the model's limits or prices.
 - `mise run live:gs1` runs the ignored live tests against a local GS1
   server, BIGAI's `gs1 serve` (<https://huggingface.co/bigai/GS1-4B>), on
   `GS1_URL` (default `http://127.0.0.1:8000`) under the alias `GS1` (or

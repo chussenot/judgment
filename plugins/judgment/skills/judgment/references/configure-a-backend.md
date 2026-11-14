@@ -67,6 +67,25 @@ What differs from the hosted API, from live runs on both models ([Against Liquid
 
 `mise run live:liquid` runs the live tests against it with `LIQUID_API_KEY` from `.env`, `LIQUID_MODEL=d1-ultra` for the other model.
 
+## Gemini Decision 1 through Vercel AI Gateway
+
+Vercel AI Gateway serves Google's Gemini Decision 1 behind TypeSafe's wire since 2026-11-11: its TypeSafe-compatible API is `POST https://ai-gateway.vercel.sh/typesafe/v1/systemone`, so the base URL is `https://ai-gateway.vercel.sh/typesafe`, the model is `google/gemini-decision-1`, and the key is an AI Gateway key.
+
+```sh
+export TYPESAFE_BASE_URL=https://ai-gateway.vercel.sh/typesafe
+export TYPESAFE_API_KEY=...  # an AI Gateway key (Vercel's AI_GATEWAY_API_KEY), not a TypeSafe one
+jud rubric.jud < state.json  # with `model: google/gemini-decision-1` in the configuration file
+```
+
+What Vercel documents, in [its announcement](https://vercel.com/changelog/gemini-decision-1-now-available-on-ai-gateway) and on [the page for the route](https://vercel.com/docs/ai-gateway/sdks-and-apis/typesafe), both read on 2026-11-13; no live run has confirmed any of it yet:
+
+- **Inputs.** This route takes text and images. The model also reads PDF documents, audio and video, but only through Vercel's AI SDK, not over this wire.
+- **Questions.** Vercel's examples ask a Noul and a Choice. Whether a Score or a Box is answered on this route is not stated: ask one before a rubric relies on it.
+- **Limits and prices.** Vercel bills a request by its tokens at the model's rates, which are on its models page. The crate holds none of them, and none of the model's limits: it checks its own bounds before a call and reports what the server refuses.
+- **Another wire beside it.** The gateway also serves `POST /v1/decisions`, OpenAI's Decisions shape, which is a different body ([Compatible servers and models](https://github.com/chussenot/judgment/blob/main/docs/project/research/compatible-servers-and-models.md)); the base URL above is the one that takes this crate's requests.
+
+`mise run live:vercel` runs the live tests against it with `AI_GATEWAY_API_KEY` from `.env`, `AI_GATEWAY_MODEL` for another model the gateway serves on this route; no run is recorded yet.
+
 ## Ollama on your machine
 
 Open-weight decision models speak the wire, and Ollama 0.35 or later serves them; the first example is [tev1](https://ollama.com/library/tev1) at 0.8B parameters, 811 MB, which runs on a CPU.

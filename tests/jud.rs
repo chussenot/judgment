@@ -596,6 +596,65 @@ fn the_schemas_and_the_parser_refuse_the_same_documents() {
     }
 }
 
+/// Open System One (<https://github.com/opensystemoneorg/opensystemone>,
+/// first released on 2026-11-07) names a question type outside its core
+/// list `owner:type`, and constrains nothing in such a question or its
+/// answer but that name. What the format does with `acme:rank` today,
+/// pinned here and not designed here:
+///
+/// * A rubric asks the four kinds. Another `type`, prefixed or not, quoted
+///   or not, is refused by the schema and by the reader alike, and the
+///   reader's message has the type as written, the kinds it takes and the
+///   line: a rubric cannot ask an extension question.
+/// * A recording keeps an extension answer whole under the type's own
+///   name, since a recording is what a server sent. It reads from YAML with
+///   the colon unquoted, is written back the same way, and what is written
+///   reads back equal, as YAML and as JSON.
+#[test]
+fn an_open_system_one_extension_type_is_refused_in_a_rubric_and_kept_in_a_recording() {
+    for (written, named) in [
+        ("acme:rank", "acme:rank"),
+        ("\"acme:rank\"", "acme:rank"),
+        ("rank", "rank"),
+    ] {
+        let rubric = format!(
+            "apiVersion: jud/v1\nkind: Rubric\nmetadata:\n  name: r\n  minor: 4\nspec:\n  questions:\n    rank:\n      type: {written}\n      instructions: Rank the answers.\n"
+        );
+        assert!(
+            !RUBRIC.is_valid(&value_of(&rubric)),
+            "the schema accepts `type: {written}`"
+        );
+        let refusal = jud::parse(&rubric).unwrap_err().to_string();
+        for part in [
+            format!("unknown variant `{named}`"),
+            "noul, choice, score, box".to_owned(),
+            "line 9".to_owned(),
+        ] {
+            assert!(refusal.contains(&part), "`{part}` is not in: {refusal}");
+        }
+    }
+
+    let recording = "apiVersion: jud/v1\nkind: Recording\nmetadata:\n  name: case-1\n  minor: 4\nspec:\n  elapsed_ms: 12\n  response:\n    model: m\n    answers:\n      urgent:\n        type: noul\n        noul: 0.9\n      rank:\n        type: acme:rank\n        ranking: [b, a]\n        scores: {a: 0.2, b: 0.8}\n    usage:\n      input_tokens: 3\n      output_tokens: 0\n";
+    assert_valid(
+        &RECORDING,
+        &value_of(recording),
+        "a recording with an extension answer",
+    );
+    let read = jud::parse_recording(recording).unwrap();
+    let kept = &read.response.answers["rank"];
+    assert_eq!(kept.kind(), "acme:rank");
+    assert_eq!(
+        serde_json::to_value(kept).unwrap(),
+        json!({ "type": "acme:rank", "ranking": ["b", "a"], "scores": { "a": 0.2, "b": 0.8 } }),
+        "the owner's fields are kept as they came"
+    );
+    let written = recording_to_yaml(&read).unwrap();
+    assert!(written.contains("        type: acme:rank\n"), "{written}");
+    assert_eq!(jud::parse_recording(&written).unwrap(), read);
+    let as_json = serde_json::to_string(&value_of(&written)).unwrap();
+    assert_eq!(jud::parse_recording(&as_json).unwrap(), read);
+}
+
 /// What a reviewer cannot see is refused. A tag the core schema does
 /// not define and a merge key are errors with a position; a `!!binary`
 /// scalar is its text, never what the base64 encodes, so the model reads
