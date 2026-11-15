@@ -47,7 +47,7 @@ with the Write and Edit tools.
    mounted; otherwise in a throwaway crate outside the project (the
    session's scratchpad or `/tmp/judgment-integrate-<module>/`, written
    with the Write tool, its `Cargo.toml` with the user's `judgment` line
-   or `judgment = "0.16"`, `serde_json`, `tokio` with `macros` and `rt`,
+   or `judgment = "0.17"`, `serde_json`, `tokio` with `macros` and `rt`,
    and the user's `[lints]`, ending in an empty `[workspace]`), mounting
    the module with `#[path = "<absolute path>"]`. Fix until both pass.
 7. **Reply** as the skill's "Reply" says, and offer `/jud:rubric` when the
