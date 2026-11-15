@@ -343,6 +343,20 @@ JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-laya}" \
   cargo test --test live -- --ignored --nocapture --test-threads=1
 '''
 
+[tasks."live:gs1"]
+description = "The ignored live tests against a local GS1 server (BIGAI's `gs1 serve`, https://huggingface.co/bigai/GS1-4B) on GS1_URL (default http://127.0.0.1:8000), under the alias GS1 (or GS1_MODEL, the server's --model-name); skipped, with a message and status 0, when no server answers"
+run = '''
+set -eu
+base="${GS1_URL:-http://127.0.0.1:8000}"
+if ! curl -sf -m 5 -o /dev/null "$base/v1/models"; then
+  echo "skipped: no GS1 server answers GET $base/v1/models; start one with 'uv run gs1 serve --model bigai/GS1-4B --model-name GS1' (https://huggingface.co/bigai/GS1-4B), or set GS1_URL" >&2
+  exit 0
+fi
+JUDGMENT_LIVE_BASE_URL="$base" JUDGMENT_LIVE_MODEL="${GS1_MODEL:-GS1}" \
+JUDGMENT_LIVE_PROFILE="${JUDGMENT_LIVE_PROFILE:-gs1}" \
+  cargo test --test live -- --ignored --nocapture --test-threads=1
+'''
+
 [tasks."live:pplx"]
 description = "The ignored live tests against Perplexity's pplx-decider-v1.1-27b served by its own autojev-serve on PPLX_URL (default http://127.0.0.1:8010; a CUDA GPU with about 49 GiB free); PPLX_API_KEY when the server sets AUTOJEV_API_KEY, which also runs the bearer test"
 run = '''
