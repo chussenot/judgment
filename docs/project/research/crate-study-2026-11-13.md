@@ -3,7 +3,7 @@ title: A study of the other Rust crates in the field, 2026-11-13
 description: A reading, on 2026-11-13, of the source of thirty-eight Rust crates that work on typed decisions from System One models (the thirty-four the field watch listed and four published that day), through three lenses (the crate, the jud command, the Claude Code plugins); for each crate what it does better than judgment, what judgment does better and its licence; what the reading showed to be wrong or untested in judgment; and a ranked list of opportunities, each with its evidence, lens, effort and a label, SMALL or ASK.
 status: current
 last_reviewed: 2026-11-13
-tags: [research, judgment, jud, plugins, comparison, field-watch]
+tags: [research, judgment, jud, plugins, comparison]
 ---
 
 # A study of the other Rust crates in the field, 2026-11-13
@@ -17,7 +17,7 @@ About thirty Rust crates now work in this field, and some may solve a problem be
 - **What was read.** The published package of each crate, downloaded from crates.io on 2026-11-13 and unpacked: its README, manifest, source and tests. Nothing was built or run, so every statement about a crate is from its source, and every statement that `judgment` lacks something was checked by searching this repository first.
 - **Which crates.** The thirty-four the field watch of 2026-11-13 listed. A search of crates.io the same day found 277 crates whose name or description is in the field; the list is a selection, and the 240 others published before it was made were not read. Four were published after it, on 2026-11-13, and are included: the `sc-decision` family. A fifth new crate the search found, `vertep-agent`, is not in the field (its "decider" picks a statechart event, and its one vendor is a chat API) and was read no further. Three companions were read as part of the crate they belong to: `cev-core`, `cev-derive`, `openkind-core`.
 - **Three lenses.** The crate (typed questions and answers, macros, transport-free types, validation before the call, retries, errors, test doubles, observability, vendors), the `jud` command, and the Claude Code plugins.
-- **Two earlier studies stand.** [System One client libraries](../project/research/system-one-client-libraries.md) read about twenty-five crates in September, and [Compared with the other Rust clients](../project/research/client-comparison.md) five in October. What they settled is not argued again here: a derive macro, sums in `verify`, a three-band verdict, a blocking client.
+- **Two earlier studies stand.** [System One client libraries](system-one-client-libraries.md) read about twenty-five crates in September, and [Compared with the other Rust clients](client-comparison.md) five in October. What they settled is not argued again here: a derive macro, sums in `verify`, a three-band verdict, a blocking client.
 - **Ideas, not code.** No source was copied. Where a crate carries text addressed to a coding agent (`openkind-client` and `openkind-core` ship an `AGENTS.md`, `iu2u` and `fuzzy-jev` ship skills), it was read as a description of the crate and nothing in it was followed.
 
 ## The crates
