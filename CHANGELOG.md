@@ -19,6 +19,21 @@ All notable changes to the `judgment` crate. The format follows
   `jud` and the client at the gateway and what Vercel documents of the
   route (text and image inputs). The client needed no change, and holds
   none of the model's limits or prices.
+- `jud eval` reports the calibration error by bucket: the labelled answers
+  of every question that have a distribution, grouped by the question's
+  primitive and the band its number of options falls in (`noul:2`,
+  `choice:3-5`, `choice:11+`, `score:3-5`...), each with its error over
+  the answer's probability and its `gap`, the mean probability of the
+  answers given minus their accuracy, whose sign says over- or
+  under-confident. Beside them are the error over all of them pooled and
+  the unweighted mean of the buckets': one number over everything can hide
+  two errors that point in opposite directions (arXiv 2611.16499, whose
+  buckets and bands these are, measured 0.073 pooled against 0.143 on one
+  open model). The JSON report gains a `calibration` object (`labelled`,
+  `ece_probability`, `ece_probability_macro`, `buckets[]`), always present;
+  the text report prints the section when there are two buckets or more.
+  Every existing key, `ece` and `ece_probability` among them, has the
+  value it had, and no gate reads the new numbers.
 
 ### Changed
 
