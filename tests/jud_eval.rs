@@ -365,12 +365,118 @@ fn answers_from_another_model_or_server_than_the_tuning_names_are_a_warning_and_
     assert!(report(&out).get("moved").is_none());
 }
 
+/// The calibration error by bucket (the question's primitive and the band
+/// its number of options falls in), beside the error over every labelled
+/// answer pooled and the mean of the buckets'. It is an addition: each
+/// question's own `ece` and `ece_probability` are what they were, and a
+/// bucket that holds one question has that question's `ece_probability`.
+#[test]
+fn the_report_breaks_the_calibration_error_down_by_bucket() {
+    let report = report(&triage(&["--json"]));
+    let calibration = &report["calibration"];
+    assert_eq!(
+        keys(calibration),
+        [
+            "buckets",
+            "ece_probability",
+            "ece_probability_macro",
+            "labelled"
+        ]
+    );
+    let buckets = calibration["buckets"].as_array().unwrap();
+    let mut total = 0;
+    let mut sum = 0.0;
+    for (bucket, (name, primitive, options, id)) in buckets.iter().zip([
+        ("noul:2", "noul", "2", "actionable"),
+        ("choice:3-5", "choice", "3-5", "desk"),
+        ("score:3-5", "score", "3-5", "tone"),
+    ]) {
+        assert_eq!(
+            keys(bucket),
+            [
+                "bucket",
+                "ece_probability",
+                "gap",
+                "labelled",
+                "options",
+                "primitive",
+                "questions"
+            ]
+        );
+        assert_eq!(bucket["bucket"], name);
+        assert_eq!(
+            (&bucket["primitive"], &bucket["options"]),
+            (&json!(primitive), &json!(options))
+        );
+        assert_eq!(bucket["questions"], json!([id]));
+        let alone = question(&report, id);
+        assert_eq!(bucket["labelled"], alone["labelled"], "{name}");
+        assert_eq!(
+            bucket["ece_probability"], alone["ece_probability"],
+            "{name}"
+        );
+        total += bucket["labelled"].as_u64().unwrap();
+        sum += bucket["ece_probability"].as_f64().unwrap();
+    }
+    assert_eq!(buckets.len(), 3);
+    assert_eq!(calibration["labelled"], total);
+    assert!((calibration["ece_probability_macro"].as_f64().unwrap() - sum / 3.0).abs() < 1e-12);
+    assert_eq!(
+        format!("{:.3}", calibration["ece_probability"].as_f64().unwrap()),
+        "0.177"
+    );
+    // The gap has a sign the error lacks: the Score is under-confident.
+    assert!(buckets[2]["gap"].as_f64().unwrap() < -0.1, "{}", buckets[2]);
+
+    let text = stdout(&triage(&[]));
+    assert!(
+        text.contains(
+            "\ncalibration by bucket, over the answer's probability (20 labelled answers)\n  \
+             pooled 0.177, mean of the 3 buckets 0.176\n  \
+             noul:2      labelled 7, calibration error 0.144, gap +0.004\n  \
+             choice:3-5  labelled 7, calibration error 0.234, gap -0.077\n  \
+             score:3-5   labelled 6, calibration error 0.150, gap -0.150\n\nmodel misses"
+        ),
+        "{text}"
+    );
+
+    // One bucket is one number three times: the JSON has it, the text does
+    // not repeat the question's own line.
+    let pairwise = |extra: &[&str]| {
+        eval_with(
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/examples/recordings/pairwise-judge-jev-1.14"
+            ),
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/examples/jud/pairwise-judge.jud"
+            ),
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/examples/jud/pairwise-judge-cases.jud"
+            ),
+            extra,
+        )
+    };
+    let one = self::report(&pairwise(&["--json"]));
+    let buckets = one["calibration"]["buckets"].as_array().unwrap();
+    assert_eq!(buckets.len(), 1);
+    assert_eq!(buckets[0]["bucket"], "choice:2");
+    assert_eq!(
+        one["calibration"]["ece_probability"],
+        one["calibration"]["ece_probability_macro"]
+    );
+    assert!(!stdout(&pairwise(&[])).contains("calibration by bucket"));
+}
+
 #[test]
 fn the_json_report_has_every_documented_key_and_no_other() {
     let report = report(&triage(&["--json", "--min-accuracy", "desk=0.5"]));
     assert_eq!(
         keys(&report),
         [
+            "calibration",
             "cases",
             "min_accuracy",
             "models",
