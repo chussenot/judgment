@@ -2,7 +2,7 @@
 title: Tune thresholds
 description: How to grade a model's recorded answers against a rubric's labelled cases with jud eval, hold them to an accuracy bar that fails CI, and replace the guessed bars of the policy with bars proposed by jud tune from a table, then write them back with their provenance.
 status: current
-last_reviewed: 2026-10-24
+last_reviewed: 2026-11-13
 tags: [judgment, jud, tuning, calibration, metrics, eval, how-to]
 ---
 
@@ -48,6 +48,12 @@ tone
   majority calm, 4 of 6 (0.67)
   gate: acts on 7 of 7, defers 0, accuracy when acted 1.00
 
+calibration by bucket, over the answer's probability (20 labelled answers)
+  pooled 0.177, mean of the 3 buckets 0.176
+  noul:2      labelled 7, calibration error 0.144, gap +0.004
+  choice:3-5  labelled 7, calibration error 0.234, gap -0.077
+  score:3-5   labelled 6, calibration error 0.150, gap -0.150
+
 model misses (2)
   actionable  receipt: expected no, predicted yes, confidence 0.52
   desk        receipt: expected none_of_these, predicted billing, confidence 0.40
@@ -61,6 +67,7 @@ The report is on stdout and nothing else is. Read a block from the top.
 - **Outcomes** count, for each answer the question offers, how many labels name it, how often the model gave it on a labelled case, and how often rightly: `yes 5/6/5` is five `yes` labels, six `yes` answers, five of them right. A Score's levels are shown by their text. An outcome no case labels shows `0/…`, which is a gap in the cases, and an outcome the model answers far more often than the labels name it is where its misses come from.
 - **Majority** is the commonest label and its share: what a model that always gave that one answer would score. Accuracy means something only above it.
 - **The gate line** is the policy's, not the model's. It says how many answers the gate acted on rather than deferred, and how often the policy's own verdict was right among those.
+- **Calibration by bucket** follows the questions when the rubric's answers fall in more than one bucket: the kind of question and the band its number of options is in. A model can be too sure on a long list of options and not sure enough on a short one, and the two cancel in one number over everything. The `gap` has the sign the error lacks: above zero is over-confident. With six or seven answers a bucket, as here, it is the shape of the table that is worth knowing, not its numbers.
 - **Warnings** name what to read first, and none is read from fewer than ten answers: on seven cases this report has none. Its thresholds are in the JSON report's `signal_rules`.
   - `not shown to beat always answering …`: the accuracy's interval reaches down to the majority's share, so the model has not shown it does better than a constant. Not raised when every label is the same outcome. Under ten cases even a perfect score could not clear a common majority (at 0.71 it takes ten, at 0.9 thirty-five), which is why it waits.
   - `collapsed`: one answer takes at least 80 % of the model's answers, 20 points more than any label's share. The model is not telling the outcomes apart, and no bar or relabel fixes that.
