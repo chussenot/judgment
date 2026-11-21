@@ -7724,6 +7724,174 @@ A run's window starts at the date of the newest file in `reports/` and ends on i
 A run prompt's tasks become pull requests named `claude/fw-<YYYYMMDD>-<n>`; what each became (merged, skipped, still open) is read back by the next run. The longer studies a run leads to live beside this directory, under `docs/project/research/`.
 
 
+<!-- source: docs/project/research/field-watch/reports/2026-11-21.md -->
+
+
+# Field watch — 2026-11-21
+
+Window: 2026-11-13 to 2026-11-21
+
+**TL;DR**
+
+- TypeSafe's side did not change: OpenAPI 0.2.0 as vendored, SDKs at Python 0.7.5 and JS 0.7.0, aliases on `jev-1.14.0`.
+- Liquid deprecated `d1`, `d1.1` and `d1-ultra` on 2026-11-16 for `d1.2`/`d1.2-ultra` on the same endpoint; judgment's docs and `live:liquid` still name `d1` (P1).
+- ZML llmd now serves the wire; llama.cpp aborts under concurrent requests and vLLM silently remaps letter and digit labels, which `Response::verify` cannot see (two P2 tasks, and one for five papers).
+
+## What changed
+
+| Date | Event | Confidence | Source |
+|---|---|---|---|
+| 2026-11-16 | Liquid d1.2 and d1.2-ultra: answer types `text`, `number`, `date`, `spans`, `boxes`, multi-select `choice`; audio; d1 models deprecated, no retirement date | High (dates); vendor-reported (scores) | [blog](https://www.liquid.ai/blog/d1-2.md), [deprecations](https://docs.liquid.ai/lfm/help/deprecations.md) |
+| 2026-11-17 | Microsoft Decision-1.1 GA; no endpoint stated | Low, single source | [SiliconANGLE](https://siliconangle.com/2026/11/17/microsoft-rolls-out-new-first-party-models-and-updates-to-agentic-ai-continuous-improvement/) |
+| 2026-11-19 | Vercel serves `liquid/d1.2*` on `/v1/decisions` (OpenAI's shape), not `/typesafe` | High | [Vercel](https://vercel.com/changelog/liquid-ais-d1-2-and-d1-2-ultra-are-now-available-on-ai-gateway) |
+| 2026-11-19 | ZML llmd 2026.11.3 adds `POST /v1/systemone`, shown with Choice and a StartLux extension that is not the standard wire | High (M) | maintainer |
+| 2026-11-19 to 11-21 | Laya 0.5.0 makes Vega `laya.Agent()`'s default (multimodal, abstention, prediction sets); 0.5.1 hashes `questions.json` into signed manifests, and Rust `laya-onnx` can skip the ONNX Runtime download | High (M) | maintainer |
+| 2026-11-20 to 11-21 | llama.cpp #32678: abort on concurrent `/v1/systemone` requests (fix #32713 open). vLLM #61190: letter-choice and digit-score labels silently remapped (fix open) | Medium (M), upstream reports | maintainer |
+| 2026-11-20 to 11-21 | vLLM #68878 proposes Kanana-2-v-decide-3b on `/v1/systemone`; open | Medium (M) | maintainer |
+| 2026-11-13 to 11-19 | 42 arXiv papers, among them a six-perturbation bias suite (2611.26557) | Medium, author-reported | [arXiv API](https://export.arxiv.org/api/query?search_query=abs:%22decision%20models%22) |
+
+(B) marks a boundary item, dated the window's first day. (M) marks an item the maintainer supplied during the run; its links did not come through and it was not re-fetched here.
+
+**Correction:** `github.com/bigai-nlco/GS1`, 404 on 2026-11-13, now exists with `gs1 serve` documented.
+
+## Crates
+
+Moved: `decision-rs` 0.7.0, `iu2u` 0.5.0 (an `init` wizard asking one test question), `sc-decision-*` 0.2.9 (response validation), `fuzzy-jev` 0.8.0, `openkind-*` 0.6.0, `gaise-provider-typesafe` 5.8.0, `vertep-agent`, and Laya's `laya-onnx` (above).
+
+New: `ultron-judge`, `system-of-a-one`, `jevbrev`, `letsdecide` (a sans-IO request for several decision APIs), `decidr`, `graphrt-llm`. Not new, but missing from the study: `rig-typesafeai` 0.47.0 (Rig's Jev integration, 50,223 downloads).
+
+Downloads: `judgment` 437. The five closest: `kunobi-decision` 5,242, `typesafe-client` 127, `iu2u` 122, `systemone` 69, `decision-rs` 51.
+
+Lessons: `iu2u init` is the study's open row 18 (`jud config --check`); `sc-decision-systemone` retries a 2xx that does not fit, which judgment deliberately does not. No new study task.
+
+## Impact on judgment
+
+**Breaking risks.** None on TypeSafe's wire. Liquid's `d1` still answers but is deprecated, and the guide still says to name it; `d1:latest` follows the newest model, so a user on that alias may have moved silently. Liquid refuses zstd bodies, so judgment's `zstd` feature fails every request there, unstated in the docs. vLLM's label remapping is worse for judgment than a refusal: an answer naming an offered but wrong option passes `Response::verify`. A live check with letter-like options would catch it. With llama.cpp, keep the `Pacer` to one call in flight until #32713 lands.
+
+**Opportunities.** Liquid, Perplexity and Open System One now put extraction types on the same path; TypeSafe has not (ASK-1).
+
+## Promotion opportunities
+
+None verified in the window.
+
+## Tasks, ASK questions and deferred items
+
+Tasks (detail in `prompts/2026-11-21.md`):
+
+1. **FW-20261121-1** P1, vendor and docs: name `d1.2` and `d1.2-ultra` for Liquid, mark the d1 models deprecated, say zstd is refused.
+2. **FW-20261121-2** P2, wire tests: an ignored live test that catches silent label remapping.
+3. **FW-20261121-3** P2, docs: ZML llmd, Laya 0.5 and the two upstream server bugs on the compatible-servers page.
+4. **FW-20261121-4** P2, docs: five November papers in the literature note.
+
+**ASK-1: answer types beyond the wire on `/v1/systemone`.**
+
+- Idea: ask Liquid's `text`, `number`, `date`, `spans`, `boxes` and multi-select `choice`.
+- Evidence: Liquid d1.2, Perplexity Decider v1.3 "Locate", Open System One; TypeSafe has none (bead `judgment-8eg.3`).
+- Option A: wait for TypeSafe's document. Free; Liquid users cannot ask them through judgment.
+- Option B: an off-by-default extension feature: a contract change, a `.jud` minor and new public types, days of work, one vendor's shapes.
+- Recommendation: A, until a second hosted vendor ships the same shapes.
+
+**Deferred:**
+
+- Rows for vLLM 0.32's built-in `/v1/systemone`, Perplexity Decider v1.3, GS1's family and Liquid's open d1-2B: dated before the window, they belong to crate-study row 22.
+- vLLM #68878 (Kanana): wait for the merge.
+- Open System One's conformance suite checks servers, not clients. Watch it.
+- Microsoft Decision-1.1: wait for a primary page.
+
+## Sources checked with no change
+
+`docs.typesafe.ai` (`llms.txt`, `changelog.md`, `models.md`, both SDK changelogs, `api/errors.md`); `api.typesafe.ai/openapi.json`; PyPI `typesafe-sdk`; npm `@typesafe-ai/sdk`; both SDK releases pages; `typesafe.ai/blog`; Open System One tags and site; OpenAI's API changelog; OpenRouter's changelog (provider names only, body unchanged); Ollama releases; llama.cpp v1.0.0.
+
+## Not verified / gaps
+
+- The 2026-11-13 report text was unavailable; the diff used that run's prompt and outcomes.
+- The (M) items were not re-fetched; their issue and PR numbers are as supplied.
+- No Kev source read; OpenRouter's changelog read to 100,000 characters; Hugging Face's listing stopped at 400 models (380+ entrants, cards unread); papers read as abstracts; no live request sent.
+
+
+<!-- source: docs/project/research/field-watch/prompts/2026-11-21.md -->
+
+
+Follow AGENTS.md and docs/agent-prompts/PREAMBLE.md.
+You are implementing the field-watch tasks for 2026-11-21 on
+chussenot/judgment.
+You may create one branch and open one PR per task, named
+claude/fw-20261121-<n>. You may not publish a crate or tag a release.
+Work in order. Re-verify each task's facts against its spec URL first;
+skip and explain if the source disagrees or a dependency is not merged.
+Run the repository's documented quality checks and update CHANGELOG.md
+per the repository convention. Stop and ask the maintainer before any
+change that meets an ASK condition (list them). Finish with a table:
+task id, PR link or skip reason, open questions.
+
+ASK conditions: a change to or removal of public API, `jud` behaviour or output; a change to the `.jud` format, fingerprints, recordings or cache keys; a new dependency, a raised MSRV or a new default feature; a backend that is not the wire; a change to what judgment is for.
+
+### FW-20261121-1: Name Liquid's d1.2 models and mark d1 deprecated
+Priority: P1. Size: S. Scope: vendor.
+Depends on: none
+Why: Liquid deprecated `d1`, `d1.1` and `d1-ultra` on 2026-11-16, and judgment's guide, plugin reference and `mise run live:liquid` still tell users to name `d1`.
+Change: In `docs/guides/configure-a-backend.md` and `plugins/judgment/skills/judgment/references/configure-a-backend.md`, name `d1.2` and `d1.2-ultra` as Liquid's models. Say that `d1`, `d1.1` and `d1-ultra` still answer but are deprecated with no retirement date. Say that `d1:latest` follows the newest model of its family, so pin an exact id. Say that Liquid refuses zstd-compressed bodies, so the `zstd` feature must stay off for Liquid. Say that d1.2's extra answer types (`text`, `number`, `date`, `spans`, `box`/`boxes`, multi-select `choice`) are Liquid's extensions, which the crate neither sends nor reads. In `mise.toml`, change the `live:liquid` default model and description to `d1.2`, and keep `LIQUID_MODEL` for the others. Update the doc comment of the `Liquid` profile in `tests/live.rs` without changing what it asserts. In `docs/project/verification/liquid.md`, say that the recorded run was against `d1` and `d1-ultra` and that no run against d1.2 is recorded. Update the Liquid row in `docs/project/research/compatible-servers-and-models.md` and the method table in `docs/project/verification/method.md`. Regenerate the llms files with the repository's script. Add a CHANGELOG entry under [Unreleased]. Do not run the live tests: they need the maintainer's key.
+Spec: https://docs.liquid.ai/lfm/models/d1.md
+Facts to re-verify:
+- Deprecated `d1-ultra` → `d1.2-ultra`, `d1.1` → `d1.2`, `d1` → `d1.2`, "request and response format is unchanged", no retirement date: https://docs.liquid.ai/lfm/help/deprecations.md
+- d1.2 and d1.2-ultra: 65,536 tokens per question (state, images and audio included) and 250,000 bytes of text per question, $0.02 and $0.042 per 1M input tokens: https://docs.liquid.ai/lfm/models/d1.md
+- The TypeScript SDK example sets `compression: false` because "the API doesn't accept zstd-compressed request bodies": https://docs.liquid.ai/lfm/models/d1.md
+- `d1:latest` and `d1-ultra:latest` "always point to the newest model of their family"; up to 128 questions; a 4.5 MB request body: https://docs.liquid.ai/api/reference/decision-models/make-decisions.md
+- Released 2026-11-16 on the same endpoint `https://api.liquid.ai/decisions/v1/systemone`: https://www.liquid.ai/blog/d1-2.md
+Acceptance criteria:
+- No user-facing page or plugin reference recommends `d1` or `d1-ultra` without saying they are deprecated.
+- `mise run live:liquid` defaults to `d1.2`, and its description says so. `tests/live.rs` asserts exactly what it asserted before.
+- The verification page states that d1.2 has not been run. No page claims d1.2 was verified.
+- The zstd refusal is stated next to the Liquid section of the guide.
+- `mise run check` and `mise run docs:check` pass, and CHANGELOG.md has the entry.
+
+### FW-20261121-2: Add a live test that catches silent label remapping
+Priority: P2. Size: S. Scope: wire.
+Depends on: none
+Why: vLLM #61190 reports that a server can silently remap letter-like Choice options and digit-like Score labels, and an answer that names an offered but wrong option passes `Response::verify`, so only a live run can see it.
+Change: Add one `#[ignore]` test to `tests/live.rs`, in the suite's existing style. Ask, in one request, a Choice whose option keys are `A`, `B` and `C` and whose criteria and state make exactly one of them plainly right (say, the state names one colour and each option describes a colour), and a Score whose level texts begin with digits (`1 - none`, `2 - some`, `3 - severe`) over a state that plainly matches one level. Read the top option and the Score's position. Assert they are the plainly right ones on the `typesafe` profile; on every other profile print both answers and the request, as the suite does where servers differ. Update the test count in `docs/project/verification/method.md`. Do not run it: it needs keys.
+Spec: https://github.com/vllm-project/vllm/pull/61190
+Facts to re-verify:
+- What #61190 says is remapped (letter-choice and digit-score labels), and whether it is merged: https://github.com/vllm-project/vllm/pull/61190
+Acceptance criteria:
+- The test is `#[ignore]`, so `cargo test` sends nothing; `cargo test --test live -- --ignored --list` names it.
+- It asserts only on `typesafe`, and prints the request and the answers elsewhere.
+- `mise run check` passes, and `method.md`'s count matches the file.
+
+### FW-20261121-3: Record this week's servers and upstream bugs
+Priority: P2. Size: S. Scope: docs.
+Depends on: none
+Why: ZML llmd began serving `POST /v1/systemone`, Laya shipped 0.5.0 and 0.5.1, and two open upstream bugs change how a user should call llama.cpp and vLLM through the crate.
+Change: In `docs/project/research/compatible-servers-and-models.md`: add a row for ZML llmd 2026.11.3, saying it was shown with Choice and with a StartLux dependency extension that is not part of the standard wire, and that no primitive beyond Choice is established; note Laya 0.5.0 and 0.5.1 only where they touch the wire the crate sends (Vega as `laya.Agent()`'s default is Laya's own Python API, not the wire); and add a short "Open upstream issues" note naming llama.cpp #32678 (an abort on concurrent `/v1/systemone` requests; fix #32713 open: keep a `Pacer` to one call in flight against llama.cpp until it lands) and vLLM #61190 (silent label remapping; FW-20261121-2's test detects it). Name the date read for each. Do not add vLLM #68878 (Kanana) until it merges.
+Spec: https://github.com/ggml-org/llama.cpp/issues/32678
+Facts to re-verify (the maintainer supplied these on 2026-11-21 without links; find each primary page, and drop any item whose page you cannot reach or that says otherwise):
+- ZML llmd 2026.11.3, released 2026-11-19, adds `POST /v1/systemone`: the project's release page.
+- Laya 0.5.0 and 0.5.1 (2026-11-19 to 11-21): Laya's release notes.
+- llama.cpp #32678 and #32713: https://github.com/ggml-org/llama.cpp/issues/32678, https://github.com/ggml-org/llama.cpp/pull/32713
+- vLLM #61190, updated 2026-11-20: https://github.com/vllm-project/vllm/pull/61190
+Acceptance criteria:
+- Every new row or note names its source URL and the date read.
+- No page claims a primitive or an extension the source does not show.
+- `mise run docs:check` passes. A CHANGELOG entry only if the repository's convention lists research pages.
+
+### FW-20261121-4: Add five November papers to the literature note
+Priority: P2. Size: S. Scope: docs.
+Depends on: none (separate from bead judgment-rwh, which reads other papers)
+Why: Five abstracts from 2026-11-15 to 2026-11-19 bear on what `jud eval` measures (perturbation bias, visual attacks, large option sets, judging tasks), and the literature note stops at the two papers added by #135.
+Change: Add one row each to `docs/project/research/decision-model-papers-2026-10.md`, following the page's existing table and wording, for arXiv 2611.26557 (MM-SystemOneBias: six paired perturbations, of which option order, option label and rating scale map to what `jud eval --swap` does and does not perturb), 2611.25435 (VisualJevBench), 2611.19005 (AdaMenu: menus for label sets past the option limit), 2611.22949 (decision models on contact-centre classification and judging) and 2611.20191 (TDM-Gauntlet: 24 papers, 46 test sets). Mark every number as author-reported and abstract-only. Update `last_reviewed` and the description. Propose no new `jud` flag. If a paper suggests one, write it as an open question on the page.
+Spec: https://export.arxiv.org/api/query?id_list=2611.26557,2611.25435,2611.19005,2611.22949,2611.20191
+Facts to re-verify:
+- MM-SystemOneBias: 13 models, 5,323 instances, nine datasets, six interventions; decision models more stable than their backbones under option-label, irrelevant-information and rating-scale changes in all seven pairs: https://arxiv.org/abs/2611.26557
+- VisualJevBench: 800 images, 3,200 questions, eight scenarios, four attack surfaces: https://arxiv.org/abs/2611.25435
+- AdaMenu: up to 1,016 labels; +16.6 to +34.3 points over TypeSafe's beam-search baseline; input tokens down 3.2 to 22.9 times: https://arxiv.org/abs/2611.19005
+- Contact centre: nine decision models against thirteen LLMs on eight use cases: https://arxiv.org/abs/2611.22949
+- TDM-Gauntlet: Jev replaced the paper's predictor on 12 of 46 test sets: https://arxiv.org/abs/2611.20191
+Acceptance criteria:
+- Five rows added, each with its arXiv link, submission date and an "abstract only" mark.
+- No figure appears that is not in the abstract.
+- `mise run docs:check` passes. A CHANGELOG entry is added only if the repository's convention lists research pages (check the entries for #135).
+
+
 <!-- source: docs/project/decisions/README.md -->
 
 
