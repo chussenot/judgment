@@ -76,6 +76,7 @@ nav:
           - Field watch, 2026-11-21: project/research/field-watch/reports/2026-11-21.md
           - Field-watch run prompt, 2026-11-21: project/research/field-watch/prompts/2026-11-21.md
           - A study of the other Rust crates in the field, 2026-11-13: project/research/crate-study-2026-11-13.md
+          - The field watch, its reports and run prompts: project/research/field-watch/README.md
       - Decisions:
           - Index: project/decisions/README.md
           - 0003 Typed handles between questions and answers: project/decisions/0003-typed-handles-between-questions-and-answers.md
