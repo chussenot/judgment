@@ -95,6 +95,8 @@ pub mod contract;
 pub mod error;
 pub mod eval;
 #[cfg(feature = "http")]
+mod finite;
+#[cfg(feature = "http")]
 #[cfg_attr(docsrs, doc(cfg(feature = "http")))]
 pub mod http;
 #[cfg(feature = "jud")]

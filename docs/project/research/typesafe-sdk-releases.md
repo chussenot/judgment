@@ -2,7 +2,7 @@
 title: The official TypeSafe SDKs' releases, read for wire changes
 description: A reading, on 2026-11-13, of every release of TypeSafe's Python SDK (0.5.7 to 0.7.5) and JavaScript SDK (0.5.7 to 0.7.0), of the model changelog, the request rules and the OpenAPI document, for what each changed on the wire (a request or response shape, a header, a default, a limit) and what this crate does about it; Python 0.7.0, which a third-party quickstart pins, changed nothing on the wire, and three things the SDKs or the request rules do are not mirrored here.
 status: current
-last_reviewed: 2026-11-15
+last_reviewed: 2026-11-21
 tags: [research, judgment, typesafe, sdk, wire, compatibility]
 ---
 
@@ -60,5 +60,5 @@ What could not be read: **there is no deprecations page.** `https://docs.typesaf
 None of these is a change to a shape the crate sends or reads. Each is a place where the SDKs or the request rules do something the crate does not, stated so that it is a decision and not an accident. The maintainer decided each on 2026-11-15.
 
 - **Idle connections.** The Python SDK keeps a pooled connection for 30 seconds since 0.7.3, and its default client opens at most 100. The crate sets no pool option, so `reqwest`'s own defaults apply (90 seconds idle and no cap on idle connections per host, in `reqwest` 0.13.5). Should a server close an idle connection sooner than that, the next request on it would fail as a transport failure, which the crate retries by default. **Decided: left as it is** until a live run shows a reset; the retry covers the failure.
-- **A number that is not finite.** The request rules refuse `NaN` and infinities with a 400, and the Python SDK sends them as strings since 0.7.4. `serde_json` writes a non-finite float as `null`, so a state that holds one goes out as valid JSON with `null` where the number was: no error on either side, and the model is asked about a state that lost a value (observed on 2026-11-13 by serialising a request). **Decided: the crate will refuse such a state before the call**, as `Error::InvalidState` (bead `judgment-d6m`); until that lands, the `null` stands.
+- **A number that is not finite.** The request rules refuse `NaN` and infinities with a 400, and the Python SDK sends them as strings since 0.7.4. `serde_json` writes a non-finite float as `null`, so a state that holds one goes out as valid JSON with `null` where the number was: no error on either side, and the model is asked about a state that lost a value (observed on 2026-11-13 by serialising a request). **Decided: the client refuses such a state before the call**, as `Error::InvalidState` (bead `judgment-d6m`).
 - **Nesting.** The crate does not count the nesting of a state, an instruction or a criterion before a call. A request past 64 levels is the server's to refuse, a 400 the crate reads as `Error::InvalidRequest`. **Decided: left to the server**, since nothing is silently wrong and a client-side copy of the rule could drift from the page.
