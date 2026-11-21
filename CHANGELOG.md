@@ -60,6 +60,15 @@ All notable changes to the `judgment` crate. The format follows
   cut to 64 characters as its other strings are. A body that is not JSON,
   or whose `answers` is not an object, keeps serde's own words; the
   variant and its fields do not change.
+- **Breaking** for a caller whose state holds `NaN` or an infinity: the
+  client refuses it before anything is sent, as `Error::InvalidState`,
+  naming which it was. `serde_json` wrote such a number as `null`, so the
+  request went out with the value gone and the model was asked about a
+  state that had lost it; TypeSafe's request rules refuse non-finite
+  numbers outright. Send the value as a string, or leave the field out.
+  Only `Client` serialises a caller's own type: every other backend takes a
+  `serde_json::Value`, which cannot hold such a number. Decided by the
+  maintainer on 2026-11-15 (`docs/project/research/typesafe-sdk-releases.md`).
 
 ### Fixed
 

@@ -1086,6 +1086,9 @@ impl Client {
         options: &CallOptions,
         billed: &mut Option<Billed>,
     ) -> Result<Response> {
+        // Before anything is built: serde_json would send a NaN or an
+        // infinity as null (crate::finite).
+        crate::finite::check(request.state)?;
         let url = self.url("v1/systemone")?;
         let dangerous = !request.assets.is_empty() || asks_a_box(request.questions);
         let long_context = options.long_context.unwrap_or(self.long_context);

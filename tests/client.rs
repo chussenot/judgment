@@ -2165,6 +2165,48 @@ async fn a_state_that_cannot_be_serialised_is_the_callers_input_not_a_decode_fai
 }
 
 #[tokio::test]
+async fn a_state_with_a_non_finite_number_is_refused_before_anything_is_sent() {
+    // TypeSafe refuses NaN and the infinities with a 400, and serde_json
+    // would send them as null: the request would go out with the value gone.
+    // Nothing is sent, the error is the caller's (`InvalidState`), and the
+    // same state with a finite number goes out.
+    #[derive(serde::Serialize)]
+    struct Reading {
+        message: &'static str,
+        scores: Vec<Option<f64>>,
+    }
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "jev-1.14.0",
+            "answers": { "urgent": { "type": "noul", "noul": 0.9 } },
+            "usage": { "input_tokens": 1, "output_tokens": 1 },
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut q = Questions::new();
+    q.noul("urgent", "Does `message` convey urgency?", None)
+        .unwrap();
+    let client = client(&server, RetryPolicy::default());
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let state = Reading {
+            message: "the pump is down",
+            scores: vec![Some(0.5), Some(bad)],
+        };
+        let err = client.system_one(&state, &q).await.unwrap_err();
+        assert!(matches!(err, Error::InvalidState(_)), "{bad}: {err:?}");
+        assert!(err.to_string().contains("would be sent as null"), "{err}");
+    }
+    // Negative: finite numbers go out, once, for the one expected request.
+    let state = Reading {
+        message: "the pump is down",
+        scores: vec![Some(0.5), None],
+    };
+    assert!(client.system_one(&state, &q).await.is_ok());
+}
+
+#[tokio::test]
 async fn ollaya_s_size_codes_are_too_large_and_its_other_codes_are_not() {
     // Ollaya 0.17.0's 422s (docs/project/verification/ollaya.md): a code
     // beside the message, TypeSafe's issues in `detail`. A request over its

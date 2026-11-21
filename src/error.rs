@@ -205,8 +205,9 @@ pub enum Error {
     },
     /// The state (or the questions) could not be serialised to JSON, so
     /// nothing was sent: a map with non-string keys, a `Serialize` impl that
-    /// fails. The caller's input is the problem, not a response; change the
-    /// state. Never retried.
+    /// fails, or a number that is not finite (`NaN`, an infinity), which
+    /// JSON cannot carry and TypeSafe refuses. The caller's input is the
+    /// problem, not a response; change the state. Never retried.
     #[error("could not serialise the request: {0}")]
     InvalidState(#[source] serde_json::Error),
     /// A recording could not be read or written (check the directory and its
