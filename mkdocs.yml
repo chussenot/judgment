@@ -73,6 +73,8 @@ nav:
           - System One models on Google Cloud: project/research/system-one-on-google-cloud.md
           - StartLux-Decision v1.1 27B AutoThink: project/research/startlux-decision-27b-autothink.md
           - Decision-model papers, September and October 2026: project/research/decision-model-papers-2026-10.md
+          - Field watch, 2026-11-21: project/research/field-watch/reports/2026-11-21.md
+          - Field-watch run prompt, 2026-11-21: project/research/field-watch/prompts/2026-11-21.md
           - A study of the other Rust crates in the field, 2026-11-13: project/research/crate-study-2026-11-13.md
       - Decisions:
           - Index: project/decisions/README.md
